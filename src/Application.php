@@ -36,15 +36,19 @@ use KVS\CLI\Command\ShellCommand;
 use KVS\CLI\Command\EvalCommand;
 use KVS\CLI\Command\EvalFileCommand;
 use KVS\CLI\Command\PluginCommand;
+use KVS\CLI\Command\SelfUpdateCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
 use KVS\CLI\Bootstrap\LoadConfiguration;
 use KVS\CLI\Bootstrap\ValidateKvsInstallation;
 use KVS\CLI\Bootstrap\RegisterCommands;
 
+// Global version constant for SelfUpdateCommand
+define('KVS_CLI_VERSION', '1.0.0-beta');
+
 class Application extends BaseApplication
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = KVS_CLI_VERSION;
     public const NAME = 'KVS CLI';
 
     private ?Configuration $config = null;
@@ -68,12 +72,14 @@ class Application extends BaseApplication
 
     /**
      * Override to remove completion command that doesn't work in PHAR
+     * and add SelfUpdateCommand (always available, even without KVS)
      */
     protected function getDefaultCommands(): array
     {
         return [
             new \Symfony\Component\Console\Command\HelpCommand(),
             new \Symfony\Component\Console\Command\ListCommand(),
+            new SelfUpdateCommand(),
         ];
     }
 
@@ -135,7 +141,7 @@ class Application extends BaseApplication
     }
 
     /**
-     * Check if the command is a help/version command that should work without KVS
+     * Check if the command should work without KVS installation
      */
     private function isHelpCommand(InputInterface $input): bool
     {
@@ -145,7 +151,13 @@ class Application extends BaseApplication
         $argv = $_SERVER['argv'] ?? [];
         $isVersionRequest = in_array('--version', $argv) || in_array('-V', $argv);
 
-        return in_array($command, ['help', 'list', '--help']) || $isVersionRequest;
+        // Commands that work without KVS
+        $standaloneCommands = [
+            'help', 'list', '--help',
+            'self-update', 'selfupdate', 'self:update',
+        ];
+
+        return in_array($command, $standaloneCommands) || $isVersionRequest;
     }
 
     /**
