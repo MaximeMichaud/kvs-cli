@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<ruleset name="KVS CLI Coding Standard">
+    <description>KVS CLI coding standard based on PSR-12</description>
+
+    <!-- Show progress -->
+    <arg value="p"/>
+
+    <!-- Use colors in output -->
+    <arg name="colors"/>
+
+    <!-- Parallel processing for speed (8 threads) -->
+    <arg name="parallel" value="8"/>
+
+    <!-- Paths to check -->
+    <file>src/</file>
+    <file>tests/</file>
+
+    <!-- Exclude patterns -->
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*.js</exclude-pattern>
+    <exclude-pattern>*.css</exclude-pattern>
+
+    <!-- Base ruleset: PSR-12 -->
+    <rule ref="PSR12"/>
+
+    <!-- Additional rules -->
+
+    <!-- Enforce array syntax (short array syntax) -->
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax"/>
+
+    <!-- Check for PHP cross-version compatibility -->
+    <config name="testVersion" value="8.1-"/>
+
+    <!-- Warn about TODO comments -->
+    <rule ref="Generic.Commenting.Todo.TaskFound">
+        <severity>3</severity>
+    </rule>
+
+    <!-- Warn about FIXME comments -->
+    <rule ref="Generic.Commenting.Fixme.TaskFound">
+        <severity>4</severity>
+    </rule>
+
+    <!-- Disallow eval() -->
+    <rule ref="Squiz.PHP.Eval.Discouraged">
+        <type>warning</type>
+    </rule>
+
+    <!-- Require strict types declaration (will be enforced later) -->
+    <!-- TODO: Enable after adding strict_types to all files -->
+    <!-- <rule ref="PSR12.Files.FileHeader.IncorrectOrder"/> -->
+
+    <!-- Function complexity warnings -->
+    <rule ref="Generic.Metrics.CyclomaticComplexity">
+        <properties>
+            <property name="complexity" value="10"/>
+            <property name="absoluteComplexity" value="15"/>
+        </properties>
+    </rule>
+
+    <!-- Function length warnings -->
+    <rule ref="Generic.Metrics.NestingLevel">
+        <properties>
+            <property name="nestingLevel" value="5"/>
+            <property name="absoluteNestingLevel" value="8"/>
+        </properties>
+    </rule>
+
+    <!-- Exclude some rules that conflict with Symfony conventions -->
+
+    <!-- Allow longer lines for readability in some cases -->
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="120"/>
+            <property name="absoluteLineLimit" value="150"/>
+        </properties>
+    </rule>
+
+</ruleset>

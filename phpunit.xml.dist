@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         cacheDirectory=".phpunit.cache"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTodoAnnotatedTests="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnTestsThatTriggerErrors="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true">
+
+    <!-- Test suites -->
+    <testsuites>
+        <testsuite name="Unit Tests">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration Tests">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="Functional Tests">
+            <directory>tests/Functional</directory>
+        </testsuite>
+    </testsuites>
+
+    <!-- Code coverage -->
+    <source>
+        <include>
+            <directory suffix=".php">src</directory>
+        </include>
+        <exclude>
+            <directory>src/Bootstrap</directory>
+            <file>src/Application.php</file>
+        </exclude>
+    </source>
+
+    <!-- PHP configuration -->
+    <php>
+        <!-- Error reporting -->
+        <ini name="error_reporting" value="-1"/>
+        <ini name="display_errors" value="1"/>
+        <ini name="display_startup_errors" value="1"/>
+
+        <!-- Memory limit -->
+        <ini name="memory_limit" value="512M"/>
+
+        <!-- Timezone -->
+        <ini name="date.timezone" value="UTC"/>
+
+        <!-- Environment variables for testing -->
+        <env name="KVS_CLI_TEST" value="1"/>
+        <env name="KVS_PATH" value="/tmp/kvs-test"/>
+    </php>
+
+    <!-- Logging -->
+    <logging>
+        <!-- Coverage reports -->
+        <!-- Uncomment when phpunit/coverage is installed -->
+        <!--
+        <log type="coverage-html" target="build/coverage/html"/>
+        <log type="coverage-clover" target="build/coverage/clover.xml"/>
+        <log type="coverage-text" target="php://stdout" showOnlySummary="true"/>
+        -->
+
+        <!-- JUnit report for CI -->
+        <!-- <log type="junit" target="build/logs/junit.xml"/> -->
+
+        <!-- TestDox documentation -->
+        <!-- <log type="testdox-html" target="build/logs/testdox.html"/> -->
+    </logging>
+
+</phpunit>
