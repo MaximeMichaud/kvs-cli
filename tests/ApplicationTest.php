@@ -22,7 +22,7 @@ class ApplicationTest extends TestCase
 
     public function testApplicationHasVersion(): void
     {
-        $this->assertEquals('1.0.0', $this->app->getVersion());
+        $this->assertEquals('1.0.0-beta', $this->app->getVersion());
     }
 
     public function testApplicationHasDefaultCommands(): void
