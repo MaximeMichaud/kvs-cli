@@ -1,0 +1,52 @@
+# Composer
+/vendor/
+composer.phar
+
+# PHAR builds
+*.phar
+
+# PHPUnit
+/phpunit.xml
+/.phpunit.cache/
+.phpunit.result.cache
+
+# Coverage reports
+/coverage-report/
+coverage.xml
+coverage.txt
+clover.xml
+
+# IDE
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+/logs/
+
+# Cache
+/cache/
+/tmp/
+
+# Build artifacts
+/build/
+/dist/
+
+# Local development
+*.local
+
+# Temp
+/temp/

@@ -1,0 +1,424 @@
+<?php
+
+namespace KVS\CLI\Command;
+
+use KVS\CLI\Output\Formatter;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+
+#[AsCommand(
+    name: 'plugin',
+    description: 'Manage KVS plugins',
+    aliases: ['plugins', 'plug']
+)]
+class PluginCommand extends BaseCommand
+{
+    protected function configure(): void
+    {
+        $this
+            ->setHelp(<<<'HELP'
+Manage KVS plugins - list, inspect, and get information about installed plugins.
+
+<info>ACTIONS:</info>
+  list              List all plugins (default)
+  show <id>         Show plugin details
+  path <id>         Show plugin directory path
+  status            Show plugin statistics
+
+<info>LIST OPTIONS:</info>
+  --status=<status>     Filter by status (active|inactive|all)
+  --type=<type>         Filter by type (manual|cron)
+  --fields=<fields>     Comma-separated fields to display
+  --field=<field>       Display single field value
+  --format=<format>     Output format: table, csv, json, yaml, count
+
+<info>AVAILABLE FIELDS:</info>
+  id, name, author, version, kvs_version
+  status, enabled, types, title, description
+
+<info>EXAMPLES:</info>
+  <comment>kvs plugin list</comment>
+  <comment>kvs plugin list --status=active</comment>
+  <comment>kvs plugin list --fields=id,name,version,status</comment>
+  <comment>kvs plugin list --format=json</comment>
+  <comment>kvs plugin show backup</comment>
+  <comment>kvs plugin path backup</comment>
+  <comment>kvs plugin status</comment>
+
+<info>NOTE:</info>
+  This command provides read-only access to plugins.
+  Activation/deactivation is done through KVS admin panel.
+HELP
+            )
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list, show, path, status', 'list')
+            ->addArgument('id', InputArgument::OPTIONAL, 'Plugin ID')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|inactive|all)', 'all')
+            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by type (manual|cron)')
+            ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
+            ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
+            ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields');
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $action = $input->getArgument('action');
+
+        return match ($action) {
+            'list' => $this->listPlugins($input),
+            'show' => $this->showPlugin($input->getArgument('id')),
+            'path' => $this->showPluginPath($input->getArgument('id')),
+            'status' => $this->showStatus(),
+            default => $this->listPlugins($input),
+        };
+    }
+
+    private function listPlugins(InputInterface $input): int
+    {
+        $plugins = $this->getAllPlugins();
+
+        if (empty($plugins)) {
+            $this->io->info('No plugins found');
+            return self::SUCCESS;
+        }
+
+        // Apply filters
+        $statusFilter = $input->getOption('status');
+        $typeFilter = $input->getOption('type');
+
+        if ($statusFilter && $statusFilter !== 'all') {
+            $plugins = array_filter($plugins, function ($plugin) use ($statusFilter) {
+                if ($statusFilter === 'active') {
+                    return $plugin['is_enabled'];
+                } elseif ($statusFilter === 'inactive') {
+                    return !$plugin['is_enabled'];
+                }
+                return true;
+            });
+        }
+
+        if ($typeFilter) {
+            $plugins = array_filter($plugins, function ($plugin) use ($typeFilter) {
+                return in_array($typeFilter, $plugin['types']);
+            });
+        }
+
+        // Transform plugins to flattened format for Formatter
+        $transformedPlugins = array_map(function ($plugin) {
+            return [
+                'id' => $plugin['id'] ?? '',
+                'name' => $plugin['name'] ?? '',
+                'title' => $plugin['title'] ?? '',
+                'author' => $plugin['author'] ?? '',
+                'version' => $plugin['version'] ?? '',
+                'kvs_version' => $plugin['kvs_version'] ?? '',
+                'status' => $plugin['is_enabled'] ? 'Active' : 'Inactive',
+                'types' => !empty($plugin['types']) ? implode(',', $plugin['types']) : '',
+                'description' => $plugin['description'] ?? '',
+                'path' => $plugin['path'] ?? '',
+            ];
+        }, $plugins);
+
+        // Format and display output using centralized Formatter
+        $formatter = new Formatter(
+            $input->getOptions(),
+            ['id', 'name', 'version', 'status', 'types']
+        );
+        $formatter->display($transformedPlugins, $this->io);
+
+        return self::SUCCESS;
+    }
+
+    private function showPlugin(?string $id): int
+    {
+        if (!$id) {
+            $this->io->error('Plugin ID is required');
+            $this->io->text('Usage: kvs plugin show <plugin_id>');
+            return self::FAILURE;
+        }
+
+        $plugin = $this->getPluginById($id);
+
+        if (!$plugin) {
+            $this->io->error("Plugin not found: $id");
+            return self::FAILURE;
+        }
+
+        $this->io->section("Plugin: {$plugin['name']}");
+
+        $info = [
+            ['ID', $plugin['id']],
+            ['Name', $plugin['name']],
+            ['Title', $plugin['title']],
+            ['Author', $plugin['author']],
+            ['Version', $plugin['version']],
+            ['Required KVS', $plugin['kvs_version']],
+            ['Status', $plugin['is_enabled'] ? '<fg=green>Active</>' : '<fg=yellow>Inactive</>'],
+            ['Types', implode(', ', $plugin['types'])],
+            ['Valid', $plugin['is_invalid'] ? '<fg=red>No</>' : '<fg=green>Yes</>'],
+        ];
+
+        $this->io->table(['Property', 'Value'], $info);
+
+        if ($plugin['description']) {
+            $this->io->section('Description');
+            $this->io->text($plugin['description']);
+        }
+
+        $this->io->section('Paths');
+        $this->io->listing([
+            "Plugin directory: {$plugin['path']}",
+            "Main file: {$plugin['path']}/{$plugin['id']}.php",
+            "Template: {$plugin['path']}/{$plugin['id']}.tpl",
+            "Metadata: {$plugin['path']}/{$plugin['id']}.dat",
+        ]);
+
+        return self::SUCCESS;
+    }
+
+    private function showPluginPath(?string $id): int
+    {
+        if (!$id) {
+            $this->io->error('Plugin ID is required');
+            return self::FAILURE;
+        }
+
+        $plugin = $this->getPluginById($id);
+
+        if (!$plugin) {
+            $this->io->error("Plugin not found: $id");
+            return self::FAILURE;
+        }
+
+        $this->io->writeln($plugin['path']);
+        return self::SUCCESS;
+    }
+
+    private function showStatus(): int
+    {
+        $plugins = $this->getAllPlugins();
+
+        $total = count($plugins);
+        $active = count(array_filter($plugins, fn($p) => $p['is_enabled']));
+        $inactive = $total - $active;
+        $invalid = count(array_filter($plugins, fn($p) => $p['is_invalid']));
+
+        // Count by type
+        $typeStats = [];
+        foreach ($plugins as $plugin) {
+            foreach ($plugin['types'] as $type) {
+                if (!isset($typeStats[$type])) {
+                    $typeStats[$type] = 0;
+                }
+                $typeStats[$type]++;
+            }
+        }
+
+        $this->io->section('Plugin Statistics');
+
+        $stats = [
+            ['Total Plugins', $total],
+            ['Active', "<fg=green>$active</>"],
+            ['Inactive', "<fg=yellow>$inactive</>"],
+            ['Invalid/Incompatible', $invalid > 0 ? "<fg=red>$invalid</>" : $invalid],
+        ];
+
+        $this->io->table(['Metric', 'Count'], $stats);
+
+        if (!empty($typeStats)) {
+            $this->io->section('By Type');
+            $typeRows = [];
+            foreach ($typeStats as $type => $count) {
+                $typeRows[] = [ucfirst($type), $count];
+            }
+            $this->io->table(['Type', 'Count'], $typeRows);
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function getAllPlugins(): array
+    {
+        $kvsPath = $this->config->getKvsPath();
+        $pluginsDir = "$kvsPath/admin/plugins";
+
+        if (!is_dir($pluginsDir)) {
+            return [];
+        }
+
+        $plugins = [];
+        $items = scandir($pluginsDir);
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $pluginPath = "$pluginsDir/$item";
+
+            if (!is_dir($pluginPath)) {
+                continue;
+            }
+
+            // Check if plugin has required files
+            if (
+                !file_exists("$pluginPath/$item.php") ||
+                !file_exists("$pluginPath/$item.dat") ||
+                !file_exists("$pluginPath/$item.tpl")
+            ) {
+                continue;
+            }
+
+            $plugin = $this->parsePlugin($item, $pluginPath);
+            if ($plugin) {
+                $plugins[] = $plugin;
+            }
+        }
+
+        // Sort by name
+        usort($plugins, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+
+        return $plugins;
+    }
+
+    private function getPluginById(string $id): ?array
+    {
+        $plugins = $this->getAllPlugins();
+
+        foreach ($plugins as $plugin) {
+            if ($plugin['id'] === $id) {
+                return $plugin;
+            }
+        }
+
+        return null;
+    }
+
+    private function parsePlugin(string $id, string $path): ?array
+    {
+        $datFile = "$path/$id.dat";
+
+        if (!file_exists($datFile)) {
+            return null;
+        }
+
+        $content = file_get_contents($datFile);
+
+        $plugin = [
+            'id' => $id,
+            'path' => $path,
+            'is_enabled' => false,
+            'is_invalid' => false,
+        ];
+
+        // Parse XML metadata
+        if (preg_match('|<plugin_name>(.*?)</plugin_name>|is', $content, $match)) {
+            $plugin['name'] = trim($match[1]);
+        }
+
+        if (preg_match('|<author>(.*?)</author>|is', $content, $match)) {
+            $plugin['author'] = trim($match[1]);
+        }
+
+        if (preg_match('|<version>(.*?)</version>|is', $content, $match)) {
+            $plugin['version'] = trim($match[1]);
+        }
+
+        if (preg_match('|<kvs_version>(.*?)</kvs_version>|is', $content, $match)) {
+            $plugin['kvs_version'] = trim($match[1]);
+        }
+
+        if (preg_match('|<plugin_types>(.*?)</plugin_types>|is', $content, $match)) {
+            $plugin['types'] = array_map('trim', explode(',', trim($match[1])));
+        } else {
+            $plugin['types'] = [];
+        }
+
+        // Try to get localized title/description
+        $plugin['title'] = $plugin['name'];
+        $plugin['description'] = '';
+
+        $langFile = "$path/langs/english.php";
+        if (file_exists($langFile)) {
+            $lang = [];
+            include $langFile;
+            if (isset($lang['plugins'][$id]['title'])) {
+                $plugin['title'] = $lang['plugins'][$id]['title'];
+            }
+            if (isset($lang['plugins'][$id]['description'])) {
+                $plugin['description'] = $lang['plugins'][$id]['description'];
+            }
+        }
+
+        // Check if plugin has valid PHP file
+        $phpFile = "$path/$id.php";
+        if (file_exists($phpFile)) {
+            // Check if {pluginId}Show function exists
+            $phpContent = file_get_contents($phpFile);
+            if (!preg_match("/function\s+{$id}Show\s*\(/", $phpContent)) {
+                $plugin['is_invalid'] = true;
+            }
+
+            // Try to check if enabled (requires loading KVS config)
+            if (!$plugin['is_invalid']) {
+                $plugin['is_enabled'] = $this->checkPluginEnabled($id, $phpFile);
+            }
+        } else {
+            $plugin['is_invalid'] = true;
+        }
+
+        return $plugin;
+    }
+
+    private function checkPluginEnabled(string $id, string $phpFile): bool
+    {
+        /**
+         * KVS Plugin Status Logic:
+         * - If plugin has NO IsEnabled function → always enabled (default)
+         * - If plugin HAS IsEnabled function → call it to check if configured/enabled
+         *
+         * Note: IsEnabled checks if plugin is CONFIGURED (e.g., backup has auto-backup enabled),
+         * not just if it's installed. Plugins without IsEnabled are always operational.
+         */
+        try {
+            $kvsPath = $this->config->getKvsPath();
+
+            // Check if plugin has IsEnabled function
+            $phpContent = file_get_contents($phpFile);
+            if (!preg_match("/function\s+{$id}IsEnabled\s*\(/", $phpContent)) {
+                // No IsEnabled function = plugin is always enabled by default
+                return true;
+            }
+
+            // Plugin has IsEnabled function - need to call it
+            $config = [];
+
+            // Load KVS config (required by most plugins)
+            if (file_exists("$kvsPath/admin/include/setup.php")) {
+                require_once "$kvsPath/admin/include/setup.php";
+            }
+
+            // Load plugin file
+            if (!function_exists("{$id}Show")) {
+                require_once $phpFile;
+            }
+
+            // Call IsEnabled function
+            $funcName = "{$id}IsEnabled";
+            if (function_exists($funcName)) {
+                return (bool)$funcName();
+            }
+
+            // Couldn't call IsEnabled, assume not enabled
+            return false;
+        } catch (\Throwable $e) {
+            // If anything fails, assume enabled (to avoid false negatives)
+            // Better to show an "active" plugin that might not be configured
+            // than to hide a working plugin
+            return true;
+        }
+    }
+}

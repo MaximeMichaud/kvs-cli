@@ -1,0 +1,55 @@
+# PHPStan configuration for KVS CLI
+# Target: Level 8 (gradually moving to 9)
+# https://phpstan.org/config-reference
+
+parameters:
+    # Analysis level (0-10)
+    # Start at 5, target 8-9 for 2025 standards
+    level: 5
+
+    # Paths to analyze
+    paths:
+        - src
+
+    # Directories to exclude
+    excludePaths:
+        - src/Bootstrap/legacy_*.php
+        - vendor
+
+    # Bootstrap file for constants/functions
+    # bootstrapFiles:
+    #     - tests/bootstrap.php
+
+    # Check for implicit mixed types
+    checkImplicitMixed: false
+
+    # Treat PHP doc types as native
+    treatPhpDocTypesAsCertain: true
+
+    # Report possibly undefined variables
+    checkAlwaysTrueCheckTypeFunctionCall: true
+    checkAlwaysTrueInstanceof: true
+    checkAlwaysTrueStrictComparison: true
+
+    # Check for dead code
+    checkTooWideReturnTypesInProtectedAndPublicMethods: false
+    checkUninitializedProperties: true
+
+    # Report unmatched ignored errors
+    reportUnmatchedIgnoredErrors: false
+
+    # Custom type checks
+    # stubFiles:
+    #     - stubs/kvs.stub
+
+includes:
+    # Include Symfony extensions when available
+    - vendor/phpstan/phpstan-symfony/extension.neon
+    - vendor/phpstan/phpstan-strict-rules/rules.neon
+
+# Future roadmap:
+# Phase 1 (Week 1-2): Level 5 -> Fix obvious issues
+# Phase 2 (Week 3-4): Level 6 -> Add strict types, fix mixed types
+# Phase 3 (Week 5-6): Level 7 -> Remove implicit mixed
+# Phase 4 (Week 7-8): Level 8 -> Production-ready strict mode
+# Phase 5 (Future):  Level 9 -> WP-CLI standards
