@@ -87,20 +87,56 @@ class Configuration
         if (file_exists($dbConfigFile)) {
             $content = file_get_contents($dbConfigFile);
 
-            // Match define() with optional spaces: define('KEY', 'value') or define('KEY','value')
-            if (preg_match("/define\\('DB_HOST',\\s*'([^']+)'\\)/", $content, $matches)) {
-                $this->dbConfig['host'] = $matches[1];
-            }
-            if (preg_match("/define\\('DB_LOGIN',\\s*'([^']+)'\\)/", $content, $matches)) {
-                $this->dbConfig['user'] = $matches[1];
-            }
-            if (preg_match("/define\\('DB_PASS',\\s*'([^']+)'\\)/", $content, $matches)) {
-                $this->dbConfig['password'] = $matches[1];
-            }
-            if (preg_match("/define\\('DB_DEVICE',\\s*'([^']+)'\\)/", $content, $matches)) {
-                $this->dbConfig['database'] = $matches[1];
-            }
+            $this->dbConfig['host'] = $this->extractDefineValue($content, 'DB_HOST');
+            $this->dbConfig['user'] = $this->extractDefineValue($content, 'DB_LOGIN');
+            $this->dbConfig['password'] = $this->extractDefineValue($content, 'DB_PASS');
+            $this->dbConfig['database'] = $this->extractDefineValue($content, 'DB_DEVICE');
+
+            // Remove empty values
+            $this->dbConfig = array_filter($this->dbConfig, fn($v) => $v !== null && $v !== '');
         }
+    }
+
+    /**
+     * Extract value from define() statement, handling various formats:
+     * - Simple: define('KEY', 'value')
+     * - With getenv: define('KEY', getenv('VAR') ?: 'default')
+     */
+    private function extractDefineValue(string $content, string $key): ?string
+    {
+        // Pattern 1: Simple string value - define('KEY', 'value')
+        if (preg_match("/define\\(['\"]" . $key . "['\"],\\s*['\"]([^'\"]+)['\"]\\)/", $content, $matches)) {
+            return $matches[1];
+        }
+
+        // Pattern 2: getenv with ?: fallback - define('KEY', getenv('VAR') ?: 'default')
+        $pattern2 = "/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
+            . "\\s*\\?:\\s*['\"]([^'\"]*)['\"]\\)/";
+        if (preg_match($pattern2, $content, $matches)) {
+            $envVar = $matches[1];
+            $default = $matches[2];
+            $envValue = getenv($envVar);
+            return $envValue !== false && $envValue !== '' ? $envValue : $default;
+        }
+
+        // Pattern 3: getenv with ?? fallback - define('KEY', getenv('VAR') ?? 'default')
+        $pattern3 = "/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
+            . "\\s*\\?\\?\\s*['\"]([^'\"]*)['\"]\\)/";
+        if (preg_match($pattern3, $content, $matches)) {
+            $envVar = $matches[1];
+            $default = $matches[2];
+            $envValue = getenv($envVar);
+            return $envValue !== false ? $envValue : $default;
+        }
+
+        // Pattern 4: Just getenv without fallback - define('KEY', getenv('VAR'))
+        if (preg_match("/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)\\)/", $content, $matches)) {
+            $envVar = $matches[1];
+            $envValue = getenv($envVar);
+            return $envValue !== false ? $envValue : null;
+        }
+
+        return null;
     }
 
     private function loadProjectConfig(): void

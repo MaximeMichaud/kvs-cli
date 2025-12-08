@@ -8,17 +8,21 @@ on:
 
 jobs:
   test:
-    name: PHP ${{ matrix.php-version }} - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: PHP ${{ matrix.php-version }} - ${{ matrix.deps }}
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         php-version: ['8.1', '8.2', '8.3', '8.4', '8.5']
+        deps: ['highest']
         include:
+          # Test lowest dependencies on PHP 8.1
+          - php-version: '8.1'
+            deps: 'lowest'
+          # Coverage only on latest PHP with highest deps
           - php-version: '8.5'
-            os: ubuntu-latest
+            deps: 'highest'
             coverage: true
 
     steps:
@@ -46,12 +50,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-php-${{ matrix.php-version }}-composer-${{ hashFiles('**/composer.lock') }}
+          key: ${{ runner.os }}-php-${{ matrix.php-version }}-${{ matrix.deps }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
-            ${{ runner.os }}-php-${{ matrix.php-version }}-composer-
+            ${{ runner.os }}-php-${{ matrix.php-version }}-${{ matrix.deps }}-composer-
 
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
+      - name: Install dependencies (lowest)
+        if: matrix.deps == 'lowest'
+        run: composer update --prefer-lowest --prefer-stable --no-progress --no-interaction
+
+      - name: Install dependencies (highest)
+        if: matrix.deps == 'highest'
+        run: composer update --prefer-stable --no-progress --no-interaction
+
+      - name: Show installed versions
+        run: composer show --direct
 
       - name: Run PHPUnit tests
         run: composer test
