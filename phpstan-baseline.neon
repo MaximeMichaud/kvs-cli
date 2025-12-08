@@ -1,856 +1,1069 @@
 parameters:
 	ignoreErrors:
 		-
-			message: "#^Call to function in_array\\(\\) requires parameter \\#3 to be set\\.$#"
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
 			count: 4
 			path: src/Application.php
 
 		-
-			message: "#^Deprecated in PHP 8\\.4\\: Parameter \\#1 \\$input \\(Symfony\\\\Component\\\\Console\\\\Input\\\\InputInterface\\) is implicitly nullable via default value null\\.$#"
+			message: '#^Deprecated in PHP 8\.4\: Parameter \#1 \$input \(Symfony\\Component\\Console\\Input\\InputInterface\) is implicitly nullable via default value null\.$#'
+			identifier: parameter.implicitlyNullable
 			count: 1
 			path: src/Application.php
 
 		-
-			message: "#^Deprecated in PHP 8\\.4\\: Parameter \\#2 \\$output \\(Symfony\\\\Component\\\\Console\\\\Output\\\\OutputInterface\\) is implicitly nullable via default value null\\.$#"
+			message: '#^Deprecated in PHP 8\.4\: Parameter \#2 \$output \(Symfony\\Component\\Console\\Output\\OutputInterface\) is implicitly nullable via default value null\.$#'
+			identifier: parameter.implicitlyNullable
 			count: 1
 			path: src/Application.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, KVS\\\\CLI\\\\Config\\\\Configuration\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, KVS\\CLI\\Config\\Configuration\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Application.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Application.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Bootstrap/BootstrapState.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, Symfony\\\\Component\\\\Console\\\\Input\\\\InputInterface\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, Symfony\\Component\\Console\\Input\\InputInterface\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Bootstrap/LoadConfiguration.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Bootstrap/LoadConfiguration.php
 
 		-
-			message: "#^Only booleans are allowed in &&, mixed given on the left side\\.$#"
+			message: '#^Only booleans are allowed in &&, mixed given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
 			count: 1
 			path: src/Bootstrap/RegisterCommands.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Bootstrap/ValidateKvsInstallation.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Bootstrap/ValidateKvsInstallation.php
 
 		-
-			message: "#^Class KVS\\\\CLI\\\\Command\\\\BaseCommand has an uninitialized property \\$io\\. Give it default value or assign it in the constructor\\.$#"
+			message: '#^Class KVS\\CLI\\Command\\BaseCommand has an uninitialized property \$io\. Give it default value or assign it in the constructor\.$#'
+			identifier: property.uninitialized
 			count: 1
 			path: src/Command/BaseCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/BaseCommand.php
 
 		-
-			message: "#^Call to function in_array\\(\\) requires parameter \\#3 to be set\\.$#"
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
 			count: 1
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 4
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Offset 'project_version' on array\\{\\} in isset\\(\\) does not exist\\.$#"
+			message: '#^Offset ''project_version'' on array\{\} in isset\(\) does not exist\.$#'
+			identifier: isset.offset
 			count: 1
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 5
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, PDO\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 3
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Path in include\(\) "version\.php" is not a file or it does not exist\.$#'
+			identifier: include.fileNotFound
 			count: 1
 			path: src/Command/ConfigCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Content/AlbumCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/AlbumCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/Content/AlbumCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Content/AlbumCommand.php
 
 		-
-			message: "#^Comparison operation \"\\>\" between \\(array\\|float\\|int\\) and 0 results in an error\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
-			count: 1
+			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
+			identifier: equal.notAllowed
+			count: 4
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 7
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 6
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 4
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, int given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, int given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 3
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 5
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 3
 			path: src/Command/Content/CategoryCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 4
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, mixed given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 1
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 4
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Unreachable statement \\- code above always terminates\\.$#"
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
 			count: 1
 			path: src/Command/Content/CommentCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/Content/DvdCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
+			identifier: equal.notAllowed
+			count: 1
+			path: src/Command/Content/DvdCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Content/DvdCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/DvdCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/DvdCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Content/DvdCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/Content/ModelCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
+			identifier: equal.notAllowed
+			count: 1
+			path: src/Command/Content/ModelCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Content/ModelCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/ModelCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/ModelCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Content/ModelCommand.php
 
 		-
-			message: "#^Comparison operation \"\\>\" between \\(array\\|float\\|int\\) and 0 results in an error\\.$#"
-			count: 1
-			path: src/Command/Content/TagCommand.php
-
-		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 2
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
+			identifier: equal.notAllowed
+			count: 3
+			path: src/Command/Content/TagCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 7
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 6
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, int given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, int given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 4
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, mixed given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 1
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 7
 			path: src/Command/Content/TagCommand.php
 
 		-
-			message: "#^Call to function in_array\\(\\) requires parameter \\#3 to be set\\.$#"
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
 			count: 6
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 2
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\UserCommand\\:\\:outputCSV\\(\\) is unused\\.$#"
+			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
+			identifier: equal.notAllowed
+			count: 2
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputCSV\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\UserCommand\\:\\:outputJSON\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputJSON\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\UserCommand\\:\\:outputSingleField\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputSingleField\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\UserCommand\\:\\:outputTable\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputTable\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\UserCommand\\:\\:outputYAML\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputYAML\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 5
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 4
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, mixed given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 5
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in \\|\\|, mixed given on the left side\\.$#"
+			message: '#^Only booleans are allowed in \|\|, mixed given on the left side\.$#'
+			identifier: booleanOr.leftNotBoolean
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Only booleans are allowed in \\|\\|, mixed given on the right side\\.$#"
+			message: '#^Only booleans are allowed in \|\|, mixed given on the right side\.$#'
+			identifier: booleanOr.rightNotBoolean
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 6
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: "#^Call to function in_array\\(\\) requires parameter \\#3 to be set\\.$#"
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
 			count: 2
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 3
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\VideoCommand\\:\\:outputCSV\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputCSV\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\VideoCommand\\:\\:outputJSON\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputJSON\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\VideoCommand\\:\\:outputTable\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputTable\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Method KVS\\\\CLI\\\\Command\\\\Content\\\\VideoCommand\\:\\:outputYAML\\(\\) is unused\\.$#"
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputYAML\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 4
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, int\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, int\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 5
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Strict comparison using \\=\\=\\= between mixed and null will always evaluate to false\\.$#"
+			message: '#^Strict comparison using \=\=\= between mixed and null will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 3
 			path: src/Command/Database/ExportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, array\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, array\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Database/ExportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Database/ExportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, array\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, array\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/Database/ExportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Database/ExportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string given\.$#'
+			identifier: if.condNotBoolean
 			count: 4
 			path: src/Command/Database/ExportCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/Database/ImportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in &&, string given on the right side\\.$#"
+			message: '#^Only booleans are allowed in &&, string given on the right side\.$#'
+			identifier: booleanAnd.rightNotBoolean
 			count: 1
 			path: src/Command/Database/ImportCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/Database/ImportCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 2
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, PDO\|null given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 2
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, string given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, string given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 1
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 3
 			path: src/Command/Dev/DebugCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Ternary operator condition is always true\.$#'
+			identifier: ternary.alwaysTrue
+			count: 1
+			path: src/Command/Dev/DebugCommand.php
+
+		-
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 4
 			path: src/Command/Dev/LogCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Dev/LogCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Dev/LogCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 3
 			path: src/Command/Dev/LogCommand.php
 
 		-
-			message: "#^While loop condition is always true\\.$#"
+			message: '#^While loop condition is always true\.$#'
+			identifier: while.alwaysTrue
 			count: 1
 			path: src/Command/Dev/LogCommand.php
 
 		-
-			message: "#^Call to static method setConnection\\(\\) on an unknown class DB\\.$#"
+			message: '#^Call to static method setConnection\(\) on an unknown class DB\.$#'
+			identifier: class.notFound
 			count: 1
 			path: src/Command/EvalCommand.php
 
 		-
-			message: "#^Call to static method setDb\\(\\) on an unknown class Model\\.$#"
+			message: '#^Call to static method setDb\(\) on an unknown class Model\.$#'
+			identifier: class.notFound
 			count: 1
 			path: src/Command/EvalCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/EvalCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/EvalCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, PDO\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/EvalCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/EvalFileCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/EvalFileCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/EvalFileCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 1
 			path: src/Command/EvalFileCommand.php
 
 		-
-			message: "#^Variable \\$result might not be defined\\.$#"
+			message: '#^Variable \$result might not be defined\.$#'
+			identifier: variable.undefined
 			count: 1
 			path: src/Command/EvalFileCommand.php
 
 		-
-			message: "#^Call to function in_array\\(\\) requires parameter \\#3 to be set\\.$#"
+			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+			identifier: function.strict
 			count: 1
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 3
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Offset 'plugins' on array\\{\\} in isset\\(\\) does not exist\\.$#"
+			message: '#^Offset ''plugins'' on array\{\} in isset\(\) does not exist\.$#'
+			identifier: isset.offset
 			count: 2
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Only booleans are allowed in &&, mixed given on the left side\\.$#"
+			message: '#^Only booleans are allowed in &&, mixed given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
 			count: 1
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, array\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, array\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, array\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, array\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/PluginCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
 		-
-			message: "#^Offset 'name' on array\\{name\\: string, browser_download_url\\: string\\} on left side of \\?\\? always exists and is not nullable\\.$#"
+			message: '#^Offset ''name'' on array\{name\: string, browser_download_url\: string\} on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in &&, mixed given on the right side\.$#'
+			identifier: booleanAnd.rightNotBoolean
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
 		-
-			message: "#^Only booleans are allowed in &&, mixed given on the left side\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
+			count: 2
+			path: src/Command/SelfUpdateCommand.php
+
+		-
+			message: '#^Only booleans are allowed in &&, mixed given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
 			count: 1
 			path: src/Command/ShellCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/ShellCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, PDO\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/ShellCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 2
 			path: src/Command/System/BackupCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 3
 			path: src/Command/System/BackupCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/System/CacheCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/System/CacheCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/System/CacheCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/System/CacheCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, mixed given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
 			count: 3
 			path: src/Command/System/CronCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, string given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, string given\.$#'
+			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/System/CronCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Command/System/MaintenanceCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 1
 			path: src/Command/System/MaintenanceCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 4
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Dead catch \\- Exception is never thrown in the try block\\.$#"
+			message: '#^Dead catch \- Exception is never thrown in the try block\.$#'
+			identifier: catch.neverThrown
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
+			identifier: equal.notAllowed
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a ternary operator condition, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a ternary operator condition, PDO\|null given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Only booleans are allowed in an if condition, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in an if condition, PDO\|null given\.$#'
+			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Parameter \\#1 \\$bytes of function KVS\\\\CLI\\\\Utils\\\\format_bytes expects int, float\\|false given\\.$#"
+			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, float\|false given\.$#'
+			identifier: argument.type
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 5
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Strict comparison using \\!\\=\\= between non\\-falsy\\-string and '0' will always evaluate to true\\.$#"
+			message: '#^Strict comparison using \!\=\= between non\-falsy\-string and ''0'' will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 8
 			path: src/Command/Video/FormatsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, PDO\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Video/FormatsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Video/FormatsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 2
 			path: src/Command/Video/FormatsCommand.php
 
 		-
-			message: "#^Short ternary operator is not allowed\\. Use null coalesce operator if applicable or consider using long ternary\\.$#"
+			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
+			identifier: ternary.shortNotAllowed
 			count: 1
 			path: src/Command/Video/FormatsCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 3
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Offset 0 on array\\{0\\: int\\<0, max\\>, 1\\: int\\<0, max\\>, 2\\: int, 3\\: string, mime\\: string, channels\\?\\: int, bits\\?\\: int\\} in isset\\(\\) always exists and is not nullable\\.$#"
+			message: '#^Offset 0 on array\{0\: int\<0, max\>, 1\: int\<0, max\>, 2\: int, 3\: string, mime\: string, channels\?\: int, bits\?\: int\} in isset\(\) always exists and is not nullable\.$#'
+			identifier: isset.offset
 			count: 1
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Offset 1 on array\\{0\\: int\\<0, max\\>, 1\\: int\\<0, max\\>, 2\\: int, 3\\: string, mime\\: string, channels\\?\\: int, bits\\?\\: int\\} in isset\\(\\) always exists and is not nullable\\.$#"
+			message: '#^Offset 1 on array\{0\: int\<0, max\>, 1\: int\<0, max\>, 2\: int, 3\: string, mime\: string, channels\?\: int, bits\?\: int\} in isset\(\) always exists and is not nullable\.$#'
+			identifier: isset.offset
 			count: 1
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, float\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, float\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, mixed given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 3
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Only booleans are allowed in a negated boolean, string\\|null given\\.$#"
+			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 2
 			path: src/Config/Configuration.php
 
 		-
-			message: "#^Only booleans are allowed in &&, string given on the left side\\.$#"
+			message: '#^Only booleans are allowed in &&, string given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
 			count: 1
 			path: src/Config/Configuration.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 1
 			path: src/Output/Formatter.php
 
 		-
-			message: "#^Construct empty\\(\\) is not allowed\\. Use more strict comparison\\.$#"
+			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
+			identifier: empty.notAllowed
 			count: 5
 			path: src/utils.php
 
 		-
-			message: "#^Parameter \\#2 \\$count of function KVS\\\\CLI\\\\Utils\\\\pluralize expects int, float given\\.$#"
+			message: '#^Parameter \#2 \$count of function KVS\\CLI\\Utils\\pluralize expects int, float given\.$#'
+			identifier: argument.type
 			count: 3
 			path: src/utils.php
 
 		-
-			message: "#^Variable property access on mixed\\.$#"
+			message: '#^Variable property access on mixed\.$#'
+			identifier: property.dynamicName
 			count: 1
 			path: src/utils.php
 
 		-
-			message: "#^Variable property access on object\\.$#"
+			message: '#^Variable property access on object\.$#'
+			identifier: property.dynamicName
 			count: 1
 			path: src/utils.php
