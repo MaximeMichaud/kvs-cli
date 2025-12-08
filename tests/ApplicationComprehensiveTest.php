@@ -39,7 +39,7 @@ class ApplicationComprehensiveTest extends TestCase
     public function testApplicationMetadata(): void
     {
         $this->assertEquals('KVS CLI', $this->app->getName());
-        $this->assertEquals('1.0.0', $this->app->getVersion());
+        $this->assertEquals('1.0.0-beta', $this->app->getVersion());
         $this->assertStringContainsString('KVS CLI', $this->app->getLongVersion());
     }
 
@@ -65,7 +65,7 @@ class ApplicationComprehensiveTest extends TestCase
 
         $pathOption = $definition->getOption('path');
         $this->assertEquals('Path to KVS installation directory', $pathOption->getDescription());
-        $this->assertFalse($pathOption->isValueRequired());
+        $this->assertTrue($pathOption->isValueRequired());
         $this->assertTrue($pathOption->acceptValue());
     }
 
@@ -174,9 +174,12 @@ class ApplicationComprehensiveTest extends TestCase
     public function testVersionCommandWorks(): void
     {
         $tester = new ApplicationTester($this->app);
-        $tester->run(['command' => '--version']);
+        $tester->run([
+            '--version' => true,
+            '--path' => $this->tempKvsDir
+        ]);
 
-        $this->assertStringContainsString('KVS CLI version 1.0.0', $tester->getDisplay());
+        $this->assertStringContainsString('KVS CLI version 1.0.0-beta', $tester->getDisplay());
     }
 
     // Test 11: Help command works

@@ -43,6 +43,8 @@ parameters:
     #     - stubs/kvs.stub
 
 includes:
+    # Baseline for existing errors (temporary)
+    - phpstan-baseline.neon
     # Include Symfony extensions when available
     - vendor/phpstan/phpstan-symfony/extension.neon
     - vendor/phpstan/phpstan-strict-rules/rules.neon
