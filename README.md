@@ -15,23 +15,19 @@ Tested with KVS 6.3.2.
 
 ## Installation
 
-### From Source
-
 ```bash
-git clone https://github.com/MaximeMichaud/kvs-cli.git
-cd kvs-cli
-composer install
-php -d phar.readonly=0 build.php
-sudo mv kvs.phar /usr/local/bin/kvs
-```
-
-### Pre-built PHAR
-
-```bash
+# Download latest release
 wget https://github.com/MaximeMichaud/kvs-cli/releases/latest/download/kvs.phar
+
+# Install globally
 sudo mv kvs.phar /usr/local/bin/kvs
 sudo chmod +x /usr/local/bin/kvs
+
+# Verify installation
+kvs --version
 ```
+
+> **Note**: Requires PHP 8.1+ with `phar` extension enabled.
 
 ## Usage
 
