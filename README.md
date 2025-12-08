@@ -17,11 +17,11 @@ Tested with KVS 6.3.2.
 
 ```bash
 # Download latest release
-wget https://github.com/MaximeMichaud/kvs-cli/releases/latest/download/kvs.phar
+curl -OL https://github.com/MaximeMichaud/kvs-cli/releases/latest/download/kvs.phar
 
-# Install globally
-sudo mv kvs.phar /usr/local/bin/kvs
-sudo chmod +x /usr/local/bin/kvs
+# Make executable and move to a directory in your PATH
+chmod +x kvs.phar
+mv kvs.phar /path/to/your/bin/kvs
 
 # Verify installation
 kvs --version
