@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -56,7 +57,7 @@ HELP
             ->addArgument('target', InputArgument::OPTIONAL, 'Target tag ID for merge operation')
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Tag name (for update)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter/set status (active|inactive)')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', 50)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in tag names')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused tags')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
@@ -395,7 +396,7 @@ HELP
                        (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = t.tag_id) as album_count
                 FROM {$this->table('tags')} t
                 ORDER BY (video_count + album_count) DESC
-                LIMIT 10
+                LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
             $topTags = $stmt->fetchAll();
 

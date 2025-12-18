@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -27,7 +28,7 @@ class AlbumCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Album ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', 20)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
@@ -171,7 +172,7 @@ HELP
                 ['Images', $imageCount],
                 ['Posted', date('Y-m-d H:i:s', strtotime($album['post_date']))],
                 ['Views', number_format($album['album_viewed'])],
-                ['Rating', sprintf('%.1f/5', $album['rating'] / 20)],
+                ['Rating', sprintf('%.1f/%d', $album['rating'] / Constants::RATING_DIVISOR, Constants::RATING_SCALE)],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);

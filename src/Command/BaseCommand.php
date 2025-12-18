@@ -2,12 +2,13 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Config\Configuration;
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use KVS\CLI\Config\Configuration;
 
 abstract class BaseCommand extends Command
 {
@@ -63,7 +64,7 @@ abstract class BaseCommand extends Command
 
         try {
             $dsn = sprintf(
-                'mysql:host=%s;dbname=%s;charset=utf8mb4',
+                'mysql:host=%s;dbname=%s;charset=' . Constants::DB_CHARSET,
                 $dbConfig['host'],
                 $dbConfig['database']
             );
@@ -84,7 +85,7 @@ abstract class BaseCommand extends Command
     protected function renderTable(array $headers, array $rows): void
     {
         $table = new Table($this->io);
-        $table->setStyle('box');
+        $table->setStyle(Constants::TABLE_STYLE);
         $table->setHeaders($headers);
         $table->setRows($rows);
         $table->render();

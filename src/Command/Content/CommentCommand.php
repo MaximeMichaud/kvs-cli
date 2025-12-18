@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -58,7 +59,7 @@ HELP
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
             ->addOption('album', null, InputOption::VALUE_REQUIRED, 'Filter by album ID')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', 50)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_COMMENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in comment text')
             ->addOption('oldest', null, InputOption::VALUE_NONE, 'Show oldest comments first (default: most recent first)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
@@ -93,13 +94,13 @@ HELP
 
             // Video filter
             if ($videoId = $input->getOption('video')) {
-                $conditions[] = 'c.object_id = :video_id AND c.object_type_id = 1';
+                $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
                 $params['video_id'] = $videoId;
             }
 
             // Album filter
             if ($albumId = $input->getOption('album')) {
-                $conditions[] = 'c.object_id = :album_id AND c.object_type_id = 2';
+                $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
                 $params['album_id'] = $albumId;
             }
 
@@ -335,7 +336,7 @@ HELP
                 WHERE c.user_id IS NOT NULL
                 GROUP BY c.user_id
                 ORDER BY comment_count DESC
-                LIMIT 10
+                LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
             $topCommenters = $stmt->fetchAll();
 
@@ -343,7 +344,7 @@ HELP
             $stmt = $db->query("
                 SELECT COUNT(*) as recent_comments
                 FROM {$this->table('comments')}
-                WHERE added_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                WHERE added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_DAYS . " DAY)
             ");
             $recentStats = $stmt->fetch();
 

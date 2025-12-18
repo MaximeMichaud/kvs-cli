@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -103,7 +104,7 @@ HELP
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|create|delete|stats)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'User ID or username')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|premium)')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', 20)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in usernames and emails')
             ->addOption('removal-requested', null, InputOption::VALUE_NONE, 'Filter users who requested account deletion')
             ->addOption('trusted', null, InputOption::VALUE_NONE, 'Filter trusted users only')
@@ -256,7 +257,7 @@ HELP
             $result[] = $item;
         }
 
-        $this->io->writeln(json_encode($result, JSON_PRETTY_PRINT));
+        $this->io->writeln(json_encode($result, Constants::JSON_FLAGS));
         return self::SUCCESS;
     }
 

@@ -2,6 +2,8 @@
 
 namespace KVS\CLI\Config;
 
+use KVS\CLI\Constants;
+
 class Configuration
 {
     private array $config = [];
@@ -185,6 +187,6 @@ class Configuration
 
     public function getTablePrefix(): string
     {
-        return $this->config['tables_prefix'] ?? 'ktvs_';
+        return $this->config['tables_prefix'] ?? Constants::DEFAULT_TABLE_PREFIX;
     }
 }

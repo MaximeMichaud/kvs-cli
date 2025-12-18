@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -54,7 +55,7 @@ HELP
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Category description')
             ->addOption('parent', null, InputOption::VALUE_REQUIRED, 'Parent category ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Status (active|inactive)')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', 50)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -27,7 +28,7 @@ class VideoCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete|update)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Video ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error)')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', 20)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles')
             ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
@@ -174,7 +175,15 @@ HELP
                 ['File Size', format_bytes($video['file_size'])],
                 ['Resolution', $video['file_dimensions']],
                 ['Posted', date('Y-m-d H:i:s', strtotime($video['post_date']))],
-                ['Rating', sprintf('%.1f/5 (%d votes)', $video['rating'] / 20, $video['rating_amount'])],
+                [
+                    'Rating',
+                    sprintf(
+                        '%.1f/%d (%d votes)',
+                        $video['rating'] / Constants::RATING_DIVISOR,
+                        Constants::RATING_SCALE,
+                        $video['rating_amount']
+                    )
+                ],
                 ['Views', number_format($video['video_viewed'])],
             ];
 
@@ -323,7 +332,7 @@ HELP
                 if ($label === 'Total Duration') {
                     $value = $this->formatDuration($value);
                 } elseif ($label === 'Average Rating') {
-                    $value = sprintf('%.1f/5', $value / 20);
+                    $value = sprintf('%.1f/%d', $value / Constants::RATING_DIVISOR, Constants::RATING_SCALE);
                 } elseif ($label === 'Total Size') {
                     $value = format_bytes($value);
                 } elseif (is_numeric($value)) {
@@ -350,7 +359,7 @@ HELP
                 foreach ($topVideos as $i => $video) {
                     $rows[] = [
                         $i + 1,
-                        substr($video['title'], 0, 50),
+                        substr($video['title'], 0, Constants::DEFAULT_TRUNCATE_LENGTH),
                         number_format($video['views']),
                     ];
                 }
@@ -432,7 +441,7 @@ HELP
             $result[] = $item;
         }
 
-        $this->io->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $this->io->writeln(json_encode($result, Constants::JSON_FLAGS));
         return self::SUCCESS;
     }
 
@@ -493,7 +502,7 @@ HELP
 
         // Format rating
         if ($field === 'rating' && is_numeric($value)) {
-            return sprintf('%.1f', $value / 20);
+            return sprintf('%.1f', $value / Constants::RATING_DIVISOR);
         }
 
         // Format duration
@@ -508,7 +517,7 @@ HELP
 
         // Truncate title (50 chars unless --no-truncate)
         if ($field === 'title' && !$noTruncate) {
-            return truncate($value, 50);
+            return truncate($value, Constants::DEFAULT_TRUNCATE_LENGTH);
         }
 
         return $value;

@@ -1,0 +1,116 @@
+<?php
+
+declare(strict_types=1);
+
+namespace KVS\CLI;
+
+/**
+ * Centralized constants for KVS CLI.
+ *
+ * This class contains all magic numbers and default values
+ * that were previously hardcoded throughout the codebase.
+ */
+final class Constants
+{
+    // ========================================
+    // OUTPUT FORMATTING
+    // ========================================
+
+    /** Default character limit for truncating text in tables */
+    public const DEFAULT_TRUNCATE_LENGTH = 50;
+
+    /** Symfony Table style used throughout the app */
+    public const TABLE_STYLE = 'box';
+
+    /** JSON encoding flags for consistent output */
+    public const JSON_FLAGS = JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE;
+
+    // ========================================
+    // PAGINATION / LIMITS
+    // ========================================
+
+    /** Default number of results for list commands */
+    public const DEFAULT_LIMIT = 50;
+
+    /** Default limit for video/album lists */
+    public const DEFAULT_CONTENT_LIMIT = 20;
+
+    /** Default limit for comment lists */
+    public const DEFAULT_COMMENT_LIMIT = 50;
+
+    /** Limit for "top" queries (top tags, recent comments, etc.) */
+    public const TOP_QUERY_LIMIT = 10;
+
+    // ========================================
+    // FIELD DETECTION
+    // ========================================
+
+    /** Field names that should be treated as IDs (for formatting) */
+    public const ID_FIELD_NAMES = [
+        'id',
+        'user_id',
+        'video_id',
+        'album_id',
+        'comment_id',
+        'category_id',
+        'tag_id',
+        'model_id',
+        'dvd_id',
+    ];
+
+    // ========================================
+    // RATING SYSTEM
+    // ========================================
+
+    /** KVS stores ratings as 0-100, divide by this to get 0-5 scale */
+    public const RATING_DIVISOR = 20;
+
+    /** Maximum rating value (for display as X/5) */
+    public const RATING_SCALE = 5;
+
+    // ========================================
+    // DATABASE
+    // ========================================
+
+    /** Default database charset */
+    public const DB_CHARSET = 'utf8mb4';
+
+    /** Default table prefix (fallback if not in config) */
+    public const DEFAULT_TABLE_PREFIX = 'ktvs_';
+
+    // ========================================
+    // OBJECT TYPES (for comments, etc.)
+    // ========================================
+
+    /** Object type ID for videos */
+    public const OBJECT_TYPE_VIDEO = 1;
+
+    /** Object type ID for albums */
+    public const OBJECT_TYPE_ALBUM = 2;
+
+    // ========================================
+    // SYSTEM THRESHOLDS
+    // ========================================
+
+    /** Disk usage percentage that triggers critical alert */
+    public const DISK_CRITICAL_PERCENT = 90;
+
+    /** Disk usage percentage that triggers warning */
+    public const DISK_WARNING_PERCENT = 80;
+
+    /** Hours after which backup is considered stale */
+    public const BACKUP_WARNING_HOURS = 24;
+
+    /** Default memcached port */
+    public const DEFAULT_MEMCACHE_PORT = 11211;
+
+    // ========================================
+    // TIME INTERVALS (for SQL queries)
+    // ========================================
+
+    /** Days for "recent" comment statistics */
+    public const RECENT_DAYS = 7;
+
+    /** Hours for "recent activity" queries */
+    public const RECENT_HOURS = 24;
+}
