@@ -108,6 +108,9 @@ HELP
 
         // Transform plugins to flattened format for Formatter
         $transformedPlugins = array_map(function ($plugin) {
+            $isValid = ($plugin['files_ok'] ?? false)
+                && ($plugin['syntax_ok'] ?? false)
+                && ($plugin['compatible'] ?? false);
             return [
                 'id' => $plugin['id'] ?? '',
                 'name' => $plugin['name'] ?? '',
@@ -117,6 +120,10 @@ HELP
                 'kvs_version' => $plugin['kvs_version'] ?? '',
                 'status' => $plugin['is_enabled'] ? 'Active' : 'Inactive',
                 'types' => !empty($plugin['types']) ? implode(',', $plugin['types']) : '',
+                'files_ok' => ($plugin['files_ok'] ?? false) ? 'Yes' : 'No',
+                'syntax_ok' => ($plugin['syntax_ok'] ?? false) ? 'Yes' : 'No',
+                'compatible' => ($plugin['compatible'] ?? false) ? 'Yes' : 'No',
+                'valid' => $isValid ? 'Yes' : 'No',
                 'description' => $plugin['description'] ?? '',
                 'path' => $plugin['path'] ?? '',
             ];
@@ -156,9 +163,11 @@ HELP
             ['Author', $plugin['author']],
             ['Version', $plugin['version']],
             ['Required KVS', $plugin['kvs_version']],
-            ['Status', $plugin['is_enabled'] ? '<fg=green>Active</>' : '<fg=yellow>Inactive</>'],
             ['Types', implode(', ', $plugin['types'])],
-            ['Valid', $plugin['is_invalid'] ? '<fg=red>No</>' : '<fg=green>Yes</>'],
+            ['Files OK', $plugin['files_ok'] ? '<fg=green>Yes</>' : '<fg=red>No</>'],
+            ['Syntax OK', $plugin['syntax_ok'] ? '<fg=green>Yes</>' : '<fg=red>No</>'],
+            ['Compatible', $plugin['compatible'] ? '<fg=green>Yes</>' : '<fg=red>No</>'],
+            ['Status', $plugin['is_enabled'] ? '<fg=green>Active</>' : '<fg=yellow>Inactive</>'],
         ];
 
         $this->renderTable(['Property', 'Value'], $info);
@@ -204,7 +213,9 @@ HELP
         $total = count($plugins);
         $active = count(array_filter($plugins, fn($p) => $p['is_enabled']));
         $inactive = $total - $active;
-        $invalid = count(array_filter($plugins, fn($p) => $p['is_invalid']));
+        $missingFiles = count(array_filter($plugins, fn($p) => !$p['files_ok']));
+        $syntaxErrors = count(array_filter($plugins, fn($p) => !$p['syntax_ok']));
+        $incompatible = count(array_filter($plugins, fn($p) => !$p['compatible']));
 
         // Count by type
         $typeStats = [];
@@ -223,8 +234,18 @@ HELP
             ['Total Plugins', $total],
             ['Active', "<fg=green>$active</>"],
             ['Inactive', "<fg=yellow>$inactive</>"],
-            ['Invalid/Incompatible', $invalid > 0 ? "<fg=red>$invalid</>" : $invalid],
         ];
+
+        // Only show problem stats if there are issues
+        if ($missingFiles > 0) {
+            $stats[] = ['Missing Files', "<fg=red>$missingFiles</>"];
+        }
+        if ($syntaxErrors > 0) {
+            $stats[] = ['Syntax Errors', "<fg=red>$syntaxErrors</>"];
+        }
+        if ($incompatible > 0) {
+            $stats[] = ['Incompatible', "<fg=red>$incompatible</>"];
+        }
 
         $this->renderTable(['Metric', 'Count'], $stats);
 
@@ -311,7 +332,9 @@ HELP
             'id' => $id,
             'path' => $path,
             'is_enabled' => false,
-            'is_invalid' => false,
+            'files_ok' => true,
+            'syntax_ok' => true,
+            'compatible' => true,
         ];
 
         // Parse XML metadata
@@ -353,24 +376,58 @@ HELP
             }
         }
 
-        // Check if plugin has valid PHP file
+        // Check required files exist (.php, .tpl) - .dat already checked above
         $phpFile = "$path/$id.php";
-        if (file_exists($phpFile)) {
-            // Check if {pluginId}Show function exists
+        $tplFile = "$path/$id.tpl";
+        if (!file_exists($phpFile) || !file_exists($tplFile)) {
+            $plugin['files_ok'] = false;
+            return $plugin;
+        }
+
+        // Check PHP syntax with php -l
+        $plugin['syntax_ok'] = $this->checkPhpSyntax($phpFile);
+
+        // Check {pluginId}Show function exists
+        if ($plugin['syntax_ok']) {
             $phpContent = file_get_contents($phpFile);
             if (!preg_match("/function\s+{$id}Show\s*\(/", $phpContent)) {
-                $plugin['is_invalid'] = true;
+                $plugin['syntax_ok'] = false;
             }
+        }
 
-            // Try to check if enabled (requires loading KVS config)
-            if (!$plugin['is_invalid']) {
-                $plugin['is_enabled'] = $this->checkPluginEnabled($id, $phpFile);
-            }
-        } else {
-            $plugin['is_invalid'] = true;
+        // Check KVS version compatibility
+        if (isset($plugin['kvs_version']) && $plugin['kvs_version'] !== '') {
+            $plugin['compatible'] = $this->checkVersionCompatibility($plugin['kvs_version']);
+        }
+
+        // Check if plugin is enabled/configured (only if all checks pass)
+        if ($plugin['syntax_ok'] && $plugin['compatible']) {
+            $plugin['is_enabled'] = $this->checkPluginEnabled($id, $phpFile);
         }
 
         return $plugin;
+    }
+
+    private function checkPhpSyntax(string $phpFile): bool
+    {
+        $output = [];
+        $returnCode = 0;
+        exec(sprintf('php -l %s 2>&1', escapeshellarg($phpFile)), $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    private function checkVersionCompatibility(string $requiredVersion): bool
+    {
+        $kvsVersion = $this->config->getKvsVersion();
+        if ($kvsVersion === '') {
+            return true; // Can't check, assume compatible
+        }
+
+        // Convert versions to comparable integers (6.3.0 -> 630)
+        $required = (int) str_replace('.', '', $requiredVersion);
+        $current = (int) str_replace('.', '', $kvsVersion);
+
+        return $current >= $required;
     }
 
     private function checkPluginEnabled(string $id, string $phpFile): bool
