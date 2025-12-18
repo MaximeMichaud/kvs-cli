@@ -44,7 +44,7 @@ use KVS\CLI\Bootstrap\ValidateKvsInstallation;
 use KVS\CLI\Bootstrap\RegisterCommands;
 
 // Global version constant for SelfUpdateCommand
-define('KVS_CLI_VERSION', '1.0.1-beta');
+define('KVS_CLI_VERSION', '1.0.2-beta');
 
 class Application extends BaseApplication
 {

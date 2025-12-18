@@ -39,7 +39,7 @@ class ApplicationComprehensiveTest extends TestCase
     public function testApplicationMetadata(): void
     {
         $this->assertEquals('KVS CLI', $this->app->getName());
-        $this->assertEquals('1.0.1-beta', $this->app->getVersion());
+        $this->assertEquals('1.0.2-beta', $this->app->getVersion());
         $this->assertStringContainsString('KVS CLI', $this->app->getLongVersion());
     }
 
@@ -179,7 +179,7 @@ class ApplicationComprehensiveTest extends TestCase
             '--path' => $this->tempKvsDir
         ]);
 
-        $this->assertStringContainsString('KVS CLI version 1.0.1-beta', $tester->getDisplay());
+        $this->assertStringContainsString('KVS CLI version 1.0.2-beta', $tester->getDisplay());
     }
 
     // Test 11: Help command works
