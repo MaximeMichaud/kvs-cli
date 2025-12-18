@@ -18,6 +18,21 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 class Formatter
 {
+    /**
+     * Field alias mapping: user-friendly names → actual database column names
+     * When user requests 'id', we also check 'video_id', 'album_id', etc.
+     */
+    private const FIELD_ALIASES = [
+        'id' => ['video_id', 'album_id', 'user_id', 'category_id', 'tag_id', 'model_id', 'dvd_id', 'comment_id'],
+        'status' => ['status_id'],
+        'views' => ['video_viewed', 'album_viewed', 'profile_viewed', 'model_viewed', 'dvd_viewed'],
+        'images' => ['image_count', 'photos_amount'],
+        'videos' => ['total_videos', 'video_count'],
+        'albums' => ['total_albums', 'album_count'],
+        'user' => ['username'],
+        'date' => ['post_date', 'added_date'],
+    ];
+
     private array $args;
 
     /**
@@ -82,8 +97,9 @@ class Formatter
         $field = $this->args['field'];
 
         foreach ($items as $item) {
-            if (isset($item[$field])) {
-                $output->writeln($item[$field]);
+            $value = $this->getFieldValue($item, $field);
+            if ($value !== '') {
+                $output->writeln((string)$value);
             }
         }
     }
@@ -169,7 +185,7 @@ class Formatter
         foreach ($items as $item) {
             $row = [];
             foreach ($fields as $field) {
-                $value = $item[$field] ?? '';
+                $value = $this->getFieldValue($item, $field);
 
                 // Truncate long text unless --no-truncate
                 if (!$this->args['no-truncate'] && is_string($value) && strlen($value) > Constants::DEFAULT_TRUNCATE_LENGTH) {
@@ -198,12 +214,13 @@ class Formatter
      */
     private function displayJson(array $items, array $fields, OutputInterface $output): void
     {
-        // Filter to only requested fields
+        // Filter to only requested fields, using alias resolution
         $filtered = array_map(function ($item) use ($fields) {
             $result = [];
             foreach ($fields as $field) {
-                if (isset($item[$field])) {
-                    $result[$field] = $item[$field];
+                $value = $this->getFieldValue($item, $field);
+                if ($value !== '') {
+                    $result[$field] = $value;
                 }
             }
             return $result;
@@ -226,7 +243,7 @@ class Formatter
         foreach ($items as $item) {
             $row = [];
             foreach ($fields as $field) {
-                $row[] = $item[$field] ?? '';
+                $row[] = $this->getFieldValue($item, $field);
             }
             fputcsv($handle, $row);
         }
@@ -242,8 +259,8 @@ class Formatter
         foreach ($items as $item) {
             $output->writeln('-');
             foreach ($fields as $field) {
-                if (isset($item[$field])) {
-                    $value = $item[$field];
+                $value = $this->getFieldValue($item, $field);
+                if ($value !== '') {
                     // Escape special YAML characters
                     if (is_string($value) && (strpos($value, ':') !== false || strpos($value, '#') !== false)) {
                         $value = '"' . str_replace('"', '\\"', $value) . '"';
@@ -255,13 +272,40 @@ class Formatter
     }
 
     /**
+     * Get field value from item, resolving aliases if needed
+     *
+     * @param array $item Data item
+     * @param string $field Requested field name
+     * @return mixed Field value or empty string if not found
+     */
+    private function getFieldValue(array $item, string $field): mixed
+    {
+        // Direct match first
+        if (isset($item[$field])) {
+            return $item[$field];
+        }
+
+        // Check aliases
+        if (isset(self::FIELD_ALIASES[$field])) {
+            foreach (self::FIELD_ALIASES[$field] as $aliasField) {
+                if (isset($item[$aliasField])) {
+                    return $item[$aliasField];
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Check if any fields have text longer than 50 chars
      */
     private function hasLongFields(array $items, array $fields): bool
     {
         foreach ($items as $item) {
             foreach ($fields as $field) {
-                if (isset($item[$field]) && is_string($item[$field]) && strlen($item[$field]) > Constants::DEFAULT_TRUNCATE_LENGTH) {
+                $value = $this->getFieldValue($item, $field);
+                if (is_string($value) && strlen($value) > Constants::DEFAULT_TRUNCATE_LENGTH) {
                     return true;
                 }
             }
