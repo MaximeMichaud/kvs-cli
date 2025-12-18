@@ -141,11 +141,37 @@ Priority order:
 - KVS 6.3.2+ installation
 - MySQL/MariaDB
 
-## Testing
+## Development
+
+### Setup
 
 ```bash
 composer install
-vendor/bin/phpunit
+pip install pre-commit
+pre-commit install
+```
+
+### Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) to run checks before each commit:
+
+- **PHPCS** - Code style (PSR-12)
+- **PHPStan** - Static analysis
+- **PHPUnit** - Tests
+
+To run all checks manually:
+
+```bash
+pre-commit run --all-files
+```
+
+### Testing
+
+```bash
+composer test           # Run tests
+composer phpcs          # Check code style
+composer phpstan        # Static analysis
+composer check          # All checks
 ```
 
 ## Acknowledgments
