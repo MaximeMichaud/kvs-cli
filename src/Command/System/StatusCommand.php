@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -293,7 +294,7 @@ class StatusCommand extends BaseCommand
     {
         // Read memcached configuration from KVS config
         $server = $this->config->get('memcache_server', '127.0.0.1');
-        $port = (int)$this->config->get('memcache_port', 11211);
+        $port = (int)$this->config->get('memcache_port', Constants::DEFAULT_MEMCACHE_PORT);
 
         $result = [
             'available' => false,
@@ -355,7 +356,8 @@ class StatusCommand extends BaseCommand
 
             // Failed tasks (last 24h)
             $sql = "SELECT COUNT(*) FROM " . $this->table('background_tasks')
-                . " WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+                . " WHERE status_id = " . StatusFormatter::TASK_FAILED
+                . " AND added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_HOURS . " HOUR)";
             $stmt = $db->query($sql);
             $failed = $stmt->fetchColumn();
             $stats[] = ['Failed (24h)', number_format($failed)];
@@ -527,9 +529,9 @@ class StatusCommand extends BaseCommand
             $total = disk_total_space($this->config->getKvsPath() ?: '.');
             $usedPercent = (($total - $free) / $total) * 100;
 
-            if ($usedPercent > 90) {
+            if ($usedPercent > Constants::DISK_CRITICAL_PERCENT) {
                 $health[] = ['⚠', 'Disk space', sprintf('%.1f%% used (CRITICAL)', $usedPercent)];
-            } elseif ($usedPercent > 80) {
+            } elseif ($usedPercent > Constants::DISK_WARNING_PERCENT) {
                 $health[] = ['⚠', 'Disk space', sprintf('%.1f%% used (WARNING)', $usedPercent)];
             } else {
                 $health[] = ['✓', 'Disk space', sprintf('%.1f%% used', $usedPercent)];
@@ -603,7 +605,7 @@ class StatusCommand extends BaseCommand
                         $backupTime = strtotime($lastBackup);
                         $hoursAgo = floor((time() - $backupTime) / 3600);
 
-                        if ($hoursAgo < 24) {
+                        if ($hoursAgo < Constants::BACKUP_WARNING_HOURS) {
                             $security[] = ['✓', 'Database backups', "Last backup $hoursAgo hours ago"];
                         } else {
                             $daysAgo = floor($hoursAgo / 24);

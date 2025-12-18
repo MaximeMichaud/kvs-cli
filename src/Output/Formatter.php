@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Output;
 
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Output\OutputInterface;
 
@@ -135,7 +136,7 @@ class Formatter
     private function displayIds(array $items, OutputInterface $output): void
     {
         // Try common ID field names
-        $idFields = ['id', 'user_id', 'video_id', 'album_id', 'category_id', 'tag_id', 'comment_id'];
+        $idFields = Constants::ID_FIELD_NAMES;
 
         $ids = [];
         foreach ($items as $item) {
@@ -156,7 +157,7 @@ class Formatter
     private function displayTable(array $items, array $fields, OutputInterface $output): void
     {
         $table = new Table($output);
-        $table->setStyle('box');
+        $table->setStyle(Constants::TABLE_STYLE);
 
         // Headers (capitalize and replace underscores)
         $headers = array_map(function ($field) {
@@ -171,8 +172,8 @@ class Formatter
                 $value = $item[$field] ?? '';
 
                 // Truncate long text unless --no-truncate
-                if (!$this->args['no-truncate'] && is_string($value) && strlen($value) > 50) {
-                    $value = substr($value, 0, 47) . '...';
+                if (!$this->args['no-truncate'] && is_string($value) && strlen($value) > Constants::DEFAULT_TRUNCATE_LENGTH) {
+                    $value = substr($value, 0, Constants::DEFAULT_TRUNCATE_LENGTH - 3) . '...';
                 }
 
                 $row[] = $value;
@@ -208,7 +209,7 @@ class Formatter
             return $result;
         }, $items);
 
-        $output->writeln(json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        $output->writeln(json_encode($filtered, Constants::JSON_FLAGS));
     }
 
     /**
@@ -260,7 +261,7 @@ class Formatter
     {
         foreach ($items as $item) {
             foreach ($fields as $field) {
-                if (isset($item[$field]) && is_string($item[$field]) && strlen($item[$field]) > 50) {
+                if (isset($item[$field]) && is_string($item[$field]) && strlen($item[$field]) > Constants::DEFAULT_TRUNCATE_LENGTH) {
                     return true;
                 }
             }

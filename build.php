@@ -30,11 +30,11 @@ if (file_exists($outputFile)) {
 try {
     $phar = new Phar($outputFile);
     $phar->startBuffering();
-    
+
     // Add source files
     echo "📁 Adding source files...\n";
     $phar->buildFromDirectory($sourceDir, '/\.(php|json)$/');
-    
+
     // Set stub (entry point) - use Unix line endings
     $stub = "#!/usr/bin/env php\n" .
             "<?php\n" .
@@ -55,10 +55,26 @@ try {
 
     $phar->setStub($stub);
     $phar->stopBuffering();
-    
+
+    // Note: Compression options intentionally disabled.
+    //
+    // Gzip compression (~35% smaller) adds runtime overhead:
+    // - Decompression on every execution
+    // - Increased memory usage
+    // - CPU load
+    // Not ideal for CLI tools where startup time matters.
+    // if (Phar::canCompress(Phar::GZ)) {
+    //     $phar->compressFiles(Phar::GZ);
+    // }
+    //
+    // php_strip_whitespace (~15% smaller) breaks debugging:
+    // - Stack traces show wrong line numbers
+    // - Error messages are harder to trace
+    // Not worth the trade-off for minor size reduction.
+
     // Make executable
     chmod($outputFile, 0755);
-    
+
     $size = round(filesize($outputFile) / 1024 / 1024, 2);
     echo "✅ Built kvs.phar ({$size}MB)\n";
     echo "\n";
@@ -68,7 +84,7 @@ try {
     echo "🧪 To test locally:\n";
     echo "   ./kvs.phar --version\n";
     echo "   ./kvs.phar --help\n";
-    
+
 } catch (Exception $e) {
     die("Build failed: " . $e->getMessage() . "\n");
 }
