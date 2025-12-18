@@ -384,7 +384,7 @@ HELP
             return $plugin;
         }
 
-        // Check PHP syntax with php -l (works with ionCube if loader is installed)
+        // Check PHP syntax
         $plugin['syntax_ok'] = $this->checkPhpSyntax($phpFile);
 
         // Check KVS version compatibility
