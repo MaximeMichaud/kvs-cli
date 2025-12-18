@@ -167,9 +167,36 @@ class Configuration
 
     public function getContentPath(): string
     {
-        // KVS stores content in project_path/contents/
+        // Try configured content paths first (KVS stores them explicitly)
+        $possiblePaths = [];
+
+        // Check for explicit content path in config
+        if (isset($this->config['content_path_videos_sources'])) {
+            // Extract parent directory from videos sources path
+            $videosPath = $this->config['content_path_videos_sources'];
+            // The content root is typically 2 levels up from videos_sources
+            // e.g., /var/www/content/videos/sources -> /var/www/content
+            $contentRoot = dirname(dirname($videosPath));
+            if (is_dir($contentRoot)) {
+                return $contentRoot;
+            }
+        }
+
+        // Try project_path/contents/ (standard layout)
         $projectPath = $this->config['project_path'] ?? dirname($this->kvsPath);
-        return $projectPath . '/' . Constants::CONTENT_DIR;
+        $standardPath = $projectPath . '/' . Constants::CONTENT_DIR;
+        if (is_dir($standardPath)) {
+            return $standardPath;
+        }
+
+        // Try project_path/../content (alternate layout)
+        $alternatePath = dirname($projectPath) . '/content';
+        if (is_dir($alternatePath)) {
+            return $alternatePath;
+        }
+
+        // Return the standard path even if it doesn't exist (for error reporting)
+        return $standardPath;
     }
 
     /**
