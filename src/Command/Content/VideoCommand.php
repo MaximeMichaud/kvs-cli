@@ -133,6 +133,21 @@ HELP
 
             $videos = $stmt->fetchAll();
 
+            // Transform data for display (field aliases and calculated values)
+            $videos = array_map(function ($video) {
+                // Add field aliases
+                $video['id'] = $video['video_id'];
+                $video['status'] = StatusFormatter::video((int)$video['status_id'], false);
+
+                // Calculate rating (rating / rating_amount gives 0-5 scale)
+                $ratingAmount = (int)($video['rating_amount'] ?? 0);
+                $video['rating'] = $ratingAmount > 0
+                    ? round($video['rating'] / $ratingAmount, 1)
+                    : 0;
+
+                return $video;
+            }, $videos);
+
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
