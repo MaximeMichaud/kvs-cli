@@ -196,7 +196,7 @@ HELP
             $tagId = $db->lastInsertId();
 
             $this->io->success("Tag created successfully!");
-            $this->io->table(
+            $this->renderTable(
                 ['Property', 'Value'],
                 [
                     ['ID', $tagId],
@@ -401,7 +401,7 @@ HELP
             $this->io->title('Tag Statistics');
 
             $this->io->section('Overall Statistics');
-            $this->io->table(
+            $this->renderTable(
                 ['Metric', 'Count'],
                 [
                     ['Total Tags', $overall['total_tags']],
@@ -424,7 +424,7 @@ HELP
                         $total,
                     ];
                 }
-                $this->io->table(['Tag', 'Videos', 'Albums', 'Total'], $rows);
+                $this->renderTable(['Tag', 'Videos', 'Albums', 'Total'], $rows);
             }
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch stats: ' . $e->getMessage());
@@ -493,7 +493,7 @@ HELP
             $stmt->execute($params);
 
             $this->io->success("Tag updated successfully!");
-            $this->io->table(
+            $this->renderTable(
                 ['Property', 'Value'],
                 [
                     ['ID', $id],

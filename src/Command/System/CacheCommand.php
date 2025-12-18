@@ -151,7 +151,7 @@ class CacheCommand extends BaseCommand
             return self::SUCCESS;
         }
 
-        $this->io->table(
+        $this->renderTable(
             ['Cache Type', 'Files', 'Size'],
             $stats
         );

@@ -57,7 +57,7 @@ class CronCommand extends BaseCommand
             ['postponed', 'cron_postponed_tasks.php', 'Run postponed tasks'],
         ];
 
-        $this->io->table(
+        $this->renderTable(
             ['Task Name', 'Script', 'Description'],
             $tasks
         );
@@ -83,7 +83,7 @@ class CronCommand extends BaseCommand
                     ];
                 }
 
-                $this->io->table(
+                $this->renderTable(
                     ['Task', 'Last Run', 'Time Ago'],
                     $rows
                 );

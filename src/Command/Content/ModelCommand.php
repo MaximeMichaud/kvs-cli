@@ -161,7 +161,7 @@ HELP
                 $info[] = ['Description', $model['description']];
             }
 
-            $this->io->table(['Field', 'Value'], $info);
+            $this->renderTable(['Field', 'Value'], $info);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -201,7 +201,7 @@ HELP
             $stats[] = ['Total Video Relations', number_format($stmt->fetchColumn())];
 
             $this->io->title('Model Statistics');
-            $this->io->table(['Metric', 'Value'], $stats);
+            $this->renderTable(['Metric', 'Value'], $stats);
 
             return self::SUCCESS;
         } catch (\Exception $e) {

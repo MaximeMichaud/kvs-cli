@@ -82,7 +82,7 @@ class LogCommand extends BaseCommand
             return self::SUCCESS;
         }
 
-        $this->io->table(['Type', 'File', 'Size', 'Modified'], $logs);
+        $this->renderTable(['Type', 'File', 'Size', 'Modified'], $logs);
 
         return self::SUCCESS;
     }

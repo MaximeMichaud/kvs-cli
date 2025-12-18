@@ -71,7 +71,7 @@ class DebugCommand extends BaseCommand
         $db = $this->getDatabaseConnection();
         $checks[] = ['Database Connection', $db ? 'Connected' : 'Failed', $db ? 'OK' : 'ERROR'];
 
-        $this->io->table(['Check', 'Value', 'Status'], $checks);
+        $this->renderTable(['Check', 'Value', 'Status'], $checks);
 
         $errors = array_filter($checks, fn($c) => $c[2] === 'ERROR');
 
@@ -149,7 +149,7 @@ class DebugCommand extends BaseCommand
             ['Error Log', ini_get('error_log') ?: 'Not set'],
         ];
 
-        $this->io->table(['Parameter', 'Value'], $info);
+        $this->renderTable(['Parameter', 'Value'], $info);
 
         $this->io->section('Environment Variables');
 
@@ -167,7 +167,7 @@ class DebugCommand extends BaseCommand
             }
         }
 
-        $this->io->table(['Variable', 'Value'], $rows);
+        $this->renderTable(['Variable', 'Value'], $rows);
 
         return self::SUCCESS;
     }

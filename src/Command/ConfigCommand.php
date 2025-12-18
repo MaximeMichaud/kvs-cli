@@ -221,7 +221,7 @@ class ConfigCommand extends BaseCommand
                 $rows[] = [$key, $value];
             }
             if (!empty($rows)) {
-                $this->io->table(['Parameter', 'Value'], $rows);
+                $this->renderTable(['Parameter', 'Value'], $rows);
             }
         }
 
@@ -260,7 +260,7 @@ class ConfigCommand extends BaseCommand
 
         if (!empty($rows)) {
             $this->io->section($title);
-            $this->io->table(['Parameter', 'Value'], $rows);
+            $this->renderTable(['Parameter', 'Value'], $rows);
         }
     }
 
@@ -290,7 +290,7 @@ class ConfigCommand extends BaseCommand
 
         if (!empty($rows)) {
             $this->io->section($title);
-            $this->io->table(['Content Type', 'Local Path', 'URL'], $rows);
+            $this->renderTable(['Content Type', 'Local Path', 'URL'], $rows);
         }
     }
 
