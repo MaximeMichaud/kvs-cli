@@ -47,6 +47,8 @@ Manage KVS comments.
 <info>EXAMPLES:</info>
   <comment>kvs comment list</comment>
   <comment>kvs comment list --oldest</comment>
+  <comment>kvs comment list --approved</comment>
+  <comment>kvs comment list --pending</comment>
   <comment>kvs comment list --no-truncate</comment>
   <comment>kvs comment list --fields=id,username,comment,date</comment>
   <comment>kvs comment list --format=json</comment>
@@ -62,6 +64,8 @@ HELP
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_COMMENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in comment text')
             ->addOption('oldest', null, InputOption::VALUE_NONE, 'Show oldest comments first (default: most recent first)')
+            ->addOption('approved', null, InputOption::VALUE_NONE, 'Show only approved comments')
+            ->addOption('pending', null, InputOption::VALUE_NONE, 'Show only pending (unapproved) comments')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -114,6 +118,13 @@ HELP
             if ($search = $input->getOption('search')) {
                 $conditions[] = 'c.comment LIKE :search';
                 $params['search'] = '%' . $search . '%';
+            }
+
+            // Approval status filters
+            if ((bool)$input->getOption('approved')) {
+                $conditions[] = 'c.is_approved = 1';
+            } elseif ((bool)$input->getOption('pending')) {
+                $conditions[] = 'c.is_approved = 0';
             }
 
             $whereClause = implode(' AND ', $conditions);
@@ -220,10 +231,15 @@ HELP
 
             $this->io->title("Comment #$id");
 
+            $approvalStatus = (bool)($comment['is_approved'] ?? 0)
+                ? '<fg=green>Approved</>'
+                : '<fg=yellow>Pending</>';
+
             $info = [
                 ['ID', $comment['comment_id']],
                 ['User', $comment['username'] ?? 'Guest'],
                 ['User Email', $comment['email'] ?? 'N/A'],
+                ['Status', $approvalStatus],
                 ['Content Type', $comment['object_type']],
                 ['Content ID', $comment['object_id']],
                 ['Content Title', $comment['object_title'] ?? 'N/A'],
