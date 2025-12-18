@@ -49,6 +49,9 @@ Manage KVS videos.
   duration        Video duration
   rating          Rating (out of 5)
   filesize        File size
+  is_hd           HD flag (Yes/No)
+  is_private      Private flag (Yes/No)
+  favourites      Favourites count
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs video list</>
@@ -171,8 +174,10 @@ HELP
             $info = [
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
+                ['HD', (bool)$video['is_hd'] ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
+                ['Private', (bool)$video['is_private'] ? '<fg=yellow>Yes</>' : '<fg=gray>No</>'],
                 ['Duration', $this->formatDuration($video['duration'])],
-                ['File Size', format_bytes($video['file_size'])],
+                ['File Size', format_bytes((int)($video['file_size'] ?? 0))],
                 ['Resolution', $video['file_dimensions']],
                 ['Posted', date('Y-m-d H:i:s', strtotime($video['post_date']))],
                 [
@@ -185,6 +190,7 @@ HELP
                     )
                 ],
                 ['Views', number_format($video['video_viewed'])],
+                ['Favourites', number_format($video['favourites_count'])],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);
@@ -330,13 +336,15 @@ HELP
                 $value = $db->query($query)->fetchColumn();
 
                 if ($label === 'Total Duration') {
-                    $value = $this->formatDuration($value);
+                    $value = $this->formatDuration((int)($value ?? 0));
                 } elseif ($label === 'Average Rating') {
-                    $value = sprintf('%.1f/%d', $value / Constants::RATING_DIVISOR, Constants::RATING_SCALE);
+                    $value = $value ? sprintf('%.1f/%d', $value / Constants::RATING_DIVISOR, Constants::RATING_SCALE) : 'N/A';
                 } elseif ($label === 'Total Size') {
-                    $value = format_bytes($value);
+                    $value = format_bytes((int)($value ?? 0));
                 } elseif (is_numeric($value)) {
                     $value = number_format($value);
+                } else {
+                    $value = $value ?? '0';
                 }
 
                 $stats[] = [$label, $value];
@@ -475,6 +483,13 @@ HELP
             'rating' => 'rating',
             'filesize' => 'file_size',
             'file_size' => 'file_size',
+            'is_hd' => 'is_hd',
+            'hd' => 'is_hd',
+            'is_private' => 'is_private',
+            'private' => 'is_private',
+            'favourites' => 'favourites_count',
+            'favourites_count' => 'favourites_count',
+            'favorites' => 'favourites_count',
         ];
 
         $dbField = $fieldMap[$field] ?? $field;
@@ -513,6 +528,19 @@ HELP
         // Format filesize
         if (in_array($field, ['filesize', 'file_size']) && is_numeric($value)) {
             return format_bytes((int)$value);
+        }
+
+        // Format boolean fields (is_hd, is_private)
+        if (in_array($field, ['is_hd', 'hd', 'is_private', 'private'], true)) {
+            if ($formatted) {
+                return (int)$value !== 0 ? '<fg=green>Yes</>' : '<fg=gray>No</>';
+            }
+            return (int)$value !== 0 ? 'Yes' : 'No';
+        }
+
+        // Format favourites count
+        if (in_array($field, ['favourites', 'favourites_count', 'favorites'], true)) {
+            return $formatted ? number_format((int)$value) : (string)$value;
         }
 
         // Truncate title (50 chars unless --no-truncate)

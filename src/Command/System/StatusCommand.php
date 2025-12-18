@@ -84,7 +84,7 @@ class StatusCommand extends BaseCommand
 
             $totalSize = 0;
             foreach ($tables as $table) {
-                $totalSize += $table['Data_length'] + $table['Index_length'];
+                $totalSize += (int)($table['Data_length'] ?? 0) + (int)($table['Index_length'] ?? 0);
             }
             $info[] = ['Database Size', format_bytes($totalSize)];
         } catch (\Exception $e) {
