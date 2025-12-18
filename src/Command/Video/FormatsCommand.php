@@ -242,7 +242,7 @@ HELP
 
         try {
             // Check if table exists
-            $stmt = $db->query("SHOW TABLES LIKE 'ktvs_formats_videos'");
+            $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "formats_videos'");
             if (!$stmt || !$stmt->fetch()) {
                 return [];
             }
@@ -261,7 +261,7 @@ HELP
                     END as status,
                     format_video_group_id as group_id,
                     access_level_id
-                FROM ktvs_formats_videos
+                FROM " . $this->table('formats_videos') . "
                 ORDER BY format_video_group_id ASC, title ASC
             ");
 

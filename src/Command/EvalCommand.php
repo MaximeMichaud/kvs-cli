@@ -144,7 +144,8 @@ HELP
 
     private function getBootstrapCode($db = null): string
     {
-        return <<<'PHP'
+        $prefix = $this->config->getTablePrefix();
+        $code = <<<'PHP'
 // PDO-based model classes for convenience
 if (!class_exists('Model')) {
     class Model {
@@ -289,5 +290,7 @@ if (isset($db) && $db) {
     DB::setConnection($db);
 }
 PHP;
+        // Replace hardcoded prefix with configured prefix
+        return str_replace('ktvs_', $prefix, $code);
     }
 }

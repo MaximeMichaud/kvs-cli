@@ -182,4 +182,9 @@ class Configuration
     {
         return !empty($this->kvsPath) && !empty($this->dbConfig);
     }
+
+    public function getTablePrefix(): string
+    {
+        return $this->config['tables_prefix'] ?? 'ktvs_';
+    }
 }

@@ -136,13 +136,13 @@ class StatusCommand extends BaseCommand
 
         try {
             $queries = [
-                'Videos' => "SELECT COUNT(*) FROM ktvs_videos WHERE status_id = 1",
-                'Albums' => "SELECT COUNT(*) FROM ktvs_albums WHERE status_id = 1",
-                'Users' => "SELECT COUNT(*) FROM ktvs_users WHERE status_id NOT IN (0,1)",
-                'Categories' => "SELECT COUNT(*) FROM ktvs_categories",
-                'Tags' => "SELECT COUNT(*) FROM ktvs_tags",
-                'Models' => "SELECT COUNT(*) FROM ktvs_models",
-                'DVDs' => "SELECT COUNT(*) FROM ktvs_dvds",
+                'Videos' => "SELECT COUNT(*) FROM " . $this->table('videos') . " WHERE status_id = 1",
+                'Albums' => "SELECT COUNT(*) FROM " . $this->table('albums') . " WHERE status_id = 1",
+                'Users' => "SELECT COUNT(*) FROM " . $this->table('users') . " WHERE status_id NOT IN (0,1)",
+                'Categories' => "SELECT COUNT(*) FROM " . $this->table('categories') . "",
+                'Tags' => "SELECT COUNT(*) FROM " . $this->table('tags') . "",
+                'Models' => "SELECT COUNT(*) FROM " . $this->table('models') . "",
+                'DVDs' => "SELECT COUNT(*) FROM " . $this->table('dvds') . "",
             ];
 
             foreach ($queries as $label => $query) {
@@ -332,33 +332,33 @@ class StatusCommand extends BaseCommand
 
         try {
             // Check if background_tasks table exists
-            $stmt = $db->query("SHOW TABLES LIKE 'ktvs_background_tasks'");
+            $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "background_tasks'");
             if (!$stmt || $stmt->rowCount() == 0) {
-                $this->io->text('No conversion queue table found (ktvs_background_tasks)');
+                $this->io->text('No conversion queue table found (' . $this->table('background_tasks') . ')');
                 return;
             }
 
             $stats = [];
 
             // Pending tasks
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_background_tasks WHERE status_id = 0");
+            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = 0");
             $pending = $stmt->fetchColumn();
             $stats[] = ['Pending', number_format($pending)];
 
             // Processing tasks
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_background_tasks WHERE status_id = 1");
+            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = 1");
             $processing = $stmt->fetchColumn();
             $stats[] = ['Processing', number_format($processing)];
 
             // Failed tasks (last 24h)
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_background_tasks WHERE status_id = 2 AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)");
+            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = 2 AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)");
             $failed = $stmt->fetchColumn();
             $stats[] = ['Failed (24h)', number_format($failed)];
 
             // Average processing time (completed tasks)
             $stmt = $db->query("
                 SELECT AVG(TIMESTAMPDIFF(SECOND, start_date, end_date)) as avg_time
-                FROM ktvs_background_tasks
+                FROM " . $this->table('background_tasks') . "
                 WHERE status_id = 3 AND start_date IS NOT NULL AND end_date IS NOT NULL
                 LIMIT 100
             ");
@@ -583,12 +583,12 @@ class StatusCommand extends BaseCommand
         if ($db) {
             try {
                 // Check if backup log table exists
-                $stmt = $db->query("SHOW TABLES LIKE 'ktvs_admin_system_log'");
+                $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "admin_system_log'");
                 if ($stmt && $stmt->rowCount() > 0) {
                     // Look for recent backup entries
                     $stmt = $db->query("
                         SELECT MAX(added_date) as last_backup
-                        FROM ktvs_admin_system_log
+                        FROM " . $this->table('admin_system_log') . "
                         WHERE event_level = 'info'
                         AND event_message LIKE '%backup%'
                     ");

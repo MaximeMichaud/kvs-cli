@@ -113,7 +113,7 @@ class DebugCommand extends BaseCommand
             $version = $db->query("SELECT VERSION()")->fetchColumn();
             $this->io->success("Connected successfully! MySQL version: $version");
 
-            $stmt = $db->query("SHOW TABLES LIKE 'ktvs_%'");
+            $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "%'");
             $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             $this->io->info(sprintf('Found %d KVS tables', count($tables)));

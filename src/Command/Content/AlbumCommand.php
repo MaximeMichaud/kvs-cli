@@ -80,9 +80,9 @@ HELP
         }
 
         $query = "SELECT a.*, u.username,
-                 (SELECT COUNT(*) FROM ktvs_albums_images WHERE album_id = a.album_id) as image_count
-                 FROM ktvs_albums a
-                 LEFT JOIN ktvs_users u ON a.user_id = u.user_id
+                 (SELECT COUNT(*) FROM {$this->table('albums')}_images WHERE album_id = a.album_id) as image_count
+                 FROM {$this->table('albums')} a
+                 LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
                  WHERE 1=1";
 
         $params = [];
@@ -150,7 +150,7 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM ktvs_albums WHERE album_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('albums')} WHERE album_id = :id");
             $stmt->execute(['id' => $id]);
             $album = $stmt->fetch();
 
@@ -161,7 +161,7 @@ HELP
 
             $this->io->section("Album #$id");
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_albums_images WHERE album_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')}_images WHERE album_id = :id");
             $stmt->execute(['id' => $id]);
             $imageCount = $stmt->fetchColumn();
 
@@ -205,10 +205,10 @@ HELP
             $db->beginTransaction();
 
             $tables = [
-                'ktvs_albums',
-                'ktvs_albums_images',
-                'ktvs_categories_albums',
-                'ktvs_tags_albums',
+                $this->table('albums'),
+                $this->table('albums_images'),
+                $this->table('categories_albums'),
+                $this->table('tags_albums'),
             ];
 
             foreach ($tables as $table) {

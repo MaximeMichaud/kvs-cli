@@ -73,8 +73,8 @@ HELP
 
         // Build query with video count
         $query = "SELECT m.*,
-                 (SELECT COUNT(*) FROM ktvs_models_videos WHERE model_id = m.model_id) as video_count
-                 FROM ktvs_models m
+                 (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count
+                 FROM {$this->table('models')} m
                  WHERE 1=1";
 
         $params = [];
@@ -135,8 +135,8 @@ HELP
         try {
             $stmt = $db->prepare("
                 SELECT m.*,
-                       (SELECT COUNT(*) FROM ktvs_models_videos WHERE model_id = m.model_id) as video_count
-                FROM ktvs_models m
+                       (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count
+                FROM {$this->table('models')} m
                 WHERE m.model_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -181,23 +181,23 @@ HELP
             $stats = [];
 
             // Total models
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_models");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}");
             $stats[] = ['Total Models', number_format($stmt->fetchColumn())];
 
             // Active models
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_models WHERE status_id = 1");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = 1");
             $stats[] = ['Active', number_format($stmt->fetchColumn())];
 
             // Disabled models
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_models WHERE status_id = 0");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = 0");
             $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
 
             // Models with videos
-            $stmt = $db->query("SELECT COUNT(DISTINCT model_id) FROM ktvs_models_videos");
+            $stmt = $db->query("SELECT COUNT(DISTINCT model_id) FROM {$this->table('models')}_videos");
             $stats[] = ['Models with Videos', number_format($stmt->fetchColumn())];
 
             // Total video-model relations
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_models_videos");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}_videos");
             $stats[] = ['Total Video Relations', number_format($stmt->fetchColumn())];
 
             $this->io->title('Model Statistics');

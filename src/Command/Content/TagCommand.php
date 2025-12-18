@@ -114,9 +114,9 @@ HELP
 
             $sql = "
                 SELECT t.*,
-                       (SELECT COUNT(*) FROM ktvs_tags_videos WHERE tag_id = t.tag_id) as video_count,
-                       (SELECT COUNT(*) FROM ktvs_tags_albums WHERE tag_id = t.tag_id) as album_count
-                FROM ktvs_tags t
+                       (SELECT COUNT(*) FROM {$this->table('tags')}_videos WHERE tag_id = t.tag_id) as video_count,
+                       (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = t.tag_id) as album_count
+                FROM {$this->table('tags')} t
                 WHERE $whereClause
             ";
 
@@ -177,7 +177,7 @@ HELP
 
         try {
             // Check if tag already exists
-            $stmt = $db->prepare("SELECT tag_id FROM ktvs_tags WHERE tag = :tag");
+            $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag");
             $stmt->execute(['tag' => $tagName]);
 
             if ($stmt->fetch()) {
@@ -187,7 +187,7 @@ HELP
 
             // Create tag
             $stmt = $db->prepare("
-                INSERT INTO ktvs_tags (tag, status_id)
+                INSERT INTO {$this->table('tags')} (tag, status_id)
                 VALUES (:tag, 1)
             ");
 
@@ -227,7 +227,7 @@ HELP
 
         try {
             // Get tag details
-            $stmt = $db->prepare("SELECT * FROM ktvs_tags WHERE tag_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $identifier]);
             $tag = $stmt->fetch();
 
@@ -239,8 +239,8 @@ HELP
             // Check usage
             $stmt = $db->prepare("
                 SELECT
-                    (SELECT COUNT(*) FROM ktvs_tags_videos WHERE tag_id = :id) as video_count,
-                    (SELECT COUNT(*) FROM ktvs_tags_albums WHERE tag_id = :id) as album_count
+                    (SELECT COUNT(*) FROM {$this->table('tags')}_videos WHERE tag_id = :id) as video_count,
+                    (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = :id) as album_count
             ");
             $stmt->execute(['id' => $identifier]);
             $usage = $stmt->fetch();
@@ -261,11 +261,11 @@ HELP
             }
 
             // Delete associations first
-            $db->prepare("DELETE FROM ktvs_tags_videos WHERE tag_id = :id")->execute(['id' => $identifier]);
-            $db->prepare("DELETE FROM ktvs_tags_albums WHERE tag_id = :id")->execute(['id' => $identifier]);
+            $db->prepare("DELETE FROM {$this->table('tags')}_videos WHERE tag_id = :id")->execute(['id' => $identifier]);
+            $db->prepare("DELETE FROM {$this->table('tags')}_albums WHERE tag_id = :id")->execute(['id' => $identifier]);
 
             // Delete tag
-            $stmt = $db->prepare("DELETE FROM ktvs_tags WHERE tag_id = :id");
+            $stmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $identifier]);
 
             $this->io->success("Tag '{$tag['tag']}' deleted successfully!");
@@ -297,7 +297,7 @@ HELP
 
         try {
             // Verify both tags exist
-            $stmt = $db->prepare("SELECT tag_id, tag FROM ktvs_tags WHERE tag_id IN (:source, :target)");
+            $stmt = $db->prepare("SELECT tag_id, tag FROM {$this->table('tags')} WHERE tag_id IN (:source, :target)");
             $stmt->execute(['source' => $sourceId, 'target' => $targetId]);
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -324,22 +324,22 @@ HELP
 
             // Move video associations (avoid duplicates)
             $db->prepare("
-                INSERT IGNORE INTO ktvs_tags_videos (tag_id, video_id)
-                SELECT :target, video_id FROM ktvs_tags_videos WHERE tag_id = :source
+                INSERT IGNORE INTO {$this->table('tags')}_videos (tag_id, video_id)
+                SELECT :target, video_id FROM {$this->table('tags')}_videos WHERE tag_id = :source
             ")->execute(['target' => $targetId, 'source' => $sourceId]);
 
             // Move album associations (avoid duplicates)
             $db->prepare("
-                INSERT IGNORE INTO ktvs_tags_albums (tag_id, album_id)
-                SELECT :target, album_id FROM ktvs_tags_albums WHERE tag_id = :source
+                INSERT IGNORE INTO {$this->table('tags')}_albums (tag_id, album_id)
+                SELECT :target, album_id FROM {$this->table('tags')}_albums WHERE tag_id = :source
             ")->execute(['target' => $targetId, 'source' => $sourceId]);
 
             // Delete old associations
-            $db->prepare("DELETE FROM ktvs_tags_videos WHERE tag_id = :id")->execute(['id' => $sourceId]);
-            $db->prepare("DELETE FROM ktvs_tags_albums WHERE tag_id = :id")->execute(['id' => $sourceId]);
+            $db->prepare("DELETE FROM {$this->table('tags')}_videos WHERE tag_id = :id")->execute(['id' => $sourceId]);
+            $db->prepare("DELETE FROM {$this->table('tags')}_albums WHERE tag_id = :id")->execute(['id' => $sourceId]);
 
             // Delete source tag
-            $db->prepare("DELETE FROM ktvs_tags WHERE tag_id = :id")->execute(['id' => $sourceId]);
+            $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id")->execute(['id' => $sourceId]);
 
             $db->commit();
 
@@ -370,7 +370,7 @@ HELP
                     COUNT(*) as total_tags,
                     SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active_tags,
                     SUM(CASE WHEN status_id = 0 THEN 1 ELSE 0 END) as inactive_tags
-                FROM ktvs_tags
+                FROM {$this->table('tags')}
             ");
             $overall = $stmt->fetch();
 
@@ -379,9 +379,9 @@ HELP
                 SELECT
                     COUNT(DISTINCT tag_id) as used_tags
                 FROM (
-                    SELECT tag_id FROM ktvs_tags_videos
+                    SELECT tag_id FROM {$this->table('tags')}_videos
                     UNION
-                    SELECT tag_id FROM ktvs_tags_albums
+                    SELECT tag_id FROM {$this->table('tags')}_albums
                 ) as used
             ");
             $usageStats = $stmt->fetch();
@@ -390,9 +390,9 @@ HELP
             // Top tags
             $stmt = $db->query("
                 SELECT t.tag,
-                       (SELECT COUNT(*) FROM ktvs_tags_videos WHERE tag_id = t.tag_id) as video_count,
-                       (SELECT COUNT(*) FROM ktvs_tags_albums WHERE tag_id = t.tag_id) as album_count
-                FROM ktvs_tags t
+                       (SELECT COUNT(*) FROM {$this->table('tags')}_videos WHERE tag_id = t.tag_id) as video_count,
+                       (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = t.tag_id) as album_count
+                FROM {$this->table('tags')} t
                 ORDER BY (video_count + album_count) DESC
                 LIMIT 10
             ");
@@ -449,7 +449,7 @@ HELP
 
         try {
             // Get current tag
-            $stmt = $db->prepare("SELECT * FROM ktvs_tags WHERE tag_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $id]);
             $tag = $stmt->fetch();
 
@@ -464,7 +464,7 @@ HELP
             // Name
             if ($name = $input->getOption('name')) {
                 // Check if new name already exists
-                $stmt = $db->prepare("SELECT tag_id FROM ktvs_tags WHERE tag = :tag AND tag_id != :id");
+                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
                 if ($stmt->fetch()) {
                     $this->io->error("Tag name already exists: $name");
@@ -488,7 +488,7 @@ HELP
             }
 
             // Update tag
-            $sql = "UPDATE ktvs_tags SET " . implode(', ', $updates) . " WHERE tag_id = :id";
+            $sql = "UPDATE {$this->table('tags')} SET " . implode(', ', $updates) . " WHERE tag_id = :id";
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
 
@@ -527,7 +527,7 @@ HELP
     {
         return $this->toggleEntityStatus(
             entityName: 'Tag',
-            tableName: 'ktvs_tags',
+            tableName: $this->table('tags'),
             idColumn: 'tag_id',
             nameColumn: 'tag',
             id: $id,

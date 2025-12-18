@@ -163,7 +163,8 @@ HELP
 
     private function getBootstrapCode(): string
     {
-        return <<<'PHP'
+        $prefix = $this->config->getTablePrefix();
+        $code = <<<'PHP'
 // Simple model classes for convenience
 if (!class_exists('Model')) {
     class Model {
@@ -251,5 +252,6 @@ if (isset($db) && $db) {
     DB::setConnection($db);
 }
 PHP;
+        return str_replace('ktvs_', $prefix, $code);
     }
 }
