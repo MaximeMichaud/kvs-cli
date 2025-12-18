@@ -34,7 +34,7 @@ footer = """
 {% for release in releases -%}
     {% if release.version -%}
         {% if release.previous.version -%}
-**Full Changelog**: [{{ release.previous.version }}...{{ release.version }}]({{ self::remote_url() }}/compare/{{ release.previous.version }}...{{ release.version }})
+**Full Changelog**: [{{ release.previous.version }}...{{ release.version }}](https://github.com/MaximeMichaud/kvs-cli/compare/{{ release.previous.version }}...{{ release.version }})
         {% endif -%}
     {% endif -%}
 {% endfor %}
