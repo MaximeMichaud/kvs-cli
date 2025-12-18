@@ -398,13 +398,15 @@ class StatusCommand extends BaseCommand
         $storage = [];
         $totalSize = 0;
 
-        // Define content directories to check
+        // Define content directories to check (KVS naming convention)
         $directories = [
-            'Videos Sources' => 'videos',
-            'Screenshots' => 'screenshots',
-            'Albums' => 'albums',
+            'Videos Sources' => 'videos_sources',
+            'Screenshots' => 'videos_screenshots',
+            'Albums' => 'albums_sources',
+            'Categories' => 'categories',
+            'Models' => 'models',
+            'DVDs' => 'dvds',
             'Avatars' => 'avatars',
-            'Cache' => 'cache',
         ];
 
         foreach ($directories as $label => $dir) {
