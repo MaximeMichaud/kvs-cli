@@ -7,6 +7,11 @@ parameters:
     # Start at 5, target 8-9 for 2025 standards
     level: 5
 
+    # Parallel processing for faster analysis
+    parallel:
+        maximumNumberOfProcesses: 4
+        processTimeout: 60.0
+
     # Paths to analyze
     paths:
         - src
