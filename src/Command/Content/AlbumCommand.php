@@ -110,17 +110,27 @@ HELP
 
             $albums = $stmt->fetchAll();
 
-            // Transform albums to use friendly field names
+            // Transform albums for display (field aliases and calculated values)
             $transformedAlbums = array_map(function ($album) {
+                // Calculate rating (rating / rating_amount gives 0-5 scale)
+                $ratingAmount = (int)($album['rating_amount'] ?? 0);
+                $calculatedRating = $ratingAmount > 0
+                    ? round($album['rating'] / $ratingAmount, 1)
+                    : 0;
+
                 return [
                     'album_id' => $album['album_id'],
+                    'id' => $album['album_id'],  // Alias
                     'title' => $album['title'],
                     'image_count' => $album['image_count'],
+                    'images' => $album['image_count'],  // Alias
                     'status_id' => $album['status_id'],
+                    'status' => StatusFormatter::album((int)$album['status_id'], false),  // Alias
                     'username' => $album['username'],
                     'post_date' => $album['post_date'],
                     'album_viewed' => $album['album_viewed'],
-                    'rating' => $album['rating'],
+                    'views' => $album['album_viewed'],  // Alias
+                    'rating' => $calculatedRating,
                 ];
             }, $albums);
 
