@@ -54,6 +54,9 @@ class UserCommand extends BaseCommand
         'removal_requested' => 'is_removal_requested',
         'removal_reason' => 'removal_reason',
         'reason' => 'removal_reason',
+        'activity' => 'activity',
+        'logins' => 'logins_count',
+        'logins_count' => 'logins_count',
     ];
 
     protected function configure(): void
@@ -82,7 +85,7 @@ Manage KVS users.
   id, username, display_name, email, status
   tokens_available, tokens_required, profile_viewed
   country_code, gender, birth_date, ip
-  added_date, last_login_date
+  added_date, last_login_date, logins_count, activity
   videos, albums, is_trusted, is_removal_requested, removal_reason
 
 <info>EXAMPLES:</info>
@@ -329,6 +332,10 @@ HELP
                 }
                 return $value;
             }
+
+            if (in_array($field, ['logins', 'logins_count', 'activity', 'profile_viewed'], true)) {
+                return number_format((int)$value);
+            }
         } else {
             // Raw values for CSV/JSON
             if ($field === 'gender' || $field === 'gender_id') {
@@ -339,11 +346,11 @@ HELP
                 };
             }
 
-            if (in_array($field, ['is_trusted', 'trusted', 'is_removal_requested', 'removal_requested'])) {
+            if (in_array($field, ['is_trusted', 'trusted', 'is_removal_requested', 'removal_requested'], true)) {
                 return (int)$value === 1 ? 'Yes' : 'No';
             }
 
-            if (in_array($field, ['removal_reason', 'reason'])) {
+            if (in_array($field, ['removal_reason', 'reason'], true)) {
                 // Full reason for CSV/JSON export
                 return $value ?: 'N/A';
             }
@@ -421,9 +428,16 @@ HELP
                 ['Videos Uploaded', $videoCount],
                 ['Albums Created', $albumCount],
                 ['Comments Posted', $commentCount],
-                ['Profile Views', $user['profile_viewed'] ?? 0],
+                ['Profile Views', number_format($user['profile_viewed'] ?? 0)],
             ];
             $this->renderTable(['Metric', 'Count'], $stats);
+
+            $this->io->section('Activity');
+            $activityStats = [
+                ['Logins Count', number_format($user['logins_count'] ?? 0)],
+                ['Activity Score', number_format($user['activity'] ?? 0)],
+            ];
+            $this->renderTable(['Metric', 'Value'], $activityStats);
 
             if ($user['tokens_available'] || $user['tokens_required']) {
                 $this->io->section('Token Information');
