@@ -165,22 +165,22 @@ HELP
     {
         $prefix = $this->config->getTablePrefix();
         $code = <<<'PHP'
-// Simple model classes for convenience
+// Simple model classes for convenience (mysqli-based for eval-file)
 if (!class_exists('Model')) {
     class Model {
         protected static $table;
         protected static $db;
-        
+
         public static function setDb($connection) {
             self::$db = $connection;
         }
-        
+
         public static function find($id) {
             if (!self::$db || !static::$table) return null;
             $result = mysqli_query(self::$db, "SELECT * FROM " . static::$table . " WHERE id = " . (int)$id);
             return $result ? mysqli_fetch_assoc($result) : null;
         }
-        
+
         public static function all($limit = 10) {
             if (!self::$db || !static::$table) return [];
             $result = mysqli_query(self::$db, "SELECT * FROM " . static::$table . " LIMIT " . (int)$limit);
@@ -190,7 +190,7 @@ if (!class_exists('Model')) {
             }
             return $data;
         }
-        
+
         public static function count($where = '') {
             if (!self::$db || !static::$table) return 0;
             $sql = "SELECT COUNT(*) as total FROM " . static::$table;
@@ -200,7 +200,7 @@ if (!class_exists('Model')) {
             return (int)$row['total'];
         }
     }
-    
+
     class Video extends Model { protected static $table = 'ktvs_videos'; }
     class User extends Model { protected static $table = 'ktvs_users'; }
     class Album extends Model { protected static $table = 'ktvs_albums'; }
@@ -210,15 +210,15 @@ if (!class_exists('Model')) {
     class Model_ extends Model { protected static $table = 'ktvs_models'; }
 }
 
-// Database helper
+// Database helper (mysqli-based for eval-file)
 if (!class_exists('DB')) {
     class DB {
         private static $connection;
-        
+
         public static function setConnection($db) {
             self::$connection = $db;
         }
-        
+
         public static function query($sql) {
             if (!self::$connection) {
                 echo "No database connection\n";
@@ -238,7 +238,7 @@ if (!class_exists('DB')) {
             }
             return $data;
         }
-        
+
         public static function escape($value) {
             if (!self::$connection) return $value;
             return mysqli_real_escape_string(self::$connection, $value);
@@ -252,6 +252,7 @@ if (isset($db) && $db) {
     DB::setConnection($db);
 }
 PHP;
+        // Replace hardcoded prefix with configured prefix
         return str_replace('ktvs_', $prefix, $code);
     }
 }

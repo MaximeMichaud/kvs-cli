@@ -107,7 +107,8 @@ HELP
         }
 
         if ($category = $input->getOption('category')) {
-            $query .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
+            $query .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
+                . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 

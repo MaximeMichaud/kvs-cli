@@ -351,7 +351,9 @@ class StatusCommand extends BaseCommand
             $stats[] = ['Processing', number_format($processing)];
 
             // Failed tasks (last 24h)
-            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = 2 AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)");
+            $sql = "SELECT COUNT(*) FROM " . $this->table('background_tasks')
+                . " WHERE status_id = 2 AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+            $stmt = $db->query($sql);
             $failed = $stmt->fetchColumn();
             $stats[] = ['Failed (24h)', number_format($failed)];
 
