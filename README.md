@@ -1,5 +1,8 @@
 # KVS CLI
 
+[![CI](https://github.com/MaximeMichaud/kvs-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/MaximeMichaud/kvs-cli/actions/workflows/ci.yml)
+[![Release](https://github.com/MaximeMichaud/kvs-cli/actions/workflows/release.yml/badge.svg)](https://github.com/MaximeMichaud/kvs-cli/actions/workflows/release.yml)
+
 Command-line interface for [KVS (Kernel Video Sharing)](https://www.kernel-video-sharing.com/) CMS.
 
 Tested with KVS 6.3.2.
@@ -33,16 +36,27 @@ kvs --version
 
 ```bash
 # Auto-detect KVS from current directory
-cd /var/www/kvs
+cd /path/to/kvs
 kvs system:status
 
 # Or specify path
-kvs --path=/var/www/kvs system:status
+kvs --path=/path/to/kvs system:status
 
 # Environment variable
-export KVS_PATH=/var/www/kvs
+export KVS_PATH=/path/to/kvs
 kvs system:status
 ```
+
+## Updating
+
+```bash
+kvs self-update              # Check and update to latest version
+kvs self-update --check      # Only check for available updates
+kvs self-update --preview    # Include pre-release versions
+kvs self-update --yes        # Update without confirmation
+```
+
+If owned by root, use `sudo kvs self-update`.
 
 ## Commands
 
