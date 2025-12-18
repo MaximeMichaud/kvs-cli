@@ -124,8 +124,8 @@ HELP
                 SELECT c.*,
                        u.username,
                        CASE c.object_type_id
-                           WHEN 1 THEN (SELECT title FROM ktvs_videos WHERE video_id = c.object_id)
-                           WHEN 2 THEN (SELECT title FROM ktvs_albums WHERE album_id = c.object_id)
+                           WHEN 1 THEN (SELECT title FROM {$this->table('videos')} WHERE video_id = c.object_id)
+                           WHEN 2 THEN (SELECT title FROM {$this->table('albums')} WHERE album_id = c.object_id)
                            ELSE 'Unknown'
                        END as object_title,
                        CASE c.object_type_id
@@ -133,8 +133,8 @@ HELP
                            WHEN 2 THEN 'Album'
                            ELSE 'Unknown'
                        END as object_type
-                FROM ktvs_comments c
-                LEFT JOIN ktvs_users u ON c.user_id = u.user_id
+                FROM {$this->table('comments')} c
+                LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE $whereClause
                 ORDER BY $orderBy
                 LIMIT :limit
@@ -196,8 +196,8 @@ HELP
                        u.username,
                        u.email,
                        CASE c.object_type_id
-                           WHEN 1 THEN (SELECT title FROM ktvs_videos WHERE video_id = c.object_id)
-                           WHEN 2 THEN (SELECT title FROM ktvs_albums WHERE album_id = c.object_id)
+                           WHEN 1 THEN (SELECT title FROM {$this->table('videos')} WHERE video_id = c.object_id)
+                           WHEN 2 THEN (SELECT title FROM {$this->table('albums')} WHERE album_id = c.object_id)
                            ELSE 'Unknown'
                        END as object_title,
                        CASE c.object_type_id
@@ -205,8 +205,8 @@ HELP
                            WHEN 2 THEN 'Album'
                            ELSE 'Unknown'
                        END as object_type
-                FROM ktvs_comments c
-                LEFT JOIN ktvs_users u ON c.user_id = u.user_id
+                FROM {$this->table('comments')} c
+                LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -264,8 +264,8 @@ HELP
                            WHEN 2 THEN 'Album'
                            ELSE 'Unknown'
                        END as object_type
-                FROM ktvs_comments c
-                LEFT JOIN ktvs_users u ON c.user_id = u.user_id
+                FROM {$this->table('comments')} c
+                LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -293,7 +293,7 @@ HELP
             }
 
             // Delete the comment
-            $stmt = $db->prepare("DELETE FROM ktvs_comments WHERE comment_id = :id");
+            $stmt = $db->prepare("DELETE FROM {$this->table('comments')} WHERE comment_id = :id");
             $stmt->execute(['id' => $id]);
 
             $this->io->success('Comment deleted successfully!');
@@ -322,7 +322,7 @@ HELP
                     SUM(CASE WHEN object_type_id = 2 THEN 1 ELSE 0 END) as album_comments,
                     MIN(added_date) as first_comment,
                     MAX(added_date) as last_comment
-                FROM ktvs_comments
+                FROM {$this->table('comments')}
             ");
             $overall = $stmt->fetch();
 
@@ -330,8 +330,8 @@ HELP
             $stmt = $db->query("
                 SELECT u.username,
                        COUNT(*) as comment_count
-                FROM ktvs_comments c
-                LEFT JOIN ktvs_users u ON c.user_id = u.user_id
+                FROM {$this->table('comments')} c
+                LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.user_id IS NOT NULL
                 GROUP BY c.user_id
                 ORDER BY comment_count DESC
@@ -342,7 +342,7 @@ HELP
             // Recent activity (last 7 days)
             $stmt = $db->query("
                 SELECT COUNT(*) as recent_comments
-                FROM ktvs_comments
+                FROM {$this->table('comments')}
                 WHERE added_date >= DATE_SUB(NOW(), INTERVAL 7 DAY)
             ");
             $recentStats = $stmt->fetch();

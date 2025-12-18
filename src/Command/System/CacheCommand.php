@@ -99,8 +99,8 @@ class CacheCommand extends BaseCommand
 
         try {
             $tables = [
-                'ktvs_stats_cache',
-                'ktvs_admin_system_cache',
+                $this->table('stats_cache'),
+                $this->table('admin_system_cache'),
             ];
 
             foreach ($tables as $table) {

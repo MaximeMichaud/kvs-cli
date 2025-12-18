@@ -112,6 +112,7 @@ HELP
     private function createBootstrap(InputInterface $input): string
     {
         $kvsPath = $this->config->getKvsPath();
+        $prefix = $this->config->getTablePrefix();
         $bootstrap = $input->getOption('bootstrap');
 
         $code = <<<PHP
@@ -176,13 +177,13 @@ class Model {
     }
 }
 
-class Video extends Model { protected static \$table = 'ktvs_videos'; }
-class User extends Model { protected static \$table = 'ktvs_users'; }
-class Album extends Model { protected static \$table = 'ktvs_albums'; }
-class Category extends Model { protected static \$table = 'ktvs_categories'; }
-class Tag extends Model { protected static \$table = 'ktvs_tags'; }
-class DVD extends Model { protected static \$table = 'ktvs_dvds'; }
-class Model_ extends Model { protected static \$table = 'ktvs_models'; }
+class Video extends Model { protected static \$table = '{$prefix}videos'; }
+class User extends Model { protected static \$table = '{$prefix}users'; }
+class Album extends Model { protected static \$table = '{$prefix}albums'; }
+class Category extends Model { protected static \$table = '{$prefix}categories'; }
+class Tag extends Model { protected static \$table = '{$prefix}tags'; }
+class DVD extends Model { protected static \$table = '{$prefix}dvds'; }
+class Model_ extends Model { protected static \$table = '{$prefix}models'; }
 
 // Database helper
 class DB {

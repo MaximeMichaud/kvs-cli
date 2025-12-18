@@ -90,9 +90,9 @@ HELP
 
             $sql = "
                 SELECT c.*,
-                       (SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = c.category_id) as video_count,
-                       (SELECT COUNT(*) FROM ktvs_categories_albums WHERE category_id = c.category_id) as album_count
-                FROM ktvs_categories c
+                       (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = c.category_id) as video_count,
+                       (SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = c.category_id) as album_count
+                FROM {$this->table('categories')} c
                 ORDER BY c.title
                 LIMIT :limit
             ";
@@ -127,8 +127,8 @@ HELP
         try {
             $stmt = $db->query("
                 SELECT c.*,
-                       (SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = c.category_id) as video_count
-                FROM ktvs_categories c
+                       (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = c.category_id) as video_count
+                FROM {$this->table('categories')} c
                 ORDER BY parent_id, title
             ");
             $categories = $stmt->fetchAll();
@@ -162,7 +162,7 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM ktvs_categories WHERE category_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
             $category = $stmt->fetch();
 
@@ -173,11 +173,11 @@ HELP
 
             $this->io->section("Category: {$category['title']}");
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
             $videoCount = $stmt->fetchColumn();
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_categories_albums WHERE category_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
             $albumCount = $stmt->fetchColumn();
 
@@ -223,7 +223,7 @@ HELP
 
         try {
             // Check if category already exists
-            $stmt = $db->prepare("SELECT category_id FROM ktvs_categories WHERE title = :title");
+            $stmt = $db->prepare("SELECT category_id FROM {$this->table('categories')} WHERE title = :title");
             $stmt->execute(['title' => $title]);
 
             if ($stmt->fetch()) {
@@ -238,7 +238,7 @@ HELP
 
             // Validate parent category if provided
             if ($parentId) {
-                $stmt = $db->prepare("SELECT category_id FROM ktvs_categories WHERE category_id = :id");
+                $stmt = $db->prepare("SELECT category_id FROM {$this->table('categories')} WHERE category_id = :id");
                 $stmt->execute(['id' => $parentId]);
                 if (!$stmt->fetch()) {
                     $this->io->error("Parent category not found: $parentId");
@@ -248,7 +248,7 @@ HELP
 
             // Create category
             $stmt = $db->prepare("
-                INSERT INTO ktvs_categories (title, description, parent_id, status_id, video_count, added_date)
+                INSERT INTO {$this->table('categories')} (title, description, parent_id, status_id, video_count, added_date)
                 VALUES (:title, :description, :parent_id, :status_id, 0, NOW())
             ");
 
@@ -295,7 +295,7 @@ HELP
 
         try {
             // Get category details
-            $stmt = $db->prepare("SELECT * FROM ktvs_categories WHERE category_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
             $category = $stmt->fetch();
 
@@ -305,7 +305,7 @@ HELP
             }
 
             // Check for child categories
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_categories WHERE parent_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')} WHERE parent_id = :id");
             $stmt->execute(['id' => $id]);
             $childCount = $stmt->fetchColumn();
 
@@ -318,8 +318,8 @@ HELP
             // Check usage
             $stmt = $db->prepare("
                 SELECT
-                    (SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = :id) as video_count,
-                    (SELECT COUNT(*) FROM ktvs_categories_albums WHERE category_id = :id) as album_count
+                    (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id) as video_count,
+                    (SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id) as album_count
             ");
             $stmt->execute(['id' => $id]);
             $usage = $stmt->fetch();
@@ -340,11 +340,11 @@ HELP
             }
 
             // Delete associations first
-            $db->prepare("DELETE FROM ktvs_categories_videos WHERE category_id = :id")->execute(['id' => $id]);
-            $db->prepare("DELETE FROM ktvs_categories_albums WHERE category_id = :id")->execute(['id' => $id]);
+            $db->prepare("DELETE FROM {$this->table('categories')}_videos WHERE category_id = :id")->execute(['id' => $id]);
+            $db->prepare("DELETE FROM {$this->table('categories')}_albums WHERE category_id = :id")->execute(['id' => $id]);
 
             // Delete category
-            $stmt = $db->prepare("DELETE FROM ktvs_categories WHERE category_id = :id");
+            $stmt = $db->prepare("DELETE FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
 
             $this->io->success("Category '{$category['title']}' deleted successfully!");
@@ -371,7 +371,7 @@ HELP
 
         try {
             // Get current category
-            $stmt = $db->prepare("SELECT * FROM ktvs_categories WHERE category_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
             $category = $stmt->fetch();
 
@@ -419,7 +419,7 @@ HELP
             }
 
             // Update category
-            $sql = "UPDATE ktvs_categories SET " . implode(', ', $updates) . " WHERE category_id = :id";
+            $sql = "UPDATE {$this->table('categories')} SET " . implode(', ', $updates) . " WHERE category_id = :id";
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
 
@@ -446,7 +446,7 @@ HELP
     {
         return $this->toggleEntityStatus(
             entityName: 'Category',
-            tableName: 'ktvs_categories',
+            tableName: $this->table('categories'),
             idColumn: 'category_id',
             nameColumn: 'title',
             id: $id,

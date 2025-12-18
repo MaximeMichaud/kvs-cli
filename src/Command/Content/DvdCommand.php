@@ -70,7 +70,7 @@ HELP
 
         // Build query - counts will be added when we know the table structure
         $query = "SELECT d.*
-                 FROM ktvs_dvds d
+                 FROM {$this->table('dvds')} d
                  WHERE 1=1";
 
         $params = [];
@@ -131,7 +131,7 @@ HELP
         try {
             $stmt = $db->prepare("
                 SELECT d.*
-                FROM ktvs_dvds d
+                FROM {$this->table('dvds')} d
                 WHERE d.dvd_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -175,15 +175,15 @@ HELP
             $stats = [];
 
             // Total DVDs
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_dvds");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')}");
             $stats[] = ['Total DVDs', number_format($stmt->fetchColumn())];
 
             // Active DVDs
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_dvds WHERE status_id = 1");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = 1");
             $stats[] = ['Active', number_format($stmt->fetchColumn())];
 
             // Disabled DVDs
-            $stmt = $db->query("SELECT COUNT(*) FROM ktvs_dvds WHERE status_id = 0");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = 0");
             $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
 
             $this->io->title('DVD Statistics');

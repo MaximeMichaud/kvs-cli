@@ -87,8 +87,8 @@ HELP
 
         $query = "SELECT v.*, u.username,
                  v.video_viewed as views
-                 FROM ktvs_videos v
-                 LEFT JOIN ktvs_users u ON v.user_id = u.user_id
+                 FROM {$this->table('videos')} v
+                 LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id
                  WHERE 1=1";
 
         $params = [];
@@ -107,7 +107,7 @@ HELP
         }
 
         if ($category = $input->getOption('category')) {
-            $query .= " AND EXISTS (SELECT 1 FROM ktvs_categories_videos cv WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
+            $query .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
@@ -155,7 +155,7 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM ktvs_videos WHERE video_id = :id");
+            $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
             $stmt->execute(['id' => $id]);
             $video = $stmt->fetch();
 
@@ -185,8 +185,8 @@ HELP
             }
 
             $stmt = $db->prepare("
-                SELECT c.title FROM ktvs_categories c
-                JOIN ktvs_categories_videos cv ON c.category_id = cv.category_id
+                SELECT c.title FROM {$this->table('categories')} c
+                JOIN {$this->table('categories_videos')} cv ON c.category_id = cv.category_id
                 WHERE cv.video_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -198,8 +198,8 @@ HELP
             }
 
             $stmt = $db->prepare("
-                SELECT t.tag FROM ktvs_tags t
-                JOIN ktvs_tags_videos tv ON t.tag_id = tv.tag_id
+                SELECT t.tag FROM {$this->table('tags')} t
+                JOIN {$this->table('tags_videos')} tv ON t.tag_id = tv.tag_id
                 WHERE tv.video_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -240,21 +240,22 @@ HELP
 
             // Core tables that must exist
             $coreTables = [
-                'ktvs_videos',
-                'ktvs_categories_videos',
-                'ktvs_tags_videos',
-                'ktvs_models_videos',
-                'ktvs_comments',
+                $this->table('videos'),
+                $this->table('categories_videos'),
+                $this->table('tags_videos'),
+                $this->table('models_videos'),
+                $this->table('comments'),
             ];
 
             // Optional tables that may not exist in all installations
             $optionalTables = [
-                'ktvs_stats_videos_users_views',
+                $this->table('stats_videos_users_views'),
             ];
 
             // Delete from core tables
+            $commentsTable = $this->table('comments');
             foreach ($coreTables as $table) {
-                $column = $table === 'ktvs_comments' ? 'object_id' : 'video_id';
+                $column = $table === $commentsTable ? 'object_id' : 'video_id';
                 $stmt = $db->prepare("DELETE FROM $table WHERE $column = :id");
                 $stmt->execute(['id' => $id]);
             }
@@ -307,12 +308,12 @@ HELP
             $stats = [];
 
             $queries = [
-                'Total Videos' => "SELECT COUNT(*) FROM ktvs_videos",
-                'Active Videos' => "SELECT COUNT(*) FROM ktvs_videos WHERE status_id = 1",
-                'Total Views' => "SELECT SUM(video_viewed) FROM ktvs_videos",
-                'Total Duration' => "SELECT SUM(duration) FROM ktvs_videos",
-                'Average Rating' => "SELECT AVG(rating) FROM ktvs_videos WHERE rating_amount > 0",
-                'Total Size' => "SELECT SUM(file_size) FROM ktvs_videos",
+                'Total Videos' => "SELECT COUNT(*) FROM {$this->table('videos')}",
+                'Active Videos' => "SELECT COUNT(*) FROM {$this->table('videos')} WHERE status_id = 1",
+                'Total Views' => "SELECT SUM(video_viewed) FROM {$this->table('videos')}",
+                'Total Duration' => "SELECT SUM(duration) FROM {$this->table('videos')}",
+                'Average Rating' => "SELECT AVG(rating) FROM {$this->table('videos')} WHERE rating_amount > 0",
+                'Total Size' => "SELECT SUM(file_size) FROM {$this->table('videos')}",
             ];
 
             foreach ($queries as $label => $query) {
@@ -335,7 +336,7 @@ HELP
 
             $stmt = $db->query("
                 SELECT v.title, v.video_viewed as views
-                FROM ktvs_videos v
+                FROM {$this->table('videos')} v
                 WHERE v.status_id = 1
                 ORDER BY v.video_viewed DESC
                 LIMIT 10

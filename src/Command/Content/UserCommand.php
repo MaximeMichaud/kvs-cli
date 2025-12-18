@@ -136,9 +136,9 @@ HELP
 
         // Build query
         $query = "SELECT u.*,
-                 (SELECT COUNT(*) FROM ktvs_videos WHERE user_id = u.user_id) as video_count,
-                 (SELECT COUNT(*) FROM ktvs_albums WHERE user_id = u.user_id) as album_count
-                 FROM ktvs_users u
+                 (SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = u.user_id) as video_count,
+                 (SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = u.user_id) as album_count
+                 FROM {$this->table('users')} u
                  WHERE 1=1";
 
         $params = [];
@@ -375,7 +375,7 @@ HELP
         }
 
         try {
-            $query = "SELECT * FROM ktvs_users WHERE user_id = :id OR username = :id";
+            $query = "SELECT * FROM {$this->table('users')} WHERE user_id = :id OR username = :id";
             $stmt = $db->prepare($query);
             $stmt->execute(['id' => $id]);
             $user = $stmt->fetch();
@@ -403,15 +403,15 @@ HELP
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_videos WHERE user_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = :id");
             $stmt->execute(['id' => $user['user_id']]);
             $videoCount = $stmt->fetchColumn();
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_albums WHERE user_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = :id");
             $stmt->execute(['id' => $user['user_id']]);
             $albumCount = $stmt->fetchColumn();
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_comments WHERE user_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} WHERE user_id = :id");
             $stmt->execute(['id' => $user['user_id']]);
             $commentCount = $stmt->fetchColumn();
 
@@ -460,7 +460,7 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_users WHERE username = :username OR email = :email");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE username = :username OR email = :email");
             $stmt->execute(['username' => $username, 'email' => $email]);
 
             if ($stmt->fetchColumn() > 0) {
@@ -469,7 +469,7 @@ HELP
             }
 
             $stmt = $db->prepare("
-                INSERT INTO ktvs_users (username, email, pass, display_name, status_id, added_date, ip)
+                INSERT INTO {$this->table('users')} (username, email, pass, display_name, status_id, added_date, ip)
                 VALUES (:username, :email, :pass, :display_name, 2, NOW(), :ip)
             ");
 
@@ -511,7 +511,7 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT user_id FROM ktvs_users WHERE user_id = :id OR username = :id");
+            $stmt = $db->prepare("SELECT user_id FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
             $stmt->execute(['id' => $id]);
             $userId = $stmt->fetchColumn();
 
@@ -523,10 +523,10 @@ HELP
             $db->beginTransaction();
 
             $tables = [
-                'ktvs_users',
-                'ktvs_videos',
-                'ktvs_albums',
-                'ktvs_comments',
+                $this->table('users'),
+                $this->table('videos'),
+                $this->table('albums'),
+                $this->table('comments'),
             ];
 
             foreach ($tables as $table) {
@@ -556,12 +556,12 @@ HELP
             $stats = [];
 
             $queries = [
-                'Total Users' => "SELECT COUNT(*) FROM ktvs_users",
-                'Active Users' => "SELECT COUNT(*) FROM ktvs_users WHERE status_id = 2",
-                'Premium Users' => "SELECT COUNT(*) FROM ktvs_users WHERE status_id = 3",
-                'Disabled Users' => "SELECT COUNT(*) FROM ktvs_users WHERE status_id = 0",
-                'Users Today' => "SELECT COUNT(*) FROM ktvs_users WHERE DATE(added_date) = CURDATE()",
-                'Users This Month' => "SELECT COUNT(*) FROM ktvs_users WHERE MONTH(added_date) = MONTH(NOW()) AND YEAR(added_date) = YEAR(NOW())",
+                'Total Users' => "SELECT COUNT(*) FROM {$this->table('users')}",
+                'Active Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 2",
+                'Premium Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 3",
+                'Disabled Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 0",
+                'Users Today' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE DATE(added_date) = CURDATE()",
+                'Users This Month' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE MONTH(added_date) = MONTH(NOW()) AND YEAR(added_date) = YEAR(NOW())",
             ];
 
             foreach ($queries as $label => $query) {
@@ -573,9 +573,9 @@ HELP
 
             $stmt = $db->query("
                 SELECT u.username, u.added_date,
-                       (SELECT COUNT(*) FROM ktvs_videos WHERE user_id = u.user_id) as videos,
-                       (SELECT COUNT(*) FROM ktvs_albums WHERE user_id = u.user_id) as albums
-                FROM ktvs_users u
+                       (SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = u.user_id) as videos,
+                       (SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = u.user_id) as albums
+                FROM {$this->table('users')} u
                 WHERE u.status_id = 2
                 ORDER BY u.added_date DESC
                 LIMIT 10

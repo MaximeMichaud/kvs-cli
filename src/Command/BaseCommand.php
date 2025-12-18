@@ -89,4 +89,12 @@ abstract class BaseCommand extends Command
         $table->setRows($rows);
         $table->render();
     }
+
+    /**
+     * Get prefixed table name (reads tables_prefix from KVS config)
+     */
+    protected function table(string $name): string
+    {
+        return $this->config->getTablePrefix() . $name;
+    }
 }
