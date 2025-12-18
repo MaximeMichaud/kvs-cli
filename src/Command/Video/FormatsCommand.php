@@ -225,7 +225,7 @@ HELP
         $formatter->display($formats, $this->io);
 
         $this->io->newLine();
-        $this->io->note('These formats are configured in KVS (table: ktvs_formats_videos)');
+        $this->io->note('These formats are configured in KVS (table: ' . $this->table('formats_videos') . ')');
 
         return self::SUCCESS;
     }

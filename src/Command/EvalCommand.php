@@ -73,7 +73,7 @@ HELP
             $dbConfig = $this->config->getDatabaseConfig();
             $config = [
                 'project_path' => $kvsPath,
-                'project_version' => '6.3.2',
+                'project_version' => $this->config->get('project_version', 'unknown'),
                 'db_host' => $dbConfig['host'] ?? null,
                 'db_name' => $dbConfig['database'] ?? null,
             ];

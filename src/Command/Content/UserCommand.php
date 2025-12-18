@@ -561,7 +561,8 @@ HELP
                 'Premium Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 3",
                 'Disabled Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 0",
                 'Users Today' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE DATE(added_date) = CURDATE()",
-                'Users This Month' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE MONTH(added_date) = MONTH(NOW()) AND YEAR(added_date) = YEAR(NOW())",
+                'Users This Month' => "SELECT COUNT(*) FROM {$this->table('users')} "
+                    . "WHERE MONTH(added_date) = MONTH(NOW()) AND YEAR(added_date) = YEAR(NOW())",
             ];
 
             foreach ($queries as $label => $query) {
