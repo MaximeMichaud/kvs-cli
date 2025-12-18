@@ -414,7 +414,22 @@ class ConfigCommand extends BaseCommand
 
     private function getConfigValue(string $key): ?string
     {
+        // If no category prefix, try to find key in all configs
         if (strpos($key, '.') === false) {
+            // Try main config first (most common)
+            $mainConfigs = $this->getMainConfigs();
+            if (isset($mainConfigs[$key])) {
+                return is_array($mainConfigs[$key])
+                    ? json_encode($mainConfigs[$key])
+                    : (string)$mainConfigs[$key];
+            }
+
+            // Try database config
+            $dbConfigs = $this->getDatabaseConfigs();
+            if (isset($dbConfigs[$key])) {
+                return $dbConfigs[$key];
+            }
+
             return null;
         }
 
@@ -427,7 +442,12 @@ class ConfigCommand extends BaseCommand
 
         if ($category === 'main' || $category === 'site') {
             $configs = $this->getMainConfigs();
-            return isset($configs[$configKey]) ? (string)$configs[$configKey] : null;
+            if (!isset($configs[$configKey])) {
+                return null;
+            }
+            return is_array($configs[$configKey])
+                ? json_encode($configs[$configKey])
+                : (string)$configs[$configKey];
         }
 
         return null;
