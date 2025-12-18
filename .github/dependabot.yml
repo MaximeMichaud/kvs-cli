@@ -6,7 +6,6 @@ updates:
       interval: "daily"
     labels:
       - "dependencies"
-      - "github_actions"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -17,7 +16,6 @@ updates:
       interval: "daily"
     labels:
       - "dependencies"
-      - "php"
     commit-message:
       prefix: "chore"
       include: "scope"
