@@ -50,6 +50,7 @@ class Application extends BaseApplication
 {
     public const VERSION = KVS_CLI_VERSION;
     public const NAME = 'KVS CLI';
+    public const EXAMPLE_PATH = '/path/to/kvs';
 
     private ?Configuration $config = null;
 
@@ -180,13 +181,13 @@ class Application extends BaseApplication
             } else {
                 $io->text('Solutions:');
                 $io->text('  • Run from a KVS directory:');
-                $io->text('    cd /var/www/your-kvs-site && kvs maintenance status');
+                $io->text('    cd ' . self::EXAMPLE_PATH . ' && kvs maintenance status');
                 $io->newLine();
                 $io->text('  • Use --path parameter:');
-                $io->text('    kvs --path=/var/www/your-kvs-site maintenance status');
+                $io->text('    kvs --path=' . self::EXAMPLE_PATH . ' maintenance status');
                 $io->newLine();
                 $io->text('  • Set KVS_PATH environment variable:');
-                $io->text('    export KVS_PATH=/var/www/your-kvs-site');
+                $io->text('    export KVS_PATH=' . self::EXAMPLE_PATH);
             }
             $io->newLine();
             $io->note('A valid KVS installation must contain admin/include/setup_db.php');
@@ -208,8 +209,8 @@ class Application extends BaseApplication
                 $io->text('Cannot run KVS commands outside of a KVS installation directory.');
                 $io->newLine();
                 $io->text('Solutions:');
-                $io->text('  • cd /path/to/kvs && kvs ' . $name);
-                $io->text('  • kvs --path=/path/to/kvs ' . $name);
+                $io->text('  • cd ' . self::EXAMPLE_PATH . ' && kvs ' . $name);
+                $io->text('  • kvs --path=' . self::EXAMPLE_PATH . ' ' . $name);
                 $io->newLine();
                 exit(1);
             }
@@ -228,7 +229,7 @@ class Application extends BaseApplication
         // Add hint when no KVS detected
         if (!$this->config || !$this->config->isKvsInstalled()) {
             $help .= "\n\n<warning>⚠️  No KVS installation detected in current directory</warning>";
-            $help .= "\n<info>   Use --path=/path/to/kvs or cd to KVS directory for full functionality</info>";
+            $help .= "\n<info>   Use --path=" . self::EXAMPLE_PATH . " or cd to KVS directory for full functionality</info>";
         }
 
         return $help;
