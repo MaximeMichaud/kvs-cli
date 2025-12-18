@@ -391,7 +391,9 @@ class StatusCommand extends BaseCommand
 
         $contentPath = $this->config->getContentPath();
         if (!$contentPath || !is_dir($contentPath)) {
-            $this->io->warning('Content path not found: ' . $contentPath);
+            $this->io->warning('Content directory not found: ' . ($contentPath ?: 'not configured'));
+            $this->io->text('This is normal if content is stored on external storage servers.');
+            $this->io->text('Check KVS config for content_path_* settings.');
             return;
         }
 
@@ -528,8 +530,10 @@ class StatusCommand extends BaseCommand
 
         // Disk space check
         if (function_exists('disk_free_space')) {
-            $free = disk_free_space($this->config->getKvsPath() ?: '.');
-            $total = disk_total_space($this->config->getKvsPath() ?: '.');
+            $kvsPath = $this->config->getKvsPath();
+            $diskPath = $kvsPath !== '' ? $kvsPath : '.';
+            $free = disk_free_space($diskPath);
+            $total = disk_total_space($diskPath);
             $usedPercent = (($total - $free) / $total) * 100;
 
             if ($usedPercent > Constants::DISK_CRITICAL_PERCENT) {

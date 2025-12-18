@@ -68,6 +68,18 @@ class ConfigCommand extends BaseCommand
 
         if ($value === null) {
             $this->io->error("Configuration key not found: $key");
+
+            // Suggest similar keys
+            $allConfigs = $this->getAllConfigs('all');
+            $suggestions = $this->findSimilarKeys($key, array_keys($allConfigs));
+
+            if (!empty($suggestions)) {
+                $this->io->text('Did you mean one of these?');
+                $this->io->listing($suggestions);
+            } else {
+                $this->io->text('Use "kvs config list" to see all available keys.');
+            }
+
             return self::FAILURE;
         }
 
@@ -430,6 +442,14 @@ class ConfigCommand extends BaseCommand
                 return $dbConfigs[$key];
             }
 
+            // Try case-insensitive match in main configs
+            $keyLower = strtolower($key);
+            foreach ($mainConfigs as $configKey => $value) {
+                if (strtolower($configKey) === $keyLower) {
+                    return is_array($value) ? json_encode($value) : (string)$value;
+                }
+            }
+
             return null;
         }
 
@@ -443,6 +463,13 @@ class ConfigCommand extends BaseCommand
         if ($category === 'main' || $category === 'site') {
             $configs = $this->getMainConfigs();
             if (!isset($configs[$configKey])) {
+                // Try case-insensitive
+                $configKeyLower = strtolower($configKey);
+                foreach ($configs as $k => $v) {
+                    if (strtolower($k) === $configKeyLower) {
+                        return is_array($v) ? json_encode($v) : (string)$v;
+                    }
+                }
                 return null;
             }
             return is_array($configs[$configKey])
@@ -567,6 +594,46 @@ class ConfigCommand extends BaseCommand
             copy($file, $backupFile);
             $this->io->info("Backup created: $backupFile");
         }
+    }
+
+    /**
+     * Find similar keys using fuzzy matching
+     */
+    private function findSimilarKeys(string $needle, array $haystack): array
+    {
+        $matches = [];
+        $needleLower = strtolower($needle);
+
+        // Remove prefix if present for better matching
+        $needleWithoutPrefix = preg_replace('/^(db|main|site)\./', '', $needleLower);
+
+        foreach ($haystack as $key) {
+            $keyLower = strtolower($key);
+            $keyWithoutPrefix = preg_replace('/^(db|main|site)\./', '', $keyLower);
+
+            // Exact match without prefix
+            if ($keyWithoutPrefix === $needleWithoutPrefix) {
+                $matches[] = $key;
+                continue;
+            }
+
+            // Contains match
+            if (
+                strpos($keyWithoutPrefix, $needleWithoutPrefix) !== false ||
+                strpos($needleWithoutPrefix, $keyWithoutPrefix) !== false
+            ) {
+                $matches[] = $key;
+                continue;
+            }
+
+            // Levenshtein distance for typos (max distance 3)
+            if (levenshtein($keyWithoutPrefix, $needleWithoutPrefix) <= 3) {
+                $matches[] = $key;
+            }
+        }
+
+        // Return first 5 matches
+        return array_slice(array_unique($matches), 0, 5);
     }
 
     private function showHelp(): int
