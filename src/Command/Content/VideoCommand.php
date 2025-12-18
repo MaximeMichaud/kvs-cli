@@ -310,7 +310,7 @@ HELP
 
             $queries = [
                 'Total Videos' => "SELECT COUNT(*) FROM {$this->table('videos')}",
-                'Active Videos' => "SELECT COUNT(*) FROM {$this->table('videos')} WHERE status_id = 1",
+                'Active Videos' => "SELECT COUNT(*) FROM {$this->table('videos')} WHERE status_id = " . StatusFormatter::VIDEO_ACTIVE,
                 'Total Views' => "SELECT SUM(video_viewed) FROM {$this->table('videos')}",
                 'Total Duration' => "SELECT SUM(duration) FROM {$this->table('videos')}",
                 'Average Rating' => "SELECT AVG(rating) FROM {$this->table('videos')} WHERE rating_amount > 0",
@@ -338,7 +338,7 @@ HELP
             $stmt = $db->query("
                 SELECT v.title, v.video_viewed as views
                 FROM {$this->table('videos')} v
-                WHERE v.status_id = 1
+                WHERE v.status_id = " . StatusFormatter::VIDEO_ACTIVE . "
                 ORDER BY v.video_viewed DESC
                 LIMIT 10
             ");

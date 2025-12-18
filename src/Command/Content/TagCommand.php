@@ -5,6 +5,7 @@ namespace KVS\CLI\Command\Content;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Output\Formatter;
+use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -368,8 +369,8 @@ HELP
             $stmt = $db->query("
                 SELECT
                     COUNT(*) as total_tags,
-                    SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active_tags,
-                    SUM(CASE WHEN status_id = 0 THEN 1 ELSE 0 END) as inactive_tags
+                    SUM(CASE WHEN status_id = " . StatusFormatter::TAG_ACTIVE . " THEN 1 ELSE 0 END) as active_tags,
+                    SUM(CASE WHEN status_id = " . StatusFormatter::TAG_INACTIVE . " THEN 1 ELSE 0 END) as inactive_tags
                 FROM {$this->table('tags')}
             ");
             $overall = $stmt->fetch();

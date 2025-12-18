@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Output\Formatter;
+use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -185,11 +186,11 @@ HELP
             $stats[] = ['Total Models', number_format($stmt->fetchColumn())];
 
             // Active models
-            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = 1");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_ACTIVE);
             $stats[] = ['Active', number_format($stmt->fetchColumn())];
 
             // Disabled models
-            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = 0");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_DISABLED);
             $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
 
             // Models with videos

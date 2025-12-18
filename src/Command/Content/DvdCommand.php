@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Output\Formatter;
+use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -179,11 +180,11 @@ HELP
             $stats[] = ['Total DVDs', number_format($stmt->fetchColumn())];
 
             // Active DVDs
-            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = 1");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_ACTIVE);
             $stats[] = ['Active', number_format($stmt->fetchColumn())];
 
             // Disabled DVDs
-            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = 0");
+            $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_DISABLED);
             $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
 
             $this->io->title('DVD Statistics');

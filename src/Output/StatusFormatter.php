@@ -33,6 +33,19 @@ class StatusFormatter
     public const TAG_INACTIVE = 0;
     public const TAG_ACTIVE = 1;
 
+    // Model status constants
+    public const MODEL_DISABLED = 0;
+    public const MODEL_ACTIVE = 1;
+
+    // DVD status constants
+    public const DVD_DISABLED = 0;
+    public const DVD_ACTIVE = 1;
+
+    // Video format status constants
+    public const FORMAT_DISABLED = 0;
+    public const FORMAT_ACTIVE = 1;
+    public const FORMAT_PROCESSING = 2;
+
     // Background task status constants
     public const TASK_PENDING = 0;
     public const TASK_PROCESSING = 1;
@@ -124,6 +137,77 @@ class StatusFormatter
         $labels = [
             0 => ['text' => 'Inactive', 'color' => 'yellow'],
             1 => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for models (performers)
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function model(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::MODEL_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::MODEL_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for DVDs (channels/series)
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function dvd(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::DVD_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::DVD_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for video formats
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function videoFormat(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::FORMAT_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::FORMAT_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+            self::FORMAT_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for background tasks
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function task(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::TASK_PENDING => ['text' => 'Pending', 'color' => 'yellow'],
+            self::TASK_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+            self::TASK_FAILED => ['text' => 'Failed', 'color' => 'red'],
+            self::TASK_COMPLETED => ['text' => 'Completed', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);
