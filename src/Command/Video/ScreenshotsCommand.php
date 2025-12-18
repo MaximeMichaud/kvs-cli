@@ -76,13 +76,13 @@ HELP
             return self::FAILURE;
         }
 
-        $contentPath = $this->config->getContentPath();
-        if (!$contentPath) {
-            $this->io->error('Content path not configured');
+        $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
+        if ($screenshotsBasePath === '') {
+            $this->io->error('Screenshots path not configured');
             return self::FAILURE;
         }
 
-        $screenshotsPath = "$contentPath/videos/$videoId/screenshots";
+        $screenshotsPath = "$screenshotsBasePath/$videoId";
 
         if (!is_dir($screenshotsPath)) {
             $this->io->warning("Screenshots directory not found: $screenshotsPath");
@@ -158,14 +158,15 @@ HELP
             return self::FAILURE;
         }
 
-        $contentPath = $this->config->getContentPath();
-        if (!$contentPath) {
-            $this->io->error('Content path not configured');
+        $videoSourcesPath = $this->config->getVideoSourcesPath();
+        $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
+        if ($videoSourcesPath === '' || $screenshotsBasePath === '') {
+            $this->io->error('Content paths not configured');
             return self::FAILURE;
         }
 
-        $videoPath = "$contentPath/videos/$videoId";
-        $screenshotsPath = "$videoPath/screenshots";
+        $videoPath = "$videoSourcesPath/$videoId";
+        $screenshotsPath = "$screenshotsBasePath/$videoId";
 
         // Find video source file
         $videoFile = $this->findVideoFile($videoPath);
@@ -244,13 +245,13 @@ HELP
             return self::FAILURE;
         }
 
-        $contentPath = $this->config->getContentPath();
-        if (!$contentPath) {
-            $this->io->error('Content path not configured');
+        $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
+        if ($screenshotsBasePath === '') {
+            $this->io->error('Screenshots path not configured');
             return self::FAILURE;
         }
 
-        $screenshotsPath = "$contentPath/videos/$videoId/screenshots";
+        $screenshotsPath = "$screenshotsBasePath/$videoId";
 
         // Delete existing screenshots
         if (is_dir($screenshotsPath)) {

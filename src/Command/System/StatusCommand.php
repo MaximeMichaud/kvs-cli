@@ -400,13 +400,13 @@ class StatusCommand extends BaseCommand
 
         // Define content directories to check (KVS naming convention)
         $directories = [
-            'Videos Sources' => 'videos_sources',
-            'Screenshots' => 'videos_screenshots',
-            'Albums' => 'albums_sources',
-            'Categories' => 'categories',
-            'Models' => 'models',
-            'DVDs' => 'dvds',
-            'Avatars' => 'avatars',
+            'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
+            'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
+            'Albums' => Constants::CONTENT_ALBUMS_SOURCES,
+            'Categories' => Constants::CONTENT_CATEGORIES,
+            'Models' => Constants::CONTENT_MODELS,
+            'DVDs' => Constants::CONTENT_DVDS,
+            'Avatars' => Constants::CONTENT_AVATARS,
         ];
 
         foreach ($directories as $label => $dir) {
