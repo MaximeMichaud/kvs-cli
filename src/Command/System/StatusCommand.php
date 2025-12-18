@@ -363,10 +363,11 @@ class StatusCommand extends BaseCommand
             $stats[] = ['Failed (24h)', number_format($failed)];
 
             // Average processing time (completed tasks)
+            // KVS stores duration in effective_duration column (seconds)
             $stmt = $db->query("
-                SELECT AVG(TIMESTAMPDIFF(SECOND, start_date, end_date)) as avg_time
+                SELECT AVG(effective_duration) as avg_time
                 FROM " . $this->table('background_tasks') . "
-                WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND start_date IS NOT NULL AND end_date IS NOT NULL
+                WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND effective_duration > 0
                 LIMIT 100
             ");
             $avgTime = $stmt->fetchColumn();
