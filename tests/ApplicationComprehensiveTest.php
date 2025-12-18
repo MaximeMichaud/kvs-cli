@@ -38,8 +38,9 @@ class ApplicationComprehensiveTest extends TestCase
     // Test 1: Application metadata
     public function testApplicationMetadata(): void
     {
+        $expectedVersion = trim(file_get_contents(__DIR__ . '/../VERSION'));
         $this->assertEquals('KVS CLI', $this->app->getName());
-        $this->assertEquals('1.0.4-beta', $this->app->getVersion());
+        $this->assertEquals($expectedVersion, $this->app->getVersion());
         $this->assertStringContainsString('KVS CLI', $this->app->getLongVersion());
     }
 
@@ -173,13 +174,14 @@ class ApplicationComprehensiveTest extends TestCase
     // Test 10: Version command works
     public function testVersionCommandWorks(): void
     {
+        $expectedVersion = trim(file_get_contents(__DIR__ . '/../VERSION'));
         $tester = new ApplicationTester($this->app);
         $tester->run([
             '--version' => true,
             '--path' => $this->tempKvsDir
         ]);
 
-        $this->assertStringContainsString('KVS CLI version 1.0.4-beta', $tester->getDisplay());
+        $this->assertStringContainsString('KVS CLI version ' . $expectedVersion, $tester->getDisplay());
     }
 
     // Test 11: Help command works
