@@ -81,6 +81,8 @@ jobs:
 
   static-analysis:
     name: Static Analysis
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
 
     steps:
