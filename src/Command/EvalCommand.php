@@ -25,19 +25,19 @@ The <info>eval</info> command executes PHP code with the KVS context pre-loaded.
 
 <comment>Usage:</comment>
   kvs eval 'echo "Hello World";'
-  kvs eval 'return DB::query("SELECT COUNT(*) FROM ktvs_videos");'
-  kvs eval 'var_dump(Video::find(123));'
+  kvs eval 'return Video::count();'
+  kvs eval 'var_dump(Video::find(1));'
 
 <comment>Examples:</comment>
   # Simple echo
   kvs eval 'echo "KVS Path: " . $kvsPath;'
-  
+
   # Database query
-  kvs eval 'print_r(DB::query("SHOW TABLES LIKE \'ktvs_%\'"));'
-  
-  # Using models
+  kvs eval 'print_r(DB::query("SHOW TABLES"));'
+
+  # Using models (table prefix is auto-configured)
   kvs eval 'echo "Total videos: " . Video::count();'
-  
+
   # Return value (will be var_dumped)
   kvs eval 'return ["videos" => Video::count(), "users" => User::count()];'
 
@@ -45,7 +45,7 @@ The <info>eval</info> command executes PHP code with the KVS context pre-loaded.
   $kvsConfig - KVS configuration
   $kvsPath   - KVS installation path
   $db        - Database connection
-  
+
 <comment>Available classes:</comment>
   Video, User, Album, Category, Tag, DVD, Model_
   DB::query(), DB::escape()
@@ -151,6 +151,7 @@ if (!class_exists('Model')) {
     class Model {
         protected static $table;
         protected static $db; // PDO instance
+        protected static $prefix = 'ktvs_'; // Will be replaced by str_replace
 
         public static function setDb($pdo) {
             self::$db = $pdo;
@@ -198,8 +199,9 @@ if (!class_exists('Model')) {
         protected static function getIdColumn() {
             // Most KVS tables use <singular>_id pattern
             $tableName = static::$table;
-            if (strpos($tableName, 'ktvs_') === 0) {
-                $singular = rtrim(substr($tableName, 5), 's'); // Remove 'ktvs_' and trailing 's'
+            $prefixLen = strlen(self::$prefix);
+            if (strpos($tableName, self::$prefix) === 0) {
+                $singular = rtrim(substr($tableName, $prefixLen), 's');
                 return $singular . '_id';
             }
             return 'id';

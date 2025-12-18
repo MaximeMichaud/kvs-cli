@@ -117,8 +117,8 @@ kvs eval 'echo User::count() . "\n";'
 kvs eval 'print_r(User::find(1));'
 kvs eval 'foreach(Video::all(10) as $v) { echo $v["title"] . "\n"; }'
 
-# Database queries
-kvs eval 'print_r(DB::query("SELECT * FROM ktvs_users WHERE status_id = ?", [2]));'
+# Raw database query
+kvs eval 'print_r(DB::query("SHOW TABLES"));'
 
 # KVS variables
 kvs eval 'echo $kvsPath;'

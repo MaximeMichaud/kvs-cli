@@ -38,10 +38,10 @@ The <info>shell</info> command starts an interactive PHP shell (REPL) with the K
   Category:: - Category model
 
 <comment>Examples in shell:</comment>
-  >>> $video = Video::find(123)
-  >>> $videos = DB::query("SELECT * FROM ktvs_videos LIMIT 5")
+  >>> $video = Video::find(1)
+  >>> $videos = Video::all(5)
   >>> $config->get('project_url')
-  >>> User::where('status', 'active')->count()
+  >>> User::count()
   >>> help                     # Show PsySH help
   >>> exit                     # Exit the shell
 HELP
@@ -129,17 +129,17 @@ if (file_exists('$kvsPath/admin/include/setup.php')) {
 class Model {
     protected static \$table;
     protected static \$db;
-    
+
     public static function setDb(\$connection) {
         self::\$db = \$connection;
     }
-    
+
     public static function find(\$id) {
         if (!self::\$db || !static::\$table) return null;
         \$result = mysqli_query(self::\$db, "SELECT * FROM " . static::\$table . " WHERE id = " . (int)\$id);
         return \$result ? mysqli_fetch_assoc(\$result) : null;
     }
-    
+
     public static function all(\$limit = 10) {
         if (!self::\$db || !static::\$table) return [];
         \$result = mysqli_query(self::\$db, "SELECT * FROM " . static::\$table . " LIMIT " . (int)\$limit);
@@ -149,7 +149,7 @@ class Model {
         }
         return \$data;
     }
-    
+
     public static function count(\$where = '') {
         if (!self::\$db || !static::\$table) return 0;
         \$sql = "SELECT COUNT(*) as total FROM " . static::\$table;
@@ -158,7 +158,7 @@ class Model {
         \$row = mysqli_fetch_assoc(\$result);
         return (int)\$row['total'];
     }
-    
+
     public static function where(\$field, \$value, \$limit = 10) {
         if (!self::\$db || !static::\$table) return [];
         \$sql = sprintf(
@@ -188,11 +188,11 @@ class Model_ extends Model { protected static \$table = '{$prefix}models'; }
 // Database helper
 class DB {
     private static \$connection;
-    
+
     public static function setConnection(\$db) {
         self::\$connection = \$db;
     }
-    
+
     public static function query(\$sql) {
         if (!self::\$connection) {
             echo "No database connection\n";
@@ -212,12 +212,12 @@ class DB {
         }
         return \$data;
     }
-    
+
     public static function escape(\$value) {
         if (!self::\$connection) return \$value;
         return mysqli_real_escape_string(self::\$connection, \$value);
     }
-    
+
     public static function lastId() {
         if (!self::\$connection) return null;
         return mysqli_insert_id(self::\$connection);
@@ -269,18 +269,18 @@ PHP;
     {
         return <<<MSG
 ========================================
-         KVS Interactive Shell         
+         KVS Interactive Shell
 ========================================
 PHP \PHP_VERSION on \PHP_OS
 
 Variables:
   \$config - KVS configuration
   \$db     - Database connection
-  
+
 Classes:
   Video, User, Album, Category, Tag, DVD
   DB::query() - Run SQL queries
-  
+
 Type 'help' for PsySH help
 Type 'exit' or Ctrl+D to quit
 ========================================

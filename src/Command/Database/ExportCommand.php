@@ -37,7 +37,7 @@ Export KVS database to SQL file.
   kvs db:export -o backup.sql             # Export to specific file
   kvs db:export --compress=zstd           # Export with zstd compression
   kvs db:export --no-data                 # Export structure only
-  kvs db:export --tables=ktvs_videos      # Export specific tables
+  kvs db:export --tables=videos,users     # Export specific tables
 EOT
             );
     }

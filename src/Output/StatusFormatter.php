@@ -10,6 +10,35 @@ namespace KVS\CLI\Output;
  */
 class StatusFormatter
 {
+    // Video status constants
+    public const VIDEO_DISABLED = 0;
+    public const VIDEO_ACTIVE = 1;
+    public const VIDEO_ERROR = 2;
+
+    // Album status constants
+    public const ALBUM_DISABLED = 0;
+    public const ALBUM_ACTIVE = 1;
+
+    // User status constants
+    public const USER_DISABLED = 0;
+    public const USER_NOT_CONFIRMED = 1;
+    public const USER_ACTIVE = 2;
+    public const USER_PREMIUM = 3;
+    public const USER_VIP = 4;
+    public const USER_WEBMASTER = 6;
+
+    // Category/Tag status constants
+    public const CATEGORY_INACTIVE = 0;
+    public const CATEGORY_ACTIVE = 1;
+    public const TAG_INACTIVE = 0;
+    public const TAG_ACTIVE = 1;
+
+    // Background task status constants
+    public const TASK_PENDING = 0;
+    public const TASK_PROCESSING = 1;
+    public const TASK_FAILED = 2;
+    public const TASK_COMPLETED = 3;
+
     /**
      * Get formatted status label for videos
      *

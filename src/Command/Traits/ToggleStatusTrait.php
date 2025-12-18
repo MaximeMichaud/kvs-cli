@@ -18,7 +18,7 @@ trait ToggleStatusTrait
      * Generic implementation that works for any entity with status_id column.
      *
      * @param string $entityName    Human-readable entity name (e.g. "Tag", "Category")
-     * @param string $tableName     Database table name (e.g. "ktvs_tags")
+     * @param string $tableName     Database table name (e.g. "tags")
      * @param string $idColumn      Primary key column name (e.g. "tag_id")
      * @param string $nameColumn    Display name column (e.g. "tag", "title")
      * @param string|null $id       Entity ID to toggle
