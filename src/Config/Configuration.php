@@ -56,7 +56,7 @@ class Configuration
             }
         }
 
-        throw new \Exception('KVS installation not found. Use --path=/path/to/kvs or run from KVS directory.');
+        throw new \Exception('KVS installation not found. Use --path=' . \KVS\CLI\Application::EXAMPLE_PATH . ' or run from KVS directory.');
     }
 
     private function isKvsInstallation(string $path): bool
