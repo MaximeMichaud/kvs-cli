@@ -167,7 +167,9 @@ class Configuration
 
     public function getContentPath(): string
     {
-        return dirname($this->kvsPath) . '/content';
+        // KVS stores content in project_path/contents/
+        $projectPath = $this->config['project_path'] ?? dirname($this->kvsPath);
+        return $projectPath . '/contents';
     }
 
     public function getDatabaseConfig(): array
