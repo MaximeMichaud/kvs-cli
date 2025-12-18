@@ -43,8 +43,13 @@ use KVS\CLI\Bootstrap\LoadConfiguration;
 use KVS\CLI\Bootstrap\ValidateKvsInstallation;
 use KVS\CLI\Bootstrap\RegisterCommands;
 
-// Global version constant for SelfUpdateCommand
-define('KVS_CLI_VERSION', '1.0.2-beta');
+// Define root path (works for both PHAR and source)
+if (!defined('KVS_CLI_ROOT')) {
+    define('KVS_CLI_ROOT', dirname(__DIR__));
+}
+
+// Read version from VERSION file (like WP-CLI)
+define('KVS_CLI_VERSION', trim((string) file_get_contents(KVS_CLI_ROOT . '/VERSION')));
 
 class Application extends BaseApplication
 {
