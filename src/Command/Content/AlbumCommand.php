@@ -172,7 +172,12 @@ HELP
                 ['Images', $imageCount],
                 ['Posted', date('Y-m-d H:i:s', strtotime($album['post_date']))],
                 ['Views', number_format($album['album_viewed'])],
-                ['Rating', sprintf('%.1f/%d', $album['rating'] / Constants::RATING_DIVISOR, Constants::RATING_SCALE)],
+                [
+                    'Rating',
+                    ($album['rating_amount'] ?? 0) > 0
+                        ? sprintf('%.1f/%d (%d votes)', $album['rating'] / $album['rating_amount'], Constants::RATING_SCALE, $album['rating_amount'])
+                        : 'No ratings yet'
+                ],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);

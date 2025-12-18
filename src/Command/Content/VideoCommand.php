@@ -182,12 +182,14 @@ HELP
                 ['Posted', date('Y-m-d H:i:s', strtotime($video['post_date']))],
                 [
                     'Rating',
-                    sprintf(
-                        '%.1f/%d (%d votes)',
-                        $video['rating'] / Constants::RATING_DIVISOR,
-                        Constants::RATING_SCALE,
-                        $video['rating_amount']
-                    )
+                    $video['rating_amount'] > 0
+                        ? sprintf(
+                            '%.1f/%d (%d votes)',
+                            $video['rating'] / $video['rating_amount'],
+                            Constants::RATING_SCALE,
+                            $video['rating_amount']
+                        )
+                        : 'No ratings yet'
                 ],
                 ['Views', number_format($video['video_viewed'])],
                 ['Favourites', number_format($video['favourites_count'])],
@@ -328,7 +330,7 @@ HELP
                 'Active Videos' => "SELECT COUNT(*) FROM {$this->table('videos')} WHERE status_id = " . StatusFormatter::VIDEO_ACTIVE,
                 'Total Views' => "SELECT SUM(video_viewed) FROM {$this->table('videos')}",
                 'Total Duration' => "SELECT SUM(duration) FROM {$this->table('videos')}",
-                'Average Rating' => "SELECT AVG(rating) FROM {$this->table('videos')} WHERE rating_amount > 0",
+                'Average Rating' => "SELECT AVG(rating/rating_amount) FROM {$this->table('videos')} WHERE rating_amount > 0",
                 'Total Size' => "SELECT SUM(file_size) FROM {$this->table('videos')}",
             ];
 
@@ -338,7 +340,7 @@ HELP
                 if ($label === 'Total Duration') {
                     $value = $this->formatDuration((int)($value ?? 0));
                 } elseif ($label === 'Average Rating') {
-                    $value = $value ? sprintf('%.1f/%d', $value / Constants::RATING_DIVISOR, Constants::RATING_SCALE) : 'N/A';
+                    $value = $value ? sprintf('%.1f/%d', $value, Constants::RATING_SCALE) : 'N/A';
                 } elseif ($label === 'Total Size') {
                     $value = format_bytes((int)($value ?? 0));
                 } elseif (is_numeric($value)) {
@@ -517,7 +519,8 @@ HELP
 
         // Format rating
         if ($field === 'rating' && is_numeric($value)) {
-            return sprintf('%.1f', $value / Constants::RATING_DIVISOR);
+            $ratingAmount = (int)($video['rating_amount'] ?? 0);
+            return $ratingAmount > 0 ? sprintf('%.1f', $value / $ratingAmount) : '0.0';
         }
 
         // Format duration
