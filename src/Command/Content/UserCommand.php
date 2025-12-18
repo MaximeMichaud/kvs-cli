@@ -580,12 +580,12 @@ HELP
                 FROM {$this->table('users')} u
                 WHERE u.status_id = " . StatusFormatter::USER_ACTIVE . "
                 ORDER BY u.added_date DESC
-                LIMIT 10
+                LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
             $recentUsers = $stmt->fetchAll();
 
             if (!empty($recentUsers)) {
-                $this->io->section('10 Most Recent Users');
+                $this->io->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
                 $rows = [];
                 foreach ($recentUsers as $user) {
                     $rows[] = [

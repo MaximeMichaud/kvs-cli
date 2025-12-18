@@ -41,6 +41,9 @@ final class Constants
     /** Limit for "top" queries (top tags, recent comments, etc.) */
     public const TOP_QUERY_LIMIT = 10;
 
+    /** Limit for stats sampling queries (averages, etc.) */
+    public const STATS_SAMPLE_LIMIT = 100;
+
     // ========================================
     // FIELD DETECTION
     // ========================================

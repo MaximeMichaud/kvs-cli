@@ -349,7 +349,7 @@ HELP
                 FROM {$this->table('videos')} v
                 WHERE v.status_id = " . StatusFormatter::VIDEO_ACTIVE . "
                 ORDER BY v.video_viewed DESC
-                LIMIT 10
+                LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
             $topVideos = $stmt->fetchAll();
 

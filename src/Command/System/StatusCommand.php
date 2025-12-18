@@ -368,7 +368,7 @@ class StatusCommand extends BaseCommand
                 SELECT AVG(effective_duration) as avg_time
                 FROM " . $this->table('background_tasks') . "
                 WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND effective_duration > 0
-                LIMIT 100
+                LIMIT " . Constants::STATS_SAMPLE_LIMIT . "
             ");
             $avgTime = $stmt->fetchColumn();
             if ($avgTime) {
