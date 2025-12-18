@@ -51,7 +51,7 @@ class StatusCommand extends BaseCommand
             }
         }
 
-        $this->io->table(['Parameter', 'Value'], $info);
+        $this->renderTable(['Parameter', 'Value'], $info);
     }
 
     private function showDatabaseStatus(): void
@@ -89,7 +89,7 @@ class StatusCommand extends BaseCommand
             $this->io->warning('Could not fetch database statistics');
         }
 
-        $this->io->table(['Parameter', 'Value'], $info);
+        $this->renderTable(['Parameter', 'Value'], $info);
     }
 
     private function showSystemInfo(): void
@@ -119,7 +119,7 @@ class StatusCommand extends BaseCommand
             )];
         }
 
-        $this->io->table(['Parameter', 'Value'], $info);
+        $this->renderTable(['Parameter', 'Value'], $info);
     }
 
     private function showContentStats(): void
@@ -159,7 +159,7 @@ class StatusCommand extends BaseCommand
             return;
         }
 
-        $this->io->table(['Content Type', 'Count'], $stats);
+        $this->renderTable(['Content Type', 'Count'], $stats);
     }
 
     private function getOsInfo(): string
@@ -252,7 +252,7 @@ class StatusCommand extends BaseCommand
             $memcachedStatus['status']
         ];
 
-        $this->io->table(['Status', 'Service', 'Path/Host', 'Version'], $services);
+        $this->renderTable(['Status', 'Service', 'Path/Host', 'Version'], $services);
     }
 
     private function checkCommand(string $command, string $versionFlag = '--version'): array
@@ -371,7 +371,7 @@ class StatusCommand extends BaseCommand
                 $stats[] = ['Average Time', 'N/A'];
             }
 
-            $this->io->table(['Metric', 'Value'], $stats);
+            $this->renderTable(['Metric', 'Value'], $stats);
         } catch (\Exception $e) {
             $this->io->warning('Could not fetch conversion queue data: ' . $e->getMessage());
         }
@@ -422,7 +422,7 @@ class StatusCommand extends BaseCommand
         $storage[] = ['---', '---', '---'];
         $storage[] = ['Total Content', format_bytes($totalSize), ''];
 
-        $this->io->table(['Type', 'Size', 'Files'], $storage);
+        $this->renderTable(['Type', 'Size', 'Files'], $storage);
     }
 
     private function getDirectorySize(string $path): int
@@ -546,7 +546,7 @@ class StatusCommand extends BaseCommand
             $health[] = ['✗', 'PHP extensions', 'Missing: ' . implode(', ', $missingExtensions)];
         }
 
-        $this->io->table(['Status', 'Check', 'Result'], $health);
+        $this->renderTable(['Status', 'Check', 'Result'], $health);
     }
 
     private function showSecurityWarnings(): void
@@ -621,6 +621,6 @@ class StatusCommand extends BaseCommand
             $security[] = ['✓', 'PHP display_errors', 'DISABLED'];
         }
 
-        $this->io->table(['Status', 'Item', 'Details'], $security);
+        $this->renderTable(['Status', 'Item', 'Details'], $security);
     }
 }

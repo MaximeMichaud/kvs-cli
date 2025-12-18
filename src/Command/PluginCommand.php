@@ -161,7 +161,7 @@ HELP
             ['Valid', $plugin['is_invalid'] ? '<fg=red>No</>' : '<fg=green>Yes</>'],
         ];
 
-        $this->io->table(['Property', 'Value'], $info);
+        $this->renderTable(['Property', 'Value'], $info);
 
         if ($plugin['description']) {
             $this->io->section('Description');
@@ -226,7 +226,7 @@ HELP
             ['Invalid/Incompatible', $invalid > 0 ? "<fg=red>$invalid</>" : $invalid],
         ];
 
-        $this->io->table(['Metric', 'Count'], $stats);
+        $this->renderTable(['Metric', 'Count'], $stats);
 
         if (!empty($typeStats)) {
             $this->io->section('By Type');
@@ -234,7 +234,7 @@ HELP
             foreach ($typeStats as $type => $count) {
                 $typeRows[] = [ucfirst($type), $count];
             }
-            $this->io->table(['Type', 'Count'], $typeRows);
+            $this->renderTable(['Type', 'Count'], $typeRows);
         }
 
         return self::SUCCESS;

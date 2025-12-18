@@ -242,7 +242,7 @@ class BackupCommand extends BaseCommand
             ];
         }
 
-        $this->io->table(
+        $this->renderTable(
             ['Backup File', 'Size', 'Created'],
             $backups
         );

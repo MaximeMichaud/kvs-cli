@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command;
 
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
@@ -75,5 +76,17 @@ abstract class BaseCommand extends Command
             $this->io->error('Database connection failed: ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Render a table with consistent box style
+     */
+    protected function renderTable(array $headers, array $rows): void
+    {
+        $table = new Table($this->io);
+        $table->setStyle('box');
+        $table->setHeaders($headers);
+        $table->setRows($rows);
+        $table->render();
     }
 }

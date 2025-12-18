@@ -222,7 +222,7 @@ HELP
             $rows[] = $row;
         }
 
-        $this->io->table($headers, $rows);
+        $this->renderTable($headers, $rows);
         return self::SUCCESS;
     }
 
@@ -401,7 +401,7 @@ HELP
                 ['IP', $user['ip'] ?: 'N/A'],
             ];
 
-            $this->io->table(['Property', 'Value'], $info);
+            $this->renderTable(['Property', 'Value'], $info);
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM ktvs_videos WHERE user_id = :id");
             $stmt->execute(['id' => $user['user_id']]);
@@ -422,7 +422,7 @@ HELP
                 ['Comments Posted', $commentCount],
                 ['Profile Views', $user['profile_viewed'] ?? 0],
             ];
-            $this->io->table(['Metric', 'Count'], $stats);
+            $this->renderTable(['Metric', 'Count'], $stats);
 
             if ($user['tokens_available'] || $user['tokens_required']) {
                 $this->io->section('Token Information');
@@ -430,7 +430,7 @@ HELP
                     ['Available Tokens', $user['tokens_available'] ?? 0],
                     ['Required Tokens', $user['tokens_required'] ?? 0],
                 ];
-                $this->io->table(['Type', 'Amount'], $tokens);
+                $this->renderTable(['Type', 'Amount'], $tokens);
             }
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch user: ' . $e->getMessage());
@@ -569,7 +569,7 @@ HELP
                 $stats[] = [$label, number_format($value)];
             }
 
-            $this->io->table(['Metric', 'Count'], $stats);
+            $this->renderTable(['Metric', 'Count'], $stats);
 
             $stmt = $db->query("
                 SELECT u.username, u.added_date,
@@ -593,7 +593,7 @@ HELP
                         date('Y-m-d', strtotime($user['added_date'])),
                     ];
                 }
-                $this->io->table(['Username', 'Videos', 'Albums', 'Joined'], $rows);
+                $this->renderTable(['Username', 'Videos', 'Albums', 'Joined'], $rows);
             }
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch statistics: ' . $e->getMessage());

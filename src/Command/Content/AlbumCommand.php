@@ -174,7 +174,7 @@ HELP
                 ['Rating', sprintf('%.1f/5', $album['rating'] / 20)],
             ];
 
-            $this->io->table(['Property', 'Value'], $info);
+            $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch album: ' . $e->getMessage());
             return self::FAILURE;

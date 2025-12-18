@@ -191,7 +191,7 @@ HELP
                 ['Added', $category['added_date'] ?? 'N/A'],
             ];
 
-            $this->io->table(['Property', 'Value'], $info);
+            $this->renderTable(['Property', 'Value'], $info);
 
             if ($category['description']) {
                 $this->io->section('Description');
@@ -262,7 +262,7 @@ HELP
             $categoryId = $db->lastInsertId();
 
             $this->io->success("Category created successfully!");
-            $this->io->table(
+            $this->renderTable(
                 ['Property', 'Value'],
                 [
                     ['ID', $categoryId],

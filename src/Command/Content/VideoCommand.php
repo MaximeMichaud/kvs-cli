@@ -177,7 +177,7 @@ HELP
                 ['Views', number_format($video['video_viewed'])],
             ];
 
-            $this->io->table(['Property', 'Value'], $info);
+            $this->renderTable(['Property', 'Value'], $info);
 
             if ($video['description']) {
                 $this->io->section('Description');
@@ -331,7 +331,7 @@ HELP
                 $stats[] = [$label, $value];
             }
 
-            $this->io->table(['Metric', 'Value'], $stats);
+            $this->renderTable(['Metric', 'Value'], $stats);
 
             $stmt = $db->query("
                 SELECT v.title, v.video_viewed as views
@@ -352,7 +352,7 @@ HELP
                         number_format($video['views']),
                     ];
                 }
-                $this->io->table(['#', 'Title', 'Views'], $rows);
+                $this->renderTable(['#', 'Title', 'Views'], $rows);
             }
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch statistics: ' . $e->getMessage());
@@ -397,7 +397,7 @@ HELP
             $rows[] = $row;
         }
 
-        $this->io->table($headers, $rows);
+        $this->renderTable($headers, $rows);
         return self::SUCCESS;
     }
 

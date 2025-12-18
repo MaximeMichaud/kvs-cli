@@ -155,7 +155,7 @@ HELP
                 $info[] = ['Description', $dvd['description']];
             }
 
-            $this->io->table(['Field', 'Value'], $info);
+            $this->renderTable(['Field', 'Value'], $info);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -187,7 +187,7 @@ HELP
             $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
 
             $this->io->title('DVD Statistics');
-            $this->io->table(['Metric', 'Value'], $stats);
+            $this->renderTable(['Metric', 'Value'], $stats);
 
             return self::SUCCESS;
         } catch (\Exception $e) {

@@ -229,7 +229,7 @@ HELP
                 ['Posted', $comment['added_date']],
             ];
 
-            $this->io->table(['Property', 'Value'], $info);
+            $this->renderTable(['Property', 'Value'], $info);
 
             $this->io->section('Comment Text');
             $this->io->text($comment['comment']);
@@ -277,7 +277,7 @@ HELP
             }
 
             $this->io->section("Comment to Delete");
-            $this->io->table(
+            $this->renderTable(
                 ['Property', 'Value'],
                 [
                     ['ID', $comment['comment_id']],
@@ -350,7 +350,7 @@ HELP
             $this->io->title('Comment Statistics');
 
             $this->io->section('Overall Statistics');
-            $this->io->table(
+            $this->renderTable(
                 ['Metric', 'Value'],
                 [
                     ['Total Comments', number_format($overall['total_comments'])],
@@ -372,7 +372,7 @@ HELP
                         number_format($commenter['comment_count']),
                     ];
                 }
-                $this->io->table(['User', 'Comments'], $rows);
+                $this->renderTable(['User', 'Comments'], $rows);
             }
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch stats: ' . $e->getMessage());
