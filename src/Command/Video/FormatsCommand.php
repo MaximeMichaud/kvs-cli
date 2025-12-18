@@ -69,13 +69,13 @@ HELP
             return self::FAILURE;
         }
 
-        $contentPath = $this->config->getContentPath();
-        if (!$contentPath) {
-            $this->io->error('Content path not configured');
+        $videoSourcesPath = $this->config->getVideoSourcesPath();
+        if ($videoSourcesPath === '') {
+            $this->io->error('Video sources path not configured');
             return self::FAILURE;
         }
 
-        $videoPath = "$contentPath/videos/$videoId";
+        $videoPath = "$videoSourcesPath/$videoId";
 
         if (!is_dir($videoPath)) {
             $this->io->error("Video directory not found: $videoPath");
@@ -140,13 +140,13 @@ HELP
             return self::FAILURE;
         }
 
-        $contentPath = $this->config->getContentPath();
-        if (!$contentPath) {
-            $this->io->error('Content path not configured');
+        $videoSourcesPath = $this->config->getVideoSourcesPath();
+        if ($videoSourcesPath === '') {
+            $this->io->error('Video sources path not configured');
             return self::FAILURE;
         }
 
-        $videoPath = "$contentPath/videos/$videoId";
+        $videoPath = "$videoSourcesPath/$videoId";
 
         if (!is_dir($videoPath)) {
             $this->io->error("Video directory not found for video ID: $videoId");

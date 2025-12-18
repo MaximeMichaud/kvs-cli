@@ -169,7 +169,34 @@ class Configuration
     {
         // KVS stores content in project_path/contents/
         $projectPath = $this->config['project_path'] ?? dirname($this->kvsPath);
-        return $projectPath . '/contents';
+        return $projectPath . '/' . Constants::CONTENT_DIR;
+    }
+
+    /**
+     * Get path for video source files
+     */
+    public function getVideoSourcesPath(): string
+    {
+        return $this->config['content_path_videos_sources']
+            ?? $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SOURCES;
+    }
+
+    /**
+     * Get path for video screenshots
+     */
+    public function getVideoScreenshotsPath(): string
+    {
+        return $this->config['content_path_videos_screenshots']
+            ?? $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SCREENSHOTS;
+    }
+
+    /**
+     * Get path for album source files
+     */
+    public function getAlbumSourcesPath(): string
+    {
+        return $this->config['content_path_albums_sources']
+            ?? $this->getContentPath() . '/' . Constants::CONTENT_ALBUMS_SOURCES;
     }
 
     public function getDatabaseConfig(): array

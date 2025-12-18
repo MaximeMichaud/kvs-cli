@@ -113,4 +113,35 @@ final class Constants
 
     /** Hours for "recent activity" queries */
     public const RECENT_HOURS = 24;
+
+    // ========================================
+    // CONTENT DIRECTORY NAMES (KVS structure)
+    // ========================================
+
+    /** Base content directory name */
+    public const CONTENT_DIR = 'contents';
+
+    /** Video source files directory */
+    public const CONTENT_VIDEOS_SOURCES = 'videos_sources';
+
+    /** Video screenshots directory */
+    public const CONTENT_VIDEOS_SCREENSHOTS = 'videos_screenshots';
+
+    /** Album source files directory */
+    public const CONTENT_ALBUMS_SOURCES = 'albums_sources';
+
+    /** Category images directory */
+    public const CONTENT_CATEGORIES = 'categories';
+
+    /** Model images directory */
+    public const CONTENT_MODELS = 'models';
+
+    /** DVD images directory */
+    public const CONTENT_DVDS = 'dvds';
+
+    /** User avatars directory */
+    public const CONTENT_AVATARS = 'avatars';
+
+    /** Posts/content sources directory */
+    public const CONTENT_POSTS = 'posts';
 }
