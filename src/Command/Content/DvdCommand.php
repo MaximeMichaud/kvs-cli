@@ -36,12 +36,18 @@ Manage KVS DVDs (channels/series/collections).
   id, dvd_id      DVD ID
   title           DVD/channel name
   status          Status (Active/Disabled)
+  videos          Total videos
+  duration        Total duration
+  release_year    Release year
+  views           View count
+  rating          Average rating
+  subscribers     Subscriber count
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs dvd list</>
   <fg=green>kvs dvd list --status=active</>
   <fg=green>kvs dvd list --search="Series"</>
-  <fg=green>kvs dvd list --fields=id,title,videos,views</>
+  <fg=green>kvs dvd list --fields=id,title,videos,views,release_year</>
   <fg=green>kvs dvd list --format=json</>
   <fg=green>kvs dvd list --format=count</>
   <fg=green>kvs dvd show 123</>
@@ -103,12 +109,39 @@ HELP
 
             $dvds = $stmt->fetchAll();
 
+            // Transform DVDs for display (field aliases)
+            $transformedDvds = array_map(function ($dvd) {
+                // Calculate rating
+                $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
+                $calculatedRating = $ratingAmount > 0
+                    ? round($dvd['rating'] / $ratingAmount, 1)
+                    : 0;
+
+                return [
+                    'dvd_id' => $dvd['dvd_id'],
+                    'id' => $dvd['dvd_id'],
+                    'title' => $dvd['title'],
+                    'status_id' => $dvd['status_id'],
+                    'status' => StatusFormatter::dvd((int)$dvd['status_id'], false),
+                    'total_videos' => $dvd['total_videos'] ?? 0,
+                    'videos' => $dvd['total_videos'] ?? 0,
+                    'total_videos_duration' => $dvd['total_videos_duration'] ?? 0,
+                    'duration' => $dvd['total_videos_duration'] ?? 0,
+                    'release_year' => $dvd['release_year'] ?? '',
+                    'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
+                    'views' => $dvd['dvd_viewed'] ?? 0,
+                    'subscribers_count' => $dvd['subscribers_count'] ?? 0,
+                    'subscribers' => $dvd['subscribers_count'] ?? 0,
+                    'rating' => $calculatedRating,
+                ];
+            }, $dvds);
+
             // Default fields
-            $defaultFields = ['dvd_id', 'title', 'status_id'];
+            $defaultFields = ['dvd_id', 'title', 'status_id', 'total_videos'];
 
             // Format and display using Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
-            $formatter->display($dvds, $this->io);
+            $formatter->display($transformedDvds, $this->io);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -149,8 +182,34 @@ HELP
             $info = [
                 ['DVD ID', $dvd['dvd_id']],
                 ['Title', $dvd['title']],
-                ['Status', $dvd['status_id'] == 1 ? 'Active' : 'Disabled'],
+                ['Status', StatusFormatter::dvd((int)$dvd['status_id'])],
+                ['Videos', number_format($dvd['total_videos'] ?? 0)],
+                ['Views', number_format($dvd['dvd_viewed'] ?? 0)],
             ];
+
+            // Duration
+            $duration = (int)($dvd['total_videos_duration'] ?? 0);
+            if ($duration > 0) {
+                $hours = floor($duration / 3600);
+                $minutes = floor(($duration % 3600) / 60);
+                $info[] = ['Total Duration', sprintf('%dh %dm', $hours, $minutes)];
+            }
+
+            // Release year
+            if (!empty($dvd['release_year'])) {
+                $info[] = ['Release Year', $dvd['release_year']];
+            }
+
+            // Rating
+            $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
+            if ($ratingAmount > 0) {
+                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', $dvd['rating'] / $ratingAmount, $ratingAmount)];
+            }
+
+            // Subscribers
+            if (!empty($dvd['subscribers_count'])) {
+                $info[] = ['Subscribers', number_format($dvd['subscribers_count'])];
+            }
 
             if (!empty($dvd['description'])) {
                 $info[] = ['Description', $dvd['description']];

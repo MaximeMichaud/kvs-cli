@@ -37,14 +37,21 @@ Manage KVS models (performers/actors).
   title           Model/performer name
   status          Status (Active/Disabled)
   videos          Number of videos
+  albums          Number of albums
   rating          Average rating
   views           Total profile views
+  country         Country name
+  birth_date      Birth date
+  age             Age (years)
+  measurements    Body measurements
+  height, weight  Physical attributes
+  rank            Model rank
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs model list</>
   <fg=green>kvs model list --status=active</>
   <fg=green>kvs model list --search="Jane"</>
-  <fg=green>kvs model list --fields=id,title,videos,rating</>
+  <fg=green>kvs model list --fields=id,title,videos,country,rank</>
   <fg=green>kvs model list --format=json</>
   <fg=green>kvs model list --format=count</>
   <fg=green>kvs model show 123</>
@@ -72,10 +79,13 @@ HELP
             return self::FAILURE;
         }
 
-        // Build query with video count
+        // Build query with video count and country
         $query = "SELECT m.*,
-                 (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count
+                 (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
+                 (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
+                 c.title as country_name
                  FROM {$this->table('models')} m
+                 LEFT JOIN {$this->table('countries')} c ON m.country_id = c.country_id
                  WHERE 1=1";
 
         $params = [];
@@ -107,12 +117,44 @@ HELP
 
             $models = $stmt->fetchAll();
 
+            // Transform models for display (field aliases)
+            $transformedModels = array_map(function ($model) {
+                // Calculate rating
+                $ratingAmount = (int)($model['rating_amount'] ?? 0);
+                $calculatedRating = $ratingAmount > 0
+                    ? round($model['rating'] / $ratingAmount, 1)
+                    : 0;
+
+                return [
+                    'model_id' => $model['model_id'],
+                    'id' => $model['model_id'],
+                    'title' => $model['title'],
+                    'status_id' => $model['status_id'],
+                    'status' => StatusFormatter::model((int)$model['status_id'], false),
+                    'video_count' => $model['video_count'],
+                    'videos' => $model['video_count'],
+                    'album_count' => $model['album_count'],
+                    'albums' => $model['album_count'],
+                    'model_viewed' => $model['model_viewed'] ?? 0,
+                    'views' => $model['model_viewed'] ?? 0,
+                    'country_name' => $model['country_name'] ?? '',
+                    'country' => $model['country_name'] ?? '',
+                    'birth_date' => $model['birth_date'] ?? '',
+                    'age' => $model['age'] ?? '',
+                    'measurements' => $model['measurements'] ?? '',
+                    'height' => $model['height'] ?? '',
+                    'weight' => $model['weight'] ?? '',
+                    'rank' => $model['rank'] ?? '',
+                    'rating' => $calculatedRating,
+                ];
+            }, $models);
+
             // Default fields
             $defaultFields = ['model_id', 'title', 'status_id', 'video_count'];
 
             // Format and display using Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
-            $formatter->display($models, $this->io);
+            $formatter->display($transformedModels, $this->io);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -136,8 +178,11 @@ HELP
         try {
             $stmt = $db->prepare("
                 SELECT m.*,
-                       (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count
+                       (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
+                       (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
+                       c.title as country_name
                 FROM {$this->table('models')} m
+                LEFT JOIN {$this->table('countries')} c ON m.country_id = c.country_id
                 WHERE m.model_id = :id
             ");
             $stmt->execute(['id' => $id]);
@@ -154,9 +199,42 @@ HELP
             $info = [
                 ['Model ID', $model['model_id']],
                 ['Name', $model['title']],
-                ['Status', $model['status_id'] == 1 ? 'Active' : 'Disabled'],
-                ['Videos', $model['video_count']],
+                ['Status', StatusFormatter::model((int)$model['status_id'])],
+                ['Videos', number_format($model['video_count'])],
+                ['Albums', number_format($model['album_count'])],
+                ['Views', number_format($model['model_viewed'] ?? 0)],
             ];
+
+            // Rating
+            $ratingAmount = (int)($model['rating_amount'] ?? 0);
+            if ($ratingAmount > 0) {
+                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', $model['rating'] / $ratingAmount, $ratingAmount)];
+            }
+
+            // Rank
+            if (!empty($model['rank'])) {
+                $info[] = ['Rank', '#' . number_format($model['rank'])];
+            }
+
+            // Country
+            if (!empty($model['country_name'])) {
+                $info[] = ['Country', $model['country_name']];
+            }
+
+            // Personal info
+            if (!empty($model['birth_date'])) {
+                $age = $model['age'] ?? '';
+                $info[] = ['Birth Date', $model['birth_date'] . ($age ? " (age $age)" : '')];
+            }
+            if (!empty($model['measurements'])) {
+                $info[] = ['Measurements', $model['measurements']];
+            }
+            if (!empty($model['height'])) {
+                $info[] = ['Height', $model['height']];
+            }
+            if (!empty($model['weight'])) {
+                $info[] = ['Weight', $model['weight']];
+            }
 
             if (!empty($model['description'])) {
                 $info[] = ['Description', $model['description']];

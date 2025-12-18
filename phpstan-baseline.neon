@@ -255,13 +255,7 @@ parameters:
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
-			count: 1
-			path: src/Command/Content/DvdCommand.php
-
-		-
-			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
-			identifier: equal.notAllowed
-			count: 1
+			count: 3
 			path: src/Command/Content/DvdCommand.php
 
 		-
@@ -291,13 +285,7 @@ parameters:
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
-			count: 1
-			path: src/Command/Content/ModelCommand.php
-
-		-
-			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
-			identifier: equal.notAllowed
-			count: 1
+			count: 7
 			path: src/Command/Content/ModelCommand.php
 
 		-
@@ -315,6 +303,12 @@ parameters:
 		-
 			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
+			count: 1
+			path: src/Command/Content/ModelCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a ternary operator condition, mixed given\.$#'
+			identifier: ternary.condNotBoolean
 			count: 1
 			path: src/Command/Content/ModelCommand.php
 
