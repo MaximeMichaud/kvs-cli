@@ -113,8 +113,8 @@ Execute PHP code with full KVS context:
 
 ```bash
 # Model helpers
-kvs eval 'echo User::count();'
-kvs eval 'print_r(User::find(123));'
+kvs eval 'echo User::count() . "\n";'
+kvs eval 'print_r(User::find(1));'
 kvs eval 'foreach(Video::all(10) as $v) { echo $v["title"] . "\n"; }'
 
 # Database queries
