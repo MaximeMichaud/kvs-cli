@@ -218,4 +218,9 @@ class Configuration
     {
         return $this->config['tables_prefix'] ?? Constants::DEFAULT_TABLE_PREFIX;
     }
+
+    public function getKvsVersion(): string
+    {
+        return $this->config['project_version'] ?? '';
+    }
 }

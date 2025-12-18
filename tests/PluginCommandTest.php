@@ -146,23 +146,19 @@ class PluginCommandTest extends TestCase
         }
     }
 
-    public function testOutputFormatMethodsExist(): void
+    public function testPluginValidationMethodsExist(): void
     {
         $reflection = new \ReflectionClass(PluginCommand::class);
 
-        // Test all format output methods exist
-        $this->assertTrue($reflection->hasMethod('outputTable'));
-        $this->assertTrue($reflection->hasMethod('outputCSV'));
-        $this->assertTrue($reflection->hasMethod('outputJSON'));
-        $this->assertTrue($reflection->hasMethod('outputYAML'));
-        $this->assertTrue($reflection->hasMethod('outputSingleField'));
+        // Test validation methods exist
+        $this->assertTrue($reflection->hasMethod('checkPhpSyntax'));
+        $this->assertTrue($reflection->hasMethod('checkVersionCompatibility'));
+        $this->assertTrue($reflection->hasMethod('checkPluginEnabled'));
 
         // Verify they are private
-        $this->assertTrue($reflection->getMethod('outputTable')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputCSV')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputJSON')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputYAML')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputSingleField')->isPrivate());
+        $this->assertTrue($reflection->getMethod('checkPhpSyntax')->isPrivate());
+        $this->assertTrue($reflection->getMethod('checkVersionCompatibility')->isPrivate());
+        $this->assertTrue($reflection->getMethod('checkPluginEnabled')->isPrivate());
     }
 
     // ========================================
@@ -404,7 +400,7 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Total Plugins', $output);
         $this->assertStringContainsString('Active', $output);
         $this->assertStringContainsString('Inactive', $output);
-        $this->assertStringContainsString('Invalid/Incompatible', $output);
+        // Note: Missing Files, Syntax Errors, Incompatible only shown if issues exist
 
         // Should have numeric values in table
         $this->assertMatchesRegularExpression('/\d+/', $output, 'Should contain numeric statistics');
@@ -685,19 +681,19 @@ class PluginCommandTest extends TestCase
     // PRIVATE METHOD TESTS (2 tests)
     // ========================================
 
-    public function testGetFieldValueMethodExists(): void
+    public function testParsePluginMethodExists(): void
     {
         $reflection = new \ReflectionClass(PluginCommand::class);
-        $this->assertTrue($reflection->hasMethod('getFieldValue'));
+        $this->assertTrue($reflection->hasMethod('parsePlugin'));
 
-        $method = $reflection->getMethod('getFieldValue');
+        $method = $reflection->getMethod('parsePlugin');
         $this->assertTrue($method->isPrivate());
 
         // Test method parameters
         $params = $method->getParameters();
         $this->assertCount(2, $params);
-        $this->assertEquals('plugin', $params[0]->getName());
-        $this->assertEquals('field', $params[1]->getName());
+        $this->assertEquals('id', $params[0]->getName());
+        $this->assertEquals('path', $params[1]->getName());
     }
 
     public function testPluginParsingMethodsExist(): void
@@ -731,17 +727,14 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Name', $output);
     }
 
-    public function testInvalidFormatDefaultsToTable(): void
+    public function testInvalidFormatThrowsException(): void
     {
-        $exitCode = $this->tester->execute([
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid format: invalid_format');
+
+        $this->tester->execute([
             'action' => 'list',
             '--format' => 'invalid_format'
         ]);
-        $output = $this->tester->getDisplay();
-
-        // Should default to table format
-        $this->assertEquals(0, $exitCode);
-        $this->assertStringContainsString('Name', $output);
-        $this->assertMatchesRegularExpression('/[-\s]{10,}/', $output, 'Should use table format as default');
     }
 }
