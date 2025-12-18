@@ -384,16 +384,8 @@ HELP
             return $plugin;
         }
 
-        // Check PHP syntax with php -l
+        // Check PHP syntax with php -l (works with ionCube if loader is installed)
         $plugin['syntax_ok'] = $this->checkPhpSyntax($phpFile);
-
-        // Check {pluginId}Show function exists
-        if ($plugin['syntax_ok']) {
-            $phpContent = file_get_contents($phpFile);
-            if (!preg_match("/function\s+{$id}Show\s*\(/", $phpContent)) {
-                $plugin['syntax_ok'] = false;
-            }
-        }
 
         // Check KVS version compatibility
         if (isset($plugin['kvs_version']) && $plugin['kvs_version'] !== '') {
