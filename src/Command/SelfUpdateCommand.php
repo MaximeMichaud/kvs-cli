@@ -19,6 +19,7 @@ class SelfUpdateCommand extends Command
 {
     private const GITHUB_REPO = 'MaximeMichaud/kvs-cli';
     private const PHAR_NAME = 'kvs.phar';
+    private const NIGHTLY_URL = 'https://nightly.link/MaximeMichaud/kvs-cli/workflows/ci/dev/kvs-cli-phar.zip';
 
     protected function configure(): void
     {
@@ -28,6 +29,7 @@ class SelfUpdateCommand extends Command
             ->setDescription('Updates KVS CLI to the latest version')
             ->addOption('stable', null, InputOption::VALUE_NONE, 'Update to latest stable release')
             ->addOption('preview', null, InputOption::VALUE_NONE, 'Include pre-release versions')
+            ->addOption('dev', null, InputOption::VALUE_NONE, 'Update to latest dev build from CI')
             ->addOption('check', null, InputOption::VALUE_NONE, 'Only check for updates, do not install')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompt')
             ->setHelp(<<<'HELP'
@@ -38,6 +40,7 @@ version, and prompt if one is available.
 
 Use <info>--stable</info> to force update to the latest stable release.
 Use <info>--preview</info> to include pre-release (beta) versions.
+Use <info>--dev</info> to update to the latest dev build from CI (nightly).
 Use <info>--check</info> to only check for updates without installing.
 
 Only works for PHAR installations.
@@ -46,6 +49,7 @@ Only works for PHAR installations.
   <comment>kvs self-update</comment>              Check and update to latest version
   <comment>kvs self-update --check</comment>      Only check for available updates
   <comment>kvs self-update --preview</comment>    Include beta versions
+  <comment>kvs self-update --dev</comment>        Update to latest dev build
   <comment>kvs self-update --yes</comment>        Update without confirmation
 HELP
             );
@@ -78,6 +82,12 @@ HELP
         }
 
         $io->text(sprintf('Current version: <info>%s</info>', $currentVersion));
+
+        // Handle --dev option (download from nightly.link)
+        if ((bool) $input->getOption('dev')) {
+            return $this->updateFromDev($io, $input, $currentPhar);
+        }
+
         $io->text('Checking for updates...');
 
         // Get available releases
@@ -302,5 +312,107 @@ HELP
 
         $io->text('New version verified.');
         return true;
+    }
+
+    private function updateFromDev(SymfonyStyle $io, InputInterface $input, string $currentPhar): int
+    {
+        $io->text('Fetching latest dev build from CI...');
+
+        // Download ZIP from nightly.link
+        $tempZip = sys_get_temp_dir() . '/kvs-dev-' . uniqid() . '.zip';
+
+        if (!$this->downloadFile(self::NIGHTLY_URL, $tempZip, $io)) {
+            return Command::FAILURE;
+        }
+
+        // Extract PHAR from ZIP
+        $io->text('Extracting...');
+        $tempDir = sys_get_temp_dir() . '/kvs-dev-' . uniqid();
+
+        $zip = new \ZipArchive();
+        if ($zip->open($tempZip) !== true) {
+            $io->error('Failed to open downloaded ZIP file.');
+            @unlink($tempZip);
+            return Command::FAILURE;
+        }
+
+        $zip->extractTo($tempDir);
+        $zip->close();
+        @unlink($tempZip);
+
+        // Find the PHAR file in extracted contents
+        $pharFile = $tempDir . '/' . self::PHAR_NAME;
+        if (!file_exists($pharFile)) {
+            $io->error('PHAR file not found in downloaded archive.');
+            $this->cleanupDir($tempDir);
+            return Command::FAILURE;
+        }
+
+        // Confirm update
+        if (!(bool) $input->getOption('yes')) {
+            $io->warning('Dev builds may be unstable.');
+            if (!$io->confirm('Update to latest dev build?', false)) {
+                $io->text('Update cancelled.');
+                $this->cleanupDir($tempDir);
+                return Command::SUCCESS;
+            }
+        }
+
+        // Verify the PHAR works
+        $io->text('Verifying...');
+        if (!$this->verifyPhar($pharFile, $io)) {
+            $this->cleanupDir($tempDir);
+            return Command::FAILURE;
+        }
+
+        // Install
+        $io->text('Installing...');
+        $mode = fileperms($currentPhar) & 0777;
+
+        if (!@chmod($pharFile, $mode)) {
+            $io->error('Cannot set permissions.');
+            $this->cleanupDir($tempDir);
+            return Command::FAILURE;
+        }
+
+        if (!@rename($pharFile, $currentPhar)) {
+            $io->error(sprintf('Cannot replace %s', $currentPhar));
+            $io->text('Try: sudo kvs self-update --dev');
+            $this->cleanupDir($tempDir);
+            return Command::FAILURE;
+        }
+
+        $this->cleanupDir($tempDir);
+
+        // Get new version
+        $output = [];
+        exec(sprintf('%s %s --version 2>&1', escapeshellarg(PHP_BINARY), escapeshellarg($currentPhar)), $output);
+        $newVersion = trim(implode('', $output));
+
+        $io->success(sprintf('Updated to dev build: %s', $newVersion));
+
+        return Command::SUCCESS;
+    }
+
+    private function cleanupDir(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $files = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($files as $file) {
+            if ($file->isDir()) {
+                @rmdir($file->getRealPath());
+            } else {
+                @unlink($file->getRealPath());
+            }
+        }
+
+        @rmdir($dir);
     }
 }
