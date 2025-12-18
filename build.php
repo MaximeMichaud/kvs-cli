@@ -35,6 +35,9 @@ try {
     echo "📁 Adding source files...\n";
     $phar->buildFromDirectory($sourceDir, '/\.(php|json)$/');
 
+    // Add VERSION file
+    $phar->addFile($sourceDir . '/VERSION', 'VERSION');
+
     // Set stub (entry point) - use Unix line endings
     $stub = "#!/usr/bin/env php\n" .
             "<?php\n" .
