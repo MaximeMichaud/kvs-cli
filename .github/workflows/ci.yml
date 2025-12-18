@@ -5,8 +5,26 @@ permissions:
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.editorconfig'
+      - '.pre-commit-config.yaml'
+      - '.github/CODEOWNERS'
+      - '.github/dependabot.yml'
   pull_request:
     branches: [main, dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.editorconfig'
+      - '.pre-commit-config.yaml'
+      - '.github/CODEOWNERS'
+      - '.github/dependabot.yml'
 
 jobs:
   test:
