@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -136,9 +137,11 @@ class StatusCommand extends BaseCommand
 
         try {
             $queries = [
-                'Videos' => "SELECT COUNT(*) FROM " . $this->table('videos') . " WHERE status_id = 1",
-                'Albums' => "SELECT COUNT(*) FROM " . $this->table('albums') . " WHERE status_id = 1",
-                'Users' => "SELECT COUNT(*) FROM " . $this->table('users') . " WHERE status_id NOT IN (0,1)",
+                'Videos' => "SELECT COUNT(*) FROM " . $this->table('videos') . " WHERE status_id = " . StatusFormatter::VIDEO_ACTIVE,
+                'Albums' => "SELECT COUNT(*) FROM " . $this->table('albums') . " WHERE status_id = " . StatusFormatter::ALBUM_ACTIVE,
+                'Users' => "SELECT COUNT(*) FROM " . $this->table('users')
+                    . " WHERE status_id NOT IN (" . StatusFormatter::USER_DISABLED
+                    . "," . StatusFormatter::USER_NOT_CONFIRMED . ")",
                 'Categories' => "SELECT COUNT(*) FROM " . $this->table('categories') . "",
                 'Tags' => "SELECT COUNT(*) FROM " . $this->table('tags') . "",
                 'Models' => "SELECT COUNT(*) FROM " . $this->table('models') . "",
@@ -341,18 +344,18 @@ class StatusCommand extends BaseCommand
             $stats = [];
 
             // Pending tasks
-            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = 0");
+            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = " . StatusFormatter::TASK_PENDING);
             $pending = $stmt->fetchColumn();
             $stats[] = ['Pending', number_format($pending)];
 
             // Processing tasks
-            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = 1");
+            $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = " . StatusFormatter::TASK_PROCESSING);
             $processing = $stmt->fetchColumn();
             $stats[] = ['Processing', number_format($processing)];
 
             // Failed tasks (last 24h)
             $sql = "SELECT COUNT(*) FROM " . $this->table('background_tasks')
-                . " WHERE status_id = 2 AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)";
+                . " WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND added_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)";
             $stmt = $db->query($sql);
             $failed = $stmt->fetchColumn();
             $stats[] = ['Failed (24h)', number_format($failed)];
@@ -361,7 +364,7 @@ class StatusCommand extends BaseCommand
             $stmt = $db->query("
                 SELECT AVG(TIMESTAMPDIFF(SECOND, start_date, end_date)) as avg_time
                 FROM " . $this->table('background_tasks') . "
-                WHERE status_id = 3 AND start_date IS NOT NULL AND end_date IS NOT NULL
+                WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND start_date IS NOT NULL AND end_date IS NOT NULL
                 LIMIT 100
             ");
             $avgTime = $stmt->fetchColumn();

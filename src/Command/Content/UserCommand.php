@@ -557,9 +557,9 @@ HELP
 
             $queries = [
                 'Total Users' => "SELECT COUNT(*) FROM {$this->table('users')}",
-                'Active Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 2",
-                'Premium Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 3",
-                'Disabled Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = 0",
+                'Active Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_ACTIVE,
+                'Premium Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_PREMIUM,
+                'Disabled Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_DISABLED,
                 'Users Today' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE DATE(added_date) = CURDATE()",
                 'Users This Month' => "SELECT COUNT(*) FROM {$this->table('users')} "
                     . "WHERE MONTH(added_date) = MONTH(NOW()) AND YEAR(added_date) = YEAR(NOW())",
@@ -577,7 +577,7 @@ HELP
                        (SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = u.user_id) as videos,
                        (SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = u.user_id) as albums
                 FROM {$this->table('users')} u
-                WHERE u.status_id = 2
+                WHERE u.status_id = " . StatusFormatter::USER_ACTIVE . "
                 ORDER BY u.added_date DESC
                 LIMIT 10
             ");

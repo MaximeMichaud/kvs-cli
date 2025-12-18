@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Video;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Output\Formatter;
+use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -254,9 +255,9 @@ HELP
                     title,
                     postfix,
                     CASE
-                        WHEN status_id = 0 THEN 'Disabled'
-                        WHEN status_id = 1 THEN 'Active'
-                        WHEN status_id = 2 THEN 'Processing'
+                        WHEN status_id = " . StatusFormatter::FORMAT_DISABLED . " THEN 'Disabled'
+                        WHEN status_id = " . StatusFormatter::FORMAT_ACTIVE . " THEN 'Active'
+                        WHEN status_id = " . StatusFormatter::FORMAT_PROCESSING . " THEN 'Processing'
                         ELSE 'Unknown'
                     END as status,
                     format_video_group_id as group_id,
