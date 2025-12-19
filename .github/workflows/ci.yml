@@ -169,7 +169,7 @@ jobs:
             ${{ runner.os }}-php-8.1-composer-
 
       - name: Install dependencies (no dev)
-        run: composer install --prefer-dist --no-progress --no-interaction --no-dev
+        run: composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader
 
       - name: Set dev version
         if: github.ref == 'refs/heads/dev'
