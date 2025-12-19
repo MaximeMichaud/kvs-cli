@@ -14,6 +14,8 @@ Tested with KVS 6.3.2.
 - **Multiple output formats** - JSON, CSV, YAML, table, count, ids for all list commands
 - **Interactive shell** - PHP REPL with KVS context loaded
 - **Advanced eval** - Execute PHP with Model helpers, DB queries, and KVS context variables
+- **Shell completion** - Tab completion for bash, zsh, and fish
+- **Self-update** - Update directly from CLI with stable, preview, or dev builds
 - **PHAR distribution** - Single executable file, no dependencies required
 
 ## Installation
@@ -53,10 +55,28 @@ kvs system:status
 kvs self-update              # Check and update to latest version
 kvs self-update --check      # Only check for available updates
 kvs self-update --preview    # Include pre-release versions
+kvs self-update --dev        # Update to latest dev build from CI
 kvs self-update --yes        # Update without confirmation
 ```
 
 If owned by root, use `sudo kvs self-update`.
+
+## Shell Completion
+
+Tab completion is available for bash, zsh, and fish:
+
+```bash
+# Bash
+kvs completion bash >> ~/.bash_completion
+
+# Zsh
+kvs completion zsh > ~/.zsh/completion/_kvs
+
+# Fish
+kvs completion fish > ~/.config/fish/completions/kvs.fish
+```
+
+Restart your shell or source your config file to enable.
 
 ## Commands
 
