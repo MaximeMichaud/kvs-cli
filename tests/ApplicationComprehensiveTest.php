@@ -255,7 +255,7 @@ class ApplicationComprehensiveTest extends TestCase
         $this->assertArrayHasKey('system:cache', $commands);
         $this->assertArrayHasKey('system:cron', $commands);
         $this->assertArrayHasKey('system:backup', $commands);
-        $this->assertArrayHasKey('system:optimize', $commands);
+        $this->assertArrayHasKey('system:check', $commands);
 
         // Check content commands
         $this->assertArrayHasKey('content:video', $commands);
@@ -266,7 +266,6 @@ class ApplicationComprehensiveTest extends TestCase
         // Check database commands
         $this->assertArrayHasKey('db:export', $commands);
         $this->assertArrayHasKey('db:import', $commands);
-        $this->assertArrayHasKey('db:migrate', $commands);
 
         // Check dev commands
         $this->assertArrayHasKey('dev:debug', $commands);

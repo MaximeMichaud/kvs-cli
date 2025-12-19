@@ -223,7 +223,12 @@ class Application extends BaseApplication
             return parent::find($name);
         } catch (CommandNotFoundException $e) {
             // If command not found and no KVS detected, show helpful message
-            if (!$this->config || !$this->config->isKvsInstalled()) {
+            if ($this->config === null || !$this->config->isKvsInstalled()) {
+                // If autoExit is disabled (testing), just re-throw
+                if (!$this->isAutoExitEnabled()) {
+                    throw $e;
+                }
+
                 $io = new SymfonyStyle(new ArgvInput(), new ConsoleOutput());
                 $io->error('KVS installation not found');
                 $io->text('Cannot run KVS commands outside of a KVS installation directory.');

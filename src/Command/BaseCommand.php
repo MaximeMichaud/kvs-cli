@@ -53,12 +53,14 @@ abstract class BaseCommand extends Command
         return implode("\n", $output);
     }
 
-    protected function getDatabaseConnection(): ?\PDO
+    protected function getDatabaseConnection(bool $quiet = false): ?\PDO
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
         if (empty($dbConfig)) {
-            $this->io->error('Database configuration not found');
+            if (!$quiet) {
+                $this->io->error('Database configuration not found');
+            }
             return null;
         }
 
@@ -74,7 +76,9 @@ abstract class BaseCommand extends Command
                 \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
             ]);
         } catch (\PDOException $e) {
-            $this->io->error('Database connection failed: ' . $e->getMessage());
+            if (!$quiet) {
+                $this->io->error('Database connection failed: ' . $e->getMessage());
+            }
             return null;
         }
     }
