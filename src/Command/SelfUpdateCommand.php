@@ -315,9 +315,20 @@ HELP
     {
         $io->text('Fetching latest dev build from CI...');
 
-        // Download ZIP from nightly.link
+        // Get latest successful workflow run ID to avoid nightly.link cache issues
+        $runId = $this->getLatestWorkflowRunId($io);
+        if ($runId === null) {
+            return Command::FAILURE;
+        }
+
+        // Download ZIP from nightly.link using run-specific URL
         $tempZip = sys_get_temp_dir() . '/kvs-dev-' . uniqid() . '.zip';
-        $nightlyUrl = sprintf(Constants::NIGHTLY_URL, Constants::GITHUB_REPO);
+        $nightlyUrl = sprintf(
+            'https://nightly.link/%s/actions/runs/%s/%s.zip',
+            Constants::GITHUB_REPO,
+            $runId,
+            'kvs-cli-phar'
+        );
 
         if (!$this->downloadFile($nightlyUrl, $tempZip, $io)) {
             return Command::FAILURE;
@@ -390,6 +401,41 @@ HELP
         $io->success(sprintf('Updated to dev build: %s', $newVersion));
 
         return Command::SUCCESS;
+    }
+
+    private function getLatestWorkflowRunId(SymfonyStyle $io): ?string
+    {
+        $url = sprintf(
+            'https://api.github.com/repos/%s/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=1',
+            Constants::GITHUB_REPO
+        );
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => [
+                    'User-Agent: KVS-CLI',
+                    'Accept: application/vnd.github.v3+json',
+                ],
+                'timeout' => 30,
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+
+        if ($response === false) {
+            $io->error('Failed to fetch workflow runs from GitHub.');
+            return null;
+        }
+
+        $data = json_decode($response, true);
+
+        if (!is_array($data) || !isset($data['workflow_runs'][0]['id'])) {
+            $io->error('No successful workflow runs found.');
+            return null;
+        }
+
+        return (string) $data['workflow_runs'][0]['id'];
     }
 
     private function cleanupDir(string $dir): void
