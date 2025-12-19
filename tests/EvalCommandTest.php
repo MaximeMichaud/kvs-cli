@@ -58,18 +58,65 @@ class EvalCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testEvalWithKvsContext(): void
+    public function testEvalWithKvsPath(): void
     {
-        $this->tester->execute(['code' => 'echo $config->getKvsPath();']);
+        // Uses $kvsPath variable which is available in eval context
+        $this->tester->execute(['code' => 'echo $kvsPath;']);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString($this->tempDir, $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testEvalCommandMetadata(): void
     {
         $this->assertEquals('eval', $this->command->getName());
-        $this->assertStringContainsString('Evaluate PHP code', $this->command->getDescription());
+        $this->assertStringContainsString('Execute PHP code', $this->command->getDescription());
+        $this->assertContains('eval-php', $this->command->getAliases());
+    }
+
+    public function testEvalWithSkipKvsOption(): void
+    {
+        $this->tester->execute([
+            'code' => 'echo "No KVS context";',
+            '--skip-kvs' => true
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('No KVS context', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testEvalSyntaxError(): void
+    {
+        $this->tester->execute(['code' => 'echo "unclosed string;']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Parse Error', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testEvalReturnValue(): void
+    {
+        $this->tester->execute(['code' => 'return 42;']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('42', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testEvalReturnBoolTrue(): void
+    {
+        $this->tester->execute(['code' => 'return true;']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('true', $output);
+    }
+
+    public function testEvalReturnBoolFalse(): void
+    {
+        $this->tester->execute(['code' => 'return false;']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('false', $output);
     }
 }

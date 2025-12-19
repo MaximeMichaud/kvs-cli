@@ -18,8 +18,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class SelfUpdateCommand extends Command
 {
-    private const PHAR_NAME = 'kvs.phar';
-
     protected function configure(): void
     {
         $this
@@ -205,13 +203,13 @@ HELP
      */
     private function getGitHubReleases(SymfonyStyle $io, bool $includePrerelease): ?array
     {
-        $url = sprintf('https://api.github.com/repos/%s/releases', Constants::GITHUB_REPO);
+        $url = sprintf('%s/repos/%s/releases', Constants::GITHUB_API_URL, Constants::GITHUB_REPO);
 
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
                 'header' => [
-                    'User-Agent: KVS-CLI',
+                    'User-Agent: ' . \KVS\CLI\Application::NAME,
                     'Accept: application/vnd.github.v3+json',
                 ],
                 'timeout' => 30,
@@ -257,7 +255,7 @@ HELP
     private function findPharAsset(array $assets): ?string
     {
         foreach ($assets as $asset) {
-            if (($asset['name'] ?? '') === self::PHAR_NAME) {
+            if (($asset['name'] ?? '') === Constants::PHAR_NAME) {
                 return $asset['browser_download_url'];
             }
         }
@@ -271,7 +269,7 @@ HELP
             'http' => [
                 'method' => 'GET',
                 'header' => [
-                    'User-Agent: KVS-CLI',
+                    'User-Agent: ' . \KVS\CLI\Application::NAME,
                     'Accept: application/octet-stream',
                 ],
                 'timeout' => 300,
@@ -341,7 +339,7 @@ HELP
         @unlink($tempZip);
 
         // Find the PHAR file in extracted contents
-        $pharFile = $tempDir . '/' . self::PHAR_NAME;
+        $pharFile = $tempDir . '/' . Constants::PHAR_NAME;
         if (!file_exists($pharFile)) {
             $io->error('PHAR file not found in downloaded archive.');
             $this->cleanupDir($tempDir);

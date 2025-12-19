@@ -4,7 +4,8 @@ namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Application;
-use Symfony\Component\Console\Tester\ApplicationTester;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 class ApplicationTest extends TestCase
 {
@@ -22,7 +23,8 @@ class ApplicationTest extends TestCase
 
     public function testApplicationHasVersion(): void
     {
-        $this->assertEquals('1.0.0-beta', $this->app->getVersion());
+        $expectedVersion = trim(file_get_contents(__DIR__ . '/../VERSION'));
+        $this->assertEquals($expectedVersion, $this->app->getVersion());
     }
 
     public function testApplicationHasDefaultCommands(): void
@@ -53,10 +55,16 @@ class ApplicationTest extends TestCase
 
     public function testApplicationRun(): void
     {
-        $tester = new ApplicationTester($this->app);
-        $tester->run(['command' => 'list'], ['capture_stderr_separately' => true]);
+        $this->app->setAutoExit(false);
 
-        $output = $tester->getDisplay();
-        $this->assertStringContainsString('Available commands:', $output);
+        $input = new ArrayInput(['command' => 'list']);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+
+        $exitCode = $this->app->run($input, $output);
+
+        $display = $output->fetch();
+        $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('Available commands:', $display);
     }
 }

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Database;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -104,7 +105,7 @@ EOT
 
         // Parse host and port
         $host = $dbConfig['host'];
-        $port = 3306; // default
+        $port = Constants::DEFAULT_MYSQL_PORT;
         if (strpos($host, ':') !== false) {
             [$host, $port] = explode(':', $host, 2);
         }
@@ -119,7 +120,7 @@ EOT
             '--routines',
             '--triggers',
             '--events',
-            '--default-character-set=utf8mb4',
+            '--default-character-set=' . Constants::DB_CHARSET,
         ];
 
         if ($input->getOption('no-data')) {

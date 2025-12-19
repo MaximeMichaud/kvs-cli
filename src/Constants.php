@@ -155,6 +155,15 @@ final class Constants
     /** GitHub repository (owner/repo format) */
     public const GITHUB_REPO = 'MaximeMichaud/kvs-cli';
 
-    /** Nightly build URL template */
+    /** GitHub API base URL */
+    public const GITHUB_API_URL = 'https://api.github.com';
+
+    /** Nightly build URL template (%s = repo) */
     public const NIGHTLY_URL = 'https://nightly.link/%s/workflows/ci/dev/kvs-cli-phar.zip';
+
+    /** PHAR filename */
+    public const PHAR_NAME = 'kvs.phar';
+
+    /** Default MySQL port */
+    public const DEFAULT_MYSQL_PORT = 3306;
 }

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Database;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -89,7 +90,7 @@ EOT
             '-h', $dbConfig['host'],
             '-u', $dbConfig['user'],
             '-p' . $dbConfig['password'],
-            '--default-character-set=utf8mb4',
+            '--default-character-set=' . Constants::DB_CHARSET,
             $dbConfig['database'],
         ];
 

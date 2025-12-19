@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -292,7 +293,7 @@ if (isset($db) && $db) {
     DB::setConnection($db);
 }
 PHP;
-        // Replace hardcoded prefix with configured prefix
-        return str_replace('ktvs_', $prefix, $code);
+        // Replace default prefix placeholder with configured prefix
+        return str_replace(Constants::DEFAULT_TABLE_PREFIX, $prefix, $code);
     }
 }

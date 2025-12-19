@@ -6,7 +6,6 @@ use PHPUnit\Framework\TestCase;
 use KVS\CLI\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
-use Symfony\Component\Console\Tester\ApplicationTester;
 
 class ApplicationComprehensiveTest extends TestCase
 {
@@ -16,6 +15,7 @@ class ApplicationComprehensiveTest extends TestCase
     protected function setUp(): void
     {
         $this->app = new Application();
+        $this->app->setAutoExit(false);
 
         // Create temp KVS installation for testing
         $this->tempKvsDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
@@ -51,7 +51,6 @@ class ApplicationComprehensiveTest extends TestCase
 
         $this->assertArrayHasKey('help', $commands);
         $this->assertArrayHasKey('list', $commands);
-        $this->assertArrayNotHasKey('completion', $commands); // Should be removed
     }
 
     // Test 3: Path option is defined
@@ -83,6 +82,7 @@ class ApplicationComprehensiveTest extends TestCase
     public function testRunWithoutKvsShowsOnlyBasicCommands(): void
     {
         $input = new ArrayInput(['command' => 'list']);
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         // Change to temp dir without KVS
@@ -109,6 +109,8 @@ class ApplicationComprehensiveTest extends TestCase
             'command' => 'list',
             '--path' => $this->tempKvsDir
         ]);
+        $input->bind($this->app->getDefinition());
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $exitCode = $this->app->run($input, $output);
@@ -128,6 +130,7 @@ class ApplicationComprehensiveTest extends TestCase
         chdir($this->tempKvsDir);
 
         $input = new ArrayInput(['command' => 'list']);
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $exitCode = $this->app->run($input, $output);
@@ -144,6 +147,7 @@ class ApplicationComprehensiveTest extends TestCase
     public function testInvalidCommandShowsError(): void
     {
         $input = new ArrayInput(['command' => 'nonexistent']);
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $exitCode = $this->app->run($input, $output);
@@ -161,6 +165,8 @@ class ApplicationComprehensiveTest extends TestCase
             'command' => 'list',
             '--path' => '/nonexistent/path'
         ]);
+        $input->bind($this->app->getDefinition());
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $exitCode = $this->app->run($input, $output);
@@ -175,23 +181,27 @@ class ApplicationComprehensiveTest extends TestCase
     public function testVersionCommandWorks(): void
     {
         $expectedVersion = trim(file_get_contents(__DIR__ . '/../VERSION'));
-        $tester = new ApplicationTester($this->app);
-        $tester->run([
-            '--version' => true,
-            '--path' => $this->tempKvsDir
-        ]);
+        $input = new ArrayInput(['--version' => true]);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
 
-        $this->assertStringContainsString('KVS CLI version ' . $expectedVersion, $tester->getDisplay());
+        $this->app->run($input, $output);
+
+        $this->assertStringContainsString('KVS CLI version ' . $expectedVersion, $output->fetch());
     }
 
     // Test 11: Help command works
     public function testHelpCommandWorks(): void
     {
-        $tester = new ApplicationTester($this->app);
-        $tester->run(['command' => 'help']);
+        $input = new ArrayInput(['command' => 'help']);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
 
-        $this->assertStringContainsString('Usage:', $tester->getDisplay());
-        $this->assertStringContainsString('Options:', $tester->getDisplay());
+        $this->app->run($input, $output);
+
+        $display = $output->fetch();
+        $this->assertStringContainsString('Usage:', $display);
+        $this->assertStringContainsString('Options:', $display);
     }
 
     // Test 12: KVS_PATH environment variable works
@@ -200,7 +210,9 @@ class ApplicationComprehensiveTest extends TestCase
         putenv('KVS_PATH=' . $this->tempKvsDir);
 
         $app = new Application();
+        $app->setAutoExit(false);
         $input = new ArrayInput(['command' => 'list']);
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $exitCode = $app->run($input, $output);
@@ -230,6 +242,8 @@ class ApplicationComprehensiveTest extends TestCase
             'command' => 'list',
             '--path' => $this->tempKvsDir
         ]);
+        $input->bind($this->app->getDefinition());
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $this->app->run($input, $output);
@@ -271,6 +285,8 @@ class ApplicationComprehensiveTest extends TestCase
             'command' => 'list',
             '--path' => $this->tempKvsDir
         ]);
+        $input->bind($this->app->getDefinition());
+        $input->setInteractive(false);
         $output = new BufferedOutput();
 
         $this->app->run($input, $output);

@@ -13,6 +13,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Exception\CommandNotFoundException;
 use Symfony\Component\Console\Command\Command;
 use KVS\CLI\Command\System\CacheCommand;
+use KVS\CLI\Command\System\CheckCommand;
 use KVS\CLI\Command\System\CronCommand;
 use KVS\CLI\Command\System\BackupCommand;
 use KVS\CLI\Command\System\StatusCommand;
@@ -37,6 +38,7 @@ use KVS\CLI\Command\EvalCommand;
 use KVS\CLI\Command\EvalFileCommand;
 use KVS\CLI\Command\PluginCommand;
 use KVS\CLI\Command\SelfUpdateCommand;
+use KVS\CLI\Command\CompletionCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
 use KVS\CLI\Bootstrap\LoadConfiguration;
@@ -77,16 +79,19 @@ class Application extends BaseApplication
     }
 
     /**
-     * Override to remove completion command that doesn't work in PHAR
-     * and add SelfUpdateCommand (always available, even without KVS)
+     * Override default commands to add SelfUpdateCommand (always available, even without KVS)
      */
     protected function getDefaultCommands(): array
     {
-        return [
+        $commands = [
             new \Symfony\Component\Console\Command\HelpCommand(),
             new \Symfony\Component\Console\Command\ListCommand(),
             new SelfUpdateCommand(),
         ];
+
+        $commands[] = new CompletionCommand();
+
+        return $commands;
     }
 
     /**
@@ -153,14 +158,24 @@ class Application extends BaseApplication
     {
         $command = $input->getFirstArgument();
 
-        // Check for version flag in argv
+        // Check for version flag in argv and input
         $argv = $_SERVER['argv'] ?? [];
         $isVersionRequest = in_array('--version', $argv) || in_array('-V', $argv);
+
+        // Also check if --version is set in input (for ArrayInput in tests)
+        try {
+            if ($input->hasParameterOption(['--version', '-V'])) {
+                $isVersionRequest = true;
+            }
+        } catch (\Exception $e) {
+            // Ignore if input doesn't support this
+        }
 
         // Commands that work without KVS
         $standaloneCommands = [
             'help', 'list', '--help',
             'self-update', 'selfupdate', 'self:update',
+            'completion',
         ];
 
         return in_array($command, $standaloneCommands) || $isVersionRequest;
@@ -248,6 +263,7 @@ class Application extends BaseApplication
     {
         $this->addCommands([
             new CacheCommand($config),
+            new CheckCommand($config),
             new CronCommand($config),
             new BackupCommand($config),
             new StatusCommand($config),

@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -30,10 +31,10 @@ The <info>eval-file</info> command executes a PHP file with the KVS context pre-
 <comment>Examples:</comment>
   # Execute a simple script
   kvs eval-file cleanup.php
-  
+
   # Pass arguments to the script
   kvs eval-file migrate.php --args="videos" --args="--dry-run"
-  
+
   # Skip KVS context loading
   kvs eval-file test.php --skip-kvs
 
@@ -42,7 +43,7 @@ The <info>eval-file</info> command executes a PHP file with the KVS context pre-
   $kvsPath   - KVS installation path
   $db        - Database connection
   $argv      - Script arguments
-  
+
 <comment>Available classes:</comment>
   Video, User, Album, Category, Tag, DVD, Model_
   DB::query(), DB::escape()
@@ -252,7 +253,7 @@ if (isset($db) && $db) {
     DB::setConnection($db);
 }
 PHP;
-        // Replace hardcoded prefix with configured prefix
-        return str_replace('ktvs_', $prefix, $code);
+        // Replace default prefix placeholder with configured prefix
+        return str_replace(Constants::DEFAULT_TABLE_PREFIX, $prefix, $code);
     }
 }
