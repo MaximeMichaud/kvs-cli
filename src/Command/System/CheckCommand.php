@@ -506,12 +506,14 @@ class CheckCommand extends BaseCommand
 
         // Check ImageMagick
         $imVersion = $this->getToolVersion($paths['imagemagick'], '-version');
-        $webpSupport = $this->checkImageMagickWebp($paths['imagemagick']);
+        $webpSupport = $this->checkImageMagickFormat($paths['imagemagick'], 'webp');
+        $avifSupport = $this->checkImageMagickFormat($paths['imagemagick'], 'avif');
         $result['tools']['imagemagick'] = [
             'path' => $paths['imagemagick'],
             'available' => $imVersion !== null,
             'version' => $imVersion,
             'webp_support' => $webpSupport,
+            'avif_support' => $avifSupport,
         ];
 
         if ($imVersion !== null) {
@@ -524,6 +526,13 @@ class CheckCommand extends BaseCommand
                 $this->warnings++;
             } elseif ($quietOk === false) {
                 $this->printStatus('ImageMagick WebP', 'Supported', 'ok');
+            }
+
+            // AVIF is optional (like AV1 for video)
+            if ($avifSupport === false) {
+                $this->printStatus('ImageMagick AVIF', 'Not supported (optional)', 'info');
+            } elseif ($quietOk === false) {
+                $this->printStatus('ImageMagick AVIF', 'Supported', 'ok');
             }
         } else {
             $this->printStatus('ImageMagick', "Not found at {$paths['imagemagick']}", 'error');
@@ -641,16 +650,18 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
-    private function checkImageMagickWebp(string $convertPath): bool
+    private function checkImageMagickFormat(string $convertPath, string $format): bool
     {
         if (!function_exists('shell_exec')) {
             return false;
         }
 
-        // Check if WebP is in the list of supported formats
-        $formats = @shell_exec(escapeshellarg($convertPath) . " -list format 2>&1 | grep -i webp");
+        // Check if format is in the list of supported formats
+        $output = @shell_exec(
+            escapeshellarg($convertPath) . " -list format 2>&1 | grep -i " . escapeshellarg($format)
+        );
 
-        return is_string($formats) && $formats !== '' && stripos($formats, 'webp') !== false;
+        return is_string($output) && $output !== '' && stripos($output, $format) !== false;
     }
 
     private function checkMemcached(bool $quietOk): array
