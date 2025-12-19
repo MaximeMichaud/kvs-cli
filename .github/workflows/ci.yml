@@ -171,6 +171,13 @@ jobs:
       - name: Install dependencies (no dev)
         run: composer install --prefer-dist --no-progress --no-interaction --no-dev
 
+      - name: Set dev version
+        if: github.ref == 'refs/heads/dev'
+        run: |
+          BASE_VERSION=$(cat VERSION | tr -d '\n' | sed 's/-beta$//')
+          echo "${BASE_VERSION}-dev-${GITHUB_SHA::7}" > VERSION
+          echo "Dev version: $(cat VERSION)"
+
       - name: Build PHAR
         run: php -d phar.readonly=0 build.php
 
