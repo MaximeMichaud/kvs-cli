@@ -161,6 +161,12 @@ HELP
         // Replace old PHAR with new one
         $io->text('Installing update...');
 
+        // Pre-load classes that will be needed after the PHAR is replaced
+        // This prevents "internal corruption of phar" errors when lazy-loading
+        // classes from a replaced PHAR file
+        class_exists(\Symfony\Component\String\UnicodeString::class);
+        class_exists(\Symfony\Component\Console\Terminal::class);
+
         // Preserve permissions
         $mode = fileperms($currentPhar) & 0777;
 
@@ -376,6 +382,11 @@ HELP
 
         // Install
         $io->text('Installing...');
+
+        // Pre-load classes before replacing PHAR (prevents lazy-load corruption)
+        class_exists(\Symfony\Component\String\UnicodeString::class);
+        class_exists(\Symfony\Component\Console\Terminal::class);
+
         $mode = fileperms($currentPhar) & 0777;
 
         if (!@chmod($pharFile, $mode)) {
