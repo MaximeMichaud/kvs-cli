@@ -7,7 +7,9 @@ namespace KVS\CLI\Command;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * Generates shell completion scripts.
@@ -22,8 +24,15 @@ class CompletionCommand extends Command
             ->setName('completion')
             ->setDescription('Dump the shell completion script')
             ->addArgument('shell', InputArgument::OPTIONAL, 'The shell type (bash, zsh, fish)', $this->guessShell())
+            ->addOption('install', 'i', InputOption::VALUE_NONE, 'Install the completion script automatically')
             ->setHelp(<<<'HELP'
-Generate shell completion script.
+Generate or install shell completion script.
+
+<info>Automatic install:</info>
+  <comment>kvs completion --install</comment>        Install for current shell
+  <comment>kvs completion bash -i</comment>         Install for bash
+
+<info>Manual install:</info>
 
 <info>Bash:</info>
   <comment>kvs completion bash >> ~/.bash_completion</comment>
@@ -46,7 +55,9 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $io = new SymfonyStyle($input, $output);
         $shell = $input->getArgument('shell');
+        $install = (bool) $input->getOption('install');
 
         $script = match ($shell) {
             'bash' => $this->getBashScript(),
@@ -56,13 +67,62 @@ HELP
         };
 
         if ($script === null) {
-            $output->writeln(sprintf('<error>Shell "%s" not supported. Use bash, zsh, or fish.</error>', $shell));
+            $io->error(sprintf('Shell "%s" not supported. Use bash, zsh, or fish.', $shell));
             return Command::FAILURE;
+        }
+
+        if ($install) {
+            return $this->installScript($io, $shell, $script);
         }
 
         $output->write($script, false, OutputInterface::OUTPUT_RAW);
 
         return Command::SUCCESS;
+    }
+
+    private function installScript(SymfonyStyle $io, string $shell, string $script): int
+    {
+        $path = $this->getInstallPath($shell);
+
+        if ($path === null) {
+            $io->error(sprintf('Could not determine install path for %s.', $shell));
+            return Command::FAILURE;
+        }
+
+        $dir = dirname($path);
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+            $io->error(sprintf('Cannot create directory: %s', $dir));
+            return Command::FAILURE;
+        }
+
+        if (!is_writable($dir)) {
+            $io->error(sprintf('Cannot write to: %s - try with sudo', $dir));
+            return Command::FAILURE;
+        }
+
+        if (file_put_contents($path, $script) === false) {
+            $io->error(sprintf('Failed to write to: %s', $path));
+            return Command::FAILURE;
+        }
+
+        $io->success(sprintf('Installed to: %s', $path));
+        $io->text('Restart your terminal or run: source ~/.bashrc');
+
+        return Command::SUCCESS;
+    }
+
+    private function getInstallPath(string $shell): ?string
+    {
+        $homeEnv = getenv('HOME');
+        $home = is_string($homeEnv) ? $homeEnv : '/root';
+        $isRoot = posix_getuid() === 0;
+
+        return match ($shell) {
+            'bash' => $isRoot ? '/etc/bash_completion.d/kvs' : $home . '/.bash_completion',
+            'zsh' => $home . '/.zsh/completion/_kvs',
+            'fish' => $home . '/.config/fish/completions/kvs.fish',
+            default => null,
+        };
     }
 
     private function guessShell(): string
