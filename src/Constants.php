@@ -147,4 +147,14 @@ final class Constants
 
     /** Posts/content sources directory */
     public const CONTENT_POSTS = 'posts';
+
+    // ========================================
+    // GITHUB / RELEASES
+    // ========================================
+
+    /** GitHub repository (owner/repo format) */
+    public const GITHUB_REPO = 'MaximeMichaud/kvs-cli';
+
+    /** Nightly build URL template */
+    public const NIGHTLY_URL = 'https://nightly.link/%s/workflows/ci/dev/kvs-cli-phar.zip';
 }

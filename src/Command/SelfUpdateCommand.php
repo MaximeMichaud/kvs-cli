@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -17,9 +18,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class SelfUpdateCommand extends Command
 {
-    private const GITHUB_REPO = 'MaximeMichaud/kvs-cli';
     private const PHAR_NAME = 'kvs.phar';
-    private const NIGHTLY_URL = 'https://nightly.link/MaximeMichaud/kvs-cli/workflows/ci/dev/kvs-cli-phar.zip';
 
     protected function configure(): void
     {
@@ -206,7 +205,7 @@ HELP
      */
     private function getGitHubReleases(SymfonyStyle $io, bool $includePrerelease): ?array
     {
-        $url = sprintf('https://api.github.com/repos/%s/releases', self::GITHUB_REPO);
+        $url = sprintf('https://api.github.com/repos/%s/releases', Constants::GITHUB_REPO);
 
         $context = stream_context_create([
             'http' => [
@@ -320,8 +319,9 @@ HELP
 
         // Download ZIP from nightly.link
         $tempZip = sys_get_temp_dir() . '/kvs-dev-' . uniqid() . '.zip';
+        $nightlyUrl = sprintf(Constants::NIGHTLY_URL, Constants::GITHUB_REPO);
 
-        if (!$this->downloadFile(self::NIGHTLY_URL, $tempZip, $io)) {
+        if (!$this->downloadFile($nightlyUrl, $tempZip, $io)) {
             return Command::FAILURE;
         }
 
