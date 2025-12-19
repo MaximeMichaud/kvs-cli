@@ -166,4 +166,17 @@ final class Constants
 
     /** Default MySQL port */
     public const DEFAULT_MYSQL_PORT = 3306;
+
+    // ========================================
+    // END OF LIFE API (endoflife.date)
+    // ========================================
+
+    /** Base URL for endoflife.date API */
+    public const EOL_API_BASE = 'https://endoflife.date/api';
+
+    /** Cache TTL for EOL data in seconds (24 hours) */
+    public const EOL_CACHE_TTL = 86400;
+
+    /** Months before EOL to show warning */
+    public const EOL_WARNING_MONTHS = 6;
 }

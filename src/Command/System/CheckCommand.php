@@ -94,6 +94,7 @@ class CheckCommand extends BaseCommand
         $results['system_load'] = $this->checkSystemLoad($quietOk);
         $results['disk_space'] = $this->checkDiskSpace($quietOk);
         $results['internet'] = $this->checkInternet($quietOk);
+        $results['end_of_life'] = $this->checkEndOfLife($quietOk, $results);
 
         if ($jsonOutput === true) {
             $output->writeln(json_encode([
@@ -1526,5 +1527,232 @@ class CheckCommand extends BaseCommand
             'k' => $value * 1024,
             default => $value,
         };
+    }
+
+    /**
+     * Check End of Life status for PHP, MySQL/MariaDB.
+     *
+     * @param array<string, mixed> $results Previous check results
+     * @return array<string, mixed>
+     */
+    private function checkEndOfLife(bool $quietOk, array $results): array
+    {
+        $this->printSection('End of Life Status');
+
+        $result = [
+            'php' => null,
+            'mysql' => null,
+            'status' => 'ok',
+        ];
+
+        $now = new \DateTime();
+        $warnDate = (new \DateTime())->modify('+' . Constants::EOL_WARNING_MONTHS . ' months');
+        $hasWarning = false;
+
+        // Check PHP EOL
+        $phpVersion = PHP_VERSION;
+        $phpMajorMinor = implode('.', array_slice(explode('.', $phpVersion), 0, 2));
+        $phpEolData = $this->fetchEolData('php');
+
+        $result['php'] = $this->checkVersionEol(
+            'PHP',
+            $phpMajorMinor,
+            $phpEolData,
+            $now,
+            $warnDate,
+            $quietOk,
+            $hasWarning,
+            'Sury/Remi repos may extend support'
+        );
+
+        // Check MySQL/MariaDB EOL
+        $mysqlResult = $results['mysql'] ?? [];
+        if (is_array($mysqlResult) && isset($mysqlResult['version_number'])) {
+            $isMariaDB = (bool) ($mysqlResult['is_mariadb'] ?? false);
+            $dbVersion = (string) $mysqlResult['version_number'];
+            $dbMajorMinor = implode('.', array_slice(explode('.', $dbVersion), 0, 2));
+            $product = $isMariaDB ? 'mariadb' : 'mysql';
+            $productName = $isMariaDB ? 'MariaDB' : 'MySQL';
+
+            $dbEolData = $this->fetchEolData($product);
+            $result['mysql'] = $this->checkVersionEol(
+                $productName,
+                $dbMajorMinor,
+                $dbEolData,
+                $now,
+                $warnDate,
+                $quietOk,
+                $hasWarning
+            );
+        }
+
+        $result['status'] = $hasWarning ? 'warning' : 'ok';
+        return $result;
+    }
+
+    /**
+     * Fetch EOL data from endoflife.date API with caching.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchEolData(string $product): array
+    {
+        $cacheDir = '/tmp/kvs-cli-eol-cache';
+        $cacheFile = "$cacheDir/$product.json";
+
+        // Check cache
+        if (file_exists($cacheFile)) {
+            $mtime = filemtime($cacheFile);
+            if ($mtime !== false && (time() - $mtime) < Constants::EOL_CACHE_TTL) {
+                $cached = @file_get_contents($cacheFile);
+                if ($cached !== false) {
+                    $data = json_decode($cached, true);
+                    if (is_array($data)) {
+                        return $data;
+                    }
+                }
+            }
+        }
+
+        // Fetch from API
+        $url = Constants::EOL_API_BASE . '/' . $product . '.json';
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT => 'kvs-cli/1.0',
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if (!is_string($response) || $httpCode !== 200) {
+            return [];
+        }
+
+        $data = json_decode($response, true);
+        if (!is_array($data)) {
+            return [];
+        }
+
+        // Cache the result
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+        @file_put_contents($cacheFile, $response);
+
+        return $data;
+    }
+
+    /**
+     * Check if a specific version is EOL or EOL soon.
+     *
+     * @param array<int, array<string, mixed>> $eolData
+     * @return array<string, mixed>
+     */
+    private function checkVersionEol(
+        string $productName,
+        string $version,
+        array $eolData,
+        \DateTime $now,
+        \DateTime $warnDate,
+        bool $quietOk,
+        bool &$hasWarning,
+        string $note = ''
+    ): array {
+        $result = [
+            'version' => $version,
+            'eol_date' => null,
+            'status' => 'unknown',
+        ];
+
+        // Find matching cycle in EOL data
+        $eolDateStr = null;
+        foreach ($eolData as $entry) {
+            $cycle = isset($entry['cycle']) ? (string) $entry['cycle'] : '';
+            if ($cycle === $version) {
+                $eol = $entry['eol'] ?? null;
+                if (is_string($eol)) {
+                    $eolDateStr = $eol;
+                } elseif ($eol === true) {
+                    $eolDateStr = 'true';
+                }
+                break;
+            }
+        }
+
+        if ($eolDateStr === null && count($eolData) === 0) {
+            if (!$quietOk) {
+                $this->printStatus("$productName $version", 'EOL data unavailable', 'info');
+            }
+            $result['status'] = 'unknown';
+            return $result;
+        }
+
+        if ($eolDateStr === null) {
+            if (!$quietOk) {
+                $this->printStatus("$productName $version", 'Supported (no EOL date)', 'ok');
+            }
+            $result['status'] = 'supported';
+            return $result;
+        }
+
+        $result['eol_date'] = $eolDateStr;
+
+        if ($eolDateStr === 'true') {
+            $noteText = $note !== '' ? " ($note)" : '';
+            $this->printStatus("$productName $version", "END OF LIFE$noteText", 'warning');
+            $this->warnings++;
+            $hasWarning = true;
+            $result['status'] = 'eol';
+            return $result;
+        }
+
+        try {
+            $eolDate = new \DateTime($eolDateStr);
+        } catch (\Exception $e) {
+            if (!$quietOk) {
+                $this->printStatus("$productName $version", "Invalid EOL date: $eolDateStr", 'info');
+            }
+            $result['status'] = 'unknown';
+            return $result;
+        }
+
+        if ($now > $eolDate) {
+            $noteText = $note !== '' ? " ($note)" : '';
+            $this->printStatus(
+                "$productName $version",
+                "END OF LIFE since " . $eolDate->format('Y-m-d') . "$noteText",
+                'warning'
+            );
+            $this->warnings++;
+            $hasWarning = true;
+            $result['status'] = 'eol';
+        } elseif ($warnDate > $eolDate) {
+            $noteText = $note !== '' ? " ($note)" : '';
+            $this->printStatus(
+                "$productName $version",
+                "EOL on " . $eolDate->format('Y-m-d') . " (within " . Constants::EOL_WARNING_MONTHS . " months)$noteText",
+                'warning'
+            );
+            $this->warnings++;
+            $hasWarning = true;
+            $result['status'] = 'eol_soon';
+        } else {
+            if (!$quietOk) {
+                $this->printStatus(
+                    "$productName $version",
+                    "Supported until " . $eolDate->format('Y-m-d'),
+                    'ok'
+                );
+            }
+            $result['status'] = 'supported';
+        }
+
+        return $result;
     }
 }
