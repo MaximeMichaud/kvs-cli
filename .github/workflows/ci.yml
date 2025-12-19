@@ -190,3 +190,4 @@ jobs:
           name: kvs-cli-phar
           path: kvs.phar
           retention-days: 30
+          compression-level: 9
