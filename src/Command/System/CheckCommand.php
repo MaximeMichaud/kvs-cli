@@ -45,7 +45,7 @@ class CheckCommand extends BaseCommand
 
     // MySQL/MariaDB minimum versions
     private const MYSQL_MIN_VERSION = '8.0';
-    private const MARIADB_MIN_VERSION = '11.6';
+    private const MARIADB_MIN_VERSION = '10.6';
 
     // Required PHP extensions
     private const REQUIRED_PHP_EXTENSIONS = [
