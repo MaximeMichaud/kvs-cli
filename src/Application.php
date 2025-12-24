@@ -26,6 +26,7 @@ use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Command\Content\ModelCommand;
 use KVS\CLI\Command\Content\DvdCommand;
+use KVS\CLI\Command\Content\UserPurgeCommand;
 use KVS\CLI\Command\Video\FormatsCommand;
 use KVS\CLI\Command\Video\ScreenshotsCommand;
 use KVS\CLI\Command\Database\ExportCommand;
@@ -276,6 +277,7 @@ class Application extends BaseApplication
 
             new VideoCommand($config),
             new UserCommand($config),
+            new UserPurgeCommand($config),
             new AlbumCommand($config),
             new CategoryCommand($config),
             new TagCommand($config),
