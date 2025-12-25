@@ -67,4 +67,49 @@ class ApplicationTest extends TestCase
         $this->assertEquals(0, $exitCode);
         $this->assertStringContainsString('Available commands:', $display);
     }
+
+    public function testHelpFlagWorksWithoutKvs(): void
+    {
+        $this->app->setAutoExit(false);
+
+        $input = new ArrayInput(['--help' => true]);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+
+        $exitCode = $this->app->run($input, $output);
+
+        $display = $output->fetch();
+        $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('Usage:', $display);
+    }
+
+    public function testVersionFlagWorksWithoutKvs(): void
+    {
+        $this->app->setAutoExit(false);
+
+        $input = new ArrayInput(['--version' => true]);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+
+        $exitCode = $this->app->run($input, $output);
+
+        $display = $output->fetch();
+        $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('KVS CLI', $display);
+    }
+
+    public function testNoArgsShowsListWithoutKvs(): void
+    {
+        $this->app->setAutoExit(false);
+
+        $input = new ArrayInput([]);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+
+        $exitCode = $this->app->run($input, $output);
+
+        $display = $output->fetch();
+        $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('Available commands:', $display);
+    }
 }

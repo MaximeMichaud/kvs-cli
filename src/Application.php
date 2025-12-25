@@ -161,29 +161,40 @@ class Application extends BaseApplication
     private function isHelpCommand(InputInterface $input): bool
     {
         $command = $input->getFirstArgument();
-
-        // Check for version flag in argv and input
         $argv = $_SERVER['argv'] ?? [];
-        $isVersionRequest = in_array('--version', $argv) || in_array('-V', $argv);
 
-        // Also check if --version is set in input (for ArrayInput in tests)
+        // Check for --version/-V flag
+        $isVersionRequest = in_array('--version', $argv, true) || in_array('-V', $argv, true);
+
+        // Check for --help/-h flag (these are OPTIONS, not arguments)
+        $isHelpRequest = in_array('--help', $argv, true) || in_array('-h', $argv, true);
+
+        // Also check via input for ArrayInput in tests
         try {
             if ($input->hasParameterOption(['--version', '-V'])) {
                 $isVersionRequest = true;
+            }
+            if ($input->hasParameterOption(['--help', '-h'])) {
+                $isHelpRequest = true;
             }
         } catch (\Exception $e) {
             // Ignore if input doesn't support this
         }
 
+        // No command given = show list (like wp-cli)
+        if ($command === null && !$isHelpRequest && !$isVersionRequest) {
+            return true;
+        }
+
         // Commands that work without KVS
         $standaloneCommands = [
-            'help', 'list', '--help',
+            'help', 'list',
             'self-update', 'selfupdate', 'self:update',
             'completion',
             'cli:info', 'info',
         ];
 
-        return in_array($command, $standaloneCommands) || $isVersionRequest;
+        return in_array($command, $standaloneCommands, true) || $isVersionRequest || $isHelpRequest;
     }
 
     /**
@@ -198,7 +209,7 @@ class Application extends BaseApplication
         }
 
         // Show contextual help for KVS not found error
-        if (in_array('KVS installation not found', $state->getErrors())) {
+        if (in_array('KVS installation not found', $state->getErrors(), true)) {
             $searchedPath = $state->getValue('searched_path');
 
             if ($searchedPath) {
