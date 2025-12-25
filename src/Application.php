@@ -117,7 +117,7 @@ class Application extends BaseApplication
     /**
      * Override run to use modular bootstrap
      */
-    public function run(InputInterface $input = null, OutputInterface $output = null): int
+    public function run(?InputInterface $input = null, ?OutputInterface $output = null): int
     {
         $input = $input ?? new ArgvInput();
         $output = $output ?? new ConsoleOutput();

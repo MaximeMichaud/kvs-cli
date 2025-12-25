@@ -7,18 +7,6 @@ parameters:
 			path: src/Application.php
 
 		-
-			message: '#^Deprecated in PHP 8\.4\: Parameter \#1 \$input \(Symfony\\Component\\Console\\Input\\InputInterface\) is implicitly nullable via default value null\.$#'
-			identifier: parameter.implicitlyNullable
-			count: 1
-			path: src/Application.php
-
-		-
-			message: '#^Deprecated in PHP 8\.4\: Parameter \#2 \$output \(Symfony\\Component\\Console\\Output\\OutputInterface\) is implicitly nullable via default value null\.$#'
-			identifier: parameter.implicitlyNullable
-			count: 1
-			path: src/Application.php
-
-		-
 			message: '#^Only booleans are allowed in a negated boolean, KVS\\CLI\\Config\\Configuration\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 1
