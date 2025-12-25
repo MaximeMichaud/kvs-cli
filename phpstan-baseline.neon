@@ -1,12 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
-			identifier: function.strict
-			count: 4
-			path: src/Application.php
-
-		-
 			message: '#^Only booleans are allowed in a negated boolean, KVS\\CLI\\Config\\Configuration\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 1
@@ -79,9 +73,21 @@ parameters:
 			path: src/Command/ConfigCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\ConfigCommand\:\:getConfigValue\(\) should return string\|null but returns string\|false\.$#'
+			identifier: return.type
+			count: 4
+			path: src/Command/ConfigCommand.php
+
+		-
 			message: '#^Offset ''project_version'' on array\{\} in isset\(\) does not exist\.$#'
 			identifier: isset.offset
 			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, int\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 2
 			path: src/Command/ConfigCommand.php
 
 		-
@@ -103,6 +109,18 @@ parameters:
 			path: src/Command/ConfigCommand.php
 
 		-
+			message: '#^Only booleans are allowed in an if condition, int\<0, max\>\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, int\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 3
@@ -115,9 +133,51 @@ parameters:
 			path: src/Command/ConfigCommand.php
 
 		-
+			message: '#^Parameter \#1 \$directory of function chdir expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#1 \$haystack of function strpos expects string, string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#1 \$message of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:warning\(\) expects array\|string, string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:writeln\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/ConfigCommand.php
+
+		-
 			message: '#^Parameter \#2 \$haystack of method KVS\\CLI\\Command\\ConfigCommand\:\:findSimilarKeys\(\) expects array\<string, mixed\>, list\<string\> given\.$#'
 			identifier: argument.type
 			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#2 \$subject of function preg_match expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#2 \$subject of function preg_match_all expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#3 \$subject of function preg_replace expects array\<float\|int\|string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
 			path: src/Command/ConfigCommand.php
 
 		-
@@ -157,6 +217,24 @@ parameters:
 			path: src/Command/Content/AlbumCommand.php
 
 		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array\<array\{album_id\: mixed, id\: mixed, title\: mixed, image_count\: mixed, images\: mixed, status_id\: mixed, status\: string, username\: mixed, \.\.\.\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/AlbumCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''Title'', mixed\}, array\{''Status'', string\}, array\{''Images'', int\|string\|false\|null\}, array\{''Posted'', non\-falsy\-string\}, array\{''Views'', string\}, array\{''Rating'', non\-falsy\-string\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/AlbumCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Content/CategoryCommand.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 1
@@ -199,10 +277,40 @@ parameters:
 			path: src/Command/Content/CategoryCommand.php
 
 		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/CategoryCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''ID'', mixed\}, array\{''Title'', mixed\}, array\{''Parent ID'', mixed\}, array\{''Status'', ''Active''\|''Inactive''\}, array\{''Videos'', int\|string\|false\|null\}, array\{''Albums'', int\|string\|false\|null\}, array\{''Added'', mixed\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/CategoryCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''ID'', string\|false\}, array\{''Title'', mixed\}, array\{''Parent ID'', mixed\}, array\{''Description'', mixed\}, array\{''Status'', ''Active''\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/CategoryCommand.php
+
+		-
 			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
 			identifier: ternary.shortNotAllowed
 			count: 3
 			path: src/Command/Content/CategoryCommand.php
+
+		-
+			message: '#^Cannot call method fetch\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: src/Command/Content/CommentCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Content/CommentCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -241,10 +349,22 @@ parameters:
 			path: src/Command/Content/CommentCommand.php
 
 		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array\<array\{comment_id\: mixed, username\: mixed, object_type\: mixed, object_title\: mixed, comment\: mixed, added_date\: mixed\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/CommentCommand.php
+
+		-
 			message: '#^Unreachable statement \- code above always terminates\.$#'
 			identifier: deadCode.unreachable
 			count: 1
 			path: src/Command/Content/CommentCommand.php
+
+		-
+			message: '#^Cannot call method fetchColumn\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: src/Command/Content/DvdCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -275,6 +395,24 @@ parameters:
 			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Content/DvdCommand.php
+
+		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array\<array\{dvd_id\: mixed, id\: mixed, title\: mixed, status_id\: mixed, status\: string, total_videos\: mixed, videos\: mixed, total_videos_duration\: mixed, \.\.\.\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/DvdCommand.php
+
+		-
+			message: '#^Parameter \#1 \$num of function number_format expects float, int\|string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Command/Content/DvdCommand.php
+
+		-
+			message: '#^Cannot call method fetchColumn\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 5
+			path: src/Command/Content/ModelCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -311,6 +449,30 @@ parameters:
 			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/Content/ModelCommand.php
+
+		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array\<array\{model_id\: mixed, id\: mixed, title\: mixed, status_id\: mixed, status\: string, video_count\: mixed, videos\: mixed, album_count\: mixed, \.\.\.\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/ModelCommand.php
+
+		-
+			message: '#^Parameter \#1 \$num of function number_format expects float, int\|string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 5
+			path: src/Command/Content/ModelCommand.php
+
+		-
+			message: '#^Cannot call method fetch\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 2
+			path: src/Command/Content/TagCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Content/TagCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -361,9 +523,33 @@ parameters:
 			path: src/Command/Content/TagCommand.php
 
 		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array\<array\{tag_id\: mixed, tag\: mixed, video_count\: mixed, album_count\: mixed, total_usage\: \(array\|float\|int\), status_id\: mixed\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/TagCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''ID'', string\|false\}, array\{''Name'', non\-falsy\-string\}, array\{''Status'', ''Active''\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/TagCommand.php
+
+		-
 			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
 			identifier: function.strict
 			count: 4
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Cannot call method fetchColumn\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
@@ -481,6 +667,12 @@ parameters:
 			path: src/Command/Content/UserCommand.php
 
 		-
+			message: '#^Only booleans are allowed in a negated boolean, int\|string\|false\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
 			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 4
@@ -517,15 +709,69 @@ parameters:
 			path: src/Command/Content/UserCommand.php
 
 		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:writeln\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Parameter \#1 \$num of function number_format expects float, int\|string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fclose expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fputcsv expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''Videos Uploaded'', int\|string\|false\|null\}, array\{''Albums Created'', int\|string\|false\|null\}, array\{''Comments Posted'', int\|string\|false\|null\}, array\{''Profile Views'', string\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
 			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
 			identifier: ternary.shortNotAllowed
 			count: 6
 			path: src/Command/Content/UserCommand.php
 
 		-
+			message: '#^Parameter \#1 \$directory of function chdir expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/Content/UserPurgeCommand.php
+
+		-
 			message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
 			identifier: function.strict
 			count: 2
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Cannot call method fetchColumn\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
@@ -637,9 +883,57 @@ parameters:
 			path: src/Command/Content/VideoCommand.php
 
 		-
+			message: '#^Only booleans are allowed in a ternary operator condition, int\|string\|false\|null given\.$#'
+			identifier: ternary.condNotBoolean
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 5
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#1 \$headers of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<string\>, array\<string\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:writeln\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#1 \$num of function number_format expects float, int\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fclose expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fputcsv expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, non\-empty\-list\<array\{''Active Videos''\|''Average Rating''\|''Total Duration''\|''Total Size''\|''Total Videos''\|''Total Views'', string\|false\}\> given\.$#'
+			identifier: argument.type
+			count: 1
 			path: src/Command/Content/VideoCommand.php
 
 		-
@@ -691,6 +985,24 @@ parameters:
 			path: src/Command/Database/ExportCommand.php
 
 		-
+			message: '#^Only numeric types are allowed in /, int\<0, max\>\|false given on the left side\.$#'
+			identifier: div.leftNonNumeric
+			count: 1
+			path: src/Command/Database/ExportCommand.php
+
+		-
+			message: '#^Parameter \#1 \$haystack of function stripos expects string, string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Database/ExportCommand.php
+
+		-
+			message: '#^Parameter \#1 \$string of function trim expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 5
+			path: src/Command/Database/ExportCommand.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 1
@@ -703,10 +1015,40 @@ parameters:
 			path: src/Command/Database/ImportCommand.php
 
 		-
+			message: '#^Only booleans are allowed in &&, string\|false\|null given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/Database/ImportCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, string\|null given\.$#'
 			identifier: if.condNotBoolean
 			count: 1
 			path: src/Command/Database/ImportCommand.php
+
+		-
+			message: '#^Parameter \#1 \$data of function gzdecode expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Database/ImportCommand.php
+
+		-
+			message: '#^Parameter \#1 \$input of method Symfony\\Component\\Process\\Process\:\:setInput\(\) expects resource\|string\|Traversable\|null, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Database/ImportCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Dev/DebugCommand.php
+
+		-
+			message: '#^Cannot call method fetchColumn\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Dev/DebugCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -733,6 +1075,12 @@ parameters:
 			path: src/Command/Dev/DebugCommand.php
 
 		-
+			message: '#^Only booleans are allowed in a ternary operator condition, string\|false given\.$#'
+			identifier: ternary.condNotBoolean
+			count: 2
+			path: src/Command/Dev/DebugCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 2
@@ -741,6 +1089,18 @@ parameters:
 		-
 			message: '#^Only booleans are allowed in an if condition, string given\.$#'
 			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/Dev/DebugCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, string\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/Dev/DebugCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''Working Directory'', non\-empty\-string\|false\}, array\{''Script Path'', literal\-string&non\-falsy\-string\}, array\{''KVS Path'', non\-falsy\-string\}, array\{''Admin Path'', string\}, array\{''Content Path'', string\}, array\{''PHP Version'', non\-falsy\-string\}, array\{''PHP SAPI'', ''apache''\|''apache2handler''\|''cgi''\|''cli''\|''cli\-server''\|''embed''\|''fpm\-fcgi''\|''litespeed''\|''phpdbg''\|non\-falsy\-string\}, array\{''Memory Limit'', string\}, \.\.\.\} given\.$#'
+			identifier: argument.type
 			count: 1
 			path: src/Command/Dev/DebugCommand.php
 
@@ -755,6 +1115,12 @@ parameters:
 			identifier: ternary.alwaysTrue
 			count: 1
 			path: src/Command/Dev/DebugCommand.php
+
+		-
+			message: '#^Argument of an invalid type list\<string\>\|false supplied for foreach, only iterables are supported\.$#'
+			identifier: foreach.nonIterable
+			count: 1
+			path: src/Command/Dev/LogCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -775,6 +1141,12 @@ parameters:
 			path: src/Command/Dev/LogCommand.php
 
 		-
+			message: '#^Only booleans are allowed in a negated boolean, resource\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
 			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 3
@@ -784,6 +1156,66 @@ parameters:
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 3
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, string\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fclose expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function feof expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fgets expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fseek expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function ftell expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#1 \$string of function mb_strlen expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#2 \$offset of function fseek expects int, int\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
+			message: '#^Parameter \#2 \$timestamp of function date expects int\|null, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
+			count: 1
 			path: src/Command/Dev/LogCommand.php
 
 		-
@@ -829,6 +1261,12 @@ parameters:
 			path: src/Command/EvalCommand.php
 
 		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:write\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/EvalCommand.php
+
+		-
 			message: '#^Only booleans are allowed in a negated boolean, PDO\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 1
@@ -843,6 +1281,12 @@ parameters:
 		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/EvalFileCommand.php
+
+		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:write\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
 			count: 1
 			path: src/Command/EvalFileCommand.php
 
@@ -889,6 +1333,12 @@ parameters:
 			path: src/Command/PluginCommand.php
 
 		-
+			message: '#^Offset ''name'' might not exist on array\{id\: string, path\: string, is_enabled\: false, files_ok\: true, syntax_ok\: true, compatible\: true, name\?\: string, author\?\: string, \.\.\.\}\.$#'
+			identifier: offsetAccess.notFound
+			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
 			message: '#^Offset ''plugins'' on array\{\} in isset\(\) does not exist\.$#'
 			identifier: isset.offset
 			count: 2
@@ -907,6 +1357,12 @@ parameters:
 			path: src/Command/PluginCommand.php
 
 		-
+			message: '#^Only booleans are allowed in a negated boolean, int\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
 			message: '#^Only booleans are allowed in a negated boolean, string\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 2
@@ -919,9 +1375,27 @@ parameters:
 			path: src/Command/PluginCommand.php
 
 		-
+			message: '#^Only booleans are allowed in an if condition, int\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 5
+			path: src/Command/PluginCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array\<array\{id\: mixed, name\: mixed, title\: mixed, author\: mixed, version\: mixed, kvs_version\: mixed, status\: ''Active''\|''Inactive'', types\: string, \.\.\.\}\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
+			message: '#^Parameter \#2 \$subject of function preg_match expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 6
 			path: src/Command/PluginCommand.php
 
 		-
@@ -1009,6 +1483,36 @@ parameters:
 			path: src/Command/System/BackupCommand.php
 
 		-
+			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/BackupCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function gzclose expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/BackupCommand.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function gzwrite expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/BackupCommand.php
+
+		-
+			message: '#^Parameter \#2 \$data of function gzwrite expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/BackupCommand.php
+
+		-
+			message: '#^Parameter \#2 \$timestamp of function date expects int\|null, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/BackupCommand.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 1
@@ -1031,6 +1535,18 @@ parameters:
 			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/System/CacheCommand.php
+
+		-
+			message: '#^Cannot call method fetch\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 3
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/System/CheckCommand.php
 
 		-
 			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkCron\(\) return type has no value type specified in iterable type array\.$#'
@@ -1117,6 +1633,108 @@ parameters:
 			path: src/Command/System/CheckCommand.php
 
 		-
+			message: '#^Only booleans are allowed in &&, int\|false given on the right side\.$#'
+			identifier: booleanAnd.rightNotBoolean
+			count: 2
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in &&, string\|false given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in &&, string\|false\|null given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, int\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 3
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, resource\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, string\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 2
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, string\|false\|null given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 2
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, int\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 10
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, string\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 3
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, string\|false\|null given\.$#'
+			identifier: if.condNotBoolean
+			count: 5
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#1 \$data of function unserialize expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#1 \$haystack of function stripos expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Output\\OutputInterface\:\:writeln\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#1 \$size of method KVS\\CLI\\Command\\System\\CheckCommand\:\:parseIniSize\(\) expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#1 \$string of function trim expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#2 \$subject of function preg_match expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Parameter \#2 \$value of method KVS\\CLI\\Command\\System\\CheckCommand\:\:printStatus\(\) expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/System/CheckCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 3
@@ -1126,6 +1744,12 @@ parameters:
 			message: '#^Only booleans are allowed in an if condition, string given\.$#'
 			identifier: if.condNotBoolean
 			count: 2
+			path: src/Command/System/CronCommand.php
+
+		-
+			message: '#^Parameter \#1 \$data of function unserialize expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
 			path: src/Command/System/CronCommand.php
 
 		-
@@ -1147,10 +1771,46 @@ parameters:
 			path: src/Command/System/MaintenanceCommand.php
 
 		-
+			message: '#^Parameter \#1 \$data of function unserialize expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/System/MaintenanceCommand.php
+
+		-
 			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
 			identifier: ternary.shortNotAllowed
 			count: 1
 			path: src/Command/System/MaintenanceCommand.php
+
+		-
+			message: '#^Binary operation "%%" between int\<min, \-1\>\|int\<1, max\>\|non\-falsy\-string and 60 results in an error\.$#'
+			identifier: binaryOp.invalid
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Binary operation "/" between int\<min, \-1\>\|int\<1, max\>\|non\-falsy\-string and 60 results in an error\.$#'
+			identifier: binaryOp.invalid
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Cannot call method fetch\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Cannot call method fetchColumn\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 6
+			path: src/Command/System/StatusCommand.php
 
 		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
@@ -1173,6 +1833,24 @@ parameters:
 		-
 			message: '#^Method KVS\\CLI\\Command\\System\\StatusCommand\:\:checkMemcached\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in &&, PDOStatement\|false given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in &&, string\|false given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDOStatement\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
@@ -1201,9 +1879,105 @@ parameters:
 			path: src/Command/System/StatusCommand.php
 
 		-
+			message: '#^Only booleans are allowed in an if condition, array\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, int\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 3
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, int\|string\|false\|null given\.$#'
+			identifier: if.condNotBoolean
+			count: 2
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, string\|false\|null given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in \|\|, int\|false given on the left side\.$#'
+			identifier: booleanOr.leftNotBoolean
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only booleans are allowed in \|\|, int\|false given on the right side\.$#'
+			identifier: booleanOr.rightNotBoolean
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only numeric types are allowed in \-, float\|false given on the left side\.$#'
+			identifier: minus.leftNonNumeric
+			count: 2
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only numeric types are allowed in \-, float\|false given on the right side\.$#'
+			identifier: minus.rightNonNumeric
+			count: 2
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only numeric types are allowed in \-, int\|false given on the right side\.$#'
+			identifier: minus.rightNonNumeric
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Only numeric types are allowed in /, float\|false given on the right side\.$#'
+			identifier: div.rightNonNumeric
+			count: 2
+			path: src/Command/System/StatusCommand.php
+
+		-
 			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, float\|false given\.$#'
 			identifier: argument.type
 			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, float\|int given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Parameter \#1 \$datetime of function strtotime expects string, int\<min, \-1\>\|int\<1, max\>\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Parameter \#1 \$num of function number_format expects float, int\|string\|false\|null given\.$#'
+			identifier: argument.type
+			count: 4
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Parameter \#1 \$string of function trim expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{0\: array\{''Operating System'', string\}, 1\: array\{''Web Server'', mixed\}, 2\: array\{''PHP Version'', non\-falsy\-string\}, 3\: array\{''PHP Memory Limit'', string\}, 4\: array\{''Max Execution Time'', non\-falsy\-string\}, 5\: array\{''Upload Max Filesize'', string\|false\}, 6\: array\{''Post Max Size'', string\|false\}, 7\?\: array\{''Disk Usage'', non\-falsy\-string\}\} given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Parameter \#2 \$subject of function preg_match expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 4
 			path: src/Command/System/StatusCommand.php
 
 		-
@@ -1219,6 +1993,12 @@ parameters:
 			path: src/Command/System/StatusCommand.php
 
 		-
+			message: '#^Cannot call method fetchAll\(\) on PDOStatement\|false\.$#'
+			identifier: method.nonObject
+			count: 1
+			path: src/Command/Video/FormatsCommand.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 8
@@ -1227,6 +2007,18 @@ parameters:
 		-
 			message: '#^Method KVS\\CLI\\Command\\Video\\FormatsCommand\:\:getFormatsFromDatabase\(\) return type has no value type specified in iterable type array\.$#'
 			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Video/FormatsCommand.php
+
+		-
+			message: '#^Only booleans are allowed in &&, string\|false\|null given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/Video/FormatsCommand.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, PDOStatement\|false given\.$#'
+			identifier: booleanNot.exprNotBoolean
 			count: 1
 			path: src/Command/Video/FormatsCommand.php
 
@@ -1240,6 +2032,24 @@ parameters:
 			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 3
+			path: src/Command/Video/FormatsCommand.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, list\<string\>\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/Video/FormatsCommand.php
+
+		-
+			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Command/Video/FormatsCommand.php
+
+		-
+			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, non\-empty\-array given\.$#'
+			identifier: argument.type
+			count: 1
 			path: src/Command/Video/FormatsCommand.php
 
 		-
@@ -1267,6 +2077,12 @@ parameters:
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
+			message: '#^Only booleans are allowed in &&, array\<int\|string, int\|string\>\|false given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 1
+			path: src/Command/Video/ScreenshotsCommand.php
+
+		-
 			message: '#^Only booleans are allowed in a negated boolean, float\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 1
@@ -1285,6 +2101,18 @@ parameters:
 			path: src/Command/Video/ScreenshotsCommand.php
 
 		-
+			message: '#^Only booleans are allowed in an if condition, list\<string\>\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 2
+			path: src/Command/Video/ScreenshotsCommand.php
+
+		-
+			message: '#^Parameter \#1 \$bytes of function KVS\\CLI\\Utils\\format_bytes expects int, int\<0, max\>\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Command/Video/ScreenshotsCommand.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 2
@@ -1294,6 +2122,24 @@ parameters:
 			message: '#^Only booleans are allowed in &&, string given on the left side\.$#'
 			identifier: booleanAnd.leftNotBoolean
 			count: 1
+			path: src/Config/Configuration.php
+
+		-
+			message: '#^Only booleans are allowed in &&, string\|false given on the left side\.$#'
+			identifier: booleanAnd.leftNotBoolean
+			count: 2
+			path: src/Config/Configuration.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, int\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 4
+			path: src/Config/Configuration.php
+
+		-
+			message: '#^Parameter \#1 \$content of method KVS\\CLI\\Config\\Configuration\:\:extractDefineValue\(\) expects string, string\|false given\.$#'
+			identifier: argument.type
+			count: 4
 			path: src/Config/Configuration.php
 
 		-
@@ -1315,6 +2161,24 @@ parameters:
 			path: src/Output/Formatter.php
 
 		-
+			message: '#^Parameter \#1 \$messages of method Symfony\\Component\\Console\\Output\\OutputInterface\:\:writeln\(\) expects iterable\<string\>\|string, string\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Output/Formatter.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fclose expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Output/Formatter.php
+
+		-
+			message: '#^Parameter \#1 \$stream of function fputcsv expects resource, resource\|false given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Output/Formatter.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 5
@@ -1327,6 +2191,12 @@ parameters:
 			path: src/utils.php
 
 		-
+			message: '#^Only booleans are allowed in an if condition, int\|false given\.$#'
+			identifier: if.condNotBoolean
+			count: 5
+			path: src/utils.php
+
+		-
 			message: '#^Parameter \#2 \$count of function KVS\\CLI\\Utils\\pluralize expects int, float given\.$#'
 			identifier: argument.type
 			count: 3
@@ -1336,6 +2206,12 @@ parameters:
 			message: '#^Parameter &\$params by\-ref type of function KVS\\CLI\\Utils\\build_where_clause\(\) expects list\<mixed\>, non\-empty\-array given\.$#'
 			identifier: parameterByRef.type
 			count: 2
+			path: src/utils.php
+
+		-
+			message: '#^Possibly invalid array key type float\|int\.$#'
+			identifier: offsetAccess.invalidOffset
+			count: 1
 			path: src/utils.php
 
 		-

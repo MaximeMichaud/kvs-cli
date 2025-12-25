@@ -43,6 +43,7 @@ use KVS\CLI\Command\CompletionCommand;
 use KVS\CLI\Command\CliInfoCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
+use KVS\CLI\Bootstrap\BootstrapStep;
 use KVS\CLI\Bootstrap\LoadConfiguration;
 use KVS\CLI\Bootstrap\ValidateKvsInstallation;
 use KVS\CLI\Bootstrap\RegisterCommands;
@@ -65,7 +66,7 @@ class Application extends BaseApplication
 
     /**
      * Bootstrap steps to execute in order
-     * @var array<class-string>
+     * @var array<class-string<BootstrapStep>>
      */
     private array $bootstrapSteps = [
         LoadConfiguration::class,

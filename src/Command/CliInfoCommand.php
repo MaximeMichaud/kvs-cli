@@ -178,17 +178,17 @@ HELP
             $line = $output[0];
 
             // Try to extract MariaDB version
-            if (preg_match('/(\d+\.\d+\.\d+)-MariaDB/', $line, $matches)) {
+            if (preg_match('/(\d+\.\d+\.\d+)-MariaDB/', $line, $matches) === 1) {
                 return $matches[1] . ' (MariaDB)';
             }
 
             // Try to extract MySQL version
-            if (preg_match('/Ver\s+(\d+\.\d+\.\d+)/', $line, $matches)) {
+            if (preg_match('/Ver\s+(\d+\.\d+\.\d+)/', $line, $matches) === 1) {
                 return $matches[1];
             }
 
             // Try distrib version for MariaDB
-            if (preg_match('/Distrib\s+(\d+\.\d+\.\d+)/', $line, $matches)) {
+            if (preg_match('/Distrib\s+(\d+\.\d+\.\d+)/', $line, $matches) === 1) {
                 return $matches[1] . ' (MariaDB)';
             }
 
@@ -286,7 +286,7 @@ HELP
             $content = @file_get_contents($versionFile);
             if ($content !== false) {
                 // Look for $config['project_version']
-                if (preg_match('/\$config\[\'project_version\'\]\s*=\s*["\']([^"\']+)["\']/', $content, $matches)) {
+                if (preg_match('/\$config\[\'project_version\'\]\s*=\s*["\']([^"\']+)["\']/', $content, $matches) === 1) {
                     return $matches[1];
                 }
             }
@@ -298,12 +298,12 @@ HELP
             $content = @file_get_contents($setupFile);
             if ($content !== false) {
                 // Look for $config['project_version']
-                if (preg_match('/\$config\[\'project_version\'\]\s*=\s*["\']([^"\']+)["\']/', $content, $matches)) {
+                if (preg_match('/\$config\[\'project_version\'\]\s*=\s*["\']([^"\']+)["\']/', $content, $matches) === 1) {
                     return $matches[1];
                 }
 
                 // Try VERSION_NUMBER constant
-                if (preg_match('/define\s*\(\s*[\'"]VERSION_NUMBER[\'"]\s*,\s*[\'"]([^"\']+)[\'"]/', $content, $matches)) {
+                if (preg_match('/define\s*\(\s*[\'"]VERSION_NUMBER[\'"]\s*,\s*[\'"]([^"\']+)[\'"]/', $content, $matches) === 1) {
                     return $matches[1];
                 }
             }

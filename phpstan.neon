@@ -4,8 +4,8 @@
 
 parameters:
     # Analysis level (0-10, with 10 being strictest in PHPStan 2.x)
-    # Level 6: strict types and mixed type handling
-    level: 6
+    # Level 7: no implicit mixed, strict boolean conditions
+    level: 7
 
     # Parallel processing for faster analysis
     parallel:
