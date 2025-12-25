@@ -4,8 +4,8 @@
 
 parameters:
     # Analysis level (0-10, with 10 being strictest in PHPStan 2.x)
-    # Start at 5, target 8-9 for 2025 standards
-    level: 5
+    # Level 6: strict types and mixed type handling
+    level: 6
 
     # Parallel processing for faster analysis
     parallel:
