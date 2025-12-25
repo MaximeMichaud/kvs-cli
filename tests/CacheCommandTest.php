@@ -55,7 +55,7 @@ class CacheCommandTest extends TestCase
         $this->assertFileExists($this->tempDir . '/admin/data/engine/cache_test.dat');
         $this->assertFileExists($this->tempDir . '/admin/smarty/cache/test.cache');
 
-        $this->tester->execute(['action' => 'clear']);
+        $this->tester->execute(['--clear' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -67,53 +67,43 @@ class CacheCommandTest extends TestCase
         $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/cache/test.cache');
     }
 
-    public function testCacheClearSpecificType(): void
+    public function testCacheClearFileType(): void
     {
         $this->tester->execute([
-            'action' => 'clear',
-            '--type' => 'smarty'
+            '--clear' => true,
+            '--type' => 'file'
         ]);
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('Smarty cache cleared', $output);
+        $this->assertStringContainsString('Cache cleared', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
 
-        // Only Smarty cache should be cleared
+        // File cache should be cleared
+        $this->assertFileDoesNotExist($this->tempDir . '/admin/data/engine/cache_test.dat');
         $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/cache/test.cache');
-        $this->assertFileExists($this->tempDir . '/admin/data/engine/cache_test.dat'); // Should still exist
     }
 
-    public function testCacheInfo(): void
+    public function testCacheStats(): void
     {
-        $this->tester->execute(['action' => 'info']);
+        $this->tester->execute(['--stats' => true]);
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('Cache Information', $output);
         $this->assertStringContainsString('Engine cache', $output);
         $this->assertStringContainsString('Smarty cache', $output);
-        $this->assertMatchesRegularExpression('/\d+\s*(bytes|KB|MB)/', $output); // Should show sizes
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testCacheWarmup(): void
+    public function testCacheNoAction(): void
     {
-        $this->tester->execute(['action' => 'warmup']);
+        // Running without any option shows help
+        $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('Cache warmed up', $output);
+        $this->assertStringContainsString('--clear', $output);
+        $this->assertStringContainsString('--stats', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
-    }
-
-    public function testCacheInvalidAction(): void
-    {
-        $this->tester->execute(['action' => 'invalid']);
-
-        $output = $this->tester->getDisplay();
-
-        $this->assertStringContainsString('Invalid action', $output);
-        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 }

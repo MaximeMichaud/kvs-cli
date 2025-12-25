@@ -55,6 +55,21 @@ class CategoryCommandComprehensiveTest extends TestCase
         }
 
         $this->config = new Configuration(['path' => $kvsPath]);
+
+        // Check database connectivity - skip if not available
+        $dbConfig = $this->config->getDatabaseConfig();
+        if (!empty($dbConfig)) {
+            try {
+                $dsn = sprintf('mysql:host=%s;dbname=%s', $dbConfig['host'] ?? '127.0.0.1', $dbConfig['database'] ?? '');
+                $pdo = new \PDO($dsn, $dbConfig['user'] ?? '', $dbConfig['password'] ?? '', [
+                    \PDO::ATTR_TIMEOUT => 2,
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                ]);
+            } catch (\PDOException $e) {
+                $this->markTestSkipped('Database not available: ' . $e->getMessage());
+            }
+        }
+
         $this->command = new CategoryCommand($this->config);
 
         $app = new Application();

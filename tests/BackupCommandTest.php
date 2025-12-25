@@ -45,7 +45,7 @@ class BackupCommandTest extends TestCase
     public function testBackupCreate(): void
     {
         try {
-            $this->tester->execute(['action' => 'create']);
+            $this->tester->execute(['--create' => true]);
             $output = $this->tester->getDisplay();
             // May fail without mysqldump, but should show attempt
             $this->assertStringContainsString('backup', strtolower($output));
@@ -57,29 +57,38 @@ class BackupCommandTest extends TestCase
 
     public function testBackupList(): void
     {
-        // Create some mock backup files
-        file_put_contents($this->tempDir . '/backups/backup-2024-01-01.tar.gz', 'test');
-        file_put_contents($this->tempDir . '/backups/backup-2024-01-02.tar.gz', 'test');
+        // BackupCommand looks in dirname(kvsPath)/backups
+        $backupsDir = dirname($this->tempDir) . '/backups';
+        if (!is_dir($backupsDir)) {
+            mkdir($backupsDir, 0755, true);
+        }
 
-        $this->tester->execute(['action' => 'list']);
+        // Create mock backup files matching kvs_backup_*.{tar.gz,sql.gz} pattern
+        file_put_contents($backupsDir . '/kvs_backup_full_2024-01-01.tar.gz', 'test');
+        file_put_contents($backupsDir . '/kvs_backup_db_2024-01-02.sql.gz', 'test');
+
+        $this->tester->execute(['--list' => true]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Available backups', $output);
-        $this->assertStringContainsString('backup-2024-01-01.tar.gz', $output);
-        $this->assertStringContainsString('backup-2024-01-02.tar.gz', $output);
+        $this->assertStringContainsString('kvs_backup_full_2024-01-01.tar.gz', $output);
+        $this->assertStringContainsString('kvs_backup_db_2024-01-02.sql.gz', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+
+        // Cleanup
+        unlink($backupsDir . '/kvs_backup_full_2024-01-01.tar.gz');
+        unlink($backupsDir . '/kvs_backup_db_2024-01-02.sql.gz');
     }
 
     public function testBackupRestore(): void
     {
         // Create a mock backup file
-        file_put_contents($this->tempDir . '/backups/test.tar.gz', 'test');
+        $backupFile = $this->tempDir . '/backups/test.tar.gz';
+        file_put_contents($backupFile, 'test');
 
         try {
-            $this->tester->execute([
-                'action' => 'restore',
-                'backup' => 'test.tar.gz'
-            ]);
+            // Answer 'no' to the confirmation prompt
+            $this->tester->setInputs(['no']);
+            $this->tester->execute(['--restore' => $backupFile]);
             $output = $this->tester->getDisplay();
             $this->assertStringContainsString('restore', strtolower($output));
         } catch (\Exception $e) {
@@ -88,29 +97,15 @@ class BackupCommandTest extends TestCase
         }
     }
 
-    public function testBackupDelete(): void
+    public function testBackupNoAction(): void
     {
-        // Create a mock backup file
-        $backupFile = $this->tempDir . '/backups/test.tar.gz';
-        file_put_contents($backupFile, 'test');
-
-        $this->tester->execute([
-            'action' => 'delete',
-            'backup' => 'test.tar.gz'
-        ]);
+        // Running without any option shows help
+        $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('deleted', strtolower($output));
-        $this->assertFileDoesNotExist($backupFile);
+        $this->assertStringContainsString('--create', $output);
+        $this->assertStringContainsString('--list', $output);
+        $this->assertStringContainsString('--restore', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
-    }
-
-    public function testBackupInvalidAction(): void
-    {
-        $this->tester->execute(['action' => 'invalid']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Invalid action', $output);
-        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 }

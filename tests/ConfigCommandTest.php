@@ -151,10 +151,10 @@ $config["memcache_server"] = "127.0.0.1";
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Database Configuration', $output);
-        $this->assertStringContainsString('localhost', $output);
-        $this->assertStringContainsString('test_user', $output);
-        $this->assertStringContainsString('test_db', $output);
-        $this->assertStringNotContainsString('test_pass', $output); // Password should be hidden
+        $this->assertStringContainsString('127.0.0.1', $output);
+        $this->assertStringContainsString('kvs_user', $output);
+        $this->assertStringContainsString('kvs_test', $output);
+        $this->assertStringNotContainsString('kvs_pass', $output); // Password should be hidden
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -245,12 +245,12 @@ $config["memcache_server"] = "127.0.0.1";
         $output = $this->tester->getDisplay();
 
         $this->assertStringContainsString('Database Configuration', $output);
-        $this->assertStringContainsString('localhost', $output);
-        $this->assertStringContainsString('test_user', $output);
-        $this->assertStringContainsString('test_db', $output);
+        $this->assertStringContainsString('127.0.0.1', $output);
+        $this->assertStringContainsString('kvs_user', $output);
+        $this->assertStringContainsString('kvs_test', $output);
         // Password should be masked
         $this->assertStringContainsString('**********', $output);
-        $this->assertStringNotContainsString('test_pass', $output);
+        $this->assertStringNotContainsString('kvs_pass', $output);
     }
 
     public function testConfigListJsonFormat(): void
@@ -277,7 +277,7 @@ $config["memcache_server"] = "127.0.0.1";
 
         // Should contain database config
         $this->assertArrayHasKey('db.host', $json);
-        $this->assertEquals('localhost', $json['db.host']);
+        $this->assertEquals('127.0.0.1', $json['db.host']);
     }
 
     public function testConfigGetMainProjectVersion(): void
@@ -300,7 +300,7 @@ $config["memcache_server"] = "127.0.0.1";
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('localhost', $output);
+        $this->assertStringContainsString('127.0.0.1', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -403,7 +403,7 @@ $config["memcache_server"] = "127.0.0.1";
         $output = $this->tester->getDisplay();
 
         // With show-protected, password should be visible
-        $this->assertStringContainsString('test_pass', $output);
+        $this->assertStringContainsString('kvs_pass', $output);
     }
 
     public function testConfigGetProtectedValueHidesPassword(): void
@@ -417,7 +417,7 @@ $config["memcache_server"] = "127.0.0.1";
 
         // Should show asterisks, not actual password
         $this->assertStringContainsString('**********', $output);
-        $this->assertStringNotContainsString('test_pass', $output);
+        $this->assertStringNotContainsString('kvs_pass', $output);
     }
 
     public function testConfigGetProtectedValueShowsWithFlag(): void
@@ -431,7 +431,7 @@ $config["memcache_server"] = "127.0.0.1";
         $output = $this->tester->getDisplay();
 
         // With flag, should show actual password
-        $this->assertStringContainsString('test_pass', $output);
+        $this->assertStringContainsString('kvs_pass', $output);
     }
 
     public function testConfigContentPathsCombinesPathAndUrl(): void

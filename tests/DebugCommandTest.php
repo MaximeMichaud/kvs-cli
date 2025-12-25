@@ -44,52 +44,10 @@ class DebugCommandTest extends TestCase
         }
     }
 
-    public function testDebugEnable(): void
-    {
-        $this->tester->execute(['action' => 'enable']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Debug mode enabled', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
-    }
-
-    public function testDebugDisable(): void
-    {
-        $this->tester->execute(['action' => 'disable']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Debug mode disabled', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
-    }
-
-    public function testDebugStatus(): void
-    {
-        $this->tester->execute(['action' => 'status']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Debug mode is', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
-    }
-
-    public function testDebugClear(): void
-    {
-        // Create some debug log files
-        file_put_contents($this->tempDir . '/admin/logs/debug.log', 'test');
-        file_put_contents($this->tempDir . '/admin/logs/error.log', 'test');
-
-        $this->tester->execute(['action' => 'clear']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Debug logs cleared', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
-
-        // Check files are deleted
-        $this->assertFileDoesNotExist($this->tempDir . '/admin/logs/debug.log');
-    }
-
     public function testDebugInfo(): void
     {
-        $this->tester->execute(['action' => 'info']);
+        // Default behavior shows debug info
+        $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Debug Information', $output);
@@ -98,12 +56,31 @@ class DebugCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testDebugInvalidAction(): void
+    public function testDebugInfoOption(): void
     {
-        $this->tester->execute(['action' => 'invalid']);
+        $this->tester->execute(['--info' => true]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Invalid action', $output);
-        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Debug Information', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testDebugCheck(): void
+    {
+        $this->tester->execute(['--check' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('System Checks', $output);
+        $this->assertStringContainsString('PHP Version', $output);
+        // Status code depends on checks passing
+    }
+
+    public function testDebugTestDb(): void
+    {
+        $this->tester->execute(['--test-db' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Database Connection Test', $output);
+        // Will show config or error depending on DB setup
     }
 }

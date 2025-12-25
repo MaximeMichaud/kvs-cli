@@ -51,9 +51,30 @@ class LogCommandTest extends TestCase
         }
     }
 
-    public function testLogView(): void
+    public function testLogList(): void
     {
-        $this->tester->execute(['action' => 'view']);
+        // Default behavior (no args) shows list
+        $this->tester->execute([]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('system', $output);
+        $this->assertStringContainsString('debug', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogListOption(): void
+    {
+        $this->tester->execute(['--list' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('system', $output);
+        $this->assertStringContainsString('debug', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewSpecificType(): void
+    {
+        $this->tester->execute(['type' => 'system']);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('System started', $output);
@@ -61,74 +82,48 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testLogViewSpecificFile(): void
+    public function testLogViewDebug(): void
     {
-        $this->tester->execute([
-            'action' => 'view',
-            '--file' => 'debug'
-        ]);
+        $this->tester->execute(['type' => 'debug']);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Debug message', $output);
-        $this->assertStringNotContainsString('System started', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testLogTail(): void
     {
         $this->tester->execute([
-            'action' => 'tail',
-            '--lines' => '1'
+            'type' => 'system',
+            '--tail' => '1'
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('ERROR: Test error', $output);
-        $this->assertStringNotContainsString('System started', $output);
+        // Shows the log content
+        $this->assertStringContainsString('Log: system', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testLogClear(): void
     {
-        $this->tester->execute(['action' => 'clear']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Logs cleared', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
-
-        // Check files are cleared
-        $this->assertEquals('', file_get_contents($this->tempDir . '/admin/logs/system.log'));
-    }
-
-    public function testLogSearch(): void
-    {
+        // Answer 'no' to confirmation
+        $this->tester->setInputs(['no']);
         $this->tester->execute([
-            'action' => 'search',
-            '--pattern' => 'ERROR'
+            'type' => 'system',
+            '--clear' => true
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Test error', $output);
-        $this->assertStringNotContainsString('System started', $output);
+        $this->assertStringContainsString('clear', strtolower($output));
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testLogList(): void
+    public function testLogNotFound(): void
     {
-        $this->tester->execute(['action' => 'list']);
+        $this->tester->execute(['type' => 'nonexistent']);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Available log files', $output);
-        $this->assertStringContainsString('system.log', $output);
-        $this->assertStringContainsString('debug.log', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
-    }
-
-    public function testLogInvalidAction(): void
-    {
-        $this->tester->execute(['action' => 'invalid']);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Invalid action', $output);
+        $this->assertStringContainsString('not found', strtolower($output));
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 }

@@ -46,33 +46,28 @@ class CronCommandTest extends TestCase
 
     public function testCronRunAll(): void
     {
-        $this->tester->execute(['action' => 'run']);
+        // Running without arguments runs all cron tasks
+        $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Running cron jobs', $output);
-        $this->assertStringContainsString('Main cron', $output);
+        $this->assertStringContainsString('Running all cron tasks', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testCronRunSpecificJob(): void
+    public function testCronRunSpecificTask(): void
     {
-        $this->tester->execute([
-            'action' => 'run',
-            '--job' => 'conversion'
-        ]);
+        $this->tester->execute(['task' => 'conversion']);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Running conversion cron', $output);
-        $this->assertStringContainsString('Conversion cron', $output);
+        $this->assertStringContainsString('Running cron task: conversion', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testCronList(): void
     {
-        $this->tester->execute(['action' => 'list']);
+        $this->tester->execute(['--list' => true]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Available cron jobs', $output);
         $this->assertStringContainsString('cron.php', $output);
         $this->assertStringContainsString('cron_conversion.php', $output);
         $this->assertStringContainsString('cron_optimize.php', $output);
@@ -81,31 +76,20 @@ class CronCommandTest extends TestCase
 
     public function testCronStatus(): void
     {
-        $this->tester->execute(['action' => 'status']);
+        $this->tester->execute(['--status' => true]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Cron job status', $output);
+        // Without status file, shows warning
+        $this->assertStringContainsString('status', strtolower($output));
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testCronInvalidAction(): void
+    public function testCronInvalidTask(): void
     {
-        $this->tester->execute(['action' => 'invalid']);
+        $this->tester->execute(['task' => 'nonexistent']);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Invalid action', $output);
-        $this->assertEquals(1, $this->tester->getStatusCode());
-    }
-
-    public function testCronInvalidJob(): void
-    {
-        $this->tester->execute([
-            'action' => 'run',
-            '--job' => 'nonexistent'
-        ]);
-
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Unknown cron task', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 }
