@@ -40,6 +40,7 @@ use KVS\CLI\Command\EvalFileCommand;
 use KVS\CLI\Command\PluginCommand;
 use KVS\CLI\Command\SelfUpdateCommand;
 use KVS\CLI\Command\CompletionCommand;
+use KVS\CLI\Command\CliInfoCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
 use KVS\CLI\Bootstrap\LoadConfiguration;
@@ -64,6 +65,7 @@ class Application extends BaseApplication
 
     /**
      * Bootstrap steps to execute in order
+     * @var array<class-string>
      */
     private array $bootstrapSteps = [
         LoadConfiguration::class,
@@ -91,6 +93,7 @@ class Application extends BaseApplication
         ];
 
         $commands[] = new CompletionCommand();
+        $commands[] = new CliInfoCommand();
 
         return $commands;
     }
@@ -177,6 +180,7 @@ class Application extends BaseApplication
             'help', 'list', '--help',
             'self-update', 'selfupdate', 'self:update',
             'completion',
+            'cli:info', 'info',
         ];
 
         return in_array($command, $standaloneCommands) || $isVersionRequest;
