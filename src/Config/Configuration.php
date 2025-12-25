@@ -6,11 +6,17 @@ use KVS\CLI\Constants;
 
 class Configuration
 {
+    /** @var array<string, mixed> */
     private array $config = [];
     private string $kvsPath;
+    /** @var array<string, string> */
     private array $dbConfig = [];
+    /** @var array<string, mixed> */
     private array $options;
 
+    /**
+     * @param array<string, mixed> $options
+     */
     public function __construct(array $options = [])
     {
         $this->options = $options;
@@ -226,12 +232,15 @@ class Configuration
             ?? $this->getContentPath() . '/' . Constants::CONTENT_ALBUMS_SOURCES;
     }
 
+    /**
+     * @return array<string, string>
+     */
     public function getDatabaseConfig(): array
     {
         return $this->dbConfig;
     }
 
-    public function get(string $key, $default = null)
+    public function get(string $key, mixed $default = null): mixed
     {
         return $this->config[$key] ?? $default;
     }

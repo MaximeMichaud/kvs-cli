@@ -217,7 +217,7 @@ class StatusFormatter
      * Generic formatter - applies color if requested
      *
      * @param int $statusId Status ID to format
-     * @param array $labels Array of status definitions [id => ['text' => '...', 'color' => '...']]
+     * @param array<int, array{text: string, color: string}> $labels Array of status definitions
      * @param bool $withColor Include Symfony Console color tags
      * @return string Formatted status string
      */

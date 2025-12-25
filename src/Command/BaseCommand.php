@@ -31,6 +31,9 @@ abstract class BaseCommand extends Command
         }
     }
 
+    /**
+     * @param list<string> $args
+     */
     protected function executePhpScript(string $scriptPath, array $args = []): ?string
     {
         if (!file_exists($scriptPath)) {
@@ -85,6 +88,9 @@ abstract class BaseCommand extends Command
 
     /**
      * Render a table with consistent box style
+     *
+     * @param list<string> $headers
+     * @param list<list<string|int|null>> $rows
      */
     protected function renderTable(array $headers, array $rows): void
     {

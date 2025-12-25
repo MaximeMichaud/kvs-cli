@@ -18,12 +18,14 @@ use function KVS\CLI\Utils\truncate;
 )]
 class ConfigCommand extends BaseCommand
 {
+    /** @var array<string, string> */
     private array $configFiles = [
         'db' => '/admin/include/setup_db.php',
         'main' => '/admin/include/setup.php',
         'paths' => '/admin/include/setup_paths.php',
     ];
 
+    /** @var array<string, bool> */
     private array $protectedKeys = [
         'db.pass' => true,
         'db.password' => true,
@@ -242,6 +244,9 @@ class ConfigCommand extends BaseCommand
 
     /**
      * Display a configuration section with specific keys
+     *
+     * @param array<string, string> $keys
+     * @param array<string, mixed> $configs
      */
     private function showConfigSection(string $title, array $keys, array $configs, bool $showProtected): void
     {
@@ -278,6 +283,8 @@ class ConfigCommand extends BaseCommand
 
     /**
      * Display content paths and URLs in a 3-column table
+     *
+     * @param array<string, array{path?: string, url?: string}> $items
      */
     private function showContentPathsSection(string $title, array $items, bool $showProtected): void
     {
@@ -349,6 +356,9 @@ class ConfigCommand extends BaseCommand
         return self::SUCCESS;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function getDatabaseConfigs(): array
     {
         $file = $this->config->getKvsPath() . '/admin/include/setup_db.php';
@@ -369,6 +379,9 @@ class ConfigCommand extends BaseCommand
         return $configs;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function getMainConfigs(): array
     {
         $file = $this->config->getKvsPath() . '/admin/include/setup.php';
@@ -401,6 +414,9 @@ class ConfigCommand extends BaseCommand
         return $config;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function getAllConfigs(string $type = 'all'): array
     {
         $configs = [];
@@ -598,6 +614,9 @@ class ConfigCommand extends BaseCommand
 
     /**
      * Find similar keys using fuzzy matching
+     *
+     * @param array<string, mixed> $haystack
+     * @return list<string>
      */
     private function findSimilarKeys(string $needle, array $haystack): array
     {

@@ -33,13 +33,14 @@ class Formatter
         'date' => ['post_date', 'added_date'],
     ];
 
+    /** @var array<string, mixed> */
     private array $args;
 
     /**
      * Constructor
      *
-     * @param array $options Input options from command (typically $input->getOptions())
-     * @param array $defaultFields Default fields to display if --fields not specified
+     * @param array<string, mixed> $options Input options from command (typically $input->getOptions())
+     * @param list<string> $defaultFields Default fields to display if --fields not specified
      */
     public function __construct(array $options, array $defaultFields)
     {
@@ -63,7 +64,7 @@ class Formatter
     /**
      * Display items in the requested format
      *
-     * @param array $items Array of items to display
+     * @param list<array<string, mixed>> $items Array of items to display
      * @param OutputInterface $output Symfony Console output interface
      * @return void
      */
@@ -88,7 +89,7 @@ class Formatter
     /**
      * Display single field from each item (one value per line)
      *
-     * @param array $items
+     * @param list<array<string, mixed>> $items
      * @param OutputInterface $output
      * @return void
      */
@@ -107,7 +108,7 @@ class Formatter
     /**
      * Display multiple fields in requested format
      *
-     * @param array $items
+     * @param list<array<string, mixed>> $items
      * @param OutputInterface $output
      * @return void
      */
@@ -148,6 +149,8 @@ class Formatter
 
     /**
      * Display space-separated IDs
+     *
+     * @param list<array<string, mixed>> $items
      */
     private function displayIds(array $items, OutputInterface $output): void
     {
@@ -169,6 +172,9 @@ class Formatter
 
     /**
      * Display as formatted table with borders
+     *
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $fields
      */
     private function displayTable(array $items, array $fields, OutputInterface $output): void
     {
@@ -211,6 +217,9 @@ class Formatter
 
     /**
      * Display as JSON
+     *
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $fields
      */
     private function displayJson(array $items, array $fields, OutputInterface $output): void
     {
@@ -231,6 +240,9 @@ class Formatter
 
     /**
      * Display as CSV
+     *
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $fields
      */
     private function displayCsv(array $items, array $fields, OutputInterface $output): void
     {
@@ -253,6 +265,9 @@ class Formatter
 
     /**
      * Display as YAML
+     *
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $fields
      */
     private function displayYaml(array $items, array $fields, OutputInterface $output): void
     {
@@ -274,7 +289,7 @@ class Formatter
     /**
      * Get field value from item, resolving aliases if needed
      *
-     * @param array $item Data item
+     * @param array<string, mixed> $item Data item
      * @param string $field Requested field name
      * @return mixed Field value or empty string if not found
      */
@@ -299,6 +314,9 @@ class Formatter
 
     /**
      * Check if any fields have text longer than 50 chars
+     *
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $fields
      */
     private function hasLongFields(array $items, array $fields): bool
     {

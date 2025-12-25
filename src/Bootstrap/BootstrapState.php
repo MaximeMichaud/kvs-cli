@@ -10,7 +10,10 @@ namespace KVS\CLI\Bootstrap;
  */
 class BootstrapState
 {
+    /** @var array<string, mixed> */
     private array $values = [];
+
+    /** @var list<string> */
     private array $errors = [];
 
     /**
@@ -55,6 +58,8 @@ class BootstrapState
 
     /**
      * Get all errors
+     *
+     * @return list<string>
      */
     public function getErrors(): array
     {

@@ -21,7 +21,7 @@ parameters:
 		-
 			message: '#^Only booleans are allowed in a negated boolean, KVS\\CLI\\Config\\Configuration\|null given\.$#'
 			identifier: booleanNot.exprNotBoolean
-			count: 2
+			count: 1
 			path: src/Application.php
 
 		-
@@ -123,6 +123,12 @@ parameters:
 		-
 			message: '#^Only booleans are allowed in an if condition, string\|null given\.$#'
 			identifier: if.condNotBoolean
+			count: 1
+			path: src/Command/ConfigCommand.php
+
+		-
+			message: '#^Parameter \#2 \$haystack of method KVS\\CLI\\Command\\ConfigCommand\:\:findSimilarKeys\(\) expects array\<string, mixed\>, list\<string\> given\.$#'
+			identifier: argument.type
 			count: 1
 			path: src/Command/ConfigCommand.php
 
@@ -385,8 +391,44 @@ parameters:
 			path: src/Command/Content/UserCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:escapeYAML\(\) has parameter \$value with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:getFieldValue\(\) has parameter \$user with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputCSV\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputCSV\(\) has parameter \$users with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
 			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputCSV\(\) is unused\.$#'
 			identifier: method.unused
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputJSON\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputJSON\(\) has parameter \$users with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
@@ -397,14 +439,44 @@ parameters:
 			path: src/Command/Content/UserCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputSingleField\(\) has parameter \$users with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
 			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputSingleField\(\) is unused\.$#'
 			identifier: method.unused
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputTable\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputTable\(\) has parameter \$users with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
 			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputTable\(\) is unused\.$#'
 			identifier: method.unused
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputYAML\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/UserCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\UserCommand\:\:outputYAML\(\) has parameter \$users with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
 			count: 1
 			path: src/Command/Content/UserCommand.php
 
@@ -475,8 +547,38 @@ parameters:
 			path: src/Command/Content/VideoCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:getFieldValue\(\) has parameter \$video with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputCSV\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputCSV\(\) has parameter \$videos with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
 			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputCSV\(\) is unused\.$#'
 			identifier: method.unused
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputJSON\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputJSON\(\) has parameter \$videos with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
@@ -487,8 +589,32 @@ parameters:
 			path: src/Command/Content/VideoCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputTable\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputTable\(\) has parameter \$videos with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
 			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputTable\(\) is unused\.$#'
 			identifier: method.unused
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputYAML\(\) has parameter \$fields with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Content/VideoCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:outputYAML\(\) has parameter \$videos with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
@@ -538,6 +664,12 @@ parameters:
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 3
+			path: src/Command/Database/ExportCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Database\\ExportCommand\:\:getCompressor\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
 			path: src/Command/Database/ExportCommand.php
 
 		-
@@ -643,6 +775,12 @@ parameters:
 			path: src/Command/Dev/LogCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\Dev\\LogCommand\:\:tail\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/Dev/LogCommand.php
+
+		-
 			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
 			identifier: booleanNot.exprNotBoolean
 			count: 3
@@ -675,6 +813,12 @@ parameters:
 		-
 			message: '#^Call to static method setDb\(\) on an unknown class Model\.$#'
 			identifier: class.notFound
+			count: 1
+			path: src/Command/EvalCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\EvalCommand\:\:getBootstrapCode\(\) has parameter \$db with no type specified\.$#'
+			identifier: missingType.parameter
 			count: 1
 			path: src/Command/EvalCommand.php
 
@@ -739,6 +883,24 @@ parameters:
 			path: src/Command/PluginCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\PluginCommand\:\:getAllPlugins\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\PluginCommand\:\:getPluginById\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\PluginCommand\:\:parsePlugin\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/PluginCommand.php
+
+		-
 			message: '#^Offset ''plugins'' on array\{\} in isset\(\) does not exist\.$#'
 			identifier: isset.offset
 			count: 2
@@ -781,6 +943,12 @@ parameters:
 			path: src/Command/SelfUpdateCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\SelfUpdateCommand\:\:getGitHubReleases\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/SelfUpdateCommand.php
+
+		-
 			message: '#^Offset ''name'' on array\{name\: string, browser_download_url\: string\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
@@ -809,6 +977,18 @@ parameters:
 			identifier: if.condNotBoolean
 			count: 2
 			path: src/Command/SelfUpdateCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\ShellCommand\:\:getShellVariables\(\) has parameter \$db with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: src/Command/ShellCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\ShellCommand\:\:getShellVariables\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/ShellCommand.php
 
 		-
 			message: '#^Only booleans are allowed in &&, mixed given on the left side\.$#'
@@ -865,6 +1045,90 @@ parameters:
 			path: src/Command/System/CacheCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkCron\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkDiskSpace\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkFfmpegCodecs\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkInternet\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkKvsUpdate\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkMemcached\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkMysql\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkOpcache\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkPhpExtensions\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkPhpKvsCompatibility\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkPhpSettings\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkSystemLoad\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:checkTools\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\CheckCommand\:\:getLoadAverage\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/CheckCommand.php
+
+		-
 			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
 			identifier: if.condNotBoolean
 			count: 3
@@ -883,6 +1147,18 @@ parameters:
 			path: src/Command/System/MaintenanceCommand.php
 
 		-
+			message: '#^Method KVS\\CLI\\Command\\System\\MaintenanceCommand\:\:loadSettings\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/MaintenanceCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\MaintenanceCommand\:\:saveSettings\(\) has parameter \$settings with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/MaintenanceCommand.php
+
+		-
 			message: '#^Short ternary operator is not allowed\. Use null coalesce operator if applicable or consider using long ternary\.$#'
 			identifier: ternary.shortNotAllowed
 			count: 1
@@ -897,6 +1173,18 @@ parameters:
 		-
 			message: '#^Loose comparison via "\=\=" is not allowed\.$#'
 			identifier: equal.notAllowed
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\StatusCommand\:\:checkCommand\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: src/Command/System/StatusCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\System\\StatusCommand\:\:checkMemcached\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
 			count: 1
 			path: src/Command/System/StatusCommand.php
 
@@ -946,6 +1234,12 @@ parameters:
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 8
+			path: src/Command/Video/FormatsCommand.php
+
+		-
+			message: '#^Method KVS\\CLI\\Command\\Video\\FormatsCommand\:\:getFormatsFromDatabase\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
 			path: src/Command/Video/FormatsCommand.php
 
 		-
@@ -1021,9 +1315,27 @@ parameters:
 			path: src/Output/Formatter.php
 
 		-
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 2
+			path: src/Output/Formatter.php
+
+		-
+			message: '#^Only booleans are allowed in an if condition, mixed given\.$#'
+			identifier: if.condNotBoolean
+			count: 2
+			path: src/Output/Formatter.php
+
+		-
 			message: '#^Construct empty\(\) is not allowed\. Use more strict comparison\.$#'
 			identifier: empty.notAllowed
 			count: 5
+			path: src/utils.php
+
+		-
+			message: '#^Only booleans are allowed in a negated boolean, mixed given\.$#'
+			identifier: booleanNot.exprNotBoolean
+			count: 1
 			path: src/utils.php
 
 		-
@@ -1033,13 +1345,13 @@ parameters:
 			path: src/utils.php
 
 		-
-			message: '#^Variable property access on mixed\.$#'
-			identifier: property.dynamicName
-			count: 1
+			message: '#^Parameter &\$params by\-ref type of function KVS\\CLI\\Utils\\build_where_clause\(\) expects list\<mixed\>, non\-empty\-array given\.$#'
+			identifier: parameterByRef.type
+			count: 2
 			path: src/utils.php
 
 		-
 			message: '#^Variable property access on object\.$#'
 			identifier: property.dynamicName
-			count: 1
+			count: 2
 			path: src/utils.php

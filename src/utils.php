@@ -121,11 +121,11 @@ function escape_csv_value(string $value): string
  * Extract specific fields from array or object
  * Based on WP-CLI's pick_fields()
  *
- * @param array|object $item Item to extract from
- * @param array $fields Fields to pick
- * @return array Filtered array with only specified fields
+ * @param array<string, mixed>|object $item Item to extract from
+ * @param list<string> $fields Fields to pick
+ * @return array<string, mixed> Filtered array with only specified fields
  */
-function pick_fields($item, array $fields): array
+function pick_fields(array|object $item, array $fields): array
 {
     $result = [];
 
@@ -145,9 +145,9 @@ function pick_fields($item, array $fields): array
 /**
  * Group array of items by field value
  *
- * @param array $items Array of items (arrays or objects)
+ * @param list<array<string, mixed>|object> $items Array of items (arrays or objects)
  * @param string $field Field to group by
- * @return array Grouped array [fieldValue => [items]]
+ * @return array<string, list<array<string, mixed>|object>> Grouped array [fieldValue => [items]]
  */
 function group_by(array $items, string $field): array
 {
@@ -268,7 +268,7 @@ function format_date(string $date): string
  * @param int $successes Successful operations
  * @param int $failures Failed operations (default 0)
  * @param int $skips Skipped operations (default 0)
- * @return array ['type' => 'success'|'error', 'message' => '...']
+ * @return array{type: string, message: string}
  */
 function report_batch_operation_results(
     string $noun,
@@ -318,8 +318,8 @@ function report_batch_operation_results(
  *   - NULL values: ['deleted_at' => null] → "`deleted_at` IS NULL"
  *   - IN clause: ['status_id' => [1,2,3]] → "`status_id` IN (?,?,?)"
  *
- * @param array $filters Associative array ['field' => 'value']
- * @param array &$params Output: parameter array for prepared statement
+ * @param array<string, mixed> $filters Associative array ['field' => 'value']
+ * @param list<mixed> $params Output: parameter array for prepared statement
  * @return string WHERE clause without "WHERE" keyword
  */
 function build_where_clause(array $filters, array &$params = []): string
@@ -356,7 +356,7 @@ function build_where_clause(array $filters, array &$params = []): string
  * Sanitize ORDER BY clause against whitelist
  *
  * @param string $orderBy ORDER BY string (e.g., "created_at DESC")
- * @param array $allowedFields Whitelist of allowed fields
+ * @param list<string> $allowedFields Whitelist of allowed fields
  * @param string $default Default ORDER BY if invalid
  * @return string Sanitized ORDER BY clause
  */
@@ -466,12 +466,12 @@ function is_json(string $string): bool
  *   get_flag_value(['no-verbose' => true], 'verbose', true) → false
  *   get_flag_value([], 'verbose', false) → false
  *
- * @param array $assoc_args Associative args from command
+ * @param array<string, mixed> $assoc_args Associative args from command
  * @param string $flag Flag name
  * @param mixed $default Default value if flag not present
  * @return mixed Flag value or default
  */
-function get_flag_value(array $assoc_args, string $flag, $default = null)
+function get_flag_value(array $assoc_args, string $flag, mixed $default = null): mixed
 {
     // Check for explicit flag
     if (isset($assoc_args[$flag])) {
