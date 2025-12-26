@@ -4,7 +4,7 @@ on:
   push:
     branches: [dev]
     paths:
-      - 'docs/**'
+      - 'docs-wiki/**'
       - '.github/workflows/wiki-sync.yml'
 
 concurrency:
@@ -26,6 +26,6 @@ jobs:
       - name: Sync to Wiki
         uses: Andrew-Chen-Wang/github-wiki-action@v5
         with:
-          path: docs/
+          path: docs-wiki/
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'docs: sync from ${{ github.sha }}'
