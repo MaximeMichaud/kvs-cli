@@ -28,11 +28,11 @@ class CacheCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('stats')) {
+        if ($input->getOption('stats') !== null && $input->getOption('stats') !== false) {
             return $this->showStats();
         }
 
-        if ($input->getOption('clear')) {
+        if ($input->getOption('clear') !== null && $input->getOption('clear') !== false) {
             return $this->clearCache($input->getOption('type'));
         }
 
@@ -49,11 +49,11 @@ class CacheCommand extends BaseCommand
 
     private function clearCache(?string $type): int
     {
-        if (!$type || $type === 'file') {
+        if ($type === null || $type === '' || $type === 'file') {
             $this->clearFileCache();
         }
 
-        if (!$type || $type === 'db') {
+        if ($type === null || $type === '' || $type === 'db') {
             $this->clearDatabaseCache();
         }
 
@@ -93,7 +93,7 @@ class CacheCommand extends BaseCommand
     private function clearDatabaseCache(): void
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return;
         }
 
@@ -145,7 +145,7 @@ class CacheCommand extends BaseCommand
             ];
         }
 
-        if (empty($stats)) {
+        if ($stats === []) {
             $this->io->warning('No cache directories found');
             $this->io->text('Cache directories will be created when KVS starts generating cache.');
             return self::SUCCESS;

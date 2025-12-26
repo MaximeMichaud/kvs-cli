@@ -27,20 +27,20 @@ class CronCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('list')) {
+        if ($input->getOption('list') !== false) {
             return $this->listCronTasks();
         }
 
-        if ($input->getOption('status')) {
+        if ($input->getOption('status') !== false) {
             return $this->showCronStatus();
         }
 
         $task = $input->getArgument('task');
-        if ($task) {
-            return $this->runSpecificTask($task, $input->getOption('force'));
+        if ($task !== null) {
+            return $this->runSpecificTask($task, $input->getOption('force') !== false);
         }
 
-        return $this->runAllCronTasks($input->getOption('force'));
+        return $this->runAllCronTasks($input->getOption('force') !== false);
     }
 
     private function listCronTasks(): int
@@ -71,22 +71,25 @@ class CronCommand extends BaseCommand
         $statusFile = $adminPath . '/data/engine/cron_status.dat';
 
         if (file_exists($statusFile)) {
-            $status = unserialize(file_get_contents($statusFile));
+            $contents = file_get_contents($statusFile);
+            if ($contents !== false) {
+                $status = unserialize($contents);
 
-            if (is_array($status)) {
-                $rows = [];
-                foreach ($status as $task => $lastRun) {
-                    $rows[] = [
-                        $task,
-                        date('Y-m-d H:i:s', $lastRun),
-                        $this->getTimeDiff($lastRun),
-                    ];
+                if (is_array($status)) {
+                    $rows = [];
+                    foreach ($status as $task => $lastRun) {
+                        $rows[] = [
+                            $task,
+                            date('Y-m-d H:i:s', $lastRun),
+                            $this->getTimeDiff($lastRun),
+                        ];
+                    }
+
+                    $this->renderTable(
+                        ['Task', 'Last Run', 'Time Ago'],
+                        $rows
+                    );
                 }
-
-                $this->renderTable(
-                    ['Task', 'Last Run', 'Time Ago'],
-                    $rows
-                );
             }
         } else {
             $this->io->warning('No cron status information available');
@@ -128,7 +131,7 @@ class CronCommand extends BaseCommand
 
         if ($output !== null) {
             $this->io->success("Cron task '$task' completed successfully");
-            if ($output) {
+            if ($output !== '') {
                 $this->io->text($output);
             }
             return self::SUCCESS;
@@ -152,7 +155,7 @@ class CronCommand extends BaseCommand
 
         if ($output !== null) {
             $this->io->success('All cron tasks completed successfully');
-            if ($output) {
+            if ($output !== '') {
                 $this->io->text($output);
             }
             return self::SUCCESS;

@@ -80,7 +80,7 @@ HELP
     {
         $plugins = $this->getAllPlugins();
 
-        if (empty($plugins)) {
+        if ($plugins === []) {
             $this->io->info('No plugins found');
             return self::SUCCESS;
         }
@@ -89,28 +89,34 @@ HELP
         $statusFilter = $input->getOption('status');
         $typeFilter = $input->getOption('type');
 
-        if ($statusFilter && $statusFilter !== 'all') {
+        if ($statusFilter !== null && $statusFilter !== 'all') {
             $plugins = array_filter($plugins, function ($plugin) use ($statusFilter) {
+                $isEnabled = $plugin['is_enabled'] ?? false;
                 if ($statusFilter === 'active') {
-                    return $plugin['is_enabled'];
+                    return $isEnabled;
                 } elseif ($statusFilter === 'inactive') {
-                    return !$plugin['is_enabled'];
+                    return !$isEnabled;
                 }
                 return true;
             });
         }
 
-        if ($typeFilter) {
+        if ($typeFilter !== null && $typeFilter !== '') {
             $plugins = array_filter($plugins, function ($plugin) use ($typeFilter) {
-                return in_array($typeFilter, $plugin['types']);
+                $types = $plugin['types'] ?? [];
+                return in_array($typeFilter, $types, true);
             });
         }
 
         // Transform plugins to flattened format for Formatter
         $transformedPlugins = array_map(function ($plugin) {
-            $isValid = ($plugin['files_ok'] ?? false)
-                && ($plugin['syntax_ok'] ?? false)
-                && ($plugin['compatible'] ?? false);
+            $filesOk = $plugin['files_ok'] ?? false;
+            $syntaxOk = $plugin['syntax_ok'] ?? false;
+            $compatible = $plugin['compatible'] ?? false;
+            $isEnabled = $plugin['is_enabled'] ?? false;
+            $types = $plugin['types'] ?? [];
+            $isValid = $filesOk && $syntaxOk && $compatible;
+
             return [
                 'id' => $plugin['id'] ?? '',
                 'name' => $plugin['name'] ?? '',
@@ -118,11 +124,11 @@ HELP
                 'author' => $plugin['author'] ?? '',
                 'version' => $plugin['version'] ?? '',
                 'kvs_version' => $plugin['kvs_version'] ?? '',
-                'status' => $plugin['is_enabled'] ? 'Active' : 'Inactive',
-                'types' => !empty($plugin['types']) ? implode(',', $plugin['types']) : '',
-                'files_ok' => ($plugin['files_ok'] ?? false) ? 'Yes' : 'No',
-                'syntax_ok' => ($plugin['syntax_ok'] ?? false) ? 'Yes' : 'No',
-                'compatible' => ($plugin['compatible'] ?? false) ? 'Yes' : 'No',
+                'status' => $isEnabled ? 'Active' : 'Inactive',
+                'types' => $types !== [] ? implode(',', $types) : '',
+                'files_ok' => $filesOk ? 'Yes' : 'No',
+                'syntax_ok' => $syntaxOk ? 'Yes' : 'No',
+                'compatible' => $compatible ? 'Yes' : 'No',
                 'valid' => $isValid ? 'Yes' : 'No',
                 'description' => $plugin['description'] ?? '',
                 'path' => $plugin['path'] ?? '',
@@ -134,6 +140,7 @@ HELP
             $input->getOptions(),
             ['id', 'name', 'version', 'status', 'types']
         );
+        /** @var list<array<string, mixed>> $transformedPlugins */
         $formatter->display($transformedPlugins, $this->io);
 
         return self::SUCCESS;
@@ -141,7 +148,7 @@ HELP
 
     private function showPlugin(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === "") {
             $this->io->error('Plugin ID is required');
             $this->io->text('Usage: kvs plugin show <plugin_id>');
             return self::FAILURE;
@@ -149,40 +156,50 @@ HELP
 
         $plugin = $this->getPluginById($id);
 
-        if (!$plugin) {
+        if ($plugin === null) {
             $this->io->error("Plugin not found: $id");
             return self::FAILURE;
         }
 
-        $this->io->section("Plugin: {$plugin['name']}");
+        $name = $plugin['name'] ?? 'Unknown';
+        $this->io->section("Plugin: {$name}");
+
+        $filesOk = $plugin['files_ok'] ?? false;
+        $syntaxOk = $plugin['syntax_ok'] ?? false;
+        $compatible = $plugin['compatible'] ?? false;
+        $isEnabled = $plugin['is_enabled'] ?? false;
+        $types = $plugin['types'] ?? [];
 
         $info = [
-            ['ID', $plugin['id']],
-            ['Name', $plugin['name']],
-            ['Title', $plugin['title']],
-            ['Author', $plugin['author']],
-            ['Version', $plugin['version']],
-            ['Required KVS', $plugin['kvs_version']],
-            ['Types', implode(', ', $plugin['types'])],
-            ['Files OK', $plugin['files_ok'] ? '<fg=green>Yes</>' : '<fg=red>No</>'],
-            ['Syntax OK', $plugin['syntax_ok'] ? '<fg=green>Yes</>' : '<fg=red>No</>'],
-            ['Compatible', $plugin['compatible'] ? '<fg=green>Yes</>' : '<fg=red>No</>'],
-            ['Status', $plugin['is_enabled'] ? '<fg=green>Active</>' : '<fg=yellow>Inactive</>'],
+            ['ID', $plugin['id'] ?? ''],
+            ['Name', $name],
+            ['Title', $plugin['title'] ?? ''],
+            ['Author', $plugin['author'] ?? ''],
+            ['Version', $plugin['version'] ?? ''],
+            ['Required KVS', $plugin['kvs_version'] ?? ''],
+            ['Types', implode(', ', $types)],
+            ['Files OK', $filesOk ? '<fg=green>Yes</>' : '<fg=red>No</>'],
+            ['Syntax OK', $syntaxOk ? '<fg=green>Yes</>' : '<fg=red>No</>'],
+            ['Compatible', $compatible ? '<fg=green>Yes</>' : '<fg=red>No</>'],
+            ['Status', $isEnabled ? '<fg=green>Active</>' : '<fg=yellow>Inactive</>'],
         ];
 
         $this->renderTable(['Property', 'Value'], $info);
 
-        if ($plugin['description']) {
+        $description = $plugin['description'] ?? '';
+        if ($description !== '') {
             $this->io->section('Description');
-            $this->io->text($plugin['description']);
+            $this->io->text($description);
         }
 
+        $pluginPath = $plugin['path'] ?? '';
+        $pluginId = $plugin['id'] ?? '';
         $this->io->section('Paths');
         $this->io->listing([
-            "Plugin directory: {$plugin['path']}",
-            "Main file: {$plugin['path']}/{$plugin['id']}.php",
-            "Template: {$plugin['path']}/{$plugin['id']}.tpl",
-            "Metadata: {$plugin['path']}/{$plugin['id']}.dat",
+            "Plugin directory: {$pluginPath}",
+            "Main file: {$pluginPath}/{$pluginId}.php",
+            "Template: {$pluginPath}/{$pluginId}.tpl",
+            "Metadata: {$pluginPath}/{$pluginId}.dat",
         ]);
 
         return self::SUCCESS;
@@ -190,19 +207,20 @@ HELP
 
     private function showPluginPath(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === "") {
             $this->io->error('Plugin ID is required');
             return self::FAILURE;
         }
 
         $plugin = $this->getPluginById($id);
 
-        if (!$plugin) {
+        if ($plugin === null) {
             $this->io->error("Plugin not found: $id");
             return self::FAILURE;
         }
 
-        $this->io->writeln($plugin['path']);
+        $pluginPath = $plugin['path'] ?? '';
+        $this->io->writeln($pluginPath);
         return self::SUCCESS;
     }
 
@@ -211,16 +229,17 @@ HELP
         $plugins = $this->getAllPlugins();
 
         $total = count($plugins);
-        $active = count(array_filter($plugins, fn($p) => $p['is_enabled']));
+        $active = count(array_filter($plugins, fn($p) => ($p['is_enabled'] ?? false) === true));
         $inactive = $total - $active;
-        $missingFiles = count(array_filter($plugins, fn($p) => !$p['files_ok']));
-        $syntaxErrors = count(array_filter($plugins, fn($p) => !$p['syntax_ok']));
-        $incompatible = count(array_filter($plugins, fn($p) => !$p['compatible']));
+        $missingFiles = count(array_filter($plugins, fn($p) => ($p['files_ok'] ?? true) === false));
+        $syntaxErrors = count(array_filter($plugins, fn($p) => ($p['syntax_ok'] ?? true) === false));
+        $incompatible = count(array_filter($plugins, fn($p) => ($p['compatible'] ?? true) === false));
 
         // Count by type
         $typeStats = [];
         foreach ($plugins as $plugin) {
-            foreach ($plugin['types'] as $type) {
+            $types = $plugin['types'] ?? [];
+            foreach ($types as $type) {
                 if (!isset($typeStats[$type])) {
                     $typeStats[$type] = 0;
                 }
@@ -249,7 +268,7 @@ HELP
 
         $this->renderTable(['Metric', 'Count'], $stats);
 
-        if (!empty($typeStats)) {
+        if ($typeStats !== []) {
             $this->io->section('By Type');
             $typeRows = [];
             foreach ($typeStats as $type => $count) {
@@ -261,6 +280,9 @@ HELP
         return self::SUCCESS;
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     private function getAllPlugins(): array
     {
         $kvsPath = $this->config->getKvsPath();
@@ -294,7 +316,7 @@ HELP
             }
 
             $plugin = $this->parsePlugin($item, $pluginPath);
-            if ($plugin) {
+            if ($plugin !== null) {
                 $plugins[] = $plugin;
             }
         }
@@ -305,6 +327,9 @@ HELP
         return $plugins;
     }
 
+    /**
+     * @return array<string, mixed>|null
+     */
     private function getPluginById(string $id): ?array
     {
         $plugins = $this->getAllPlugins();
@@ -318,6 +343,9 @@ HELP
         return null;
     }
 
+    /**
+     * @return array<string, mixed>|null
+     */
     private function parsePlugin(string $id, string $path): ?array
     {
         $datFile = "$path/$id.dat";
@@ -327,6 +355,9 @@ HELP
         }
 
         $content = file_get_contents($datFile);
+        if ($content === false) {
+            return null;
+        }
 
         $plugin = [
             'id' => $id,
@@ -338,34 +369,35 @@ HELP
         ];
 
         // Parse XML metadata
-        if (preg_match('|<plugin_name>(.*?)</plugin_name>|is', $content, $match)) {
+        if (preg_match('|<plugin_name>(.*?)</plugin_name>|is', $content, $match) === 1) {
             $plugin['name'] = trim($match[1]);
         }
 
-        if (preg_match('|<author>(.*?)</author>|is', $content, $match)) {
+        if (preg_match('|<author>(.*?)</author>|is', $content, $match) === 1) {
             $plugin['author'] = trim($match[1]);
         }
 
-        if (preg_match('|<version>(.*?)</version>|is', $content, $match)) {
+        if (preg_match('|<version>(.*?)</version>|is', $content, $match) === 1) {
             $plugin['version'] = trim($match[1]);
         }
 
-        if (preg_match('|<kvs_version>(.*?)</kvs_version>|is', $content, $match)) {
+        if (preg_match('|<kvs_version>(.*?)</kvs_version>|is', $content, $match) === 1) {
             $plugin['kvs_version'] = trim($match[1]);
         }
 
-        if (preg_match('|<plugin_types>(.*?)</plugin_types>|is', $content, $match)) {
+        if (preg_match('|<plugin_types>(.*?)</plugin_types>|is', $content, $match) === 1) {
             $plugin['types'] = array_map('trim', explode(',', trim($match[1])));
         } else {
             $plugin['types'] = [];
         }
 
         // Try to get localized title/description
-        $plugin['title'] = $plugin['name'];
+        $plugin['title'] = $plugin['name'] ?? '';
         $plugin['description'] = '';
 
         $langFile = "$path/langs/english.php";
         if (file_exists($langFile)) {
+            /** @var array<string, mixed> $lang */
             $lang = [];
             include $langFile;
             if (isset($lang['plugins'][$id]['title'])) {
@@ -437,12 +469,17 @@ HELP
 
             // Check if plugin has IsEnabled function
             $phpContent = file_get_contents($phpFile);
-            if (!preg_match("/function\s+{$id}IsEnabled\s*\(/", $phpContent)) {
+            if ($phpContent === false) {
+                // Can't read file, assume enabled (to avoid false negatives)
+                return true;
+            }
+            if (preg_match("/function\s+{$id}IsEnabled\s*\(/", $phpContent) !== 1) {
                 // No IsEnabled function = plugin is always enabled by default
                 return true;
             }
 
             // Plugin has IsEnabled function - need to call it
+            /** @var array<string, mixed> $config */
             $config = [];
 
             // Load KVS config (required by most plugins)

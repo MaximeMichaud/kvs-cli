@@ -41,18 +41,20 @@ class StatusCommand extends BaseCommand
 
         $info = [];
 
-        $info[] = ['KVS Path', $this->config->getKvsPath() ?: 'Not found'];
+        $kvsPath = $this->config->getKvsPath();
+        $info[] = ['KVS Path', $kvsPath !== '' ? $kvsPath : 'Not found'];
         $info[] = ['Admin Path', $this->config->getAdminPath()];
         $info[] = ['Content Path', $this->config->getContentPath()];
 
         $versionFile = $this->config->getAdminPath() . '/include/setup.php';
         if (file_exists($versionFile)) {
             $content = file_get_contents($versionFile);
-            if (preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches)) {
+            if ($content !== false && preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches) === 1) {
                 $info[] = ['KVS Version', $matches[1]];
             }
         }
 
+        /** @var list<array{string, string}> $info */
         $this->renderTable(['Parameter', 'Value'], $info);
     }
 
@@ -62,7 +64,7 @@ class StatusCommand extends BaseCommand
 
         $db = $this->getDatabaseConnection();
 
-        if (!$db) {
+        if ($db === null) {
             $this->io->error('Database connection failed');
             return;
         }
@@ -75,10 +77,16 @@ class StatusCommand extends BaseCommand
 
         try {
             $stmt = $db->query("SELECT VERSION() as version");
+            if ($stmt === false) {
+                throw new \Exception('Failed to query MySQL version');
+            }
             $version = $stmt->fetch();
             $info[] = ['MySQL Version', $version['version']];
 
             $stmt = $db->query("SHOW TABLE STATUS");
+            if ($stmt === false) {
+                throw new \Exception('Failed to query table status');
+            }
             $tables = $stmt->fetchAll();
             $info[] = ['Total Tables', count($tables)];
 
@@ -109,18 +117,26 @@ class StatusCommand extends BaseCommand
         $info[] = ['Post Max Size', ini_get('post_max_size')];
 
         if (function_exists('disk_free_space')) {
-            $free = disk_free_space($this->config->getKvsPath() ?: '.');
-            $total = disk_total_space($this->config->getKvsPath() ?: '.');
-            $used = $total - $free;
+            $diskPath = $this->config->getKvsPath();
+            if ($diskPath === '') {
+                $diskPath = '.';
+            }
+            $free = disk_free_space($diskPath);
+            $total = disk_total_space($diskPath);
 
-            $info[] = ['Disk Usage', sprintf(
-                '%s / %s (%.1f%%)',
-                format_bytes($used),
-                format_bytes($total),
-                ($used / $total) * 100
-            )];
+            if ($free !== false && $total !== false) {
+                $used = $total - $free;
+
+                $info[] = ['Disk Usage', sprintf(
+                    '%s / %s (%.1f%%)',
+                    format_bytes((int)$used),
+                    format_bytes((int)$total),
+                    ($used / $total) * 100
+                )];
+            }
         }
 
+        /** @var list<array{string, string}> $info */
         $this->renderTable(['Parameter', 'Value'], $info);
     }
 
@@ -130,7 +146,7 @@ class StatusCommand extends BaseCommand
 
         $db = $this->getDatabaseConnection();
 
-        if (!$db) {
+        if ($db === null) {
             return;
         }
 
@@ -152,8 +168,11 @@ class StatusCommand extends BaseCommand
             foreach ($queries as $label => $query) {
                 try {
                     $stmt = $db->query($query);
+                    if ($stmt === false) {
+                        throw new \Exception('Query failed');
+                    }
                     $count = $stmt->fetchColumn();
-                    $stats[] = [$label, number_format($count)];
+                    $stats[] = [$label, number_format((int)$count)];
                 } catch (\Exception $e) {
                     $stats[] = [$label, 'N/A'];
                 }
@@ -177,19 +196,19 @@ class StatusCommand extends BaseCommand
         if (file_exists('/etc/os-release')) {
             $osRelease = parse_ini_file('/etc/os-release');
 
-            if ($osRelease) {
+            if ($osRelease !== false && $osRelease !== []) {
                 $name = $osRelease['NAME'] ?? $osRelease['ID'] ?? 'Linux';
                 $version = $osRelease['VERSION_ID'] ?? $osRelease['VERSION'] ?? '';
 
                 // For rolling releases like Arch/CachyOS that might not have VERSION_ID
-                if (empty($version) && isset($osRelease['BUILD_ID'])) {
+                if ($version === '' && isset($osRelease['BUILD_ID'])) {
                     $version = $osRelease['BUILD_ID'];
                 }
 
                 // Get kernel version for additional context
                 $kernel = php_uname('r');
 
-                if (!empty($version)) {
+                if ($version !== '') {
                     return sprintf('%s %s (kernel %s)', $name, $version, $kernel);
                 }
 
@@ -259,6 +278,9 @@ class StatusCommand extends BaseCommand
         $this->renderTable(['Status', 'Service', 'Path/Host', 'Version'], $services);
     }
 
+    /**
+     * @return array{available: bool, path: string, version: string}
+     */
     private function checkCommand(string $command, string $versionFlag = '--version'): array
     {
         $result = [
@@ -269,7 +291,7 @@ class StatusCommand extends BaseCommand
 
         // Check if command exists
         $which = shell_exec("which $command 2>/dev/null");
-        if (empty($which)) {
+        if ($which === null || $which === false || trim($which) === '') {
             return $result;
         }
 
@@ -278,9 +300,9 @@ class StatusCommand extends BaseCommand
 
         // Get version
         $versionOutput = shell_exec("$command $versionFlag 2>&1 | head -n 1");
-        if ($versionOutput) {
+        if ($versionOutput !== null && $versionOutput !== false) {
             // Extract version number from output
-            if (preg_match('/(\d+\.\d+\.\d+)/', $versionOutput, $matches)) {
+            if (preg_match('/(\d+\.\d+\.\d+)/', $versionOutput, $matches) === 1) {
                 $result['version'] = $matches[1];
             } else {
                 $result['version'] = 'Available';
@@ -290,6 +312,9 @@ class StatusCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{available: bool, host: string, status: string}
+     */
     private function checkMemcached(): array
     {
         // Read memcached configuration from KVS config
@@ -329,7 +354,7 @@ class StatusCommand extends BaseCommand
         $this->io->section('Video Processing');
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             $this->io->warning('Database connection not available');
             return;
         }
@@ -337,7 +362,7 @@ class StatusCommand extends BaseCommand
         try {
             // Check if background_tasks table exists
             $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "background_tasks'");
-            if (!$stmt || $stmt->rowCount() == 0) {
+            if ($stmt === false || $stmt->rowCount() === 0) {
                 $this->io->text('No conversion queue table found (' . $this->table('background_tasks') . ')');
                 return;
             }
@@ -346,21 +371,30 @@ class StatusCommand extends BaseCommand
 
             // Pending tasks
             $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = " . StatusFormatter::TASK_PENDING);
+            if ($stmt === false) {
+                throw new \Exception('Failed to query pending tasks');
+            }
             $pending = $stmt->fetchColumn();
-            $stats[] = ['Pending', number_format($pending)];
+            $stats[] = ['Pending', number_format((int)$pending)];
 
             // Processing tasks
             $stmt = $db->query("SELECT COUNT(*) FROM " . $this->table('background_tasks') . " WHERE status_id = " . StatusFormatter::TASK_PROCESSING);
+            if ($stmt === false) {
+                throw new \Exception('Failed to query processing tasks');
+            }
             $processing = $stmt->fetchColumn();
-            $stats[] = ['Processing', number_format($processing)];
+            $stats[] = ['Processing', number_format((int)$processing)];
 
             // Failed tasks (last 24h)
             $sql = "SELECT COUNT(*) FROM " . $this->table('background_tasks')
                 . " WHERE status_id = " . StatusFormatter::TASK_FAILED
                 . " AND added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_HOURS . " HOUR)";
             $stmt = $db->query($sql);
+            if ($stmt === false) {
+                throw new \Exception('Failed to query failed tasks');
+            }
             $failed = $stmt->fetchColumn();
-            $stats[] = ['Failed (24h)', number_format($failed)];
+            $stats[] = ['Failed (24h)', number_format((int)$failed)];
 
             // Average processing time (completed tasks)
             // KVS stores duration in effective_duration column (seconds)
@@ -370,10 +404,13 @@ class StatusCommand extends BaseCommand
                 WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND effective_duration > 0
                 LIMIT " . Constants::STATS_SAMPLE_LIMIT . "
             ");
+            if ($stmt === false) {
+                throw new \Exception('Failed to query average time');
+            }
             $avgTime = $stmt->fetchColumn();
-            if ($avgTime) {
-                $minutes = floor($avgTime / 60);
-                $seconds = $avgTime % 60;
+            if ($avgTime !== false && $avgTime !== null && $avgTime !== 0) {
+                $minutes = floor((float)$avgTime / 60);
+                $seconds = (float)$avgTime % 60;
                 $stats[] = ['Average Time', sprintf('%dm %ds', $minutes, $seconds)];
             } else {
                 $stats[] = ['Average Time', 'N/A'];
@@ -390,8 +427,8 @@ class StatusCommand extends BaseCommand
         $this->io->section('Storage Breakdown');
 
         $contentPath = $this->config->getContentPath();
-        if (!$contentPath || !is_dir($contentPath)) {
-            $this->io->warning('Content directory not found: ' . ($contentPath ?: 'not configured'));
+        if ($contentPath === '' || !is_dir($contentPath)) {
+            $this->io->warning('Content directory not found: ' . ($contentPath !== '' ? $contentPath : 'not configured'));
             $this->io->text('This is normal if content is stored on external storage servers.');
             $this->io->text('Check KVS config for content_path_* settings.');
             return;
@@ -442,8 +479,11 @@ class StatusCommand extends BaseCommand
         // Use du command for faster calculation on Linux
         if (PHP_OS_FAMILY === 'Linux') {
             $output = shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
-            if ($output !== null) {
-                return (int)trim($output);
+            if ($output !== null && $output !== false) {
+                $trimmed = trim($output);
+                if ($trimmed !== '') {
+                    return (int)$trimmed;
+                }
             }
         }
 
@@ -472,8 +512,11 @@ class StatusCommand extends BaseCommand
         // Use find command for faster counting on Linux
         if (PHP_OS_FAMILY === 'Linux') {
             $output = shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
-            if ($output !== null) {
-                return (int)trim($output);
+            if ($output !== null && $output !== false) {
+                $trimmed = trim($output);
+                if ($trimmed !== '') {
+                    return (int)$trimmed;
+                }
             }
         }
 
@@ -504,7 +547,7 @@ class StatusCommand extends BaseCommand
 
         // Database connectivity
         $db = $this->getDatabaseConnection();
-        $health[] = $db ? ['✓', 'Database connectivity', 'OK'] : ['✗', 'Database connectivity', 'FAILED'];
+        $health[] = $db !== null ? ['✓', 'Database connectivity', 'OK'] : ['✗', 'Database connectivity', 'FAILED'];
 
         // File permissions - admin/data directory
         $adminDataPath = $this->config->getAdminPath() . '/data';
@@ -534,14 +577,17 @@ class StatusCommand extends BaseCommand
             $diskPath = $kvsPath !== '' ? $kvsPath : '.';
             $free = disk_free_space($diskPath);
             $total = disk_total_space($diskPath);
-            $usedPercent = (($total - $free) / $total) * 100;
 
-            if ($usedPercent > Constants::DISK_CRITICAL_PERCENT) {
-                $health[] = ['⚠', 'Disk space', sprintf('%.1f%% used (CRITICAL)', $usedPercent)];
-            } elseif ($usedPercent > Constants::DISK_WARNING_PERCENT) {
-                $health[] = ['⚠', 'Disk space', sprintf('%.1f%% used (WARNING)', $usedPercent)];
-            } else {
-                $health[] = ['✓', 'Disk space', sprintf('%.1f%% used', $usedPercent)];
+            if ($free !== false && $total !== false && $total > 0) {
+                $usedPercent = (($total - $free) / $total) * 100;
+
+                if ($usedPercent > Constants::DISK_CRITICAL_PERCENT) {
+                    $health[] = ['⚠', 'Disk space', sprintf('%.1f%% used (CRITICAL)', $usedPercent)];
+                } elseif ($usedPercent > Constants::DISK_WARNING_PERCENT) {
+                    $health[] = ['⚠', 'Disk space', sprintf('%.1f%% used (WARNING)', $usedPercent)];
+                } else {
+                    $health[] = ['✓', 'Disk space', sprintf('%.1f%% used', $usedPercent)];
+                }
             }
         }
 
@@ -554,7 +600,7 @@ class StatusCommand extends BaseCommand
             }
         }
 
-        if (empty($missingExtensions)) {
+        if ($missingExtensions === []) {
             $health[] = ['✓', 'PHP extensions', 'All required extensions loaded'];
         } else {
             $health[] = ['✗', 'PHP extensions', 'Missing: ' . implode(', ', $missingExtensions)];
@@ -574,31 +620,33 @@ class StatusCommand extends BaseCommand
         if (file_exists($setupFile)) {
             $setupContent = file_get_contents($setupFile);
 
-            // Check maintenance mode
-            if (preg_match('/\$config\[\'is_clone\'\]\s*=\s*1/', $setupContent)) {
-                $security[] = ['⚠', 'Maintenance mode', 'ENABLED'];
-            } else {
-                $security[] = ['✓', 'Maintenance mode', 'DISABLED'];
-            }
+            if ($setupContent !== false) {
+                // Check maintenance mode
+                if (preg_match('/\$config\[\'is_clone\'\]\s*=\s*1/', $setupContent) === 1) {
+                    $security[] = ['⚠', 'Maintenance mode', 'ENABLED'];
+                } else {
+                    $security[] = ['✓', 'Maintenance mode', 'DISABLED'];
+                }
 
-            // Check debug mode
-            if (
-                preg_match('/\$config\[\'debug_mode\'\]\s*=\s*[\'"]true[\'"]/i', $setupContent) ||
-                preg_match('/\$config\[\'debug_mode\'\]\s*=\s*1/', $setupContent)
-            ) {
-                $security[] = ['⚠', 'Debug mode', 'ENABLED (should be disabled in production)'];
-            } else {
-                $security[] = ['✓', 'Debug mode', 'DISABLED'];
+                // Check debug mode
+                if (
+                    preg_match('/\$config\[\'debug_mode\'\]\s*=\s*[\'"]true[\'"]/i', $setupContent) === 1 ||
+                    preg_match('/\$config\[\'debug_mode\'\]\s*=\s*1/', $setupContent) === 1
+                ) {
+                    $security[] = ['⚠', 'Debug mode', 'ENABLED (should be disabled in production)'];
+                } else {
+                    $security[] = ['✓', 'Debug mode', 'DISABLED'];
+                }
             }
         }
 
         // Check for recent database backups
         $db = $this->getDatabaseConnection();
-        if ($db) {
+        if ($db !== null) {
             try {
                 // Check if backup log table exists
                 $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "admin_system_log'");
-                if ($stmt && $stmt->rowCount() > 0) {
+                if ($stmt !== false && $stmt->rowCount() > 0) {
                     // Look for recent backup entries
                     $stmt = $db->query("
                         SELECT MAX(added_date) as last_backup
@@ -606,20 +654,24 @@ class StatusCommand extends BaseCommand
                         WHERE event_level = 'info'
                         AND event_message LIKE '%backup%'
                     ");
-                    $lastBackup = $stmt->fetchColumn();
+                    if ($stmt !== false) {
+                        $lastBackup = $stmt->fetchColumn();
 
-                    if ($lastBackup) {
-                        $backupTime = strtotime($lastBackup);
-                        $hoursAgo = floor((time() - $backupTime) / 3600);
+                        if ($lastBackup !== false && $lastBackup !== null) {
+                            $backupTime = strtotime((string)$lastBackup);
+                            if ($backupTime !== false) {
+                                $hoursAgo = (int)floor((time() - $backupTime) / 3600);
 
-                        if ($hoursAgo < Constants::BACKUP_WARNING_HOURS) {
-                            $security[] = ['✓', 'Database backups', "Last backup $hoursAgo hours ago"];
+                                if ($hoursAgo < Constants::BACKUP_WARNING_HOURS) {
+                                    $security[] = ['✓', 'Database backups', "Last backup $hoursAgo hours ago"];
+                                } else {
+                                    $daysAgo = (int)floor($hoursAgo / 24);
+                                    $security[] = ['⚠', 'Database backups', "Last backup $daysAgo days ago"];
+                                }
+                            }
                         } else {
-                            $daysAgo = floor($hoursAgo / 24);
-                            $security[] = ['⚠', 'Database backups', "Last backup $daysAgo days ago"];
+                            $security[] = ['⚠', 'Database backups', 'No recent backups found'];
                         }
-                    } else {
-                        $security[] = ['⚠', 'Database backups', 'No recent backups found'];
                     }
                 }
             } catch (\Exception $e) {
@@ -629,7 +681,7 @@ class StatusCommand extends BaseCommand
 
         // Check PHP display_errors (should be off in production)
         $displayErrors = ini_get('display_errors');
-        if ($displayErrors && $displayErrors !== 'Off' && $displayErrors !== '0') {
+        if ($displayErrors !== false && $displayErrors !== '' && $displayErrors !== 'Off' && $displayErrors !== '0') {
             $security[] = ['⚠', 'PHP display_errors', 'ENABLED (should be disabled in production)'];
         } else {
             $security[] = ['✓', 'PHP display_errors', 'DISABLED'];

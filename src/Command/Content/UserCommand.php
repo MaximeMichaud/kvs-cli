@@ -134,7 +134,7 @@ HELP
     private function listUsers(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -148,7 +148,8 @@ HELP
         $params = [];
 
         // Status filter
-        if ($status = $input->getOption('status')) {
+        $status = $input->getOption('status');
+        if ($status !== null) {
             $statusMap = [
                 'active' => 2,
                 'disabled' => 0,
@@ -161,18 +162,19 @@ HELP
         }
 
         // Search filter
-        if ($search = $input->getOption('search')) {
+        $search = $input->getOption('search');
+        if ($search !== null) {
             $query .= " AND (u.username LIKE :search OR u.email LIKE :search)";
             $params['search'] = "%$search%";
         }
 
         // Removal requested filter
-        if ($input->getOption('removal-requested')) {
+        if ($input->getOption('removal-requested') !== null) {
             $query .= " AND u.is_removal_requested = 1";
         }
 
         // Trusted users filter
-        if ($input->getOption('trusted')) {
+        if ($input->getOption('trusted') !== null) {
             $query .= " AND u.is_trusted = 1";
         }
 
@@ -190,7 +192,7 @@ HELP
 
             // Determine default fields based on filters
             // When filtering by removal-requested, include removal_reason
-            if ($input->getOption('removal-requested')) {
+            if ($input->getOption('removal-requested') !== null) {
                 $defaultFields = ['user_id', 'username', 'email', 'removal_reason', 'added_date'];
             } else {
                 $defaultFields = ['user_id', 'username', 'display_name', 'email', 'status_id', 'added_date'];
@@ -198,6 +200,7 @@ HELP
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
+            /** @var list<array<string, mixed>> $users */
             $formatter->display($users, $this->io);
 
             return self::SUCCESS;
@@ -207,83 +210,9 @@ HELP
         }
     }
 
-    private function outputTable(array $users, array $fields, bool $noTruncate = false): int
-    {
-        $headers = [];
-        $rows = [];
-
-        // Build headers
-        foreach ($fields as $field) {
-            $headers[] = ucfirst(str_replace('_', ' ', $field));
-        }
-
-        // Build rows
-        foreach ($users as $user) {
-            $row = [];
-            foreach ($fields as $field) {
-                $row[] = $this->getFieldValue($user, $field, true, $noTruncate);
-            }
-            $rows[] = $row;
-        }
-
-        $this->renderTable($headers, $rows);
-        return self::SUCCESS;
-    }
-
-    private function outputCSV(array $users, array $fields): int
-    {
-        // Headers
-        $output = fopen('php://output', 'w');
-        fputcsv($output, $fields);
-
-        // Data
-        foreach ($users as $user) {
-            $row = [];
-            foreach ($fields as $field) {
-                $row[] = $this->getFieldValue($user, $field, false);
-            }
-            fputcsv($output, $row);
-        }
-
-        fclose($output);
-        return self::SUCCESS;
-    }
-
-    private function outputJSON(array $users, array $fields): int
-    {
-        $result = [];
-        foreach ($users as $user) {
-            $item = [];
-            foreach ($fields as $field) {
-                $item[$field] = $this->getFieldValue($user, $field, false);
-            }
-            $result[] = $item;
-        }
-
-        $this->io->writeln(json_encode($result, Constants::JSON_FLAGS));
-        return self::SUCCESS;
-    }
-
-    private function outputYAML(array $users, array $fields): int
-    {
-        foreach ($users as $index => $user) {
-            $this->io->writeln("- ");
-            foreach ($fields as $field) {
-                $value = $this->getFieldValue($user, $field, false);
-                $this->io->writeln("  $field: " . $this->escapeYAML($value));
-            }
-        }
-        return self::SUCCESS;
-    }
-
-    private function outputSingleField(array $users, string $field): int
-    {
-        foreach ($users as $user) {
-            $this->io->writeln($this->getFieldValue($user, $field, false));
-        }
-        return self::SUCCESS;
-    }
-
+    /**
+     * @param array<string, mixed> $user
+     */
     private function getFieldValue(array $user, string $field, bool $formatted = true, bool $noTruncate = false): string
     {
         // Map field name to database column
@@ -301,8 +230,8 @@ HELP
                 return truncate($value, 25);
             }
 
-            if (in_array($field, ['added_date', 'joined', 'last_login', 'last_login_date'])) {
-                return $value ? date('Y-m-d', strtotime($value)) : 'Never';
+            if (in_array($field, ['added_date', 'joined', 'last_login', 'last_login_date'], true)) {
+                return ($value !== '' && $value !== null && $value !== 0) ? date('Y-m-d', strtotime($value)) : 'Never';
             }
 
             if ($field === 'gender' || $field === 'gender_id') {
@@ -313,18 +242,18 @@ HELP
                 };
             }
 
-            if (in_array($field, ['is_trusted', 'trusted'])) {
+            if (in_array($field, ['is_trusted', 'trusted'], true)) {
                 return (int)$value === 1 ? '<fg=green>Yes</>' : '<fg=gray>No</>';
             }
 
-            if (in_array($field, ['is_removal_requested', 'removal_requested'])) {
+            if (in_array($field, ['is_removal_requested', 'removal_requested'], true)) {
                 return (int)$value === 1 ? '<fg=yellow>Yes</>' : '<fg=gray>No</>';
             }
 
-            if (in_array($field, ['removal_reason', 'reason'])) {
+            if (in_array($field, ['removal_reason', 'reason'], true)) {
                 // Truncate long reasons in table (~60-80 chars for readability)
                 // Unless --no-truncate is specified
-                if (empty($value)) {
+                if ($value === '') {
                     return '<fg=gray>N/A</>';
                 }
                 if (!$noTruncate) {
@@ -352,33 +281,34 @@ HELP
 
             if (in_array($field, ['removal_reason', 'reason'], true)) {
                 // Full reason for CSV/JSON export
-                return $value ?: 'N/A';
+                return $value !== '' ? $value : 'N/A';
             }
         }
 
         return (string)$value;
     }
 
-    private function escapeYAML($value): string
+    private function escapeYAML(mixed $value): string
     {
         if (is_numeric($value)) {
             return (string)$value;
         }
-        if (strpos($value, ':') !== false || strpos($value, '#') !== false) {
-            return '"' . str_replace('"', '\\"', $value) . '"';
+        $strValue = (string)$value;
+        if (str_contains($strValue, ':') || str_contains($strValue, '#')) {
+            return '"' . str_replace('"', '\\"', $strValue) . '"';
         }
-        return $value;
+        return $strValue;
     }
 
     private function showUser(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('User ID or username is required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -388,7 +318,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $user = $stmt->fetch();
 
-            if (!$user) {
+            if ($user === false) {
                 $this->io->error("User not found: $id");
                 return self::FAILURE;
             }
@@ -396,17 +326,19 @@ HELP
             $this->io->section("User: {$user['username']}");
 
             $info = [
-                ['User ID', $user['user_id']],
-                ['Username', $user['username']],
-                ['Email', $user['email']],
-                ['Status', StatusFormatter::user($user['status_id'])],
-                ['Display Name', $user['display_name'] ?: 'N/A'],
-                ['Country', $user['country_code'] ?: 'N/A'],
-                ['Gender', $user['gender_id'] == 1 ? 'Male' : ($user['gender_id'] == 2 ? 'Female' : 'Other')],
-                ['Birth Date', $user['birth_date'] ?: 'N/A'],
-                ['Joined', date('Y-m-d H:i:s', strtotime($user['added_date']))],
-                ['Last Login', $user['last_login_date'] ? date('Y-m-d H:i:s', strtotime($user['last_login_date'])) : 'Never'],
-                ['IP', $user['ip'] ?: 'N/A'],
+                ['User ID', (string)$user['user_id']],
+                ['Username', (string)$user['username']],
+                ['Email', (string)$user['email']],
+                ['Status', StatusFormatter::user((int)$user['status_id'])],
+                ['Display Name', ($user['display_name'] !== '' && $user['display_name'] !== null) ? (string)$user['display_name'] : 'N/A'],
+                ['Country', ($user['country_code'] !== '' && $user['country_code'] !== null) ? (string)$user['country_code'] : 'N/A'],
+                ['Gender', (int)$user['gender_id'] === 1 ? 'Male' : ((int)$user['gender_id'] === 2 ? 'Female' : 'Other')],
+                ['Birth Date', ($user['birth_date'] !== '' && $user['birth_date'] !== null) ? (string)$user['birth_date'] : 'N/A'],
+                ['Joined', date('Y-m-d H:i:s', strtotime((string)$user['added_date']))],
+                ['Last Login', ($user['last_login_date'] !== '' && $user['last_login_date'] !== null)
+                    ? date('Y-m-d H:i:s', strtotime((string)$user['last_login_date']))
+                    : 'Never'],
+                ['IP', ($user['ip'] !== '' && $user['ip'] !== null) ? (string)$user['ip'] : 'N/A'],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);
@@ -425,25 +357,27 @@ HELP
 
             $this->io->section('Content Statistics');
             $stats = [
-                ['Videos Uploaded', $videoCount],
-                ['Albums Created', $albumCount],
-                ['Comments Posted', $commentCount],
-                ['Profile Views', number_format($user['profile_viewed'] ?? 0)],
+                ['Videos Uploaded', (string)$videoCount],
+                ['Albums Created', (string)$albumCount],
+                ['Comments Posted', (string)$commentCount],
+                ['Profile Views', number_format((int)($user['profile_viewed'] ?? 0))],
             ];
             $this->renderTable(['Metric', 'Count'], $stats);
 
             $this->io->section('Activity');
             $activityStats = [
-                ['Logins Count', number_format($user['logins_count'] ?? 0)],
-                ['Activity Score', number_format($user['activity'] ?? 0)],
+                ['Logins Count', number_format((int)($user['logins_count'] ?? 0))],
+                ['Activity Score', number_format((int)($user['activity'] ?? 0))],
             ];
             $this->renderTable(['Metric', 'Value'], $activityStats);
 
-            if ($user['tokens_available'] || $user['tokens_required']) {
+            $hasTokens = ($user['tokens_available'] !== 0 && $user['tokens_available'] !== null)
+                || ($user['tokens_required'] !== 0 && $user['tokens_required'] !== null);
+            if ($hasTokens) {
                 $this->io->section('Token Information');
                 $tokens = [
-                    ['Available Tokens', $user['tokens_available'] ?? 0],
-                    ['Required Tokens', $user['tokens_required'] ?? 0],
+                    ['Available Tokens', (string)($user['tokens_available'] ?? 0)],
+                    ['Required Tokens', (string)($user['tokens_required'] ?? 0)],
                 ];
                 $this->renderTable(['Type', 'Amount'], $tokens);
             }
@@ -464,13 +398,13 @@ HELP
         $password = $this->io->askHidden('Password');
         $displayName = $this->io->ask('Display Name (optional)');
 
-        if (!$username || !$email || !$password) {
+        if ($username === null || $username === '' || $email === null || $email === '' || $password === null || $password === '') {
             $this->io->error('Username, email, and password are required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -492,7 +426,7 @@ HELP
                 'username' => $username,
                 'email' => $email,
                 'pass' => md5($password),
-                'display_name' => $displayName ?: $username,
+                'display_name' => ($displayName !== '' && $displayName !== null) ? $displayName : $username,
                 'ip' => '127.0.0.1',
             ]);
 
@@ -508,7 +442,7 @@ HELP
 
     private function deleteUser(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('User ID or username is required');
             return self::FAILURE;
         }
@@ -516,12 +450,12 @@ HELP
         $this->io->warning("This will permanently delete user: $id");
         $this->io->warning("All associated content will also be deleted");
 
-        if (!$this->io->confirm('Do you want to continue?', false)) {
+        if ($this->io->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -530,7 +464,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $userId = $stmt->fetchColumn();
 
-            if (!$userId) {
+            if ($userId === false || $userId === null || $userId === '' || $userId === 0) {
                 $this->io->error("User not found: $id");
                 return self::FAILURE;
             }
@@ -563,7 +497,7 @@ HELP
     private function showStats(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -581,8 +515,12 @@ HELP
             ];
 
             foreach ($queries as $label => $query) {
-                $value = $db->query($query)->fetchColumn();
-                $stats[] = [$label, number_format($value)];
+                $result = $db->query($query);
+                if ($result === false) {
+                    throw new \RuntimeException("Failed to execute query: $label");
+                }
+                $value = $result->fetchColumn();
+                $stats[] = [$label, number_format((int)$value)];
             }
 
             $this->renderTable(['Metric', 'Count'], $stats);
@@ -596,17 +534,20 @@ HELP
                 ORDER BY u.added_date DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
+            if ($stmt === false) {
+                throw new \RuntimeException("Failed to fetch recent users");
+            }
             $recentUsers = $stmt->fetchAll();
 
-            if (!empty($recentUsers)) {
+            if ($recentUsers !== []) {
                 $this->io->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
                 $rows = [];
                 foreach ($recentUsers as $user) {
                     $rows[] = [
-                        $user['username'],
-                        $user['videos'],
-                        $user['albums'],
-                        date('Y-m-d', strtotime($user['added_date'])),
+                        (string)$user['username'],
+                        (string)$user['videos'],
+                        (string)$user['albums'],
+                        date('Y-m-d', strtotime((string)$user['added_date'])),
                     ];
                 }
                 $this->renderTable(['Username', 'Videos', 'Albums', 'Joined'], $rows);

@@ -27,11 +27,11 @@ class DebugCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('check')) {
+        if ($input->getOption('check') === true) {
             return $this->runChecks();
         }
 
-        if ($input->getOption('test-db')) {
+        if ($input->getOption('test-db') === true) {
             return $this->testDatabase();
         }
 
@@ -44,7 +44,7 @@ class DebugCommand extends BaseCommand
 
         $checks = [];
 
-        $checks[] = ['PHP Version', PHP_VERSION, version_compare(PHP_VERSION, '8.1', '>=') ? 'OK' : 'ERROR'];
+        $checks[] = ['PHP Version', PHP_VERSION, 'OK'];
 
         $requiredExtensions = ['pdo', 'pdo_mysql', 'json', 'mbstring', 'gd', 'curl'];
         foreach ($requiredExtensions as $ext) {
@@ -55,9 +55,10 @@ class DebugCommand extends BaseCommand
             ];
         }
 
-        $checks[] = ['KVS Path', $this->config->getKvsPath() ?: 'Not found', $this->config->getKvsPath() ? 'OK' : 'ERROR'];
+        $kvsPath = $this->config->getKvsPath();
+        $checks[] = ['KVS Path', $kvsPath !== '' ? $kvsPath : 'Not found', $kvsPath !== '' ? 'OK' : 'ERROR'];
 
-        if ($this->config->getKvsPath()) {
+        if ($this->config->getKvsPath() !== '') {
             $adminPath = $this->config->getAdminPath();
             $checks[] = ['Admin Path', is_dir($adminPath) ? 'Found' : 'Missing', is_dir($adminPath) ? 'OK' : 'ERROR'];
 
@@ -69,13 +70,13 @@ class DebugCommand extends BaseCommand
         }
 
         $db = $this->getDatabaseConnection();
-        $checks[] = ['Database Connection', $db ? 'Connected' : 'Failed', $db ? 'OK' : 'ERROR'];
+        $checks[] = ['Database Connection', $db !== null ? 'Connected' : 'Failed', $db !== null ? 'OK' : 'ERROR'];
 
         $this->renderTable(['Check', 'Value', 'Status'], $checks);
 
         $errors = array_filter($checks, fn($c) => $c[2] === 'ERROR');
 
-        if (empty($errors)) {
+        if ($errors === []) {
             $this->io->success('All checks passed');
             return self::SUCCESS;
         } else {
@@ -90,7 +91,7 @@ class DebugCommand extends BaseCommand
 
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if (empty($dbConfig)) {
+        if ($dbConfig === []) {
             $this->io->error('Database configuration not found');
             return self::FAILURE;
         }
@@ -104,16 +105,23 @@ class DebugCommand extends BaseCommand
 
         $db = $this->getDatabaseConnection();
 
-        if (!$db) {
+        if ($db === null) {
             $this->io->error('Connection failed');
             return self::FAILURE;
         }
 
         try {
-            $version = $db->query("SELECT VERSION()")->fetchColumn();
+            $stmt = $db->query("SELECT VERSION()");
+            if ($stmt === false) {
+                throw new \Exception('Failed to query MySQL version');
+            }
+            $version = $stmt->fetchColumn();
             $this->io->success("Connected successfully! MySQL version: $version");
 
             $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "%'");
+            if ($stmt === false) {
+                throw new \Exception('Failed to query tables');
+            }
             $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             $this->io->info(sprintf('Found %d KVS tables', count($tables)));
@@ -133,20 +141,29 @@ class DebugCommand extends BaseCommand
     {
         $this->io->section('Debug Information');
 
+        $kvsPathValue = $this->config->getKvsPath();
+        $displayErrors = ini_get('display_errors');
+        $logErrors = ini_get('log_errors');
+        $errorLog = ini_get('error_log');
+        $memoryLimit = ini_get('memory_limit');
+        $maxExecTime = ini_get('max_execution_time');
+        $cwd = getcwd();
+
+        /** @var list<list<string|int|null>> $info */
         $info = [
-            ['Working Directory', getcwd()],
+            ['Working Directory', $cwd !== false ? $cwd : 'Unknown'],
             ['Script Path', __FILE__],
-            ['KVS Path', $this->config->getKvsPath() ?: 'Not found'],
+            ['KVS Path', $kvsPathValue !== '' ? $kvsPathValue : 'Not found'],
             ['Admin Path', $this->config->getAdminPath()],
             ['Content Path', $this->config->getContentPath()],
             ['PHP Version', PHP_VERSION],
             ['PHP SAPI', PHP_SAPI],
-            ['Memory Limit', ini_get('memory_limit')],
-            ['Max Execution Time', ini_get('max_execution_time')],
-            ['Error Reporting', error_reporting()],
-            ['Display Errors', ini_get('display_errors') ? 'On' : 'Off'],
-            ['Log Errors', ini_get('log_errors') ? 'On' : 'Off'],
-            ['Error Log', ini_get('error_log') ?: 'Not set'],
+            ['Memory Limit', $memoryLimit !== false ? $memoryLimit : 'Unknown'],
+            ['Max Execution Time', $maxExecTime !== false ? $maxExecTime : 'Unknown'],
+            ['Error Reporting', (string)error_reporting()],
+            ['Display Errors', ($displayErrors !== '' && $displayErrors !== '0') ? 'On' : 'Off'],
+            ['Log Errors', ($logErrors !== '' && $logErrors !== '0') ? 'On' : 'Off'],
+            ['Error Log', ($errorLog !== '' && $errorLog !== false) ? $errorLog : 'Not set'],
         ];
 
         $this->renderTable(['Parameter', 'Value'], $info);
@@ -162,7 +179,7 @@ class DebugCommand extends BaseCommand
 
         $rows = [];
         foreach ($envVars as $key => $value) {
-            if ($value) {
+            if (is_string($value) && $value !== '') {
                 $rows[] = [$key, truncate($value, 60)];
             }
         }

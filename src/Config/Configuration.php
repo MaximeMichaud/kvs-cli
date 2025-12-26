@@ -27,7 +27,7 @@ class Configuration
     {
         $this->kvsPath = $this->findKvsPath();
 
-        if ($this->kvsPath && file_exists($this->kvsPath . '/admin/include/setup_db.php')) {
+        if ($this->kvsPath !== '' && file_exists($this->kvsPath . '/admin/include/setup_db.php')) {
             $this->loadDatabaseConfig();
         }
 
@@ -47,13 +47,13 @@ class Configuration
 
         // 2. Check KVS_PATH environment variable
         $envPath = getenv('KVS_PATH');
-        if ($envPath && $this->isKvsInstallation($envPath)) {
+        if ($envPath !== false && $envPath !== '' && $this->isKvsInstallation($envPath)) {
             return $envPath;
         }
 
         // 3. Auto-detect from current directory (walk up the tree)
         $dir = getcwd();
-        while ($dir && $dir !== '/') {
+        while ($dir !== false && $dir !== '/') {
             if ($this->isKvsInstallation($dir)) {
                 return $dir;
             }
@@ -94,6 +94,9 @@ class Configuration
         $dbConfigFile = $this->kvsPath . '/admin/include/setup_db.php';
         if (file_exists($dbConfigFile)) {
             $content = file_get_contents($dbConfigFile);
+            if ($content === false) {
+                return;
+            }
 
             $this->dbConfig['host'] = $this->extractDefineValue($content, 'DB_HOST');
             $this->dbConfig['user'] = $this->extractDefineValue($content, 'DB_LOGIN');
@@ -113,14 +116,15 @@ class Configuration
     private function extractDefineValue(string $content, string $key): ?string
     {
         // Pattern 1: Simple string value - define('KEY', 'value')
-        if (preg_match("/define\\(['\"]" . $key . "['\"],\\s*['\"]([^'\"]+)['\"]\\)/", $content, $matches)) {
+        $result = preg_match("/define\\(['\"]" . $key . "['\"],\\s*['\"]([^'\"]+)['\"]\\)/", $content, $matches);
+        if ($result !== false && $result === 1) {
             return $matches[1];
         }
 
         // Pattern 2: getenv with ?: fallback - define('KEY', getenv('VAR') ?: 'default')
         $pattern2 = "/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
             . "\\s*\\?:\\s*['\"]([^'\"]*)['\"]\\)/";
-        if (preg_match($pattern2, $content, $matches)) {
+        if (preg_match($pattern2, $content, $matches) === 1) {
             $envVar = $matches[1];
             $default = $matches[2];
             $envValue = getenv($envVar);
@@ -130,7 +134,7 @@ class Configuration
         // Pattern 3: getenv with ?? fallback - define('KEY', getenv('VAR') ?? 'default')
         $pattern3 = "/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
             . "\\s*\\?\\?\\s*['\"]([^'\"]*)['\"]\\)/";
-        if (preg_match($pattern3, $content, $matches)) {
+        if (preg_match($pattern3, $content, $matches) === 1) {
             $envVar = $matches[1];
             $default = $matches[2];
             $envValue = getenv($envVar);
@@ -138,7 +142,8 @@ class Configuration
         }
 
         // Pattern 4: Just getenv without fallback - define('KEY', getenv('VAR'))
-        if (preg_match("/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)\\)/", $content, $matches)) {
+        $result4 = preg_match("/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)\\)/", $content, $matches);
+        if ($result4 !== false && $result4 === 1) {
             $envVar = $matches[1];
             $envValue = getenv($envVar);
             return $envValue !== false ? $envValue : null;
@@ -247,7 +252,7 @@ class Configuration
 
     public function isKvsInstalled(): bool
     {
-        return !empty($this->kvsPath) && !empty($this->dbConfig);
+        return $this->kvsPath !== '' && $this->dbConfig !== [];
     }
 
     public function getTablePrefix(): string

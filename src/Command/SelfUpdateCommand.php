@@ -95,7 +95,7 @@ HELP
             return Command::FAILURE;
         }
 
-        if (empty($releases)) {
+        if ($releases === []) {
             $io->success('KVS CLI is at the latest version.');
             return Command::SUCCESS;
         }
@@ -122,14 +122,15 @@ HELP
         }
 
         // Check only mode
-        if ($input->getOption('check')) {
+        if ($input->getOption('check') !== null && $input->getOption('check') !== false) {
             $io->newLine();
             $io->text('Run <info>kvs self-update</info> to install the update.');
             return Command::SUCCESS;
         }
 
         // Confirm update
-        if (!$input->getOption('yes')) {
+        $yesOption = $input->getOption('yes');
+        if ($yesOption === null || $yesOption === false) {
             if (!$io->confirm(sprintf('Update to version %s?', $latestVersion), true)) {
                 $io->text('Update cancelled.');
                 return Command::SUCCESS;
@@ -138,7 +139,7 @@ HELP
 
         // Find PHAR asset
         $pharUrl = $this->findPharAsset($latest['assets']);
-        if (!$pharUrl) {
+        if ($pharUrl === null) {
             $io->error('Could not find PHAR file in release assets.');
             return Command::FAILURE;
         }
@@ -205,7 +206,7 @@ HELP
     }
 
     /**
-     * @return array<array{tag_name: string, prerelease: bool, assets: array}>|null
+     * @return array<array{tag_name: string, prerelease: bool, assets: array<array{name: string, browser_download_url: string}>}>|null
      */
     private function getGitHubReleases(SymfonyStyle $io, bool $includePrerelease): ?array
     {
@@ -240,12 +241,14 @@ HELP
         $filtered = [];
         foreach ($releases as $release) {
             // Skip drafts
-            if ($release['draft'] ?? false) {
+            $isDraft = isset($release['draft']) ? $release['draft'] : false;
+            if ($isDraft === true) {
                 continue;
             }
 
             // Skip prereleases unless requested
-            if (!$includePrerelease && ($release['prerelease'] ?? false)) {
+            $isPrerelease = isset($release['prerelease']) ? $release['prerelease'] : false;
+            if (!$includePrerelease && $isPrerelease === true) {
                 continue;
             }
 
@@ -261,7 +264,7 @@ HELP
     private function findPharAsset(array $assets): ?string
     {
         foreach ($assets as $asset) {
-            if (($asset['name'] ?? '') === Constants::PHAR_NAME) {
+            if (array_key_exists('name', $asset) && $asset['name'] === Constants::PHAR_NAME) {
                 return $asset['browser_download_url'];
             }
         }
@@ -364,7 +367,8 @@ HELP
         }
 
         // Confirm update
-        if (!(bool) $input->getOption('yes')) {
+        $yesOption = $input->getOption('yes');
+        if ($yesOption === null || $yesOption === false) {
             $io->warning('Dev builds may be unstable.');
             if (!$io->confirm('Update to latest dev build?', false)) {
                 $io->text('Update cancelled.');

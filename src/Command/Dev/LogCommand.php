@@ -30,22 +30,23 @@ class LogCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('list')) {
+        if ($input->getOption('list') !== false) {
             return $this->listLogs();
         }
 
         $type = $input->getArgument('type');
+        assert(is_string($type) || $type === null);
 
         // If no type specified and no options, show list
-        if (!$type && !$input->getOption('clear') && !$input->getOption('follow')) {
+        if ($type === null && $input->getOption('clear') === false && $input->getOption('follow') === false) {
             return $this->listLogs();
         }
 
-        if ($input->getOption('clear')) {
+        if ($input->getOption('clear') !== false) {
             return $this->clearLog($type);
         }
 
-        if ($input->getOption('follow')) {
+        if ($input->getOption('follow') !== false) {
             return $this->followLog($type);
         }
 
@@ -67,17 +68,28 @@ class LogCommand extends BaseCommand
             }
 
             $files = glob($dir . '/*.{log,txt}', GLOB_BRACE);
+            if ($files === false) {
+                continue;
+            }
+
             foreach ($files as $file) {
+                $fileSize = filesize($file);
+                $fileMtime = filemtime($file);
+
+                if ($fileSize === false || $fileMtime === false) {
+                    continue;
+                }
+
                 $logs[] = [
                     basename($file, '.log'),
                     basename($file),
-                    format_bytes(filesize($file)),
-                    date('Y-m-d H:i:s', filemtime($file)),
+                    format_bytes($fileSize),
+                    date('Y-m-d H:i:s', $fileMtime),
                 ];
             }
         }
 
-        if (empty($logs)) {
+        if ($logs === []) {
             $this->io->info('No log files found');
             return self::SUCCESS;
         }
@@ -87,11 +99,17 @@ class LogCommand extends BaseCommand
         return self::SUCCESS;
     }
 
-    private function showLog(string $type, int $lines): int
+    private function showLog(?string $type, int $lines): int
     {
+        if ($type === null) {
+            $this->io->error('Log type is required');
+            $this->io->note('Use --list to see available logs');
+            return self::FAILURE;
+        }
+
         $logFile = $this->findLogFile($type);
 
-        if (!$logFile) {
+        if ($logFile === null) {
             $this->io->error("Log file not found: $type");
             $this->io->note('Use --list to see available logs');
             return self::FAILURE;
@@ -107,7 +125,7 @@ class LogCommand extends BaseCommand
 
         $content = $this->tail($logFile, $lines);
 
-        if (empty($content)) {
+        if ($content === []) {
             $this->io->info('No log entries');
         } else {
             foreach ($content as $line) {
@@ -118,11 +136,16 @@ class LogCommand extends BaseCommand
         return self::SUCCESS;
     }
 
-    private function followLog(string $type): int
+    private function followLog(?string $type): int
     {
+        if ($type === null) {
+            $this->io->error('Log type is required');
+            return self::FAILURE;
+        }
+
         $logFile = $this->findLogFile($type);
 
-        if (!$logFile) {
+        if ($logFile === null) {
             $this->io->error("Log file not found: $type");
             return self::FAILURE;
         }
@@ -131,24 +154,43 @@ class LogCommand extends BaseCommand
         $this->io->info('Press Ctrl+C to stop');
         $this->io->newLine();
 
-        $lastPosition = filesize($logFile);
+        $initialSize = filesize($logFile);
+        if ($initialSize === false) {
+            $this->io->error('Unable to read log file size');
+            return self::FAILURE;
+        }
+
+        $lastPosition = $initialSize;
 
         while (true) {
             clearstatcache(false, $logFile);
             $currentSize = filesize($logFile);
 
+            if ($currentSize === false) {
+                $this->io->error('Unable to read log file size');
+                return self::FAILURE;
+            }
+
             if ($currentSize > $lastPosition) {
                 $fp = fopen($logFile, 'r');
+                if ($fp === false) {
+                    $this->io->error('Unable to open log file');
+                    return self::FAILURE;
+                }
+
                 fseek($fp, $lastPosition);
 
                 while (!feof($fp)) {
                     $line = fgets($fp);
-                    if ($line) {
+                    if ($line !== false) {
                         $this->formatLogLine($line);
                     }
                 }
 
-                $lastPosition = ftell($fp);
+                $position = ftell($fp);
+                if ($position !== false) {
+                    $lastPosition = $position;
+                }
                 fclose($fp);
             } elseif ($currentSize < $lastPosition) {
                 $lastPosition = $currentSize;
@@ -158,18 +200,23 @@ class LogCommand extends BaseCommand
         }
     }
 
-    private function clearLog(string $type): int
+    private function clearLog(?string $type): int
     {
+        if ($type === null) {
+            $this->io->error('Log type is required');
+            return self::FAILURE;
+        }
+
         $logFile = $this->findLogFile($type);
 
-        if (!$logFile) {
+        if ($logFile === null) {
             $this->io->error("Log file not found: $type");
             return self::FAILURE;
         }
 
         $this->io->warning("This will clear the log file: $logFile");
 
-        if (!$this->io->confirm('Do you want to continue?', false)) {
+        if ($this->io->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
@@ -197,7 +244,7 @@ class LogCommand extends BaseCommand
         $dir = $this->config->getAdminPath() . '/logs';
         if (is_dir($dir)) {
             $files = glob("$dir/*$type*");
-            if (!empty($files)) {
+            if ($files !== false && $files !== []) {
                 return $files[0];
             }
         }
@@ -205,12 +252,19 @@ class LogCommand extends BaseCommand
         return null;
     }
 
+    /**
+     * Read the last N lines from a file
+     *
+     * @param string $file Path to the file
+     * @param int $lines Number of lines to read
+     * @return array<int, string> Array of lines
+     */
     private function tail(string $file, int $lines): array
     {
         $result = [];
         $fp = fopen($file, 'r');
 
-        if (!$fp) {
+        if ($fp === false) {
             return $result;
         }
 
@@ -218,6 +272,7 @@ class LogCommand extends BaseCommand
         fseek($fp, -1, SEEK_END);
 
         if (ftell($fp) === 0) {
+            fclose($fp);
             return $result;
         }
 
@@ -227,9 +282,14 @@ class LogCommand extends BaseCommand
         while (ftell($fp) > 0 && count($result) < $lines) {
             $seek = min(ftell($fp), $buffer);
             fseek($fp, -$seek, SEEK_CUR);
-            $chunk = fread($fp, $seek);
+            $readChunk = fread($fp, $seek);
+            if ($readChunk === false) {
+                break;
+            }
+            $chunk = $readChunk;
             $output = $chunk . $output;
-            fseek($fp, -mb_strlen($chunk, '8bit'), SEEK_CUR);
+            $chunkLength = mb_strlen($chunk, '8bit');
+            fseek($fp, -$chunkLength, SEEK_CUR);
 
             $result = explode("\n", $output);
 
@@ -247,7 +307,7 @@ class LogCommand extends BaseCommand
     {
         $line = trim($line);
 
-        if (empty($line)) {
+        if ($line === '') {
             return;
         }
 

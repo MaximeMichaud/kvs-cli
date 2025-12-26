@@ -213,7 +213,7 @@ class Application extends BaseApplication
         if (in_array('KVS installation not found', $state->getErrors(), true)) {
             $searchedPath = $state->getValue('searched_path');
 
-            if ($searchedPath) {
+            if ($searchedPath !== null) {
                 $io->text("The path '{$searchedPath}' does not contain a valid KVS installation.");
             } else {
                 $io->text('Solutions:');
@@ -269,7 +269,7 @@ class Application extends BaseApplication
         $help = parent::getHelp();
 
         // Add hint when no KVS detected
-        if (!$this->config || !$this->config->isKvsInstalled()) {
+        if ($this->config === null || !$this->config->isKvsInstalled()) {
             $help .= "\n\n<warning>⚠️  No KVS installation detected in current directory</warning>";
             $help .= "\n<info>   Use --path=" . self::EXAMPLE_PATH . " or cd to KVS directory for full functionality</info>";
         }

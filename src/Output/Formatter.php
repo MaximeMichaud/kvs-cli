@@ -52,7 +52,7 @@ class Formatter
         ];
 
         // Parse fields
-        if ($this->args['fields']) {
+        if ($this->args['fields'] !== null && $this->args['fields'] !== '') {
             if (is_string($this->args['fields'])) {
                 $this->args['fields'] = array_map('trim', explode(',', $this->args['fields']));
             }
@@ -71,13 +71,13 @@ class Formatter
     public function display(array $items, OutputInterface $output): void
     {
         // Empty check
-        if (empty($items)) {
+        if ($items === []) {
             $output->writeln('<comment>No results found.</comment>');
             return;
         }
 
         // Single field mode (--field=email)
-        if ($this->args['field']) {
+        if ($this->args['field'] !== null && $this->args['field'] !== '' && $this->args['field'] !== false) {
             $this->displaySingleField($items, $output);
             return;
         }
@@ -194,7 +194,13 @@ class Formatter
                 $value = $this->getFieldValue($item, $field);
 
                 // Truncate long text unless --no-truncate
-                if (!$this->args['no-truncate'] && is_string($value) && strlen($value) > Constants::DEFAULT_TRUNCATE_LENGTH) {
+                if (
+                    $this->args['no-truncate'] !== true &&
+                    $this->args['no-truncate'] !== 'true' &&
+                    $this->args['no-truncate'] !== 1 &&
+                    is_string($value) &&
+                    strlen($value) > Constants::DEFAULT_TRUNCATE_LENGTH
+                ) {
                     $value = substr($value, 0, Constants::DEFAULT_TRUNCATE_LENGTH - 3) . '...';
                 }
 
@@ -210,7 +216,12 @@ class Formatter
         $output->writeln(sprintf('<info>Total: %d results</info>', count($items)));
 
         // Tip about --no-truncate if text was truncated
-        if (!$this->args['no-truncate'] && $this->hasLongFields($items, $fields)) {
+        if (
+            $this->args['no-truncate'] !== true &&
+            $this->args['no-truncate'] !== 'true' &&
+            $this->args['no-truncate'] !== 1 &&
+            $this->hasLongFields($items, $fields)
+        ) {
             $output->writeln('<comment>💡 Tip: Use --no-truncate to see full text</comment>');
         }
     }
@@ -235,7 +246,11 @@ class Formatter
             return $result;
         }, $items);
 
-        $output->writeln(json_encode($filtered, Constants::JSON_FLAGS));
+        $json = json_encode($filtered, Constants::JSON_FLAGS);
+        if ($json === false) {
+            throw new \RuntimeException('Failed to encode JSON: ' . json_last_error_msg());
+        }
+        $output->writeln($json);
     }
 
     /**
@@ -247,6 +262,9 @@ class Formatter
     private function displayCsv(array $items, array $fields, OutputInterface $output): void
     {
         $handle = fopen('php://output', 'w');
+        if ($handle === false) {
+            throw new \RuntimeException('Failed to open output stream for CSV');
+        }
 
         // Header row
         fputcsv($handle, $fields);
@@ -277,7 +295,7 @@ class Formatter
                 $value = $this->getFieldValue($item, $field);
                 if ($value !== '') {
                     // Escape special YAML characters
-                    if (is_string($value) && (strpos($value, ':') !== false || strpos($value, '#') !== false)) {
+                    if (is_string($value) && (str_contains($value, ':') || str_contains($value, '#'))) {
                         $value = '"' . str_replace('"', '\\"', $value) . '"';
                     }
                     $output->writeln("  $field: $value");

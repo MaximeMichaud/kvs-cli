@@ -20,7 +20,7 @@ class RegisterCommands implements BootstrapStep
         $kvsAvailable = $state->getValue('kvs_available');
 
         // Only register commands if we have a valid KVS installation
-        if ($kvsAvailable && $app instanceof Application && $config instanceof Configuration) {
+        if ($kvsAvailable === true && $app instanceof Application && $config instanceof Configuration) {
             $app->registerKvsCommands($config);
             $state->setValue('commands_registered', true);
         } else {

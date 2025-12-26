@@ -60,7 +60,7 @@ HELP
 
         // Get database connection
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             $this->io->warning('Database connection not available');
         }
 
@@ -80,7 +80,7 @@ HELP
         require $tempBootstrap;
 
         // Initialize database connections if available
-        if ($db) {
+        if ($db !== null) {
             if (class_exists('\\Model')) {
                 \Model::setDb($db);
             }
@@ -244,13 +244,20 @@ if (!function_exists('dump')) {
 PHP;
 
         // Add custom bootstrap if provided
-        if ($bootstrap && file_exists($bootstrap)) {
-            $code .= "\n// Custom bootstrap\n" . file_get_contents($bootstrap);
+        if (is_string($bootstrap) && file_exists($bootstrap)) {
+            $bootstrapContent = file_get_contents($bootstrap);
+            if ($bootstrapContent !== false) {
+                $code .= "\n// Custom bootstrap\n" . $bootstrapContent;
+            }
         }
 
         return $code;
     }
 
+    /**
+     * @param \mysqli|null $db
+     * @return array<string, mixed>
+     */
     private function getShellVariables($db): array
     {
         $vars = [
@@ -258,7 +265,7 @@ PHP;
             'kvsPath' => $this->config->getKvsPath(),
         ];
 
-        if ($db) {
+        if ($db !== null) {
             $vars['db'] = $db;
         }
 

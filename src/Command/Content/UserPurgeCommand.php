@@ -165,7 +165,7 @@ HELP
             $this->io->newLine();
             $this->io->warning(sprintf('You are about to DELETE %d users permanently!', $count));
 
-            if (!$this->io->confirm('Are you sure you want to continue?', false)) {
+            if ($this->io->confirm('Are you sure you want to continue?', false) !== true) {
                 $this->io->text('Operation cancelled.');
                 return self::SUCCESS;
             }
@@ -184,6 +184,10 @@ HELP
 
         // Change to admin directory for relative includes
         $originalDir = getcwd();
+        if ($originalDir === false) {
+            $this->io->error('Failed to get current working directory');
+            return self::FAILURE;
+        }
         chdir($adminPath);
 
         try {

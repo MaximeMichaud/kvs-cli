@@ -61,7 +61,7 @@ class ConfigCommand extends BaseCommand
     private function getConfig(InputInterface $input): int
     {
         $key = $input->getArgument('key');
-        if (!$key) {
+        if ($key === null || $key === '') {
             $this->io->error('Configuration key is required for get action');
             return self::FAILURE;
         }
@@ -73,9 +73,9 @@ class ConfigCommand extends BaseCommand
 
             // Suggest similar keys
             $allConfigs = $this->getAllConfigs('all');
-            $suggestions = $this->findSimilarKeys($key, array_keys($allConfigs));
+            $suggestions = $this->findSimilarKeys($key, $allConfigs);
 
-            if (!empty($suggestions)) {
+            if ($suggestions !== []) {
                 $this->io->text('Did you mean one of these?');
                 $this->io->listing($suggestions);
             } else {
@@ -86,12 +86,12 @@ class ConfigCommand extends BaseCommand
         }
 
         // Check if value is protected
-        if (isset($this->protectedKeys[$key]) && !$input->getOption('show-protected')) {
+        if (isset($this->protectedKeys[$key]) && $input->getOption('show-protected') !== true) {
             $value = '**********';
         }
 
-        if ($input->getOption('json')) {
-            $this->io->writeln(json_encode([$key => $value]));
+        if ($input->getOption('json') === true) {
+            $this->io->writeln((string) json_encode([$key => $value]));
         } else {
             $this->io->writeln("<info>$key</info> = $value");
         }
@@ -104,19 +104,19 @@ class ConfigCommand extends BaseCommand
         $key = $input->getArgument('key');
         $value = $input->getArgument('value');
 
-        if (!$key || $value === null) {
+        if ($key === null || $key === '' || $value === null) {
             $this->io->error('Both key and value are required for set action');
             return self::FAILURE;
         }
 
         // Validate key format
-        if (!preg_match('/^[a-z]+\.[a-z_]+$/i', $key)) {
+        if (preg_match('/^[a-z]+\.[a-z_]+$/i', $key) !== 1) {
             $this->io->error('Invalid key format. Use format: category.key (e.g., db.host)');
             return self::FAILURE;
         }
 
         // Create backup if requested
-        if ($input->getOption('backup')) {
+        if ($input->getOption('backup') === true) {
             $this->createBackup($key);
         }
 
@@ -125,7 +125,7 @@ class ConfigCommand extends BaseCommand
 
         // Determine file
         $file = $this->getConfigFile($category);
-        if (!$file) {
+        if ($file === null) {
             $this->io->error("Unknown configuration category: $category");
             return self::FAILURE;
         }
@@ -152,15 +152,15 @@ class ConfigCommand extends BaseCommand
 
         $configs = $this->getAllConfigs($file);
 
-        if ($json) {
-            if (!$showProtected) {
+        if ($json === true) {
+            if ($showProtected !== true) {
                 foreach ($configs as $key => &$value) {
                     if (isset($this->protectedKeys[$key])) {
                         $value = '**********';
                     }
                 }
             }
-            $this->io->writeln(json_encode($configs, JSON_PRETTY_PRINT));
+            $this->io->writeln((string) json_encode($configs, JSON_PRETTY_PRINT));
             return self::SUCCESS;
         }
 
@@ -203,13 +203,13 @@ class ConfigCommand extends BaseCommand
             // Content Paths & URLs - combine paths and URLs in same table
             $contentItems = [];
             foreach ($mainConfigs as $key => $value) {
-                if (strpos($key, 'content_path_') === 0) {
+                if (str_starts_with($key, 'content_path_')) {
                     $itemKey = str_replace('content_path_', '', $key);
                     if (!isset($contentItems[$itemKey])) {
                         $contentItems[$itemKey] = ['path' => '', 'url' => ''];
                     }
                     $contentItems[$itemKey]['path'] = $value;
-                } elseif (strpos($key, 'content_url_') === 0) {
+                } elseif (str_starts_with($key, 'content_url_')) {
                     $itemKey = str_replace('content_url_', '', $key);
                     if (!isset($contentItems[$itemKey])) {
                         $contentItems[$itemKey] = ['path' => '', 'url' => ''];
@@ -217,7 +217,7 @@ class ConfigCommand extends BaseCommand
                     $contentItems[$itemKey]['url'] = $value;
                 }
             }
-            if (!empty($contentItems)) {
+            if ($contentItems !== []) {
                 $this->showContentPathsSection('Content Paths & URLs', $contentItems, $showProtected);
             }
         }
@@ -229,12 +229,12 @@ class ConfigCommand extends BaseCommand
             $rows = [];
             foreach ($dbConfigs as $key => $value) {
                 $fullKey = "db.$key";
-                if (isset($this->protectedKeys[$fullKey]) && !$showProtected) {
+                if (isset($this->protectedKeys[$fullKey]) && $showProtected !== true) {
                     $value = '**********';
                 }
                 $rows[] = [$key, $value];
             }
-            if (!empty($rows)) {
+            if ($rows !== []) {
                 $this->renderTable(['Parameter', 'Value'], $rows);
             }
         }
@@ -267,7 +267,7 @@ class ConfigCommand extends BaseCommand
 
                 // Check for protected values
                 $fullKey = "main.$configKey";
-                if (isset($this->protectedKeys[$fullKey]) && !$showProtected) {
+                if (isset($this->protectedKeys[$fullKey]) && $showProtected !== true) {
                     $value = '**********';
                 }
 
@@ -275,7 +275,7 @@ class ConfigCommand extends BaseCommand
             }
         }
 
-        if (!empty($rows)) {
+        if ($rows !== []) {
             $this->io->section($title);
             $this->renderTable(['Parameter', 'Value'], $rows);
         }
@@ -307,7 +307,7 @@ class ConfigCommand extends BaseCommand
             $rows[] = [$label, $path, $url];
         }
 
-        if (!empty($rows)) {
+        if ($rows !== []) {
             $this->io->section($title);
             $this->renderTable(['Content Type', 'Local Path', 'URL'], $rows);
         }
@@ -318,13 +318,14 @@ class ConfigCommand extends BaseCommand
         $file = $input->getOption('file');
 
         $filePath = $this->getConfigFilePath($file);
-        if (!$filePath) {
+        if ($filePath === null) {
             $this->io->error("Unknown config file: $file");
             return self::FAILURE;
         }
 
         // Get editor from environment
-        $editor = getenv('EDITOR') ?: 'nano';
+        $editorEnv = getenv('EDITOR');
+        $editor = ($editorEnv !== false && $editorEnv !== '') ? $editorEnv : 'nano';
 
         // Create backup
         $backupFile = $filePath . '.backup.' . date('YmdHis');
@@ -342,11 +343,13 @@ class ConfigCommand extends BaseCommand
 
             // Validate syntax
             $result = shell_exec("php -l $filePath 2>&1");
-            if (strpos($result, 'No syntax errors') === false) {
+            if ($result === null || $result === false || strpos($result, 'No syntax errors') === false) {
                 $this->io->error('Syntax error in configuration file!');
-                $this->io->warning($result);
+                if (is_string($result)) {
+                    $this->io->warning($result);
+                }
 
-                if ($this->io->confirm('Restore from backup?', true)) {
+                if ($this->io->confirm('Restore from backup?', true) === true) {
                     copy($backupFile, $filePath);
                     $this->io->success('Restored from backup');
                 }
@@ -366,11 +369,11 @@ class ConfigCommand extends BaseCommand
             return [];
         }
 
-        $content = file_get_contents($file);
+        $content = (string) file_get_contents($file);
         $configs = [];
 
         // Parse define() statements
-        if (preg_match_all("/define\('DB_([^']+)',\s*'([^']*)'\)/", $content, $matches)) {
+        if (preg_match_all("/define\('DB_([^']+)',\s*'([^']*)'\)/", $content, $matches) > 0) {
             foreach ($matches[1] as $i => $key) {
                 $configs[strtolower($key)] = $matches[2][$i];
             }
@@ -392,7 +395,9 @@ class ConfigCommand extends BaseCommand
         // Save current directory and change to setup.php directory
         // This is needed because setup.php includes version.php with relative path
         $oldCwd = getcwd();
-        chdir(dirname($file));
+        if ($oldCwd !== false) {
+            chdir(dirname($file));
+        }
 
         // Capture config array
         ob_start();
@@ -409,7 +414,9 @@ class ConfigCommand extends BaseCommand
         ob_end_clean();
 
         // Restore directory
-        chdir($oldCwd);
+        if ($oldCwd !== false) {
+            chdir($oldCwd);
+        }
 
         return $config;
     }
@@ -447,9 +454,11 @@ class ConfigCommand extends BaseCommand
             // Try main config first (most common)
             $mainConfigs = $this->getMainConfigs();
             if (isset($mainConfigs[$key])) {
-                return is_array($mainConfigs[$key])
-                    ? json_encode($mainConfigs[$key])
-                    : (string)$mainConfigs[$key];
+                if (is_array($mainConfigs[$key])) {
+                    $encoded = json_encode($mainConfigs[$key]);
+                    return $encoded !== false ? $encoded : null;
+                }
+                return (string)$mainConfigs[$key];
             }
 
             // Try database config
@@ -462,7 +471,11 @@ class ConfigCommand extends BaseCommand
             $keyLower = strtolower($key);
             foreach ($mainConfigs as $configKey => $value) {
                 if (strtolower($configKey) === $keyLower) {
-                    return is_array($value) ? json_encode($value) : (string)$value;
+                    if (is_array($value)) {
+                        $encoded = json_encode($value);
+                        return $encoded !== false ? $encoded : null;
+                    }
+                    return (string)$value;
                 }
             }
 
@@ -483,14 +496,20 @@ class ConfigCommand extends BaseCommand
                 $configKeyLower = strtolower($configKey);
                 foreach ($configs as $k => $v) {
                     if (strtolower($k) === $configKeyLower) {
-                        return is_array($v) ? json_encode($v) : (string)$v;
+                        if (is_array($v)) {
+                            $encoded = json_encode($v);
+                            return $encoded !== false ? $encoded : null;
+                        }
+                        return (string)$v;
                     }
                 }
                 return null;
             }
-            return is_array($configs[$configKey])
-                ? json_encode($configs[$configKey])
-                : (string)$configs[$configKey];
+            if (is_array($configs[$configKey])) {
+                $encoded = json_encode($configs[$configKey]);
+                return $encoded !== false ? $encoded : null;
+            }
+            return (string)$configs[$configKey];
         }
 
         return null;
@@ -504,11 +523,11 @@ class ConfigCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        $content = file_get_contents($file);
+        $content = (string) file_get_contents($file);
         $defineKey = 'DB_' . strtoupper($key);
 
         // Check if key exists
-        if (!preg_match("/define\('$defineKey',/", $content)) {
+        if (preg_match("/define\('$defineKey',/", $content) !== 1) {
             $this->io->error("Configuration key not found: db.$key");
             return self::FAILURE;
         }
@@ -524,10 +543,10 @@ class ConfigCommand extends BaseCommand
         $this->io->success("Configuration updated: db.$key = $value");
 
         // Test database connection if it's a db setting
-        if (in_array($key, ['host', 'login', 'pass', 'device'])) {
+        if (in_array($key, ['host', 'login', 'pass', 'device'], true)) {
             $this->io->info('Testing database connection...');
             $db = $this->getDatabaseConnection();
-            if ($db) {
+            if ($db !== null) {
                 $this->io->success('Database connection successful');
             } else {
                 $this->io->warning('Database connection failed with new settings');
@@ -545,7 +564,7 @@ class ConfigCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        $content = file_get_contents($file);
+        $content = (string) file_get_contents($file);
 
         // Try to find and replace
         $patterns = [
@@ -555,7 +574,7 @@ class ConfigCommand extends BaseCommand
 
         $found = false;
         foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $content)) {
+            if (preg_match($pattern, $content) === 1) {
                 // Determine if value should be quoted
                 if (is_numeric($value) || $value === 'true' || $value === 'false' || $value === 'null') {
                     $replacement = "\$config['$key'] = $value;";
@@ -603,9 +622,10 @@ class ConfigCommand extends BaseCommand
     private function createBackup(string $key): void
     {
         [$category] = explode('.', $key, 2);
-        $file = $this->getConfigFilePath($this->getConfigFile($category));
+        $configFile = $this->getConfigFile($category);
+        $file = $configFile !== null ? $this->getConfigFilePath($configFile) : null;
 
-        if ($file) {
+        if ($file !== null) {
             $backupFile = $file . '.backup.' . date('YmdHis');
             copy($file, $backupFile);
             $this->io->info("Backup created: $backupFile");
@@ -624,11 +644,11 @@ class ConfigCommand extends BaseCommand
         $needleLower = strtolower($needle);
 
         // Remove prefix if present for better matching
-        $needleWithoutPrefix = preg_replace('/^(db|main|site)\./', '', $needleLower);
+        $needleWithoutPrefix = (string) preg_replace('/^(db|main|site)\./', '', $needleLower);
 
-        foreach ($haystack as $key) {
+        foreach (array_keys($haystack) as $key) {
             $keyLower = strtolower($key);
-            $keyWithoutPrefix = preg_replace('/^(db|main|site)\./', '', $keyLower);
+            $keyWithoutPrefix = (string) preg_replace('/^(db|main|site)\./', '', $keyLower);
 
             // Exact match without prefix
             if ($keyWithoutPrefix === $needleWithoutPrefix) {
@@ -638,8 +658,8 @@ class ConfigCommand extends BaseCommand
 
             // Contains match
             if (
-                strpos($keyWithoutPrefix, $needleWithoutPrefix) !== false ||
-                strpos($needleWithoutPrefix, $keyWithoutPrefix) !== false
+                str_contains($keyWithoutPrefix, $needleWithoutPrefix) ||
+                str_contains($needleWithoutPrefix, $keyWithoutPrefix)
             ) {
                 $matches[] = $key;
                 continue;

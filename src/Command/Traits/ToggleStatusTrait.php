@@ -37,8 +37,8 @@ trait ToggleStatusTrait
         string $commandName
     ): int {
         // Validate ID parameter
-        if (!$id) {
-            $action = $status ? 'enable' : 'disable';
+        if ($id === null || $id === "") {
+            $action = $status !== 0 ? 'enable' : 'disable';
             $this->io->error("{$entityName} ID is required");
             $this->io->text("Usage: kvs {$commandName} {$action} <{$idColumn}>");
             return self::FAILURE;
@@ -46,7 +46,7 @@ trait ToggleStatusTrait
 
         // Get database connection
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -57,14 +57,14 @@ trait ToggleStatusTrait
             $stmt->execute(['id' => $id]);
             $entity = $stmt->fetch();
 
-            if (!$entity) {
+            if ($entity === false) {
                 $this->io->error("{$entityName} not found: {$id}");
                 return self::FAILURE;
             }
 
             // Check if already at target status
-            if ($entity['status_id'] == $status) {
-                $currentStatus = $status ? 'active' : 'inactive';
+            if ($entity['status_id'] === $status) {
+                $currentStatus = $status !== 0 ? 'active' : 'inactive';
                 $this->io->info("{$entityName} is already {$currentStatus}");
                 return self::SUCCESS;
             }
@@ -75,7 +75,7 @@ trait ToggleStatusTrait
             $stmt->execute(['status' => $status, 'id' => $id]);
 
             // Success message
-            $newStatus = $status ? 'enabled' : 'disabled';
+            $newStatus = $status !== 0 ? 'enabled' : 'disabled';
             $entityDisplayName = $entity[$nameColumn];
             $this->io->success("{$entityName} '{$entityDisplayName}' {$newStatus} successfully!");
         } catch (\Exception $e) {

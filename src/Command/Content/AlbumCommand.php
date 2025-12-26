@@ -76,7 +76,7 @@ HELP
     private function listAlbums(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -88,12 +88,14 @@ HELP
 
         $params = [];
 
-        if ($status = $input->getOption('status')) {
+        $status = $input->getOption('status');
+        if ($status !== null) {
             $query .= " AND a.status_id = :status";
             $params['status'] = $status;
         }
 
-        if ($user = $input->getOption('user')) {
+        $user = $input->getOption('user');
+        if ($user !== null) {
             $query .= " AND a.user_id = :user";
             $params['user'] = $user;
         }
@@ -139,6 +141,7 @@ HELP
                 $input->getOptions(),
                 ['album_id', 'title', 'image_count', 'status_id', 'username', 'post_date']
             );
+            /** @var list<array<string, mixed>> $transformedAlbums */
             $formatter->display($transformedAlbums, $this->io);
 
             return self::SUCCESS;
@@ -150,13 +153,13 @@ HELP
 
     private function showAlbum(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Album ID is required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -165,7 +168,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $album = $stmt->fetch();
 
-            if (!$album) {
+            if ($album === false) {
                 $this->io->error("Album not found: $id");
                 return self::FAILURE;
             }
@@ -201,19 +204,19 @@ HELP
 
     private function deleteAlbum(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Album ID is required');
             return self::FAILURE;
         }
 
         $this->io->warning("This will permanently delete album #$id");
 
-        if (!$this->io->confirm('Do you want to continue?', false)) {
+        if ($this->io->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 

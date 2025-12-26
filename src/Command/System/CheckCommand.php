@@ -97,13 +97,16 @@ class CheckCommand extends BaseCommand
         $results['end_of_life'] = $this->checkEndOfLife($quietOk, $results);
 
         if ($jsonOutput === true) {
-            $output->writeln(json_encode([
+            $json = json_encode([
                 'results' => $results,
                 'summary' => [
                     'errors' => $this->errors,
                     'warnings' => $this->warnings,
                 ],
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            if ($json !== false) {
+                $output->writeln($json);
+            }
         } else {
             $this->io->newLine();
             $this->io->writeln(str_repeat('─', 42));
@@ -127,6 +130,9 @@ class CheckCommand extends BaseCommand
         return self::SUCCESS;
     }
 
+    /**
+     * @return array{current_version: string|null, latest_version: string|null, update_available: bool, status: string}
+     */
     private function checkKvsUpdate(bool $quietOk): array
     {
         $this->printSection('KVS Update');
@@ -147,7 +153,7 @@ class CheckCommand extends BaseCommand
         }
 
         $content = file_get_contents($versionFile);
-        if (!preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches)) {
+        if ($content === false || preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches) !== 1) {
             $this->printStatus('Version', 'Could not parse', 'warning');
             $result['status'] = 'warning';
             return $result;
@@ -201,7 +207,12 @@ class CheckCommand extends BaseCommand
             return null;
         }
 
-        $data = @unserialize(file_get_contents($dataFile), ['allowed_classes' => false]);
+        $contents = file_get_contents($dataFile);
+        if ($contents === false) {
+            return null;
+        }
+
+        $data = @unserialize($contents, ['allowed_classes' => false]);
 
         if (!is_array($data) || !isset($data['latest_version']) || $data['latest_version'] === '') {
             return null;
@@ -210,6 +221,10 @@ class CheckCommand extends BaseCommand
         return (string) $data['latest_version'];
     }
 
+    /**
+     * @return array{php_cli_version: string, php_web_version: string|null, kvs_version: string|null,
+     *               compatible: bool|null, status: string, required_php_min?: string, required_php_max?: string}
+     */
     private function checkPhpKvsCompatibility(bool $quietOk): array
     {
         $this->printSection('PHP & KVS Compatibility');
@@ -227,7 +242,7 @@ class CheckCommand extends BaseCommand
         $kvsVersion = null;
         if (file_exists($versionFile)) {
             $content = file_get_contents($versionFile);
-            if (preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches)) {
+            if ($content !== false && preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches) === 1) {
                 $kvsVersion = $matches[1];
                 $result['kvs_version'] = $kvsVersion;
             }
@@ -320,11 +335,12 @@ class CheckCommand extends BaseCommand
         $setupFile = $this->config->getAdminPath() . '/include/setup.php';
         if (file_exists($setupFile)) {
             $content = @file_get_contents($setupFile);
-            if ($content && preg_match('/\$config\[\'php_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches)) {
+            $pattern = '/\$config\[\'php_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/';
+            if ($content !== false && $content !== '' && preg_match($pattern, $content, $matches) === 1) {
                 $phpPath = $matches[1];
                 if (is_executable($phpPath)) {
                     $version = @shell_exec("$phpPath -r \"echo PHP_VERSION;\" 2>/dev/null");
-                    if ($version) {
+                    if ($version !== null && $version !== false && $version !== '') {
                         return trim($version);
                     }
                 }
@@ -343,7 +359,7 @@ class CheckCommand extends BaseCommand
         foreach ($commonPaths as $path) {
             if (is_executable($path) && $path !== PHP_BINARY) {
                 $version = @shell_exec("$path -r \"echo PHP_VERSION;\" 2>/dev/null");
-                if ($version) {
+                if ($version !== null && $version !== false && $version !== '') {
                     return trim($version);
                 }
             }
@@ -352,6 +368,9 @@ class CheckCommand extends BaseCommand
         return null;
     }
 
+    /**
+     * @return array{extensions: array<string, array{name: string, loaded: bool}>, exec_enabled?: bool, status: string}
+     */
     private function checkPhpExtensions(bool $quietOk): array
     {
         $this->printSection('PHP Extensions');
@@ -408,7 +427,8 @@ class CheckCommand extends BaseCommand
 
         // Check that exec is not in disable_functions
         $disableFunctions = ini_get('disable_functions');
-        $execDisabled = stripos($disableFunctions, 'exec') !== false;
+        $disableFunctionsStr = $disableFunctions !== false ? $disableFunctions : '';
+        $execDisabled = stripos($disableFunctionsStr, 'exec') !== false;
         $result['exec_enabled'] = !$execDisabled;
 
         if ($execDisabled) {
@@ -423,6 +443,10 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{tools: array<string, array{path: string, available: bool, version: string|null,
+     *               codecs?: array<string, bool>, webp_support?: bool, avif_support?: bool}>, status: string}
+     */
     private function checkTools(bool $quietOk): array
     {
         $this->printSection('System Tools');
@@ -442,14 +466,14 @@ class CheckCommand extends BaseCommand
 
         if (file_exists($setupFile)) {
             $content = @file_get_contents($setupFile);
-            if ($content) {
-                if (preg_match('/\$config\[\'ffmpeg_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $m)) {
+            if ($content !== false && $content !== '') {
+                if (preg_match('/\$config\[\'ffmpeg_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $m) === 1) {
                     $paths['ffmpeg'] = $m[1];
                 }
-                if (preg_match('/\$config\[\'image_magick_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $m)) {
+                if (preg_match('/\$config\[\'image_magick_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $m) === 1) {
                     $paths['imagemagick'] = $m[1];
                 }
-                if (preg_match('/\$config\[\'mysqldump_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $m)) {
+                if (preg_match('/\$config\[\'mysqldump_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $m) === 1) {
                     $paths['mysqldump'] = $m[1];
                 }
             }
@@ -568,7 +592,7 @@ class CheckCommand extends BaseCommand
             // Try with which
             if (function_exists('shell_exec')) {
                 $which = @shell_exec("which " . escapeshellarg(basename($path)) . " 2>/dev/null");
-                if ($which) {
+                if ($which !== null && $which !== false && $which !== '') {
                     $path = trim($which);
                 }
             }
@@ -580,22 +604,22 @@ class CheckCommand extends BaseCommand
 
         // Get multiple lines for better version parsing
         $output = @shell_exec(escapeshellarg($path) . " $versionFlag 2>&1 | head -n 5");
-        if (!$output) {
+        if ($output === null || $output === false || $output === '') {
             return null;
         }
 
         // For ImageMagick, look for "Version: ImageMagick X.Y.Z"
-        if (preg_match('/Version:\s*ImageMagick\s*(\d+\.\d+(?:\.\d+)?(?:-\d+)?)/i', $output, $matches)) {
+        if (preg_match('/Version:\s*ImageMagick\s*(\d+\.\d+(?:\.\d+)?(?:-\d+)?)/i', $output, $matches) === 1) {
             return $matches[1];
         }
 
         // For FFmpeg, look for "ffmpeg version X.Y.Z"
-        if (preg_match('/ffmpeg\s+version\s+(\d+\.\d+(?:\.\d+)?)/i', $output, $matches)) {
+        if (preg_match('/ffmpeg\s+version\s+(\d+\.\d+(?:\.\d+)?)/i', $output, $matches) === 1) {
             return $matches[1];
         }
 
         // For mysqldump, look for "mysqldump Ver X.Y.Z"
-        if (preg_match('/mysqldump.*?(\d+\.\d+(?:\.\d+)?)/i', $output, $matches)) {
+        if (preg_match('/mysqldump.*?(\d+\.\d+(?:\.\d+)?)/i', $output, $matches) === 1) {
             return $matches[1];
         }
 
@@ -607,7 +631,7 @@ class CheckCommand extends BaseCommand
             if (stripos($line, 'warning') !== false || stripos($line, 'deprecated') !== false) {
                 continue;
             }
-            if (preg_match('/(\d+\.\d+(?:\.\d+)?)/', $line, $matches)) {
+            if (preg_match('/(\d+\.\d+(?:\.\d+)?)/', $line, $matches) === 1) {
                 return $matches[1];
             }
         }
@@ -615,6 +639,9 @@ class CheckCommand extends BaseCommand
         return null;
     }
 
+    /**
+     * @return array{libx264: bool, aac: bool, av1: bool, libavfilter: bool}
+     */
     private function checkFfmpegCodecs(string $ffmpegPath): array
     {
         $result = [
@@ -631,7 +658,7 @@ class CheckCommand extends BaseCommand
         // Get all encoders once
         $encoders = @shell_exec(escapeshellarg($ffmpegPath) . " -encoders 2>&1");
 
-        if (!$encoders) {
+        if ($encoders === null || $encoders === false || $encoders === '') {
             return $result;
         }
 
@@ -662,9 +689,12 @@ class CheckCommand extends BaseCommand
             escapeshellarg($convertPath) . " -list format 2>&1 | grep -i " . escapeshellarg($format)
         );
 
-        return is_string($output) && $output !== '' && stripos($output, $format) !== false;
+        return $output !== null && $output !== false && $output !== '' && stripos($output, $format) !== false;
     }
 
+    /**
+     * @return array{configured: bool, connected: bool, memory_mb: int|null, status: string, server?: string}
+     */
     private function checkMemcached(bool $quietOk): array
     {
         $this->printSection('Memcached');
@@ -744,7 +774,7 @@ class CheckCommand extends BaseCommand
 
         // Method 2: Raw socket connection
         $fp = @fsockopen($server, $port, $errno, $errstr, 2);
-        if (!$fp) {
+        if ($fp === false) {
             return null;
         }
 
@@ -752,20 +782,26 @@ class CheckCommand extends BaseCommand
         $response = '';
         while (!feof($fp)) {
             $line = fgets($fp, 256);
-            $response .= $line;
-            if (trim($line) === 'END') {
-                break;
+            if ($line !== false) {
+                $response .= $line;
+                if (trim($line) === 'END') {
+                    break;
+                }
             }
         }
         fclose($fp);
 
-        if (preg_match('/STAT limit_maxbytes (\d+)/', $response, $matches)) {
+        if (preg_match('/STAT limit_maxbytes (\d+)/', $response, $matches) === 1) {
             return (int) ($matches[1] / 1024 / 1024);
         }
 
         return null;
     }
 
+    /**
+     * @return array{enabled: bool, memory_consumption: int|null, interned_strings_buffer: int|null,
+     *               jit_enabled: bool, status: string, jit_buffer_size?: int}
+     */
     private function checkOpcache(bool $quietOk): array
     {
         $this->printSection('OPcache');
@@ -849,6 +885,9 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{settings: array<string, string|false>, status: string}
+     */
     private function checkPhpSettings(bool $quietOk): array
     {
         $this->printSection('PHP Settings');
@@ -904,7 +943,7 @@ class CheckCommand extends BaseCommand
                 continue;
             }
 
-            $displayValue = $check['format'] === 'bytes' ? format_bytes($bytes) : $value;
+            $displayValue = $check['format'] === 'bytes' ? format_bytes($bytes) : (is_string($value) ? $value : (string) $value);
 
             if ($bytes < $check['min']) {
                 $this->printStatus(
@@ -922,6 +961,10 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{processes: array<string, array{label: string, found: bool, last_run: int|null,
+     *               status: string, status_id?: int, age_minutes?: int}>, status: string, error?: string}
+     */
     private function checkCron(bool $quietOk): array
     {
         $this->printSection('Cron Status');
@@ -955,6 +998,9 @@ class CheckCommand extends BaseCommand
                 FROM ktvs_admin_processes
                 WHERE process_name IN ('cron', 'cron_optimize', 'cron_conversion', 'cron_check_db')
             ");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to query admin_processes table');
+            }
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             $foundProcesses = [];
@@ -1066,6 +1112,10 @@ class CheckCommand extends BaseCommand
         return "{$days}d";
     }
 
+    /**
+     * @return array{connected: bool, version: string|null, variables: array<string, int>, status: string,
+     *               is_mariadb?: bool, version_number?: string, meets_requirement?: bool}
+     */
     private function checkMysql(bool $quietOk): array
     {
         $this->printSection('MySQL/MariaDB');
@@ -1093,6 +1143,9 @@ class CheckCommand extends BaseCommand
         // Version check with requirements validation
         try {
             $stmt = $db->query("SELECT VERSION() as version");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to query database version');
+            }
             $row = $stmt->fetch();
             $versionString = is_array($row) ? (string) $row['version'] : '';
             $result['version'] = $versionString;
@@ -1102,7 +1155,7 @@ class CheckCommand extends BaseCommand
             $result['is_mariadb'] = $isMariaDB;
 
             // Extract version number
-            if (preg_match('/^(\d+\.\d+(?:\.\d+)?)/', $versionString, $matches)) {
+            if (preg_match('/^(\d+\.\d+(?:\.\d+)?)/', $versionString, $matches) !== false) {
                 $versionNum = $matches[1];
                 $result['version_number'] = $versionNum;
 
@@ -1140,6 +1193,9 @@ class CheckCommand extends BaseCommand
 
         try {
             $stmt = $db->query("SHOW VARIABLES LIKE 'innodb_buffer_pool_size'");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to query innodb_buffer_pool_size');
+            }
             $row = $stmt->fetch();
             if (is_array($row)) {
                 $bytes = (int) $row['Value'];
@@ -1164,6 +1220,9 @@ class CheckCommand extends BaseCommand
 
         try {
             $stmt = $db->query("SHOW VARIABLES LIKE 'max_connections'");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to query max_connections');
+            }
             $row = $stmt->fetch();
             if (is_array($row) && $quietOk === false) {
                 $result['variables']['max_connections'] = (int) $row['Value'];
@@ -1177,6 +1236,9 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{load_average: array<int, float>|null, cpu_cores: int|null, load_per_core: float|null, io_wait: float|null, status: string}
+     */
     private function checkSystemLoad(bool $quietOk): array
     {
         $this->printSection('System Load');
@@ -1267,6 +1329,9 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{0: float, 1: float, 2: float}|null
+     */
     private function getLoadAverage(): ?array
     {
         // Method 1: Built-in PHP
@@ -1280,7 +1345,7 @@ class CheckCommand extends BaseCommand
         // Method 2: /proc/loadavg
         if (is_readable('/proc/loadavg')) {
             $data = @file_get_contents('/proc/loadavg');
-            if ($data) {
+            if ($data !== false && $data !== '') {
                 $parts = explode(' ', $data);
                 if (count($parts) >= 3) {
                     return [(float) $parts[0], (float) $parts[1], (float) $parts[2]];
@@ -1291,7 +1356,8 @@ class CheckCommand extends BaseCommand
         // Method 3: uptime command
         if (function_exists('shell_exec')) {
             $uptime = @shell_exec('uptime 2>/dev/null');
-            if ($uptime && preg_match('/load average[s]?:\s*([\d.]+),?\s*([\d.]+),?\s*([\d.]+)/i', $uptime, $m)) {
+            $pattern = '/load average[s]?:\s*([\d.]+),?\s*([\d.]+),?\s*([\d.]+)/i';
+            if ($uptime !== null && $uptime !== false && $uptime !== '' && preg_match($pattern, $uptime, $m) === 1) {
                 return [(float) $m[1], (float) $m[2], (float) $m[3]];
             }
         }
@@ -1304,7 +1370,7 @@ class CheckCommand extends BaseCommand
         // Method 1: /proc/cpuinfo
         if (is_readable('/proc/cpuinfo')) {
             $cpuinfo = @file_get_contents('/proc/cpuinfo');
-            if ($cpuinfo) {
+            if ($cpuinfo !== false && $cpuinfo !== '') {
                 $count = substr_count($cpuinfo, 'processor');
                 if ($count > 0) {
                     return $count;
@@ -1315,7 +1381,7 @@ class CheckCommand extends BaseCommand
         // Method 2: nproc command
         if (function_exists('shell_exec')) {
             $nproc = @shell_exec('nproc 2>/dev/null');
-            if ($nproc) {
+            if ($nproc !== null && $nproc !== false && $nproc !== '') {
                 return (int) trim($nproc);
             }
         }
@@ -1323,7 +1389,7 @@ class CheckCommand extends BaseCommand
         // Method 3: sysctl (macOS/BSD)
         if (function_exists('shell_exec')) {
             $sysctl = @shell_exec('sysctl -n hw.ncpu 2>/dev/null');
-            if ($sysctl) {
+            if ($sysctl !== null && $sysctl !== false && $sysctl !== '') {
                 return (int) trim($sysctl);
             }
         }
@@ -1339,7 +1405,7 @@ class CheckCommand extends BaseCommand
 
         // Read first sample
         $stat1 = @file_get_contents('/proc/stat');
-        if (!$stat1) {
+        if ($stat1 === false || $stat1 === '') {
             return null;
         }
 
@@ -1347,15 +1413,15 @@ class CheckCommand extends BaseCommand
 
         // Read second sample
         $stat2 = @file_get_contents('/proc/stat');
-        if (!$stat2) {
+        if ($stat2 === false || $stat2 === '') {
             return null;
         }
 
         // Parse cpu line: cpu user nice system idle iowait irq softirq steal guest guest_nice
-        if (!preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat1, $m1)) {
+        if (preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat1, $m1) === false) {
             return null;
         }
-        if (!preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat2, $m2)) {
+        if (preg_match('/^cpu\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/m', $stat2, $m2) === false) {
             return null;
         }
 
@@ -1374,6 +1440,9 @@ class CheckCommand extends BaseCommand
         return round(($iowaitDelta / $totalDelta) * 100, 1);
     }
 
+    /**
+     * @return array{paths: array<string, array{path: string, free: float, total: float, used_percent: float}>, status: string}
+     */
     private function checkDiskSpace(bool $quietOk): array
     {
         $this->printSection('Disk Space');
@@ -1429,6 +1498,9 @@ class CheckCommand extends BaseCommand
         return $result;
     }
 
+    /**
+     * @return array{online: bool, latency_ms: float|null, status: string, http_code?: int, error?: string}
+     */
     private function checkInternet(bool $quietOk): array
     {
         $this->printSection('Internet Connectivity');
@@ -1510,8 +1582,12 @@ class CheckCommand extends BaseCommand
         $this->io->writeln("  $icon $label: $valueFormatted");
     }
 
-    private function parseIniSize(string $size): int
+    private function parseIniSize(string|false $size): int
     {
+        if ($size === false) {
+            return 0;
+        }
+
         $size = trim($size);
 
         if ($size === '-1') {
@@ -1533,7 +1609,7 @@ class CheckCommand extends BaseCommand
      * Check End of Life status for PHP, MySQL/MariaDB.
      *
      * @param array<string, mixed> $results Previous check results
-     * @return array<string, mixed>
+     * @return array{php: array<string, mixed>|null, mysql: array<string, mixed>|null, status: string}
      */
     private function checkEndOfLife(bool $quietOk, array $results): array
     {
@@ -1593,7 +1669,7 @@ class CheckCommand extends BaseCommand
     /**
      * Fetch EOL data from endoflife.date API with caching.
      *
-     * @return array<int, array<string, mixed>>
+     * @return list<array<string, mixed>>
      */
     private function fetchEolData(string $product): array
     {
@@ -1605,10 +1681,13 @@ class CheckCommand extends BaseCommand
             $mtime = filemtime($cacheFile);
             if ($mtime !== false && (time() - $mtime) < Constants::EOL_CACHE_TTL) {
                 $cached = @file_get_contents($cacheFile);
-                if ($cached !== false) {
+                if ($cached !== false && $cached !== '') {
                     $data = json_decode($cached, true);
                     if (is_array($data)) {
-                        return $data;
+                        // Ensure it's a list of arrays
+                        /** @var list<array<string, mixed>> $result */
+                        $result = array_values($data);
+                        return $result;
                     }
                 }
             }
@@ -1639,20 +1718,24 @@ class CheckCommand extends BaseCommand
             return [];
         }
 
+        // Ensure it's a list of arrays
+        /** @var list<array<string, mixed>> $result */
+        $result = array_values($data);
+
         // Cache the result
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0755, true);
         }
         @file_put_contents($cacheFile, $response);
 
-        return $data;
+        return $result;
     }
 
     /**
      * Check if a specific version is EOL or EOL soon.
      *
-     * @param array<int, array<string, mixed>> $eolData
-     * @return array<string, mixed>
+     * @param list<array<string, mixed>> $eolData
+     * @return array{version: string, eol_date: string|null, status: string}
      */
     private function checkVersionEol(
         string $productName,

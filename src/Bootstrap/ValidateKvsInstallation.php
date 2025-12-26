@@ -16,7 +16,7 @@ class ValidateKvsInstallation implements BootstrapStep
     {
         $config = $state->getValue('config');
 
-        if (!$config || !($config instanceof Configuration)) {
+        if ($config === null || !($config instanceof Configuration)) {
             $state->addError('KVS installation not found');
             $state->setValue('kvs_available', false);
             return $state;
@@ -28,7 +28,7 @@ class ValidateKvsInstallation implements BootstrapStep
 
             // Store path info for error messages
             $searchedPath = $config->getKvsPath();
-            if ($searchedPath) {
+            if ($searchedPath !== '') {
                 $state->setValue('searched_path', $searchedPath);
             }
         } else {

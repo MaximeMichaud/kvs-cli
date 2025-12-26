@@ -71,7 +71,7 @@ HELP
     private function listDvds(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -83,7 +83,8 @@ HELP
         $params = [];
 
         // Status filter
-        if ($status = $input->getOption('status')) {
+        $status = $input->getOption('status');
+        if ($status !== null) {
             $statusMap = ['active' => 1, 'disabled' => 0];
             if (isset($statusMap[$status])) {
                 $query .= " AND d.status_id = :status";
@@ -92,7 +93,8 @@ HELP
         }
 
         // Search filter
-        if ($search = $input->getOption('search')) {
+        $search = $input->getOption('search');
+        if ($search !== null) {
             $query .= " AND d.title LIKE :search";
             $params['search'] = "%$search%";
         }
@@ -152,13 +154,13 @@ HELP
 
     private function showDvd(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('DVD ID is required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -171,7 +173,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $dvd = $stmt->fetch();
 
-            if (!$dvd) {
+            if ($dvd === false) {
                 $this->io->error("DVD not found: $id");
                 return self::FAILURE;
             }
@@ -196,7 +198,7 @@ HELP
             }
 
             // Release year
-            if (!empty($dvd['release_year'])) {
+            if (isset($dvd['release_year']) && $dvd['release_year'] !== '') {
                 $info[] = ['Release Year', $dvd['release_year']];
             }
 
@@ -207,11 +209,11 @@ HELP
             }
 
             // Subscribers
-            if (!empty($dvd['subscribers_count'])) {
-                $info[] = ['Subscribers', number_format($dvd['subscribers_count'])];
+            if (isset($dvd['subscribers_count']) && (int) $dvd['subscribers_count'] > 0) {
+                $info[] = ['Subscribers', number_format((int) $dvd['subscribers_count'])];
             }
 
-            if (!empty($dvd['description'])) {
+            if (isset($dvd['description']) && $dvd['description'] !== '') {
                 $info[] = ['Description', $dvd['description']];
             }
 
@@ -227,7 +229,7 @@ HELP
     private function showStats(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -236,15 +238,21 @@ HELP
 
             // Total DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')}");
-            $stats[] = ['Total DVDs', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Total DVDs', number_format((int) $stmt->fetchColumn())];
+            }
 
             // Active DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_ACTIVE);
-            $stats[] = ['Active', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Active', number_format((int) $stmt->fetchColumn())];
+            }
 
             // Disabled DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_DISABLED);
-            $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
+            }
 
             $this->io->title('DVD Statistics');
             $this->renderTable(['Metric', 'Value'], $stats);

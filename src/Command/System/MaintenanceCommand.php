@@ -112,19 +112,34 @@ EOT
             return false;
         }
 
-        $settings = unserialize(file_get_contents($settingsFile));
-        return !empty($settings['DISABLE_WEBSITE']);
+        $content = file_get_contents($settingsFile);
+        if ($content === false) {
+            return false;
+        }
+        $settings = unserialize($content);
+        return is_array($settings) && isset($settings['DISABLE_WEBSITE']) && $settings['DISABLE_WEBSITE'] !== '';
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function loadSettings(string $settingsFile): array
     {
         if (file_exists($settingsFile)) {
-            return unserialize(file_get_contents($settingsFile)) ?: [];
+            $content = file_get_contents($settingsFile);
+            if ($content === false) {
+                return [];
+            }
+            $result = unserialize($content);
+            return is_array($result) ? $result : [];
         }
 
         return [];
     }
 
+    /**
+     * @param array<string, mixed> $settings
+     */
     private function saveSettings(string $settingsFile, array $settings): void
     {
         file_put_contents($settingsFile, serialize($settings));

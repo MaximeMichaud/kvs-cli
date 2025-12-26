@@ -21,7 +21,7 @@ class LoadConfiguration implements BootstrapStep
         $pathOption = $this->extractPathOption($input);
 
         $configArray = [];
-        if ($pathOption) {
+        if ($pathOption !== null) {
             $configArray['path'] = $pathOption;
         }
 
@@ -42,7 +42,7 @@ class LoadConfiguration implements BootstrapStep
      */
     private function extractPathOption(?InputInterface $input): ?string
     {
-        if (!$input) {
+        if ($input === null) {
             return null;
         }
 
@@ -58,7 +58,7 @@ class LoadConfiguration implements BootstrapStep
         // Fallback: parse from argv directly
         $argv = $_SERVER['argv'] ?? [];
         foreach ($argv as $arg) {
-            if (strpos($arg, '--path=') === 0) {
+            if (str_starts_with($arg, '--path=')) {
                 return substr($arg, 7);
             }
         }

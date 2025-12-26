@@ -30,18 +30,21 @@ class BackupCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('create')) {
+        if ($input->getOption('create') !== false) {
+            $type = $input->getOption('type');
+            $outputOpt = $input->getOption('output');
             return $this->createBackup(
-                $input->getOption('type'),
-                $input->getOption('output')
+                is_string($type) ? $type : 'full',
+                is_string($outputOpt) ? $outputOpt : null
             );
         }
 
-        if ($input->getOption('restore')) {
-            return $this->restoreBackup($input->getOption('restore'));
+        $restoreOpt = $input->getOption('restore');
+        if ($restoreOpt !== false && $restoreOpt !== null) {
+            return $this->restoreBackup(is_string($restoreOpt) ? $restoreOpt : '');
         }
 
-        if ($input->getOption('list')) {
+        if ($input->getOption('list') !== false) {
             return $this->listBackups();
         }
 
@@ -88,7 +91,7 @@ class BackupCommand extends BaseCommand
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if (empty($dbConfig)) {
+        if ($dbConfig === []) {
             $this->io->error('Database configuration not found');
             return;
         }
@@ -119,7 +122,19 @@ class BackupCommand extends BaseCommand
 
             $gzFile = "$dumpFile.gz";
             $fp = gzopen($gzFile, 'w9');
-            gzwrite($fp, file_get_contents($dumpFile));
+            if ($fp === false) {
+                $this->io->error('Failed to create compressed backup file');
+                return;
+            }
+
+            $sqlContent = file_get_contents($dumpFile);
+            if ($sqlContent === false) {
+                gzclose($fp);
+                $this->io->error('Failed to read SQL dump file');
+                return;
+            }
+
+            gzwrite($fp, $sqlContent);
             gzclose($fp);
             unlink($dumpFile);
 
@@ -208,7 +223,7 @@ class BackupCommand extends BaseCommand
 
         $this->io->warning('Restore operation will overwrite existing data!');
 
-        if (!$this->io->confirm('Do you want to continue?', false)) {
+        if ($this->io->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
@@ -228,17 +243,24 @@ class BackupCommand extends BaseCommand
 
         $files = glob("$backupDir/kvs_backup_*.{tar.gz,sql.gz}", GLOB_BRACE);
 
-        if (empty($files)) {
+        if ($files === false || $files === []) {
             $this->io->info('No backups found');
             return self::SUCCESS;
         }
 
         $backups = [];
         foreach ($files as $file) {
+            $size = filesize($file);
+            $mtime = filemtime($file);
+
+            if ($size === false || $mtime === false) {
+                continue;
+            }
+
             $backups[] = [
                 basename($file),
-                format_bytes(filesize($file)),
-                date('Y-m-d H:i:s', filemtime($file)),
+                format_bytes($size),
+                date('Y-m-d H:i:s', $mtime),
             ];
         }
 

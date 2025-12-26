@@ -85,7 +85,7 @@ HELP
     private function listVideos(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -97,7 +97,8 @@ HELP
 
         $params = [];
 
-        if ($status = $input->getOption('status')) {
+        $status = $input->getOption('status');
+        if (is_string($status)) {
             $statusMap = ['active' => 1, 'disabled' => 0, 'error' => 2];
             if (isset($statusMap[$status])) {
                 $query .= " AND v.status_id = :status";
@@ -105,18 +106,21 @@ HELP
             }
         }
 
-        if ($search = $input->getOption('search')) {
+        $search = $input->getOption('search');
+        if (is_string($search)) {
             $query .= " AND v.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
-        if ($category = $input->getOption('category')) {
+        $category = $input->getOption('category');
+        if ($category !== null) {
             $query .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
                 . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
-        if ($user = $input->getOption('user')) {
+        $user = $input->getOption('user');
+        if ($user !== null) {
             $query .= " AND v.user_id = :user";
             $params['user'] = $user;
         }
@@ -164,13 +168,13 @@ HELP
 
     private function showVideo(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Video ID is required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -179,7 +183,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $video = $stmt->fetch();
 
-            if (!$video) {
+            if ($video === false) {
                 $this->io->error("Video not found: $id");
                 return self::FAILURE;
             }
@@ -212,7 +216,7 @@ HELP
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            if ($video['description']) {
+            if (isset($video['description']) && $video['description'] !== '') {
                 $this->io->section('Description');
                 $this->io->text($video['description']);
             }
@@ -225,7 +229,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-            if (!empty($categories)) {
+            if ($categories !== []) {
                 $this->io->section('Categories');
                 $this->io->listing($categories);
             }
@@ -238,7 +242,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-            if (!empty($tags)) {
+            if ($tags !== []) {
                 $this->io->section('Tags');
                 $this->io->text(implode(', ', $tags));
             }
@@ -252,19 +256,19 @@ HELP
 
     private function deleteVideo(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Video ID is required');
             return self::FAILURE;
         }
 
         $this->io->warning("This will permanently delete video #$id");
 
-        if (!$this->io->confirm('Do you want to continue?', false)) {
+        if ($this->io->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -319,7 +323,7 @@ HELP
 
     private function updateVideo(?string $id, InputInterface $input): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Video ID is required');
             return self::FAILURE;
         }
@@ -333,7 +337,7 @@ HELP
     private function showStats(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -350,16 +354,17 @@ HELP
             ];
 
             foreach ($queries as $label => $query) {
-                $value = $db->query($query)->fetchColumn();
+                $result = $db->query($query);
+                $value = $result !== false ? $result->fetchColumn() : null;
 
                 if ($label === 'Total Duration') {
                     $value = $this->formatDuration((int)($value ?? 0));
                 } elseif ($label === 'Average Rating') {
-                    $value = $value ? sprintf('%.1f/%d', $value, Constants::RATING_SCALE) : 'N/A';
+                    $value = ($value !== null && $value !== false) ? sprintf('%.1f/%d', $value, Constants::RATING_SCALE) : 'N/A';
                 } elseif ($label === 'Total Size') {
                     $value = format_bytes((int)($value ?? 0));
                 } elseif (is_numeric($value)) {
-                    $value = number_format($value);
+                    $value = number_format((int)$value);
                 } else {
                     $value = $value ?? '0';
                 }
@@ -376,9 +381,9 @@ HELP
                 ORDER BY v.video_viewed DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
-            $topVideos = $stmt->fetchAll();
+            $topVideos = $stmt !== false ? $stmt->fetchAll() : [];
 
-            if (!empty($topVideos)) {
+            if ($topVideos !== []) {
                 $this->io->section('Top 10 Most Viewed Videos');
                 $rows = [];
                 foreach ($topVideos as $i => $video) {
@@ -420,69 +425,15 @@ HELP
         return self::SUCCESS;
     }
 
-    private function outputTable(array $videos, array $fields, bool $noTruncate = false): int
-    {
-        $headers = array_map(fn($f) => ucfirst(str_replace('_', ' ', $f)), $fields);
-        $rows = [];
-
-        foreach ($videos as $video) {
-            $row = [];
-            foreach ($fields as $field) {
-                $row[] = $this->getFieldValue($video, $field, true, $noTruncate);
-            }
-            $rows[] = $row;
-        }
-
-        $this->renderTable($headers, $rows);
-        return self::SUCCESS;
-    }
-
-    private function outputCSV(array $videos, array $fields, bool $noTruncate = false): int
-    {
-        $output = fopen('php://output', 'w');
-        fputcsv($output, $fields);
-
-        foreach ($videos as $video) {
-            $row = [];
-            foreach ($fields as $field) {
-                $row[] = $this->getFieldValue($video, $field, false, true);
-            }
-            fputcsv($output, $row);
-        }
-
-        fclose($output);
-        return self::SUCCESS;
-    }
-
-    private function outputJSON(array $videos, array $fields): int
-    {
-        $result = [];
-
-        foreach ($videos as $video) {
-            $item = [];
-            foreach ($fields as $field) {
-                $item[$field] = $this->getFieldValue($video, $field, false, true);
-            }
-            $result[] = $item;
-        }
-
-        $this->io->writeln(json_encode($result, Constants::JSON_FLAGS));
-        return self::SUCCESS;
-    }
-
-    private function outputYAML(array $videos, array $fields): int
-    {
-        foreach ($videos as $i => $video) {
-            $this->io->writeln("- ");
-            foreach ($fields as $field) {
-                $value = $this->getFieldValue($video, $field, false, true);
-                $this->io->writeln("  {$field}: " . json_encode($value, JSON_UNESCAPED_UNICODE));
-            }
-        }
-
-        return self::SUCCESS;
-    }
-
+    /**
+     * Get field value with proper formatting
+     *
+     * @param array<string, mixed> $video Video data
+     * @param string $field Field name
+     * @param bool $formatted Whether to apply formatting
+     * @param bool $noTruncate Whether to disable truncation
+     * @return string Formatted field value
+     */
     private function getFieldValue(array $video, string $field, bool $formatted = true, bool $noTruncate = false): string
     {
         $fieldMap = [
@@ -513,7 +464,7 @@ HELP
         $value = $video[$dbField] ?? '';
 
         // Handle empty values
-        if ($value === '' || $value === null) {
+        if ($value === '' || $value === null || $value === false) {
             return $formatted ? '<fg=gray>N/A</>' : 'N/A';
         }
 
@@ -523,7 +474,7 @@ HELP
         }
 
         // Format dates
-        if (in_array($field, ['date', 'post_date']) && $value) {
+        if (in_array($field, ['date', 'post_date'], true)) {
             return $formatted ? date('Y-m-d', strtotime($value)) : $value;
         }
 
@@ -544,7 +495,7 @@ HELP
         }
 
         // Format filesize
-        if (in_array($field, ['filesize', 'file_size']) && is_numeric($value)) {
+        if (in_array($field, ['filesize', 'file_size'], true) && is_numeric($value)) {
             return format_bytes((int)$value);
         }
 
@@ -572,7 +523,7 @@ HELP
 
     private function formatDuration(?int $seconds): string
     {
-        if (!$seconds) {
+        if ($seconds === null || $seconds === 0) {
             return '0:00';
         }
 

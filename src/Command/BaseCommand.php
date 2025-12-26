@@ -13,7 +13,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 abstract class BaseCommand extends Command
 {
     protected Configuration $config;
-    protected SymfonyStyle $io;
+    protected ?SymfonyStyle $io = null;
 
     public function __construct(Configuration $config)
     {
@@ -60,7 +60,7 @@ abstract class BaseCommand extends Command
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if (empty($dbConfig)) {
+        if ($dbConfig === []) {
             if (!$quiet) {
                 $this->io->error('Database configuration not found');
             }

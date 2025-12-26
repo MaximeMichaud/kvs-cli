@@ -46,11 +46,11 @@ function pluralize(string $word, int $count): string
     }
 
     // Basic English rules
-    if (preg_match('/(s|x|z|ch|sh)$/i', $word)) {
+    if (preg_match('/(s|x|z|ch|sh)$/i', $word) === 1) {
         return $word . 'es';  // box→boxes, match→matches
     }
 
-    if (preg_match('/[^aeiou]y$/i', $word)) {
+    if (preg_match('/[^aeiou]y$/i', $word) === 1) {
         return substr($word, 0, -1) . 'ies';  // category→categories
     }
 
@@ -79,7 +79,7 @@ function past_tense_verb(string $verb): string
     }
 
     // Basic rule: add 'ed'
-    if (preg_match('/e$/i', $verb)) {
+    if (preg_match('/e$/i', $verb) === 1) {
         return $verb . 'd';  // activate→activated
     }
 
@@ -106,7 +106,7 @@ function esc_like(string $text): string
 function escape_csv_value(string $value): string
 {
     // If contains comma, quote, or newline, wrap in quotes and escape existing quotes
-    if (preg_match('/[,"\r\n]/', $value)) {
+    if (preg_match('/[,"\r\n]/', $value) === 1) {
         return '"' . str_replace('"', '""', $value) . '"';
     }
 
@@ -131,6 +131,7 @@ function pick_fields(array|object $item, array $fields): array
 
     foreach ($fields as $field) {
         if (is_object($item) && property_exists($item, $field)) {
+            /** @phpstan-ignore-next-line Variable property access is intentional */
             $result[$field] = $item->$field;
         } elseif (is_array($item) && array_key_exists($field, $item)) {
             $result[$field] = $item[$field];
@@ -154,6 +155,7 @@ function group_by(array $items, string $field): array
     $result = [];
 
     foreach ($items as $item) {
+        /** @phpstan-ignore-next-line Variable property access is intentional */
         $key = is_array($item) ? ($item[$field] ?? 'null') : ($item->$field ?? 'null');
         $result[$key][] = $item;
     }
@@ -181,7 +183,7 @@ function format_bytes(int $bytes, int $decimals = 2): string
     $units = ['B', 'KB', 'MB', 'GB', 'TB'];
     $base = 1024;
 
-    $i = floor(log($bytes) / log($base));
+    $i = (int) floor(log($bytes) / log($base));
     $i = min($i, count($units) - 1);
 
     return number_format($bytes / pow($base, $i), $decimals) . ' ' . $units[$i];
@@ -206,7 +208,7 @@ function format_duration(int $seconds): string
     if ($minutes > 0) {
         $parts[] = "{$minutes}m";
     }
-    if ($secs > 0 || empty($parts)) {
+    if ($secs > 0 || $parts === []) {
         $parts[] = "{$secs}s";
     }
 
@@ -235,19 +237,19 @@ function format_date(string $date): string
 
     // Less than 1 hour
     if ($diff < 3600) {
-        $minutes = floor($diff / 60);
+        $minutes = (int) floor($diff / 60);
         return $minutes . ' ' . pluralize('minute', $minutes) . ' ago';
     }
 
     // Less than 24 hours
     if ($diff < 86400) {
-        $hours = floor($diff / 3600);
+        $hours = (int) floor($diff / 3600);
         return $hours . ' ' . pluralize('hour', $hours) . ' ago';
     }
 
     // Less than 7 days
     if ($diff < 604800) {
-        $days = floor($diff / 86400);
+        $days = (int) floor($diff / 86400);
         return $days . ' ' . pluralize('day', $days) . ' ago';
     }
 
@@ -298,7 +300,7 @@ function report_batch_operation_results(
         $parts[] = "$skips skipped";
     }
 
-    $detail = !empty($parts) ? ' (' . implode(', ', $parts) . ')' : '';
+    $detail = $parts !== [] ? ' (' . implode(', ', $parts) . ')' : '';
 
     return [
         'type' => 'error',
@@ -319,12 +321,12 @@ function report_batch_operation_results(
  *   - IN clause: ['status_id' => [1,2,3]] → "`status_id` IN (?,?,?)"
  *
  * @param array<string, mixed> $filters Associative array ['field' => 'value']
- * @param list<mixed> $params Output: parameter array for prepared statement
+ * @param array<int, mixed> $params Output: parameter array for prepared statement
  * @return string WHERE clause without "WHERE" keyword
  */
 function build_where_clause(array $filters, array &$params = []): string
 {
-    if (empty($filters)) {
+    if ($filters === []) {
         return '1=1';
     }
 
@@ -335,13 +337,13 @@ function build_where_clause(array $filters, array &$params = []): string
             $conditions[] = "`$field` IS NULL";
         } elseif (is_array($value)) {
             // IN clause
-            if (empty($value)) {
+            if ($value === []) {
                 // Empty array = no results
                 $conditions[] = '0=1';
             } else {
                 $placeholders = implode(',', array_fill(0, count($value), '?'));
                 $conditions[] = "`$field` IN ($placeholders)";
-                $params = array_merge($params, $value);
+                $params = array_values(array_merge($params, $value));
             }
         } else {
             $conditions[] = "`$field` = ?";
@@ -366,6 +368,9 @@ function sanitize_order_by(
     string $default = 'id ASC'
 ): string {
     $parts = preg_split('/\s+/', trim($orderBy));
+    if ($parts === false) {
+        return $default;
+    }
     $field = $parts[0] ?? '';
     $direction = strtoupper($parts[1] ?? 'ASC');
 
@@ -400,7 +405,7 @@ function is_path_absolute(string $path): bool
     }
 
     // Windows: starts with drive letter (C:\)
-    if (preg_match('/^[A-Z]:\\\\/i', $path)) {
+    if (preg_match('/^[A-Z]:\\\\/i', $path) === 1) {
         return true;
     }
 
@@ -449,7 +454,7 @@ function trailingslashit(string $string): string
  */
 function is_json(string $string): bool
 {
-    if (empty($string)) {
+    if ($string === '') {
         return false;
     }
 
@@ -481,7 +486,7 @@ function get_flag_value(array $assoc_args, string $flag, mixed $default = null):
     // Check for negation (--no-flag)
     $negation = 'no-' . $flag;
     if (isset($assoc_args[$negation])) {
-        return !$assoc_args[$negation];
+        return $assoc_args[$negation] !== true;
     }
 
     return $default;

@@ -59,14 +59,14 @@ HELP
         $code = $input->getArgument('code');
         $skipKvs = $input->getOption('skip-kvs');
 
-        if (!$skipKvs) {
+        if ($skipKvs === null || $skipKvs === false) {
             // Prepare KVS context variables
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;
 
             // Get database connection (PDO)
             $db = $this->getDatabaseConnection();
-            if (!$db) {
+            if ($db === null) {
                 $this->io->warning('Database connection not available');
             }
 
@@ -85,8 +85,10 @@ HELP
 
             // Initialize Model and DB helpers with PDO connection
             // Must use global namespace since classes are defined in eval()
-            if ($db) {
+            if ($db !== null) {
+                // @phpstan-ignore-next-line - Model and DB classes are dynamically created in bootstrap code
                 \Model::setDb($db);
+                // @phpstan-ignore-next-line - Model and DB classes are dynamically created in bootstrap code
                 \DB::setConnection($db);
             }
 
@@ -125,7 +127,7 @@ HELP
         $outputStr = ob_get_clean();
 
         // Display output
-        if ($outputStr !== '') {
+        if ($outputStr !== false && $outputStr !== '') {
             $this->io->write($outputStr);
         }
 
@@ -143,7 +145,7 @@ HELP
         return $errorOccurred ? self::FAILURE : self::SUCCESS;
     }
 
-    private function getBootstrapCode($db = null): string
+    private function getBootstrapCode(?\PDO $db = null): string
     {
         $prefix = $this->config->getTablePrefix();
         $code = <<<'PHP'
@@ -201,7 +203,7 @@ if (!class_exists('Model')) {
             // Most KVS tables use <singular>_id pattern
             $tableName = static::$table;
             $prefixLen = strlen(self::$prefix);
-            if (strpos($tableName, self::$prefix) === 0) {
+            if (str_starts_with($tableName, self::$prefix)) {
                 $singular = rtrim(substr($tableName, $prefixLen), 's');
                 return $singular . '_id';
             }
@@ -254,7 +256,7 @@ if (!class_exists('DB')) {
                 return false;
             }
             try {
-                if (empty($params)) {
+                if ($params === []) {
                     $stmt = self::$connection->query($sql);
                 } else {
                     $stmt = self::$connection->prepare($sql);

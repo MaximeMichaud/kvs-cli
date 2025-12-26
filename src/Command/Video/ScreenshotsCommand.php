@@ -70,7 +70,7 @@ HELP
     {
         $videoId = $input->getArgument('video_id');
 
-        if (!$videoId) {
+        if ($videoId === null || $videoId === '') {
             $this->io->error('Video ID is required');
             $this->io->text('Usage: kvs video:screenshots list <video_id>');
             return self::FAILURE;
@@ -96,12 +96,12 @@ HELP
 
         foreach ($extensions as $ext) {
             $matches = glob("$screenshotsPath/*.$ext");
-            if ($matches) {
+            if ($matches !== false && $matches !== []) {
                 $files = array_merge($files, $matches);
             }
         }
 
-        if (empty($files)) {
+        if ($files === []) {
             $this->io->warning('No screenshot files found in directory');
             $this->io->text("Directory: $screenshotsPath");
             return self::SUCCESS;
@@ -117,7 +117,7 @@ HELP
 
             $screenshots[] = [
                 'filename' => $filename,
-                'size' => format_bytes($filesize),
+                'size' => $filesize !== false ? format_bytes($filesize) : 'Unknown',
                 'dimensions' => $dimensions,
                 'path' => $file,
             ];
@@ -139,7 +139,7 @@ HELP
     {
         $videoId = $input->getArgument('video_id');
 
-        if (!$videoId) {
+        if ($videoId === null || $videoId === '') {
             $this->io->error('Video ID is required');
             $this->io->text('Usage: kvs video:screenshots generate <video_id>');
             return self::FAILURE;
@@ -170,7 +170,7 @@ HELP
 
         // Find video source file
         $videoFile = $this->findVideoFile($videoPath);
-        if (!$videoFile) {
+        if ($videoFile === null) {
             $this->io->error("No video file found in: $videoPath");
             $this->io->note("Make sure video files exist before generating screenshots.");
             return self::FAILURE;
@@ -187,7 +187,7 @@ HELP
 
         // Get video duration
         $duration = $this->getVideoDuration($videoFile);
-        if (!$duration) {
+        if ($duration === null) {
             $this->io->error("Failed to get video duration for: $videoFile");
             return self::FAILURE;
         }
@@ -239,7 +239,7 @@ HELP
     {
         $videoId = $input->getArgument('video_id');
 
-        if (!$videoId) {
+        if ($videoId === null || $videoId === '') {
             $this->io->error('Video ID is required');
             $this->io->text('Usage: kvs video:screenshots regenerate <video_id>');
             return self::FAILURE;
@@ -262,7 +262,7 @@ HELP
 
             foreach ($extensions as $ext) {
                 $files = glob("$screenshotsPath/*.$ext");
-                if ($files) {
+                if ($files !== false && $files !== []) {
                     foreach ($files as $file) {
                         if (unlink($file)) {
                             $deleted++;
@@ -296,7 +296,7 @@ HELP
         // Fallback to any video file
         foreach ($extensions as $ext) {
             $files = glob("$videoPath/*.$ext");
-            if (!empty($files)) {
+            if ($files !== false && $files !== []) {
                 return $files[0];
             }
         }
@@ -316,7 +316,7 @@ HELP
 
         exec($cmd, $output, $returnCode);
 
-        if ($returnCode === 0 && !empty($output) && is_numeric(trim($output[0]))) {
+        if ($returnCode === 0 && $output !== [] && is_numeric(trim($output[0]))) {
             return (float)trim($output[0]);
         }
 
@@ -352,7 +352,7 @@ HELP
     private function getImageDimensions(string $file): string
     {
         $imageInfo = @getimagesize($file);
-        if ($imageInfo && isset($imageInfo[0], $imageInfo[1])) {
+        if ($imageInfo !== false) {
             return "{$imageInfo[0]}x{$imageInfo[1]}";
         }
 

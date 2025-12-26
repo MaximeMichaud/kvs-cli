@@ -78,6 +78,6 @@ class EvalFileCommandTest extends TestCase
     public function testEvalFileCommandMetadata(): void
     {
         $this->assertEquals('eval-file', $this->command->getName());
-        $this->assertStringContainsString('Evaluate PHP file', $this->command->getDescription());
+        $this->assertStringContainsString('Execute a PHP file', $this->command->getDescription());
     }
 }

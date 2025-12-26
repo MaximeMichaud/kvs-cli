@@ -47,14 +47,14 @@ EOT
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if (empty($dbConfig)) {
+        if ($dbConfig === []) {
             $this->io->error('Database configuration not found');
             return self::FAILURE;
         }
 
         // Detect dump command (mariadb-dump or mysqldump)
         $dumpCommand = $this->getDumpCommand();
-        if (!$dumpCommand) {
+        if ($dumpCommand === null || $dumpCommand === '') {
             $this->io->error('Database dump command not found');
             $this->io->newLine();
             $this->io->text('<comment>Install one of:</comment>');
@@ -77,7 +77,7 @@ EOT
             }
 
             $compressor = $this->getCompressor($compressFormat);
-            if (!$compressor) {
+            if ($compressor === null) {
                 $this->io->error("Compression format '$compressFormat' not supported or command not found");
                 $this->io->newLine();
                 $this->io->text('<comment>Available formats:</comment>');
@@ -106,7 +106,7 @@ EOT
         // Parse host and port
         $host = $dbConfig['host'];
         $port = Constants::DEFAULT_MYSQL_PORT;
-        if (strpos($host, ':') !== false) {
+        if (str_contains($host, ':')) {
             [$host, $port] = explode(':', $host, 2);
         }
 
@@ -123,11 +123,12 @@ EOT
             '--default-character-set=' . Constants::DB_CHARSET,
         ];
 
-        if ($input->getOption('no-data')) {
+        if ($input->getOption('no-data') !== false && $input->getOption('no-data') !== null) {
             $command[] = '--no-data';
         }
 
-        if ($tables = $input->getOption('tables')) {
+        $tables = $input->getOption('tables');
+        if ($tables !== null) {
             $command[] = $dbConfig['database'];
             $command = array_merge($command, explode(',', $tables));
         } else {
@@ -152,7 +153,7 @@ EOT
             $this->io->newLine();
 
             $errorOutput = trim($process->getErrorOutput());
-            if (!empty($errorOutput)) {
+            if ($errorOutput !== '') {
                 $this->io->text('<error>Error details:</error>');
                 $this->io->text($errorOutput);
             }
@@ -170,7 +171,7 @@ EOT
         $sqlContent = $process->getOutput();
 
         // Compress if requested
-        if ($compressor) {
+        if ($compressor !== null) {
             $this->io->info("Compressing with $compressFormat...");
             $compressProcess = new Process([$compressor['command']]);
             $compressProcess->setInput($sqlContent);
@@ -187,6 +188,11 @@ EOT
         }
 
         $fileSize = filesize($outputFile);
+        if ($fileSize === false) {
+            $this->io->error('Failed to get file size');
+            return self::FAILURE;
+        }
+
         $this->io->success(sprintf(
             'Database exported successfully to %s (%.2f MB)',
             $outputFile,
@@ -202,30 +208,34 @@ EOT
     private function getDumpCommand(): ?string
     {
         // First, detect database type by running mysql --version
-        $mysqlPath = trim(shell_exec('which mysql 2>/dev/null') ?? '');
+        $mysqlPathResult = shell_exec('which mysql 2>/dev/null');
+        $mysqlPath = $mysqlPathResult !== null ? trim($mysqlPathResult) : '';
 
-        if ($mysqlPath) {
+        if ($mysqlPath !== '') {
             $versionOutput = shell_exec("$mysqlPath --version 2>/dev/null");
 
             // Check if it's MariaDB
-            if (stripos($versionOutput, 'MariaDB') !== false) {
+            if ($versionOutput !== null && stripos($versionOutput, 'MariaDB') !== false) {
                 // Try mariadb-dump first
-                $mariadbDump = trim(shell_exec('which mariadb-dump 2>/dev/null') ?? '');
-                if ($mariadbDump) {
+                $mariadbDumpResult = shell_exec('which mariadb-dump 2>/dev/null');
+                $mariadbDump = $mariadbDumpResult !== null ? trim($mariadbDumpResult) : '';
+                if ($mariadbDump !== '') {
                     return $mariadbDump;
                 }
             }
         }
 
         // Fallback to mysqldump
-        $mysqldump = trim(shell_exec('which mysqldump 2>/dev/null') ?? '');
-        if ($mysqldump) {
+        $mysqldumpResult = shell_exec('which mysqldump 2>/dev/null');
+        $mysqldump = $mysqldumpResult !== null ? trim($mysqldumpResult) : '';
+        if ($mysqldump !== '') {
             return $mysqldump;
         }
 
         // Try mariadb-dump as last resort
-        $mariadbDump = trim(shell_exec('which mariadb-dump 2>/dev/null') ?? '');
-        if ($mariadbDump) {
+        $mariadbDumpResult = shell_exec('which mariadb-dump 2>/dev/null');
+        $mariadbDump = $mariadbDumpResult !== null ? trim($mariadbDumpResult) : '';
+        if ($mariadbDump !== '') {
             return $mariadbDump;
         }
 
@@ -234,6 +244,8 @@ EOT
 
     /**
      * Get compressor command and validate it's available
+     *
+     * @return array{command: string, test: string}|null
      */
     private function getCompressor(string $format): ?array
     {
@@ -251,8 +263,9 @@ EOT
         $compressor = $compressors[$format];
 
         // Check if command exists
-        $path = trim(shell_exec("which {$compressor['command']} 2>/dev/null") ?? '');
-        if (empty($path)) {
+        $pathResult = shell_exec("which {$compressor['command']} 2>/dev/null");
+        $path = $pathResult !== null ? trim($pathResult) : '';
+        if ($path === '') {
             return null;
         }
 

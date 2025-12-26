@@ -54,14 +54,14 @@ EOT
 
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if (empty($dbConfig)) {
+        if ($dbConfig === []) {
             $this->io->error('Database configuration not found');
             return self::FAILURE;
         }
 
         $this->io->warning('This will overwrite existing data in the database!');
 
-        if (!$this->io->confirm('Do you want to continue?', false)) {
+        if ($this->io->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
@@ -71,7 +71,7 @@ EOT
         $compressionFormat = $this->detectCompressionFormat($file);
         $tempFile = null;
 
-        if ($compressionFormat) {
+        if ($compressionFormat !== null && $compressionFormat !== '') {
             $this->io->info("Decompressing file ($compressionFormat)...");
             $sqlContent = $this->decompressFile($file, $compressionFormat);
 
@@ -95,14 +95,19 @@ EOT
         ];
 
         $process = new Process($command);
-        $process->setInput(file_get_contents($file));
+        $fileContents = file_get_contents($file);
+        if ($fileContents === false) {
+            $this->io->error('Failed to read file contents');
+            return self::FAILURE;
+        }
+        $process->setInput($fileContents);
         $process->setTimeout(3600);
 
         $progressBar = $this->io->createProgressBar();
         $progressBar->start();
 
         $process->run(function ($type, $buffer) use ($progressBar) {
-            if ($type === Process::ERR && trim($buffer)) {
+            if ($type === Process::ERR && trim($buffer) !== '') {
                 $this->io->warning($buffer);
             }
             $progressBar->advance();
@@ -111,7 +116,7 @@ EOT
         $progressBar->finish();
         $this->io->newLine();
 
-        if ($tempFile && file_exists($tempFile)) {
+        if ($tempFile !== null && file_exists($tempFile)) {
             unlink($tempFile);
         }
 
@@ -153,7 +158,11 @@ EOT
     {
         switch ($format) {
             case 'gzip':
-                return gzdecode(file_get_contents($file));
+                $fileContents = file_get_contents($file);
+                if ($fileContents === false) {
+                    return false;
+                }
+                return gzdecode($fileContents);
 
             case 'zstd':
                 // Use zstd command-line tool

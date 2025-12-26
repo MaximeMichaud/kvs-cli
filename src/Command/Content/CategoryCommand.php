@@ -82,7 +82,7 @@ HELP
     private function listCategories(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -121,7 +121,7 @@ HELP
     private function showTree(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -132,14 +132,18 @@ HELP
                 FROM {$this->table('categories')} c
                 ORDER BY parent_id, title
             ");
+            if ($stmt === false) {
+                $this->io->error('Failed to execute query');
+                return self::FAILURE;
+            }
             $categories = $stmt->fetchAll();
 
             $this->io->section('Category Tree');
 
             foreach ($categories as $cat) {
-                $prefix = $cat['parent_id'] ? '  └─ ' : '';
+                $prefix = isset($cat['parent_id']) ? '  └─ ' : '';
                 $count = " ({$cat['video_count']} videos)";
-                $status = $cat['status_id'] == 1 ? '' : ' <fg=yellow>[Inactive]</>';
+                $status = (int) $cat['status_id'] === 1 ? '' : ' <fg=yellow>[Inactive]</>';
                 $this->io->text($prefix . $cat['title'] . $count . $status);
             }
         } catch (\Exception $e) {
@@ -152,13 +156,13 @@ HELP
 
     private function showCategory(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Category ID is required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -167,7 +171,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $category = $stmt->fetch();
 
-            if (!$category) {
+            if ($category === false) {
                 $this->io->error("Category not found: $id");
                 return self::FAILURE;
             }
@@ -186,7 +190,7 @@ HELP
                 ['ID', $category['category_id']],
                 ['Title', $category['title']],
                 ['Parent ID', $category['parent_id'] ?? 'None (Root)'],
-                ['Status', $category['status_id'] == 1 ? 'Active' : 'Inactive'],
+                ['Status', (int) $category['status_id'] === 1 ? 'Active' : 'Inactive'],
                 ['Videos', $videoCount],
                 ['Albums', $albumCount],
                 ['Added', $category['added_date'] ?? 'N/A'],
@@ -194,9 +198,9 @@ HELP
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            if ($category['description']) {
+            if (isset($category['description']) && $category['description'] !== '') {
                 $this->io->section('Description');
-                $this->io->text($category['description']);
+                $this->io->text((string) $category['description']);
             }
         } catch (\Exception $e) {
             $this->io->error('Failed to fetch category: ' . $e->getMessage());
@@ -208,9 +212,10 @@ HELP
 
     private function createCategory(InputInterface $input): int
     {
-        $title = $input->getOption('title') ?: $input->getArgument('id');
+        $titleOption = $input->getOption('title');
+        $title = ($titleOption !== null && $titleOption !== '') ? $titleOption : $input->getArgument('id');
 
-        if (!$title) {
+        if ($title === null || $title === '') {
             $this->io->error('Category title is required');
             $this->io->text('Usage: kvs content:category create "Category Name"');
             $this->io->text('   or: kvs content:category create --title="Category Name" --description="..." --parent=5');
@@ -218,7 +223,7 @@ HELP
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -227,7 +232,7 @@ HELP
             $stmt = $db->prepare("SELECT category_id FROM {$this->table('categories')} WHERE title = :title");
             $stmt->execute(['title' => $title]);
 
-            if ($stmt->fetch()) {
+            if ($stmt->fetch() !== false) {
                 $this->io->error("Category already exists: $title");
                 return self::FAILURE;
             }
@@ -238,10 +243,10 @@ HELP
             $statusId = 1; // Active by default
 
             // Validate parent category if provided
-            if ($parentId) {
+            if ($parentId !== null) {
                 $stmt = $db->prepare("SELECT category_id FROM {$this->table('categories')} WHERE category_id = :id");
                 $stmt->execute(['id' => $parentId]);
-                if (!$stmt->fetch()) {
+                if ($stmt->fetch() === false) {
                     $this->io->error("Parent category not found: $parentId");
                     return self::FAILURE;
                 }
@@ -269,7 +274,7 @@ HELP
                     ['ID', $categoryId],
                     ['Title', $title],
                     ['Parent ID', $parentId ?? 'None (Root)'],
-                    ['Description', $description ?: 'None'],
+                    ['Description', $description !== '' ? $description : 'None'],
                     ['Status', 'Active'],
                 ]
             );
@@ -283,14 +288,14 @@ HELP
 
     private function deleteCategory(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Category ID is required');
             $this->io->text('Usage: kvs content:category delete <category_id>');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -300,7 +305,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $category = $stmt->fetch();
 
-            if (!$category) {
+            if ($category === false) {
                 $this->io->error("Category not found: $id");
                 return self::FAILURE;
             }
@@ -334,7 +339,7 @@ HELP
                     "Albums: {$usage['album_count']}",
                 ]);
 
-                if (!$this->io->confirm('Delete anyway? This will remove all associations.', false)) {
+                if ($this->io->confirm('Delete anyway? This will remove all associations.', false) !== true) {
                     $this->io->info('Operation cancelled');
                     return self::SUCCESS;
                 }
@@ -359,14 +364,14 @@ HELP
 
     private function updateCategory(?string $id, InputInterface $input): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Category ID is required');
             $this->io->text('Usage: kvs content:category update <category_id> --title="New Title" --description="..." --status=inactive');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -376,7 +381,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $category = $stmt->fetch();
 
-            if (!$category) {
+            if ($category === false) {
                 $this->io->error("Category not found: $id");
                 return self::FAILURE;
             }
@@ -385,7 +390,8 @@ HELP
             $params = ['id' => $id];
 
             // Title
-            if ($title = $input->getOption('title')) {
+            $title = $input->getOption('title');
+            if ($title !== null) {
                 $updates[] = 'title = :title';
                 $params['title'] = $title;
             }
@@ -399,22 +405,23 @@ HELP
             // Parent
             if ($input->hasOption('parent') && $input->getOption('parent') !== null) {
                 $parentId = $input->getOption('parent');
-                if ($parentId == $id) {
+                if ($parentId === $id) {
                     $this->io->error('Category cannot be its own parent');
                     return self::FAILURE;
                 }
                 $updates[] = 'parent_id = :parent_id';
-                $params['parent_id'] = $parentId ?: null;
+                $params['parent_id'] = $parentId !== '' ? $parentId : null;
             }
 
             // Status
-            if ($status = $input->getOption('status')) {
+            $status = $input->getOption('status');
+            if ($status !== null) {
                 $statusId = ($status === 'active') ? 1 : 0;
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }
 
-            if (empty($updates)) {
+            if ($updates === []) {
                 $this->io->warning('No changes specified. Use --title, --description, --parent, or --status options.');
                 return self::FAILURE;
             }

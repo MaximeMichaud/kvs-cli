@@ -89,7 +89,7 @@ HELP
     private function listTags(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -98,14 +98,16 @@ HELP
             $params = [];
 
             // Status filter
-            if ($status = $input->getOption('status')) {
+            $status = $input->getOption('status');
+            if ($status !== null) {
                 $statusId = ($status === 'active') ? 1 : 0;
                 $conditions[] = 't.status_id = :status';
                 $params['status'] = $statusId;
             }
 
             // Search filter
-            if ($search = $input->getOption('search')) {
+            $search = $input->getOption('search');
+            if ($search !== null) {
                 $conditions[] = 't.tag LIKE :search';
                 $params['search'] = '%' . $search . '%';
             }
@@ -123,7 +125,7 @@ HELP
             ";
 
             // Unused filter
-            if ($input->getOption('unused')) {
+            if ($input->getOption('unused') !== false) {
                 $sql .= " HAVING video_count = 0 AND album_count = 0";
             }
 
@@ -166,14 +168,14 @@ HELP
 
     private function createTag(?string $tagName): int
     {
-        if (!$tagName) {
+        if ($tagName === null || $tagName === '') {
             $this->io->error('Tag name is required');
             $this->io->text('Usage: kvs content:tag create "Tag Name"');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -182,7 +184,7 @@ HELP
             $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag");
             $stmt->execute(['tag' => $tagName]);
 
-            if ($stmt->fetch()) {
+            if ($stmt->fetch() !== false) {
                 $this->io->error("Tag already exists: $tagName");
                 return self::FAILURE;
             }
@@ -216,14 +218,14 @@ HELP
 
     private function deleteTag(?string $identifier): int
     {
-        if (!$identifier) {
+        if ($identifier === null || $identifier === '') {
             $this->io->error('Tag ID is required');
             $this->io->text('Usage: kvs content:tag delete <tag_id>');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -233,7 +235,7 @@ HELP
             $stmt->execute(['id' => $identifier]);
             $tag = $stmt->fetch();
 
-            if (!$tag) {
+            if ($tag === false) {
                 $this->io->error("Tag not found: $identifier");
                 return self::FAILURE;
             }
@@ -256,7 +258,7 @@ HELP
                     "Albums: {$usage['album_count']}",
                 ]);
 
-                if (!$this->io->confirm('Delete anyway? This will remove all associations.', false)) {
+                if ($this->io->confirm('Delete anyway? This will remove all associations.', false) !== true) {
                     $this->io->info('Operation cancelled');
                     return self::SUCCESS;
                 }
@@ -281,7 +283,7 @@ HELP
 
     private function mergeTags(?string $sourceId, ?string $targetId): int
     {
-        if (!$sourceId || !$targetId) {
+        if ($sourceId === null || $sourceId === '' || $targetId === null || $targetId === '') {
             $this->io->error('Both source and target tag IDs are required');
             $this->io->text('Usage: kvs content:tag merge <source_tag_id> <target_tag_id>');
             return self::FAILURE;
@@ -293,7 +295,7 @@ HELP
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -308,8 +310,8 @@ HELP
                 return self::FAILURE;
             }
 
-            $sourceTag = array_filter($tags, fn($t) => $t['tag_id'] == $sourceId)[0] ?? null;
-            $targetTag = array_filter($tags, fn($t) => $t['tag_id'] == $targetId)[0] ?? null;
+            $sourceTag = array_filter($tags, fn($t) => $t['tag_id'] === $sourceId)[0] ?? null;
+            $targetTag = array_filter($tags, fn($t) => $t['tag_id'] === $targetId)[0] ?? null;
 
             $this->io->section('Merge Operation');
             $this->io->text("Source: {$sourceTag['tag']} (ID: $sourceId)");
@@ -317,7 +319,7 @@ HELP
             $this->io->newLine();
             $this->io->warning('All associations will be moved to the target tag, then source tag will be deleted.');
 
-            if (!$this->io->confirm('Continue with merge?', false)) {
+            if ($this->io->confirm('Continue with merge?', false) !== true) {
                 $this->io->info('Operation cancelled');
                 return self::SUCCESS;
             }
@@ -361,7 +363,7 @@ HELP
     private function showStats(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -374,6 +376,9 @@ HELP
                     SUM(CASE WHEN status_id = " . StatusFormatter::TAG_INACTIVE . " THEN 1 ELSE 0 END) as inactive_tags
                 FROM {$this->table('tags')}
             ");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to execute overall stats query');
+            }
             $overall = $stmt->fetch();
 
             // Usage stats
@@ -386,6 +391,9 @@ HELP
                     SELECT tag_id FROM {$this->table('tags')}_albums
                 ) as used
             ");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to execute usage stats query');
+            }
             $usageStats = $stmt->fetch();
             $unusedTags = $overall['total_tags'] - $usageStats['used_tags'];
 
@@ -398,6 +406,9 @@ HELP
                 ORDER BY (video_count + album_count) DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
+            if ($stmt === false) {
+                throw new \RuntimeException('Failed to execute top tags query');
+            }
             $topTags = $stmt->fetchAll();
 
             $this->io->title('Tag Statistics');
@@ -414,7 +425,7 @@ HELP
                 ]
             );
 
-            if (!empty($topTags)) {
+            if ($topTags !== []) {
                 $this->io->section('Top 10 Most Used Tags');
                 $rows = [];
                 foreach ($topTags as $tag) {
@@ -438,14 +449,14 @@ HELP
 
     private function updateTag(?string $id, InputInterface $input): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Tag ID is required');
             $this->io->text('Usage: kvs content:tag update <tag_id> --name="New Name" --status=inactive');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -455,7 +466,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $tag = $stmt->fetch();
 
-            if (!$tag) {
+            if ($tag === false) {
                 $this->io->error("Tag not found: $id");
                 return self::FAILURE;
             }
@@ -464,11 +475,12 @@ HELP
             $params = ['id' => $id];
 
             // Name
-            if ($name = $input->getOption('name')) {
+            $name = $input->getOption('name');
+            if ($name !== null) {
                 // Check if new name already exists
-                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
+                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id !== :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
-                if ($stmt->fetch()) {
+                if ($stmt->fetch() !== false) {
                     $this->io->error("Tag name already exists: $name");
                     $this->io->text('Hint: Use merge command to combine duplicate tags');
                     return self::FAILURE;
@@ -478,13 +490,14 @@ HELP
             }
 
             // Status
-            if ($status = $input->getOption('status')) {
+            $status = $input->getOption('status');
+            if ($status !== null) {
                 $statusId = ($status === 'active') ? 1 : 0;
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }
 
-            if (empty($updates)) {
+            if ($updates === []) {
                 $this->io->warning('No changes specified. Use --name or --status options.');
                 return self::FAILURE;
             }
@@ -503,8 +516,8 @@ HELP
                     [
                         'Status',
                         isset($params['status_id'])
-                            ? ($params['status_id'] ? 'Active' : 'Inactive')
-                            : ($tag['status_id'] ? 'Active' : 'Inactive')
+                            ? ($params['status_id'] !== 0 ? 'Active' : 'Inactive')
+                            : ($tag['status_id'] !== 0 ? 'Active' : 'Inactive')
                     ],
                 ]
             );

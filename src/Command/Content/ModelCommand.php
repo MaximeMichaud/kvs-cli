@@ -75,7 +75,7 @@ HELP
     private function listModels(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -91,7 +91,8 @@ HELP
         $params = [];
 
         // Status filter
-        if ($status = $input->getOption('status')) {
+        $status = $input->getOption('status');
+        if ($status !== null) {
             $statusMap = ['active' => 1, 'disabled' => 0];
             if (isset($statusMap[$status])) {
                 $query .= " AND m.status_id = :status";
@@ -100,7 +101,8 @@ HELP
         }
 
         // Search filter
-        if ($search = $input->getOption('search')) {
+        $search = $input->getOption('search');
+        if ($search !== null) {
             $query .= " AND m.title LIKE :search";
             $params['search'] = "%$search%";
         }
@@ -165,13 +167,13 @@ HELP
 
     private function showModel(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Model ID is required');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -188,7 +190,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $model = $stmt->fetch();
 
-            if (!$model) {
+            if ($model === false) {
                 $this->io->error("Model not found: $id");
                 return self::FAILURE;
             }
@@ -212,31 +214,31 @@ HELP
             }
 
             // Rank
-            if (!empty($model['rank'])) {
-                $info[] = ['Rank', '#' . number_format($model['rank'])];
+            if (isset($model['rank']) && $model['rank'] !== '' && $model['rank'] !== 0) {
+                $info[] = ['Rank', '#' . number_format((int) $model['rank'])];
             }
 
             // Country
-            if (!empty($model['country_name'])) {
+            if (isset($model['country_name']) && $model['country_name'] !== '') {
                 $info[] = ['Country', $model['country_name']];
             }
 
             // Personal info
-            if (!empty($model['birth_date'])) {
+            if (isset($model['birth_date']) && $model['birth_date'] !== '') {
                 $age = $model['age'] ?? '';
-                $info[] = ['Birth Date', $model['birth_date'] . ($age ? " (age $age)" : '')];
+                $info[] = ['Birth Date', $model['birth_date'] . ($age !== '' ? " (age $age)" : '')];
             }
-            if (!empty($model['measurements'])) {
+            if (isset($model['measurements']) && $model['measurements'] !== '') {
                 $info[] = ['Measurements', $model['measurements']];
             }
-            if (!empty($model['height'])) {
+            if (isset($model['height']) && $model['height'] !== '') {
                 $info[] = ['Height', $model['height']];
             }
-            if (!empty($model['weight'])) {
+            if (isset($model['weight']) && $model['weight'] !== '') {
                 $info[] = ['Weight', $model['weight']];
             }
 
-            if (!empty($model['description'])) {
+            if (isset($model['description']) && $model['description'] !== '') {
                 $info[] = ['Description', $model['description']];
             }
 
@@ -252,7 +254,7 @@ HELP
     private function showStats(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -261,23 +263,33 @@ HELP
 
             // Total models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}");
-            $stats[] = ['Total Models', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Total Models', number_format((int) $stmt->fetchColumn())];
+            }
 
             // Active models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_ACTIVE);
-            $stats[] = ['Active', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Active', number_format((int) $stmt->fetchColumn())];
+            }
 
             // Disabled models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_DISABLED);
-            $stats[] = ['Disabled', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
+            }
 
             // Models with videos
             $stmt = $db->query("SELECT COUNT(DISTINCT model_id) FROM {$this->table('models')}_videos");
-            $stats[] = ['Models with Videos', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Models with Videos', number_format((int) $stmt->fetchColumn())];
+            }
 
             // Total video-model relations
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}_videos");
-            $stats[] = ['Total Video Relations', number_format($stmt->fetchColumn())];
+            if ($stmt !== false) {
+                $stats[] = ['Total Video Relations', number_format((int) $stmt->fetchColumn())];
+            }
 
             $this->io->title('Model Statistics');
             $this->renderTable(['Metric', 'Value'], $stats);

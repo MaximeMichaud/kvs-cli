@@ -55,7 +55,7 @@ HELP
     {
         $file = $input->getArgument('file');
         $skipKvs = $input->getOption('skip-kvs');
-        $args = $input->getOption('args') ?: [];
+        $args = $input->getOption('args') ?? [];
 
         // Check if file exists
         if (!file_exists($file)) {
@@ -75,7 +75,7 @@ HELP
         }
 
         $this->io->info("Executing: $file");
-        if ($args) {
+        if ($args !== []) {
             $this->io->comment('Arguments: ' . implode(' ', $args));
         }
 
@@ -86,14 +86,15 @@ HELP
         $argv = $_SERVER['argv'];
         $argc = $_SERVER['argc'];
 
-        if (!$skipKvs) {
+        if ($skipKvs === null || $skipKvs === false) {
             // Load KVS context
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;
+            $config = $this->config; // Alias for compatibility
 
             // Get database connection
             $db = $this->getDatabaseConnection();
-            if (!$db) {
+            if ($db === null) {
                 $this->io->warning('Database connection not available');
             }
 
@@ -104,6 +105,7 @@ HELP
 
         // Execute the file
         $errorOccurred = false;
+        $result = null;
         ob_start();
 
         try {
@@ -129,11 +131,11 @@ HELP
             }
         }
 
-        $output = ob_get_clean();
+        $capturedOutput = ob_get_clean();
 
         // Display output
-        if ($output !== '') {
-            $this->io->write($output);
+        if ($capturedOutput !== false && $capturedOutput !== '') {
+            $this->io->write($capturedOutput);
         }
 
         // Display return value if script returned something

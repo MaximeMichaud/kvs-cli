@@ -88,7 +88,7 @@ HELP
     private function listComments(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -97,25 +97,29 @@ HELP
             $params = [];
 
             // Video filter
-            if ($videoId = $input->getOption('video')) {
+            $videoId = $input->getOption('video');
+            if ($videoId !== null) {
                 $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
                 $params['video_id'] = $videoId;
             }
 
             // Album filter
-            if ($albumId = $input->getOption('album')) {
+            $albumId = $input->getOption('album');
+            if ($albumId !== null) {
                 $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
                 $params['album_id'] = $albumId;
             }
 
             // User filter
-            if ($userId = $input->getOption('user')) {
+            $userId = $input->getOption('user');
+            if ($userId !== null) {
                 $conditions[] = 'c.user_id = :user_id';
                 $params['user_id'] = $userId;
             }
 
             // Search filter
-            if ($search = $input->getOption('search')) {
+            $search = $input->getOption('search');
+            if ($search !== null) {
                 $conditions[] = 'c.comment LIKE :search';
                 $params['search'] = '%' . $search . '%';
             }
@@ -129,7 +133,7 @@ HELP
 
             $whereClause = implode(' AND ', $conditions);
             // Default: most recent first (DESC), unless --oldest is specified
-            $orderBy = $input->getOption('oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
+            $orderBy = (bool)$input->getOption('oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
             $limit = (int)$input->getOption('limit');
 
             $sql = "
@@ -185,20 +189,18 @@ HELP
             $this->io->error('Failed to fetch comments: ' . $e->getMessage());
             return self::FAILURE;
         }
-
-        return self::SUCCESS;
     }
 
     private function showComment(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Comment ID is required');
             $this->io->text('Usage: kvs content:comment show <comment_id>');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -224,7 +226,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $comment = $stmt->fetch();
 
-            if (!$comment) {
+            if ($comment === false) {
                 $this->io->error("Comment not found: $id");
                 return self::FAILURE;
             }
@@ -260,14 +262,14 @@ HELP
 
     private function deleteComment(?string $id): int
     {
-        if (!$id) {
+        if ($id === null || $id === '') {
             $this->io->error('Comment ID is required');
             $this->io->text('Usage: kvs content:comment delete <comment_id>');
             return self::FAILURE;
         }
 
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -288,7 +290,7 @@ HELP
             $stmt->execute(['id' => $id]);
             $comment = $stmt->fetch();
 
-            if (!$comment) {
+            if ($comment === false) {
                 $this->io->error("Comment not found: $id");
                 return self::FAILURE;
             }
@@ -304,7 +306,7 @@ HELP
                 ]
             );
 
-            if (!$this->io->confirm('Delete this comment?', false)) {
+            if ($this->io->confirm('Delete this comment?', false) !== true) {
                 $this->io->info('Operation cancelled');
                 return self::SUCCESS;
             }
@@ -325,7 +327,7 @@ HELP
     private function showStats(): int
     {
         $db = $this->getDatabaseConnection();
-        if (!$db) {
+        if ($db === null) {
             return self::FAILURE;
         }
 
@@ -341,6 +343,10 @@ HELP
                     MAX(added_date) as last_comment
                 FROM {$this->table('comments')}
             ");
+            if ($stmt === false) {
+                $this->io->error('Failed to fetch overall statistics');
+                return self::FAILURE;
+            }
             $overall = $stmt->fetch();
 
             // Top commenters
@@ -354,6 +360,10 @@ HELP
                 ORDER BY comment_count DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
+            if ($stmt === false) {
+                $this->io->error('Failed to fetch top commenters');
+                return self::FAILURE;
+            }
             $topCommenters = $stmt->fetchAll();
 
             // Recent activity (last 7 days)
@@ -362,6 +372,10 @@ HELP
                 FROM {$this->table('comments')}
                 WHERE added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_DAYS . " DAY)
             ");
+            if ($stmt === false) {
+                $this->io->error('Failed to fetch recent activity statistics');
+                return self::FAILURE;
+            }
             $recentStats = $stmt->fetch();
 
             $this->io->title('Comment Statistics');
@@ -380,7 +394,7 @@ HELP
                 ]
             );
 
-            if (!empty($topCommenters)) {
+            if ($topCommenters !== []) {
                 $this->io->section('Top 10 Commenters');
                 $rows = [];
                 foreach ($topCommenters as $commenter) {
