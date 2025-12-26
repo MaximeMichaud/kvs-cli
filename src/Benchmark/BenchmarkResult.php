@@ -15,6 +15,12 @@ class BenchmarkResult
     /** @var array<string, array{name: string, avg_ms: float, queries_sec: float, total_queries: int}> */
     private array $dbResults = [];
 
+    /** @var array<string, array{name: string, avg: float, min: float, max: float, p50: float, p95: float, p99: float, ops_sec: float, samples: int, hit_ratio?: float}> */
+    private array $cacheResults = [];
+
+    /** @var array<string, array{name: string, avg: float, min: float, max: float, ops_sec: float, samples: int}> */
+    private array $fileIOResults = [];
+
     /** @var array<string, mixed> */
     private array $systemMetrics = [];
 
@@ -22,6 +28,8 @@ class BenchmarkResult
     private array $systemInfo = [];
 
     private float $totalTime = 0.0;
+
+    private string $tag = '';
 
     /**
      * Record HTTP benchmark result
@@ -47,6 +55,26 @@ class BenchmarkResult
     }
 
     /**
+     * Record cache benchmark result
+     *
+     * @param array{avg: float, min: float, max: float, p50: float, p95: float, p99: float, ops_sec: float, samples: int, hit_ratio?: float} $stats
+     */
+    public function recordCache(string $key, string $name, array $stats): void
+    {
+        $this->cacheResults[$key] = array_merge(['name' => $name], $stats);
+    }
+
+    /**
+     * Record file I/O benchmark result
+     *
+     * @param array{avg: float, min: float, max: float, ops_sec: float, samples: int} $stats
+     */
+    public function recordFileIO(string $key, string $name, array $stats): void
+    {
+        $this->fileIOResults[$key] = array_merge(['name' => $name], $stats);
+    }
+
+    /**
      * Set system metrics
      *
      * @param array<string, mixed> $metrics
@@ -69,6 +97,16 @@ class BenchmarkResult
         $this->totalTime = $time;
     }
 
+    public function setTag(string $tag): void
+    {
+        $this->tag = $tag;
+    }
+
+    public function getTag(): string
+    {
+        return $this->tag;
+    }
+
     /**
      * @return array<string, array{name: string, avg: float, min: float, max: float, p50: float, p95: float, p99: float, samples: int}>
      */
@@ -83,6 +121,28 @@ class BenchmarkResult
     public function getDbResults(): array
     {
         return $this->dbResults;
+    }
+
+    /**
+     * Get cache benchmark results
+     *
+     * @return array<string, array{
+     *     name: string, avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, ops_sec: float,
+     *     samples: int, hit_ratio?: float
+     * }>
+     */
+    public function getCacheResults(): array
+    {
+        return $this->cacheResults;
+    }
+
+    /**
+     * @return array<string, array{name: string, avg: float, min: float, max: float, ops_sec: float, samples: int}>
+     */
+    public function getFileIOResults(): array
+    {
+        return $this->fileIOResults;
     }
 
     /**
@@ -120,6 +180,22 @@ class BenchmarkResult
     public function hasDbResults(): bool
     {
         return $this->dbResults !== [];
+    }
+
+    /**
+     * Check if we have cache results
+     */
+    public function hasCacheResults(): bool
+    {
+        return $this->cacheResults !== [];
+    }
+
+    /**
+     * Check if we have file I/O results
+     */
+    public function hasFileIOResults(): bool
+    {
+        return $this->fileIOResults !== [];
     }
 
     /**
@@ -194,16 +270,24 @@ class BenchmarkResult
      */
     public function toArray(): array
     {
-        return [
+        $result = [
             'timestamp' => date('c'),
             'system_info' => $this->systemInfo,
             'http_results' => $this->httpResults,
             'db_results' => $this->dbResults,
+            'cache_results' => $this->cacheResults,
+            'fileio_results' => $this->fileIOResults,
             'system_metrics' => $this->systemMetrics,
             'total_time' => $this->totalTime,
             'score' => $this->calculateScore(),
             'rating' => $this->getRating(),
         ];
+
+        if ($this->tag !== '') {
+            $result['tag'] = $this->tag;
+        }
+
+        return $result;
     }
 
     /**
@@ -215,46 +299,140 @@ class BenchmarkResult
     {
         $result = new self();
 
+        self::parseSystemInfo($result, $data);
+        self::parseHttpResults($result, $data);
+        self::parseDbResults($result, $data);
+        self::parseCacheResults($result, $data);
+        self::parseFileIOResults($result, $data);
+        self::parseMetadata($result, $data);
+
+        return $result;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseSystemInfo(self $result, array $data): void
+    {
         if (isset($data['system_info']) && is_array($data['system_info'])) {
             /** @var array<string, mixed> $systemInfo */
             $systemInfo = $data['system_info'];
             $result->setSystemInfo($systemInfo);
         }
+    }
 
-        if (isset($data['http_results']) && is_array($data['http_results'])) {
-            foreach ($data['http_results'] as $key => $stats) {
-                if (!is_array($stats) || !isset($stats['name'])) {
-                    continue;
-                }
-                $name = $stats['name'];
-                $result->httpResults[(string)$key] = [
-                    'name' => is_string($name) ? $name : '',
-                    'avg' => isset($stats['avg']) && is_numeric($stats['avg']) ? (float)$stats['avg'] : 0.0,
-                    'min' => isset($stats['min']) && is_numeric($stats['min']) ? (float)$stats['min'] : 0.0,
-                    'max' => isset($stats['max']) && is_numeric($stats['max']) ? (float)$stats['max'] : 0.0,
-                    'p50' => isset($stats['p50']) && is_numeric($stats['p50']) ? (float)$stats['p50'] : 0.0,
-                    'p95' => isset($stats['p95']) && is_numeric($stats['p95']) ? (float)$stats['p95'] : 0.0,
-                    'p99' => isset($stats['p99']) && is_numeric($stats['p99']) ? (float)$stats['p99'] : 0.0,
-                    'samples' => isset($stats['samples']) && is_numeric($stats['samples']) ? (int)$stats['samples'] : 0,
-                ];
-            }
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseHttpResults(self $result, array $data): void
+    {
+        if (!isset($data['http_results']) || !is_array($data['http_results'])) {
+            return;
         }
 
-        if (isset($data['db_results']) && is_array($data['db_results'])) {
-            foreach ($data['db_results'] as $key => $stats) {
-                if (!is_array($stats) || !isset($stats['name'])) {
-                    continue;
-                }
-                $name = $stats['name'];
-                $result->dbResults[(string)$key] = [
-                    'name' => is_string($name) ? $name : '',
-                    'avg_ms' => isset($stats['avg_ms']) && is_numeric($stats['avg_ms']) ? (float)$stats['avg_ms'] : 0.0,
-                    'queries_sec' => isset($stats['queries_sec']) && is_numeric($stats['queries_sec']) ? (float)$stats['queries_sec'] : 0.0,
-                    'total_queries' => isset($stats['total_queries']) && is_numeric($stats['total_queries']) ? (int)$stats['total_queries'] : 0,
-                ];
+        foreach ($data['http_results'] as $key => $stats) {
+            if (!is_array($stats) || !isset($stats['name'])) {
+                continue;
             }
+            $name = $stats['name'];
+            $result->httpResults[(string)$key] = [
+                'name' => is_string($name) ? $name : '',
+                'avg' => self::getFloat($stats, 'avg'),
+                'min' => self::getFloat($stats, 'min'),
+                'max' => self::getFloat($stats, 'max'),
+                'p50' => self::getFloat($stats, 'p50'),
+                'p95' => self::getFloat($stats, 'p95'),
+                'p99' => self::getFloat($stats, 'p99'),
+                'samples' => self::getInt($stats, 'samples'),
+            ];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseDbResults(self $result, array $data): void
+    {
+        if (!isset($data['db_results']) || !is_array($data['db_results'])) {
+            return;
         }
 
+        foreach ($data['db_results'] as $key => $stats) {
+            if (!is_array($stats) || !isset($stats['name'])) {
+                continue;
+            }
+            $name = $stats['name'];
+            $result->dbResults[(string)$key] = [
+                'name' => is_string($name) ? $name : '',
+                'avg_ms' => self::getFloat($stats, 'avg_ms'),
+                'queries_sec' => self::getFloat($stats, 'queries_sec'),
+                'total_queries' => self::getInt($stats, 'total_queries'),
+            ];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseCacheResults(self $result, array $data): void
+    {
+        if (!isset($data['cache_results']) || !is_array($data['cache_results'])) {
+            return;
+        }
+
+        foreach ($data['cache_results'] as $key => $stats) {
+            if (!is_array($stats) || !isset($stats['name'])) {
+                continue;
+            }
+            $name = $stats['name'];
+            $cacheResult = [
+                'name' => is_string($name) ? $name : '',
+                'avg' => self::getFloat($stats, 'avg'),
+                'min' => self::getFloat($stats, 'min'),
+                'max' => self::getFloat($stats, 'max'),
+                'p50' => self::getFloat($stats, 'p50'),
+                'p95' => self::getFloat($stats, 'p95'),
+                'p99' => self::getFloat($stats, 'p99'),
+                'ops_sec' => self::getFloat($stats, 'ops_sec'),
+                'samples' => self::getInt($stats, 'samples'),
+            ];
+            if (isset($stats['hit_ratio']) && is_numeric($stats['hit_ratio'])) {
+                $cacheResult['hit_ratio'] = (float)$stats['hit_ratio'];
+            }
+            $result->cacheResults[(string)$key] = $cacheResult;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseFileIOResults(self $result, array $data): void
+    {
+        if (!isset($data['fileio_results']) || !is_array($data['fileio_results'])) {
+            return;
+        }
+
+        foreach ($data['fileio_results'] as $key => $stats) {
+            if (!is_array($stats) || !isset($stats['name'])) {
+                continue;
+            }
+            $name = $stats['name'];
+            $result->fileIOResults[(string)$key] = [
+                'name' => is_string($name) ? $name : '',
+                'avg' => self::getFloat($stats, 'avg'),
+                'min' => self::getFloat($stats, 'min'),
+                'max' => self::getFloat($stats, 'max'),
+                'ops_sec' => self::getFloat($stats, 'ops_sec'),
+                'samples' => self::getInt($stats, 'samples'),
+            ];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseMetadata(self $result, array $data): void
+    {
         if (isset($data['system_metrics']) && is_array($data['system_metrics'])) {
             /** @var array<string, mixed> $systemMetrics */
             $systemMetrics = $data['system_metrics'];
@@ -265,6 +443,24 @@ class BenchmarkResult
             $result->setTotalTime((float)$data['total_time']);
         }
 
-        return $result;
+        if (isset($data['tag']) && is_string($data['tag'])) {
+            $result->setTag($data['tag']);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function getFloat(array $data, string $key): float
+    {
+        return isset($data[$key]) && is_numeric($data[$key]) ? (float)$data[$key] : 0.0;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function getInt(array $data, string $key): int
+    {
+        return isset($data[$key]) && is_numeric($data[$key]) ? (int)$data[$key] : 0;
     }
 }

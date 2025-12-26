@@ -39,10 +39,44 @@ class BenchmarkCommand extends BaseCommand
             )
             ->addOption(
                 'db-iterations',
-                'd',
+                null,
                 InputOption::VALUE_REQUIRED,
                 'Number of iterations for DB tests',
                 '10'
+            )
+            ->addOption(
+                'cache-iterations',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Number of iterations for cache tests',
+                '100'
+            )
+            ->addOption(
+                'file-iterations',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Number of iterations for file I/O tests',
+                '100'
+            )
+            ->addOption(
+                'memcached-host',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Memcached server host',
+                '127.0.0.1'
+            )
+            ->addOption(
+                'memcached-port',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Memcached server port',
+                '11211'
+            )
+            ->addOption(
+                'tag',
+                't',
+                InputOption::VALUE_REQUIRED,
+                'Tag/label for this benchmark run (e.g., "php81", "mariadb11")'
             )
             ->addOption(
                 'export',
@@ -77,6 +111,21 @@ class BenchmarkCommand extends BaseCommand
         $dbIterOption = $input->getOption('db-iterations');
         $dbIterations = is_numeric($dbIterOption) ? (int)$dbIterOption : 10;
 
+        $cacheIterOption = $input->getOption('cache-iterations');
+        $cacheIterations = is_numeric($cacheIterOption) ? (int)$cacheIterOption : 100;
+
+        $fileIterOption = $input->getOption('file-iterations');
+        $fileIterations = is_numeric($fileIterOption) ? (int)$fileIterOption : 100;
+
+        $mcHostOption = $input->getOption('memcached-host');
+        $mcHost = $mcHostOption;
+
+        $mcPortOption = $input->getOption('memcached-port');
+        $mcPort = is_numeric($mcPortOption) ? (int)$mcPortOption : 11211;
+
+        $tagOption = $input->getOption('tag');
+        $tag = is_string($tagOption) ? $tagOption : '';
+
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
 
@@ -89,7 +138,11 @@ class BenchmarkCommand extends BaseCommand
             }
         }
 
-        $this->io()->title('KVS Performance Benchmark');
+        $title = 'KVS Performance Benchmark';
+        if ($tag !== '') {
+            $title .= " [{$tag}]";
+        }
+        $this->io()->title($title);
 
         // Check requirements
         if ($baseUrl === '') {
@@ -109,12 +162,20 @@ class BenchmarkCommand extends BaseCommand
             $this->config->getTablePrefix(),
             $baseUrl,
             $samples,
-            $dbIterations
+            $dbIterations,
+            ['host' => $mcHost, 'port' => $mcPort],
+            $cacheIterations,
+            $fileIterations
         );
 
         $result = $runner->run(function (string $stage, string $message): void {
             $this->io()->text("<comment>{$message}</comment>");
         });
+
+        // Set tag if provided
+        if ($tag !== '') {
+            $result->setTag($tag);
+        }
 
         // Display results
         $this->displayResults($result, $baseline);
@@ -143,6 +204,18 @@ class BenchmarkCommand extends BaseCommand
         if ($result->hasDbResults()) {
             $this->io()->section('Database Performance');
             $this->displayDbResults($result, $baseline);
+        }
+
+        // Cache results
+        if ($result->hasCacheResults()) {
+            $this->io()->section('Cache Performance (Memcached)');
+            $this->displayCacheResults($result, $baseline);
+        }
+
+        // File I/O results
+        if ($result->hasFileIOResults()) {
+            $this->io()->section('File I/O Performance');
+            $this->displayFileIOResults($result, $baseline);
         }
 
         // System metrics
@@ -174,6 +247,26 @@ class BenchmarkCommand extends BaseCommand
 
         $jit = isset($info['jit']) && $info['jit'] === true;
         $rows[] = ['JIT', $jit ? '<fg=green>Enabled</>' : '<fg=yellow>Disabled</>'];
+
+        // Database info
+        if (isset($info['db_type']) && is_string($info['db_type'])) {
+            $dbType = strtoupper($info['db_type']);
+            $dbVersion = isset($info['db_version']) && is_string($info['db_version']) ? $info['db_version'] : 'Unknown';
+            $rows[] = ['Database', "<fg=cyan>{$dbType}</> {$dbVersion}"];
+        }
+
+        // Memcached version
+        if (isset($info['memcached_version']) && is_string($info['memcached_version'])) {
+            $rows[] = ['Memcached', $info['memcached_version']];
+        }
+
+        // Extensions
+        if (isset($info['extensions']) && is_array($info['extensions'])) {
+            $extList = implode(', ', array_filter($info['extensions'], 'is_string'));
+            if ($extList !== '') {
+                $rows[] = ['Extensions', $extList];
+            }
+        }
 
         $hostname = $info['hostname'] ?? 'unknown';
         $rows[] = ['Hostname', is_string($hostname) ? $hostname : 'unknown'];
@@ -237,6 +330,72 @@ class BenchmarkCommand extends BaseCommand
             if ($baseline !== null && isset($baselineDb[$key])) {
                 // For DB, compare queries/sec (higher is better)
                 $row[] = $this->formatComparison($data['queries_sec'], $baselineDb[$key]['queries_sec'], false);
+            } elseif ($baseline !== null) {
+                $row[] = '<fg=gray>N/A</>';
+            }
+
+            $rows[] = $row;
+        }
+
+        $this->renderTable($headers, $rows);
+    }
+
+    private function displayCacheResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void
+    {
+        $cacheResults = $result->getCacheResults();
+        $baselineCache = $baseline !== null ? $baseline->getCacheResults() : [];
+
+        $headers = ['Operation', 'Avg (ms)', 'p50', 'p95', 'Ops/sec'];
+        if ($baseline !== null) {
+            $headers[] = 'vs Base';
+        }
+
+        $rows = [];
+        foreach ($cacheResults as $key => $data) {
+            $row = [
+                $data['name'],
+                $this->formatMs($data['avg']),
+                $this->formatMs($data['p50']),
+                $this->formatMs($data['p95']),
+                $this->formatNumber($data['ops_sec']),
+            ];
+
+            if ($baseline !== null && isset($baselineCache[$key])) {
+                // Compare ops/sec (higher is better)
+                $row[] = $this->formatComparison($data['ops_sec'], $baselineCache[$key]['ops_sec'], false);
+            } elseif ($baseline !== null) {
+                $row[] = '<fg=gray>N/A</>';
+            }
+
+            $rows[] = $row;
+        }
+
+        $this->renderTable($headers, $rows);
+    }
+
+    private function displayFileIOResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void
+    {
+        $fileResults = $result->getFileIOResults();
+        $baselineFile = $baseline !== null ? $baseline->getFileIOResults() : [];
+
+        $headers = ['Operation', 'Avg (ms)', 'Min', 'Max', 'Ops/sec'];
+        if ($baseline !== null) {
+            $headers[] = 'vs Base';
+        }
+
+        $rows = [];
+        foreach ($fileResults as $key => $data) {
+            $row = [
+                $data['name'],
+                $this->formatMs($data['avg']),
+                $this->formatMs($data['min']),
+                $this->formatMs($data['max']),
+                $this->formatNumber($data['ops_sec']),
+            ];
+
+            if ($baseline !== null && isset($baselineFile[$key])) {
+                // Compare ops/sec (higher is better)
+                $row[] = $this->formatComparison($data['ops_sec'], $baselineFile[$key]['ops_sec'], false);
             } elseif ($baseline !== null) {
                 $row[] = '<fg=gray>N/A</>';
             }

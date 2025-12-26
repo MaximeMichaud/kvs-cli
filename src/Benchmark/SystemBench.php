@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Benchmark;
 
+use PDO;
+
 /**
  * System metrics collection
  *
@@ -208,9 +210,53 @@ class SystemBench
     }
 
     /**
+     * Get database information
+     *
+     * @return array{db_type: string, db_version: string, db_server_info: string}|array{}
+     */
+    public function getDatabaseInfo(?PDO $db): array
+    {
+        if ($db === null) {
+            return [];
+        }
+
+        try {
+            $stmt = $db->query('SELECT VERSION()');
+            if ($stmt === false) {
+                return [];
+            }
+
+            $version = $stmt->fetchColumn();
+            if (!is_string($version)) {
+                return [];
+            }
+
+            // Detect MariaDB vs MySQL
+            $dbType = 'mysql';
+            if (stripos($version, 'mariadb') !== false) {
+                $dbType = 'mariadb';
+            }
+
+            // Get server info
+            $serverInfo = $db->getAttribute(PDO::ATTR_SERVER_INFO);
+            if (!is_string($serverInfo)) {
+                $serverInfo = $version;
+            }
+
+            return [
+                'db_type' => $dbType,
+                'db_version' => $version,
+                'db_server_info' => $serverInfo,
+            ];
+        } catch (\PDOException $e) {
+            return [];
+        }
+    }
+
+    /**
      * Get system info for the report header
      *
-     * @return array<string, string|bool>
+     * @return array<string, string|bool|array<int, string>>
      */
     public function getSystemInfo(): array
     {
@@ -223,6 +269,20 @@ class SystemBench
             'arch' => php_uname('m'),
             'hostname' => $hostname !== false ? $hostname : 'unknown',
         ];
+
+        // PHP configuration
+        $info['memory_limit'] = ini_get('memory_limit');
+        $info['max_execution_time'] = ini_get('max_execution_time');
+
+        // Relevant extensions for KVS
+        $relevantExtensions = ['memcached', 'redis', 'curl', 'gd', 'imagick', 'pdo_mysql'];
+        $loadedExtensions = [];
+        foreach ($relevantExtensions as $ext) {
+            if (extension_loaded($ext)) {
+                $loadedExtensions[] = $ext;
+            }
+        }
+        $info['extensions'] = $loadedExtensions;
 
         // OPcache status
         if (function_exists('opcache_get_status')) {
