@@ -559,6 +559,14 @@ class SystemBench
                 $info['opcache'] = $httpInfo['opcache'];
             }
 
+            if (isset($httpInfo['jit'])) {
+                $info['jit'] = $httpInfo['jit'];
+            }
+
+            if (isset($httpInfo['source'])) {
+                $info['source'] = $httpInfo['source'];
+            }
+
             if (isset($httpInfo['web_server'])) {
                 $info['web_server'] = $httpInfo['web_server'];
             }
