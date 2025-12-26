@@ -45,10 +45,10 @@ EOT
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $file = $input->getArgument('file');
+        $file = $this->getStringArgument($input, 'file');
 
-        if (!file_exists($file)) {
-            $this->io()->error("File not found: $file");
+        if ($file === null || !file_exists($file)) {
+            $this->io()->error("File not found: " . ($file ?? 'null'));
             return self::FAILURE;
         }
 
@@ -80,7 +80,12 @@ EOT
                 return self::FAILURE;
             }
 
-            $tempFile = tempnam(sys_get_temp_dir(), 'kvs_import_');
+            $tempFileResult = tempnam(sys_get_temp_dir(), 'kvs_import_');
+            if ($tempFileResult === false) {
+                $this->io()->error("Failed to create temporary file");
+                return self::FAILURE;
+            }
+            $tempFile = $tempFileResult;
             file_put_contents($tempFile, $sqlContent);
             $file = $tempFile;
         }
@@ -98,6 +103,9 @@ EOT
         $fileContents = file_get_contents($file);
         if ($fileContents === false) {
             $this->io()->error('Failed to read file contents');
+            if ($tempFile !== null && file_exists($tempFile)) {
+                unlink($tempFile);
+            }
             return self::FAILURE;
         }
         $process->setInput($fileContents);

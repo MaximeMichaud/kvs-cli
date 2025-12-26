@@ -58,11 +58,12 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listDvds($input),
-            'show' => $this->showDvd($input->getArgument('id')),
+            'show' => $this->showDvd($id),
             'stats' => $this->showStats(),
             default => $this->listDvds($input),
         };
@@ -83,7 +84,7 @@ HELP
         $params = [];
 
         // Status filter
-        $status = $input->getOption('status');
+        $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = ['active' => 1, 'disabled' => 0];
             if (isset($statusMap[$status])) {
@@ -93,7 +94,7 @@ HELP
         }
 
         // Search filter
-        $search = $input->getOption('search');
+        $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
             $query .= " AND d.title LIKE :search";
             $params['search'] = "%$search%";
@@ -106,17 +107,17 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $stmt->bindValue('limit', (int)$input->getOption('limit'), \PDO::PARAM_INT);
+            $stmt->bindValue('limit', $this->getIntOptionOrDefault($input, 'limit', 20), \PDO::PARAM_INT);
             $stmt->execute();
 
             $dvds = $stmt->fetchAll();
 
             // Transform DVDs for display (field aliases)
-            $transformedDvds = array_map(function ($dvd) {
+            $transformedDvds = array_values(array_map(function (array $dvd): array {
                 // Calculate rating
                 $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
                 $calculatedRating = $ratingAmount > 0
-                    ? round($dvd['rating'] / $ratingAmount, 1)
+                    ? round((float) $dvd['rating'] / $ratingAmount, 1)
                     : 0;
 
                 return [
@@ -136,7 +137,7 @@ HELP
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
                     'rating' => $calculatedRating,
                 ];
-            }, $dvds);
+            }, $dvds));
 
             // Default fields
             $defaultFields = ['dvd_id', 'title', 'status_id', 'total_videos'];
@@ -171,22 +172,27 @@ HELP
                 WHERE d.dvd_id = :id
             ");
             $stmt->execute(['id' => $id]);
-            $dvd = $stmt->fetch();
+            $dvd = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($dvd === false) {
+            if (!is_array($dvd)) {
                 $this->io()->error("DVD not found: $id");
                 return self::FAILURE;
             }
 
             // Display DVD details
-            $this->io()->title("DVD: {$dvd['title']}");
+            $titleValue = $dvd['title'] ?? '';
+            $dvdTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
+            $this->io()->title("DVD: $dvdTitle");
+
+            $totalVideos = is_numeric($dvd['total_videos'] ?? 0) ? (int) $dvd['total_videos'] : 0;
+            $dvdViewed = is_numeric($dvd['dvd_viewed'] ?? 0) ? (int) $dvd['dvd_viewed'] : 0;
 
             $info = [
-                ['DVD ID', $dvd['dvd_id']],
-                ['Title', $dvd['title']],
+                ['DVD ID', (string) $dvd['dvd_id']],
+                ['Title', $dvdTitle],
                 ['Status', StatusFormatter::dvd((int)$dvd['status_id'])],
-                ['Videos', number_format($dvd['total_videos'] ?? 0)],
-                ['Views', number_format($dvd['dvd_viewed'] ?? 0)],
+                ['Videos', number_format($totalVideos)],
+                ['Views', number_format($dvdViewed)],
             ];
 
             // Duration
@@ -194,27 +200,30 @@ HELP
             if ($duration > 0) {
                 $hours = floor($duration / 3600);
                 $minutes = floor(($duration % 3600) / 60);
-                $info[] = ['Total Duration', sprintf('%dh %dm', $hours, $minutes)];
+                $info[] = ['Total Duration', sprintf('%dh %dm', (int) $hours, (int) $minutes)];
             }
 
             // Release year
-            if (isset($dvd['release_year']) && $dvd['release_year'] !== '') {
-                $info[] = ['Release Year', $dvd['release_year']];
+            $releaseYear = $dvd['release_year'] ?? null;
+            if ($releaseYear !== null && $releaseYear !== '') {
+                $info[] = ['Release Year', (string) $releaseYear];
             }
 
             // Rating
             $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
             if ($ratingAmount > 0) {
-                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', $dvd['rating'] / $ratingAmount, $ratingAmount)];
+                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', (float) $dvd['rating'] / $ratingAmount, $ratingAmount)];
             }
 
             // Subscribers
-            if (isset($dvd['subscribers_count']) && (int) $dvd['subscribers_count'] > 0) {
-                $info[] = ['Subscribers', number_format((int) $dvd['subscribers_count'])];
+            $subscribersCount = $dvd['subscribers_count'] ?? null;
+            if ($subscribersCount !== null && (int) $subscribersCount > 0) {
+                $info[] = ['Subscribers', number_format((int) $subscribersCount)];
             }
 
-            if (isset($dvd['description']) && $dvd['description'] !== '') {
-                $info[] = ['Description', $dvd['description']];
+            $description = $dvd['description'] ?? null;
+            if ($description !== null && $description !== '') {
+                $info[] = ['Description', (string) $description];
             }
 
             $this->renderTable(['Field', 'Value'], $info);

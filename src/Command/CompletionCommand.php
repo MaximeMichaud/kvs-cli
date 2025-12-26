@@ -57,6 +57,8 @@ HELP
     {
         $io = new SymfonyStyle($input, $output);
         $shell = $input->getArgument('shell');
+        // PHPStan: shell is non-empty-string (has default from guessShell())
+
         $install = (bool) $input->getOption('install');
 
         $script = match ($shell) {

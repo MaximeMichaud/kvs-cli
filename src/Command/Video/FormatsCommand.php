@@ -49,7 +49,7 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
 
         return match ($action) {
             'list' => $this->listFormats($input),
@@ -61,9 +61,9 @@ HELP
 
     private function listFormats(InputInterface $input): int
     {
-        $videoId = $input->getArgument('video_id');
+        $videoId = $this->getStringArgument($input, 'video_id');
 
-        if ($videoId === null || $videoId === false || $videoId === '') {
+        if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:formats list <video_id>');
             return self::FAILURE;
@@ -135,9 +135,9 @@ HELP
 
     private function checkFormats(InputInterface $input): int
     {
-        $videoId = $input->getArgument('video_id');
+        $videoId = $this->getStringArgument($input, 'video_id');
 
-        if ($videoId === null || $videoId === false || $videoId === '') {
+        if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:formats check <video_id>');
             return self::FAILURE;
@@ -173,8 +173,8 @@ HELP
 
         // Check each configured format
         foreach ($configuredFormats as $format) {
-            $formatName = $format['title'];
-            $postfix = $format['postfix']; // e.g. ".mp4", ".webm"
+            $formatName = isset($format['title']) && is_string($format['title']) ? $format['title'] : '';
+            $postfix = isset($format['postfix']) && is_string($format['postfix']) ? $format['postfix'] : '';
 
             // Build expected filename: formatName + postfix
             // e.g. "720p" + ".mp4" = "720p.mp4"
@@ -279,9 +279,17 @@ HELP
                 return [];
             }
 
-            $formats = $stmt->fetchAll();
+            $result = $stmt->fetchAll();
 
-            return is_array($formats) ? $formats : [];
+            // PHPStan knows fetchAll returns array, but we need to ensure it's a list
+            $formats = [];
+            foreach ($result as $row) {
+                if (is_array($row)) {
+                    $formats[] = $row;
+                }
+            }
+
+            return $formats;
         } catch (\Exception $e) {
             return [];
         }
@@ -293,8 +301,12 @@ HELP
     private function getVideoDimensions(string $file): string
     {
         // Check if ffprobe is available
-        $ffprobe = shell_exec('which ffprobe 2>/dev/null');
-        if ($ffprobe === null || trim($ffprobe) === '') {
+        $ffprobeResult = shell_exec('which ffprobe 2>/dev/null');
+        if ($ffprobeResult === null || $ffprobeResult === false) {
+            return 'Unknown';
+        }
+        $ffprobe = trim($ffprobeResult);
+        if ($ffprobe === '') {
             return 'Unknown';
         }
 
@@ -303,9 +315,13 @@ HELP
             escapeshellarg($file)
         );
 
-        $output = shell_exec($cmd);
-        if ($output !== null && str_contains($output, ',')) {
-            [$width, $height] = explode(',', trim($output));
+        $outputResult = shell_exec($cmd);
+        if ($outputResult === null || $outputResult === false) {
+            return 'Unknown';
+        }
+        $output = trim($outputResult);
+        if (str_contains($output, ',')) {
+            [$width, $height] = explode(',', $output);
             return "{$width}x{$height}";
         }
 

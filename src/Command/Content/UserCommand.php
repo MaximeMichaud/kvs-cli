@@ -119,13 +119,13 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
 
         return match ($action) {
             'list' => $this->listUsers($input),
-            'show' => $this->showUser($input->getArgument('id')),
+            'show' => $this->showUser($this->getStringArgument($input, 'id')),
             'create' => $this->createUser($input),
-            'delete' => $this->deleteUser($input->getArgument('id')),
+            'delete' => $this->deleteUser($this->getStringArgument($input, 'id')),
             'stats' => $this->showStats(),
             default => $this->listUsers($input),
         };
@@ -148,7 +148,7 @@ HELP
         $params = [];
 
         // Status filter
-        $status = $input->getOption('status');
+        $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = [
                 'active' => 2,
@@ -162,19 +162,19 @@ HELP
         }
 
         // Search filter
-        $search = $input->getOption('search');
+        $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
             $query .= " AND (u.username LIKE :search OR u.email LIKE :search)";
             $params['search'] = "%$search%";
         }
 
         // Removal requested filter
-        if ($input->getOption('removal-requested') !== null) {
+        if ($this->getBoolOption($input, 'removal-requested')) {
             $query .= " AND u.is_removal_requested = 1";
         }
 
         // Trusted users filter
-        if ($input->getOption('trusted') !== null) {
+        if ($this->getBoolOption($input, 'trusted')) {
             $query .= " AND u.is_trusted = 1";
         }
 
@@ -185,14 +185,15 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $stmt->bindValue('limit', (int)$input->getOption('limit'), \PDO::PARAM_INT);
+            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
             $users = $stmt->fetchAll();
 
             // Determine default fields based on filters
             // When filtering by removal-requested, include removal_reason
-            if ($input->getOption('removal-requested') !== null) {
+            if ($this->getBoolOption($input, 'removal-requested')) {
                 $defaultFields = ['user_id', 'username', 'email', 'removal_reason', 'added_date'];
             } else {
                 $defaultFields = ['user_id', 'username', 'display_name', 'email', 'status_id', 'added_date'];

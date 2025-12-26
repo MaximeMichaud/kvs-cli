@@ -30,21 +30,19 @@ class BackupCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('create') !== false) {
-            $type = $input->getOption('type');
-            $outputOpt = $input->getOption('output');
+        if ($this->getBoolOption($input, 'create')) {
             return $this->createBackup(
-                is_string($type) ? $type : 'full',
-                is_string($outputOpt) ? $outputOpt : null
+                $this->getStringOptionOrDefault($input, 'type', 'full'),
+                $this->getStringOption($input, 'output')
             );
         }
 
-        $restoreOpt = $input->getOption('restore');
-        if ($restoreOpt !== false && $restoreOpt !== null) {
-            return $this->restoreBackup(is_string($restoreOpt) ? $restoreOpt : '');
+        $restoreOpt = $this->getStringOption($input, 'restore');
+        if ($restoreOpt !== null) {
+            return $this->restoreBackup($restoreOpt);
         }
 
-        if ($input->getOption('list') !== false) {
+        if ($this->getBoolOption($input, 'list')) {
             return $this->listBackups();
         }
 

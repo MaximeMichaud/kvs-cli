@@ -81,7 +81,9 @@ class StatusCommand extends BaseCommand
                 throw new \Exception('Failed to query MySQL version');
             }
             $version = $stmt->fetch();
-            $info[] = ['MySQL Version', $version['version']];
+            if (is_array($version) && isset($version['version']) && (is_string($version['version']) || is_numeric($version['version']))) {
+                $info[] = ['MySQL Version', (string) $version['version']];
+            }
 
             $stmt = $db->query("SHOW TABLE STATUS");
             if ($stmt === false) {
@@ -318,8 +320,10 @@ class StatusCommand extends BaseCommand
     private function checkMemcached(): array
     {
         // Read memcached configuration from KVS config
-        $server = $this->config->get('memcache_server', '127.0.0.1');
-        $port = (int)$this->config->get('memcache_port', Constants::DEFAULT_MEMCACHE_PORT);
+        $serverValue = $this->config->get('memcache_server', '127.0.0.1');
+        $server = is_string($serverValue) ? $serverValue : '127.0.0.1';
+        $portValue = $this->config->get('memcache_port', Constants::DEFAULT_MEMCACHE_PORT);
+        $port = is_int($portValue) ? $portValue : Constants::DEFAULT_MEMCACHE_PORT;
 
         $result = [
             'available' => false,
@@ -495,7 +499,7 @@ class StatusCommand extends BaseCommand
             );
 
             foreach ($iterator as $file) {
-                if ($file->isFile()) {
+                if ($file instanceof \SplFileInfo && $file->isFile()) {
                     $size += $file->getSize();
                 }
             }
@@ -528,7 +532,7 @@ class StatusCommand extends BaseCommand
             );
 
             foreach ($iterator as $file) {
-                if ($file->isFile()) {
+                if ($file instanceof \SplFileInfo && $file->isFile()) {
                     $count++;
                 }
             }

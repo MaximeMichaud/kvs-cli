@@ -64,17 +64,18 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listCategories($input),
             'tree' => $this->showTree(),
-            'show' => $this->showCategory($input->getArgument('id')),
+            'show' => $this->showCategory($id),
             'create' => $this->createCategory($input),
-            'delete' => $this->deleteCategory($input->getArgument('id')),
-            'update' => $this->updateCategory($input->getArgument('id'), $input),
-            'enable' => $this->toggleStatus($input->getArgument('id'), 1),
-            'disable' => $this->toggleStatus($input->getArgument('id'), 0),
+            'delete' => $this->deleteCategory($id),
+            'update' => $this->updateCategory($id, $input),
+            'enable' => $this->toggleStatus($id, 1),
+            'disable' => $this->toggleStatus($id, 0),
             default => $this->listCategories($input),
         };
     }
@@ -87,7 +88,7 @@ HELP
         }
 
         try {
-            $limit = (int)$input->getOption('limit');
+            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
 
             $sql = "
                 SELECT c.*,
@@ -102,7 +103,7 @@ HELP
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
-            $categories = $stmt->fetchAll();
+            $categories = array_values($stmt->fetchAll(\PDO::FETCH_ASSOC));
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
@@ -169,14 +170,16 @@ HELP
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
-            $category = $stmt->fetch();
+            $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($category === false) {
+            if (!is_array($category)) {
                 $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io()->section("Category: {$category['title']}");
+            $titleValue = $category['title'] ?? '';
+            $categoryTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
+            $this->io()->section("Category: $categoryTitle");
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
@@ -186,21 +189,27 @@ HELP
             $stmt->execute(['id' => $id]);
             $albumCount = $stmt->fetchColumn();
 
+            $parentId = $category['parent_id'] ?? null;
+            $parentIdStr = ($parentId !== null && $parentId !== '' && $parentId !== false) ? (string) $parentId : 'None (Root)';
+            $addedDate = $category['added_date'] ?? null;
+            $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
+
             $info = [
-                ['ID', $category['category_id']],
-                ['Title', $category['title']],
-                ['Parent ID', $category['parent_id'] ?? 'None (Root)'],
+                ['ID', (string) $category['category_id']],
+                ['Title', $categoryTitle],
+                ['Parent ID', $parentIdStr],
                 ['Status', (int) $category['status_id'] === 1 ? 'Active' : 'Inactive'],
-                ['Videos', $videoCount],
-                ['Albums', $albumCount],
-                ['Added', $category['added_date'] ?? 'N/A'],
+                ['Videos', (string) $videoCount],
+                ['Albums', (string) $albumCount],
+                ['Added', $addedDateStr],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            if (isset($category['description']) && $category['description'] !== '') {
+            $description = $category['description'] ?? null;
+            if ($description !== null && $description !== '') {
                 $this->io()->section('Description');
-                $this->io()->text((string) $category['description']);
+                $this->io()->text((string) $description);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch category: ' . $e->getMessage());
@@ -212,10 +221,11 @@ HELP
 
     private function createCategory(InputInterface $input): int
     {
-        $titleOption = $input->getOption('title');
-        $title = ($titleOption !== null && $titleOption !== '') ? $titleOption : $input->getArgument('id');
+        $titleOption = $this->getStringOption($input, 'title');
+        $idArg = $this->getStringArgument($input, 'id');
+        $title = $titleOption ?? $idArg;
 
-        if ($title === null || $title === '') {
+        if ($title === null) {
             $this->io()->error('Category title is required');
             $this->io()->text('Usage: kvs content:category create "Category Name"');
             $this->io()->text('   or: kvs content:category create --title="Category Name" --description="..." --parent=5');
@@ -238,8 +248,8 @@ HELP
             }
 
             // Prepare data
-            $description = $input->getOption('description') ?? '';
-            $parentId = $input->getOption('parent');
+            $description = $this->getStringOption($input, 'description') ?? '';
+            $parentId = $this->getStringOption($input, 'parent');
             $statusId = 1; // Active by default
 
             // Validate parent category if provided
@@ -271,7 +281,7 @@ HELP
             $this->renderTable(
                 ['Property', 'Value'],
                 [
-                    ['ID', $categoryId],
+                    ['ID', (string) $categoryId],
                     ['Title', $title],
                     ['Parent ID', $parentId ?? 'None (Root)'],
                     ['Description', $description !== '' ? $description : 'None'],
@@ -303,9 +313,9 @@ HELP
             // Get category details
             $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
-            $category = $stmt->fetch();
+            $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($category === false) {
+            if (!is_array($category)) {
                 $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
@@ -328,15 +338,22 @@ HELP
                     (SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id) as album_count
             ");
             $stmt->execute(['id' => $id]);
-            $usage = $stmt->fetch();
+            $usage = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            $totalUsage = $usage['video_count'] + $usage['album_count'];
+            if (!is_array($usage)) {
+                $this->io()->error('Failed to retrieve category usage information');
+                return self::FAILURE;
+            }
+
+            $videoCount = is_numeric($usage['video_count']) ? (int) $usage['video_count'] : 0;
+            $albumCount = is_numeric($usage['album_count']) ? (int) $usage['album_count'] : 0;
+            $totalUsage = $videoCount + $albumCount;
 
             if ($totalUsage > 0) {
                 $this->io()->warning("This category is used by $totalUsage items:");
                 $this->io()->listing([
-                    "Videos: {$usage['video_count']}",
-                    "Albums: {$usage['album_count']}",
+                    "Videos: $videoCount",
+                    "Albums: $albumCount",
                 ]);
 
                 if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
@@ -353,7 +370,9 @@ HELP
             $stmt = $db->prepare("DELETE FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
 
-            $this->io()->success("Category '{$category['title']}' deleted successfully!");
+            $titleValue = $category['title'] ?? '';
+            $deletedTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
+            $this->io()->success("Category '$deletedTitle' deleted successfully!");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete category: ' . $e->getMessage());
             return self::FAILURE;
@@ -379,9 +398,9 @@ HELP
             // Get current category
             $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
-            $category = $stmt->fetch();
+            $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($category === false) {
+            if (!is_array($category)) {
                 $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
@@ -390,21 +409,22 @@ HELP
             $params = ['id' => $id];
 
             // Title
-            $title = $input->getOption('title');
+            $title = $this->getStringOption($input, 'title');
             if ($title !== null) {
                 $updates[] = 'title = :title';
                 $params['title'] = $title;
             }
 
             // Description
-            if ($input->hasOption('description') && $input->getOption('description') !== null) {
+            $description = $this->getStringOption($input, 'description');
+            if ($description !== null) {
                 $updates[] = 'description = :description';
-                $params['description'] = $input->getOption('description');
+                $params['description'] = $description;
             }
 
             // Parent
-            if ($input->hasOption('parent') && $input->getOption('parent') !== null) {
-                $parentId = $input->getOption('parent');
+            $parentId = $this->getStringOption($input, 'parent');
+            if ($parentId !== null) {
                 if ($parentId === $id) {
                     $this->io()->error('Category cannot be its own parent');
                     return self::FAILURE;
@@ -414,7 +434,7 @@ HELP
             }
 
             // Status
-            $status = $input->getOption('status');
+            $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
                 $statusId = ($status === 'active') ? 1 : 0;
                 $updates[] = 'status_id = :status_id';

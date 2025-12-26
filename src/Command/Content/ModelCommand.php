@@ -62,11 +62,12 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listModels($input),
-            'show' => $this->showModel($input->getArgument('id')),
+            'show' => $this->showModel($id),
             'stats' => $this->showStats(),
             default => $this->listModels($input),
         };
@@ -91,7 +92,7 @@ HELP
         $params = [];
 
         // Status filter
-        $status = $input->getOption('status');
+        $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = ['active' => 1, 'disabled' => 0];
             if (isset($statusMap[$status])) {
@@ -101,7 +102,7 @@ HELP
         }
 
         // Search filter
-        $search = $input->getOption('search');
+        $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
             $query .= " AND m.title LIKE :search";
             $params['search'] = "%$search%";
@@ -114,17 +115,17 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $stmt->bindValue('limit', (int)$input->getOption('limit'), \PDO::PARAM_INT);
+            $stmt->bindValue('limit', $this->getIntOptionOrDefault($input, 'limit', 20), \PDO::PARAM_INT);
             $stmt->execute();
 
             $models = $stmt->fetchAll();
 
             // Transform models for display (field aliases)
-            $transformedModels = array_map(function ($model) {
+            $transformedModels = array_values(array_map(function (array $model): array {
                 // Calculate rating
                 $ratingAmount = (int)($model['rating_amount'] ?? 0);
                 $calculatedRating = $ratingAmount > 0
-                    ? round($model['rating'] / $ratingAmount, 1)
+                    ? round((float) $model['rating'] / $ratingAmount, 1)
                     : 0;
 
                 return [
@@ -149,7 +150,7 @@ HELP
                     'rank' => $model['rank'] ?? '',
                     'rating' => $calculatedRating,
                 ];
-            }, $models);
+            }, $models));
 
             // Default fields
             $defaultFields = ['model_id', 'title', 'status_id', 'video_count'];
@@ -188,58 +189,76 @@ HELP
                 WHERE m.model_id = :id
             ");
             $stmt->execute(['id' => $id]);
-            $model = $stmt->fetch();
+            $model = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($model === false) {
+            if (!is_array($model)) {
                 $this->io()->error("Model not found: $id");
                 return self::FAILURE;
             }
 
             // Display model details
-            $this->io()->title("Model: {$model['title']}");
+            $titleValue = $model['title'] ?? '';
+            $modelTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
+            $this->io()->title("Model: $modelTitle");
+
+            $videoCount = is_numeric($model['video_count']) ? (int) $model['video_count'] : 0;
+            $albumCount = is_numeric($model['album_count']) ? (int) $model['album_count'] : 0;
+            $modelViewed = is_numeric($model['model_viewed'] ?? 0) ? (int) $model['model_viewed'] : 0;
 
             $info = [
-                ['Model ID', $model['model_id']],
-                ['Name', $model['title']],
+                ['Model ID', (string) $model['model_id']],
+                ['Name', $modelTitle],
                 ['Status', StatusFormatter::model((int)$model['status_id'])],
-                ['Videos', number_format($model['video_count'])],
-                ['Albums', number_format($model['album_count'])],
-                ['Views', number_format($model['model_viewed'] ?? 0)],
+                ['Videos', number_format($videoCount)],
+                ['Albums', number_format($albumCount)],
+                ['Views', number_format($modelViewed)],
             ];
 
             // Rating
-            $ratingAmount = (int)($model['rating_amount'] ?? 0);
+            $ratingAmount = is_numeric($model['rating_amount'] ?? 0) ? (int) $model['rating_amount'] : 0;
             if ($ratingAmount > 0) {
-                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', $model['rating'] / $ratingAmount, $ratingAmount)];
+                $rating = is_numeric($model['rating']) ? (float) $model['rating'] : 0;
+                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', $rating / $ratingAmount, $ratingAmount)];
             }
 
             // Rank
-            if (isset($model['rank']) && $model['rank'] !== '' && $model['rank'] !== 0) {
-                $info[] = ['Rank', '#' . number_format((int) $model['rank'])];
+            $rank = $model['rank'] ?? null;
+            if ($rank && is_numeric($rank) && (int) $rank !== 0) {
+                $info[] = ['Rank', '#' . number_format((int) $rank)];
             }
 
             // Country
-            if (isset($model['country_name']) && $model['country_name'] !== '') {
-                $info[] = ['Country', $model['country_name']];
+            $countryName = $model['country_name'] ?? null;
+            if (is_string($countryName) && $countryName !== '') {
+                $info[] = ['Country', $countryName];
             }
 
             // Personal info
-            if (isset($model['birth_date']) && $model['birth_date'] !== '') {
-                $age = $model['age'] ?? '';
-                $info[] = ['Birth Date', $model['birth_date'] . ($age !== '' ? " (age $age)" : '')];
-            }
-            if (isset($model['measurements']) && $model['measurements'] !== '') {
-                $info[] = ['Measurements', $model['measurements']];
-            }
-            if (isset($model['height']) && $model['height'] !== '') {
-                $info[] = ['Height', $model['height']];
-            }
-            if (isset($model['weight']) && $model['weight'] !== '') {
-                $info[] = ['Weight', $model['weight']];
+            $birthDate = $model['birth_date'] ?? null;
+            if ($birthDate !== null && $birthDate !== '') {
+                $age = $model['age'] ?? null;
+                $ageStr = ($age !== null && $age !== '') ? " (age $age)" : '';
+                $info[] = ['Birth Date', (string) $birthDate . $ageStr];
             }
 
-            if (isset($model['description']) && $model['description'] !== '') {
-                $info[] = ['Description', $model['description']];
+            $measurements = $model['measurements'] ?? null;
+            if ($measurements !== null && $measurements !== '') {
+                $info[] = ['Measurements', (string) $measurements];
+            }
+
+            $height = $model['height'] ?? null;
+            if ($height !== null && $height !== '') {
+                $info[] = ['Height', (string) $height];
+            }
+
+            $weight = $model['weight'] ?? null;
+            if ($weight !== null && $weight !== '') {
+                $info[] = ['Weight', (string) $weight];
+            }
+
+            $description = $model['description'] ?? null;
+            if ($description !== null && $description !== '') {
+                $info[] = ['Description', (string) $description];
             }
 
             $this->renderTable(['Field', 'Value'], $info);

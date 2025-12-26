@@ -56,10 +56,15 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $code = $input->getArgument('code');
-        $skipKvs = $input->getOption('skip-kvs');
+        $code = $this->getStringArgument($input, 'code');
+        if ($code === null) {
+            $this->io()->error('Code argument is required');
+            return self::FAILURE;
+        }
 
-        if ($skipKvs === null || $skipKvs === false) {
+        $skipKvs = $this->getBoolOption($input, 'skip-kvs');
+
+        if (!$skipKvs) {
             // Prepare KVS context variables
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;

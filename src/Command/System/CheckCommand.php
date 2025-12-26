@@ -70,8 +70,8 @@ class CheckCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $jsonOutput = $input->getOption('json');
-        $quietOk = $input->getOption('quiet-ok');
+        $jsonOutput = $this->getBoolOption($input, 'json');
+        $quietOk = $this->getBoolOption($input, 'quiet-ok');
 
         // For JSON output, suppress all visual output
         $this->silent = $jsonOutput;
@@ -214,11 +214,11 @@ class CheckCommand extends BaseCommand
 
         $data = @unserialize($contents, ['allowed_classes' => false]);
 
-        if (!is_array($data) || !isset($data['latest_version']) || $data['latest_version'] === '') {
+        if (!is_array($data) || !isset($data['latest_version']) || $data['latest_version'] === '' || !is_string($data['latest_version'])) {
             return null;
         }
 
-        return (string) $data['latest_version'];
+        return $data['latest_version'];
     }
 
     /**
@@ -706,10 +706,12 @@ class CheckCommand extends BaseCommand
             'status' => 'unknown',
         ];
 
-        $server = $this->config->get('memcache_server', '127.0.0.1');
-        $port = (int) $this->config->get('memcache_port', 11211);
+        $serverValue = $this->config->get('memcache_server', '127.0.0.1');
+        $server = is_string($serverValue) ? $serverValue : '127.0.0.1';
+        $portValue = $this->config->get('memcache_port', 11211);
+        $port = is_int($portValue) ? $portValue : 11211;
 
-        if ($server === '' || $server === null) {
+        if ($server === '') {
             if ($quietOk === false) {
                 $this->printStatus('Memcached', 'Not configured', 'info');
             }
@@ -930,20 +932,21 @@ class CheckCommand extends BaseCommand
         foreach ($checks as $name => $check) {
             $value = ini_get($name);
             $bytes = $this->parseIniSize($value);
-            $result['settings'][$name] = $value;
+            $valueStr = $value !== false ? $value : '';
+            $result['settings'][$name] = $valueStr;
 
             // Handle unlimited values (-1 or 0 for certain settings)
             $isUnlimited = ($bytes === -1) || ($check['allow_unlimited'] ?? false) && $bytes === 0;
 
             if ($isUnlimited) {
                 if (!$quietOk) {
-                    $display = $check['format'] === 'bytes' ? 'Unlimited' : $value;
+                    $display = $check['format'] === 'bytes' ? 'Unlimited' : $valueStr;
                     $this->printStatus($name, $display, 'ok');
                 }
                 continue;
             }
 
-            $displayValue = $check['format'] === 'bytes' ? format_bytes($bytes) : (is_string($value) ? $value : (string) $value);
+            $displayValue = $check['format'] === 'bytes' ? format_bytes($bytes) : $valueStr;
 
             if ($bytes < $check['min']) {
                 $this->printStatus(
@@ -1040,7 +1043,7 @@ class CheckCommand extends BaseCommand
                 if ($processData) {
                     // Try JSON first
                     $data = @json_decode($processData, true);
-                    if (is_array($data) && isset($data['last_run'])) {
+                    if (is_array($data) && isset($data['last_run']) && is_int($data['last_run'])) {
                         $lastRun = $data['last_run'];
                     } elseif (is_numeric($processData)) {
                         $lastRun = (int) $processData;
@@ -1147,7 +1150,10 @@ class CheckCommand extends BaseCommand
                 throw new \RuntimeException('Failed to query database version');
             }
             $row = $stmt->fetch();
-            $versionString = is_array($row) ? (string) $row['version'] : '';
+            $versionString = '';
+            if (is_array($row) && isset($row['version']) && (is_string($row['version']) || is_numeric($row['version']))) {
+                $versionString = (string) $row['version'];
+            }
             $result['version'] = $versionString;
 
             // Parse version - detect if MariaDB or MySQL
@@ -1155,7 +1161,7 @@ class CheckCommand extends BaseCommand
             $result['is_mariadb'] = $isMariaDB;
 
             // Extract version number
-            if (preg_match('/^(\d+\.\d+(?:\.\d+)?)/', $versionString, $matches) !== false) {
+            if (preg_match('/^(\d+\.\d+(?:\.\d+)?)/', $versionString, $matches) === 1) {
                 $versionNum = $matches[1];
                 $result['version_number'] = $versionNum;
 
@@ -1197,7 +1203,7 @@ class CheckCommand extends BaseCommand
                 throw new \RuntimeException('Failed to query innodb_buffer_pool_size');
             }
             $row = $stmt->fetch();
-            if (is_array($row)) {
+            if (is_array($row) && isset($row['Value']) && (is_int($row['Value']) || is_numeric($row['Value']))) {
                 $bytes = (int) $row['Value'];
                 $mb = $bytes / 1024 / 1024;
                 $result['variables']['innodb_buffer_pool_size'] = $bytes;
@@ -1224,9 +1230,9 @@ class CheckCommand extends BaseCommand
                 throw new \RuntimeException('Failed to query max_connections');
             }
             $row = $stmt->fetch();
-            if (is_array($row) && $quietOk === false) {
+            if (is_array($row) && isset($row['Value']) && $quietOk === false && (is_int($row['Value']) || is_numeric($row['Value']))) {
                 $result['variables']['max_connections'] = (int) $row['Value'];
-                $this->printStatus('max_connections', $row['Value'], 'ok');
+                $this->printStatus('max_connections', (string) $row['Value'], 'ok');
             }
         } catch (\Exception $e) {
             // Skip
@@ -1643,9 +1649,9 @@ class CheckCommand extends BaseCommand
 
         // Check MySQL/MariaDB EOL
         $mysqlResult = $results['mysql'] ?? [];
-        if (is_array($mysqlResult) && isset($mysqlResult['version_number'])) {
+        if (is_array($mysqlResult) && isset($mysqlResult['version_number']) && is_string($mysqlResult['version_number'])) {
             $isMariaDB = (bool) ($mysqlResult['is_mariadb'] ?? false);
-            $dbVersion = (string) $mysqlResult['version_number'];
+            $dbVersion = $mysqlResult['version_number'];
             $dbMajorMinor = implode('.', array_slice(explode('.', $dbVersion), 0, 2));
             $product = $isMariaDB ? 'mariadb' : 'mysql';
             $productName = $isMariaDB ? 'MariaDB' : 'MySQL';
@@ -1756,7 +1762,10 @@ class CheckCommand extends BaseCommand
         // Find matching cycle in EOL data
         $eolDateStr = null;
         foreach ($eolData as $entry) {
-            $cycle = isset($entry['cycle']) ? (string) $entry['cycle'] : '';
+            if (!isset($entry['cycle']) || (!is_string($entry['cycle']) && !is_numeric($entry['cycle']))) {
+                continue;
+            }
+            $cycle = (string) $entry['cycle'];
             if ($cycle === $version) {
                 $eol = $entry['eol'] ?? null;
                 if (is_string($eol)) {

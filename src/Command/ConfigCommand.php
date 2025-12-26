@@ -47,7 +47,7 @@ class ConfigCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
 
         return match ($action) {
             'get' => $this->getConfig($input),
@@ -60,7 +60,7 @@ class ConfigCommand extends BaseCommand
 
     private function getConfig(InputInterface $input): int
     {
-        $key = $input->getArgument('key');
+        $key = $this->getStringArgument($input, 'key');
         if ($key === null || $key === '') {
             $this->io()->error('Configuration key is required for get action');
             return self::FAILURE;
@@ -86,11 +86,11 @@ class ConfigCommand extends BaseCommand
         }
 
         // Check if value is protected
-        if (isset($this->protectedKeys[$key]) && $input->getOption('show-protected') !== true) {
+        if (isset($this->protectedKeys[$key]) && !$this->getBoolOption($input, 'show-protected')) {
             $value = '**********';
         }
 
-        if ($input->getOption('json') === true) {
+        if ($this->getBoolOption($input, 'json')) {
             $this->io()->writeln((string) json_encode([$key => $value]));
         } else {
             $this->io()->writeln("<info>$key</info> = $value");
@@ -101,8 +101,8 @@ class ConfigCommand extends BaseCommand
 
     private function setConfig(InputInterface $input): int
     {
-        $key = $input->getArgument('key');
-        $value = $input->getArgument('value');
+        $key = $this->getStringArgument($input, 'key');
+        $value = $this->getStringArgument($input, 'value');
 
         if ($key === null || $key === '' || $value === null) {
             $this->io()->error('Both key and value are required for set action');
@@ -116,7 +116,7 @@ class ConfigCommand extends BaseCommand
         }
 
         // Create backup if requested
-        if ($input->getOption('backup') === true) {
+        if ($this->getBoolOption($input, 'backup')) {
             $this->createBackup($key);
         }
 
@@ -146,14 +146,14 @@ class ConfigCommand extends BaseCommand
 
     private function listConfig(InputInterface $input): int
     {
-        $file = $input->getOption('file');
-        $showProtected = $input->getOption('show-protected');
-        $json = $input->getOption('json');
+        $file = $this->getStringOptionOrDefault($input, 'file', 'all');
+        $showProtected = $this->getBoolOption($input, 'show-protected');
+        $json = $this->getBoolOption($input, 'json');
 
         $configs = $this->getAllConfigs($file);
 
-        if ($json === true) {
-            if ($showProtected !== true) {
+        if ($json) {
+            if (!$showProtected) {
                 foreach ($configs as $key => &$value) {
                     if (isset($this->protectedKeys[$key])) {
                         $value = '**********';
@@ -208,13 +208,13 @@ class ConfigCommand extends BaseCommand
                     if (!isset($contentItems[$itemKey])) {
                         $contentItems[$itemKey] = ['path' => '', 'url' => ''];
                     }
-                    $contentItems[$itemKey]['path'] = $value;
+                    $contentItems[$itemKey]['path'] = is_scalar($value) ? (string) $value : '';
                 } elseif (str_starts_with($key, 'content_url_')) {
                     $itemKey = str_replace('content_url_', '', $key);
                     if (!isset($contentItems[$itemKey])) {
                         $contentItems[$itemKey] = ['path' => '', 'url' => ''];
                     }
-                    $contentItems[$itemKey]['url'] = $value;
+                    $contentItems[$itemKey]['url'] = is_scalar($value) ? (string) $value : '';
                 }
             }
             if ($contentItems !== []) {
@@ -229,10 +229,11 @@ class ConfigCommand extends BaseCommand
             $rows = [];
             foreach ($dbConfigs as $key => $value) {
                 $fullKey = "db.$key";
-                if (isset($this->protectedKeys[$fullKey]) && $showProtected !== true) {
-                    $value = '**********';
+                $displayValue = $value;
+                if (isset($this->protectedKeys[$fullKey]) && !$showProtected) {
+                    $displayValue = '**********';
                 }
-                $rows[] = [$key, $value];
+                $rows[] = [$key, $displayValue];
             }
             if ($rows !== []) {
                 $this->renderTable(['Parameter', 'Value'], $rows);
@@ -257,7 +258,12 @@ class ConfigCommand extends BaseCommand
 
                 // Handle arrays
                 if (is_array($value)) {
-                    $value = json_encode($value);
+                    $encoded = json_encode($value);
+                    $value = $encoded !== false ? $encoded : '';
+                } elseif (is_scalar($value)) {
+                    $value = (string) $value;
+                } else {
+                    $value = '';
                 }
 
                 // Truncate long values
@@ -267,7 +273,7 @@ class ConfigCommand extends BaseCommand
 
                 // Check for protected values
                 $fullKey = "main.$configKey";
-                if (isset($this->protectedKeys[$fullKey]) && $showProtected !== true) {
+                if (isset($this->protectedKeys[$fullKey]) && !$showProtected) {
                     $value = '**********';
                 }
 
@@ -315,7 +321,7 @@ class ConfigCommand extends BaseCommand
 
     private function editConfig(InputInterface $input): int
     {
-        $file = $input->getOption('file');
+        $file = $this->getStringOptionOrDefault($input, 'file', 'all');
 
         $filePath = $this->getConfigFilePath($file);
         if ($filePath === null) {
@@ -360,7 +366,7 @@ class ConfigCommand extends BaseCommand
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<string, string>
      */
     private function getDatabaseConfigs(): array
     {
@@ -407,8 +413,13 @@ class ConfigCommand extends BaseCommand
         // Explicitly include version.php as it might not be loaded
         // due to include_once potentially failing silently
         $versionFile = dirname($file) . '/version.php';
-        if (file_exists($versionFile) && !isset($config['project_version'])) {
-            @include 'version.php';
+        /** @phpstan-ignore function.alreadyNarrowedType (config may be reassigned by include) */
+        if (file_exists($versionFile) && is_array($config)) {
+            /** @phpstan-ignore function.impossibleType (config populated by include) */
+            if (!array_key_exists('project_version', $config)) {
+                /** @phpstan-ignore include.fileNotFound (dynamic include after chdir) */
+                @include 'version.php';
+            }
         }
 
         ob_end_clean();
@@ -418,7 +429,9 @@ class ConfigCommand extends BaseCommand
             chdir($oldCwd);
         }
 
-        return $config;
+        // $config may be reassigned by the include, so we verify it's still an array
+        /** @phpstan-ignore function.alreadyNarrowedType (config may be reassigned by include) */
+        return is_array($config) ? $config : [];
     }
 
     /**
@@ -454,11 +467,15 @@ class ConfigCommand extends BaseCommand
             // Try main config first (most common)
             $mainConfigs = $this->getMainConfigs();
             if (isset($mainConfigs[$key])) {
-                if (is_array($mainConfigs[$key])) {
-                    $encoded = json_encode($mainConfigs[$key]);
+                $value = $mainConfigs[$key];
+                if (is_array($value)) {
+                    $encoded = json_encode($value);
                     return $encoded !== false ? $encoded : null;
                 }
-                return (string)$mainConfigs[$key];
+                if (is_scalar($value)) {
+                    return (string) $value;
+                }
+                return null;
             }
 
             // Try database config
@@ -475,7 +492,10 @@ class ConfigCommand extends BaseCommand
                         $encoded = json_encode($value);
                         return $encoded !== false ? $encoded : null;
                     }
-                    return (string)$value;
+                    if (is_scalar($value)) {
+                        return (string) $value;
+                    }
+                    return null;
                 }
             }
 
@@ -500,16 +520,23 @@ class ConfigCommand extends BaseCommand
                             $encoded = json_encode($v);
                             return $encoded !== false ? $encoded : null;
                         }
-                        return (string)$v;
+                        if (is_scalar($v)) {
+                            return (string) $v;
+                        }
+                        return null;
                     }
                 }
                 return null;
             }
-            if (is_array($configs[$configKey])) {
-                $encoded = json_encode($configs[$configKey]);
+            $value = $configs[$configKey];
+            if (is_array($value)) {
+                $encoded = json_encode($value);
                 return $encoded !== false ? $encoded : null;
             }
-            return (string)$configs[$configKey];
+            if (is_scalar($value)) {
+                return (string) $value;
+            }
+            return null;
         }
 
         return null;

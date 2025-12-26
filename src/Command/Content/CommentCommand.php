@@ -74,12 +74,13 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listComments($input),
-            'show' => $this->showComment($input->getArgument('id')),
-            'delete' => $this->deleteComment($input->getArgument('id')),
+            'show' => $this->showComment($id),
+            'delete' => $this->deleteComment($id),
             'stats' => $this->showStats(),
             default => $this->listComments($input),
         };
@@ -97,44 +98,44 @@ HELP
             $params = [];
 
             // Video filter
-            $videoId = $input->getOption('video');
+            $videoId = $this->getStringOption($input, 'video');
             if ($videoId !== null) {
                 $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
                 $params['video_id'] = $videoId;
             }
 
             // Album filter
-            $albumId = $input->getOption('album');
+            $albumId = $this->getStringOption($input, 'album');
             if ($albumId !== null) {
                 $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
                 $params['album_id'] = $albumId;
             }
 
             // User filter
-            $userId = $input->getOption('user');
+            $userId = $this->getStringOption($input, 'user');
             if ($userId !== null) {
                 $conditions[] = 'c.user_id = :user_id';
                 $params['user_id'] = $userId;
             }
 
             // Search filter
-            $search = $input->getOption('search');
+            $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
                 $conditions[] = 'c.comment LIKE :search';
                 $params['search'] = '%' . $search . '%';
             }
 
             // Approval status filters
-            if ((bool)$input->getOption('approved')) {
+            if ($this->getBoolOption($input, 'approved')) {
                 $conditions[] = 'c.is_approved = 1';
-            } elseif ((bool)$input->getOption('pending')) {
+            } elseif ($this->getBoolOption($input, 'pending')) {
                 $conditions[] = 'c.is_approved = 0';
             }
 
             $whereClause = implode(' AND ', $conditions);
             // Default: most recent first (DESC), unless --oldest is specified
-            $orderBy = (bool)$input->getOption('oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
-            $limit = (int)$input->getOption('limit');
+            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
+            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_COMMENT_LIMIT);
 
             $sql = "
                 SELECT c.*,
@@ -166,7 +167,7 @@ HELP
             $comments = $stmt->fetchAll();
 
             // Transform comments to use standardized field names
-            $transformedComments = array_map(function ($comment) {
+            $transformedComments = array_values(array_map(function (array $comment): array {
                 return [
                     'comment_id' => $comment['comment_id'],
                     'username' => $comment['username'],
@@ -175,7 +176,7 @@ HELP
                     'comment' => $comment['comment'],
                     'added_date' => $comment['added_date'],
                 ];
-            }, $comments);
+            }, $comments));
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
@@ -224,9 +225,9 @@ HELP
                 WHERE c.comment_id = :id
             ");
             $stmt->execute(['id' => $id]);
-            $comment = $stmt->fetch();
+            $comment = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($comment === false) {
+            if (!is_array($comment)) {
                 $this->io()->error("Comment not found: $id");
                 return self::FAILURE;
             }
@@ -238,20 +239,20 @@ HELP
                 : '<fg=yellow>Pending</>';
 
             $info = [
-                ['ID', $comment['comment_id']],
-                ['User', $comment['username'] ?? 'Guest'],
-                ['User Email', $comment['email'] ?? 'N/A'],
+                ['ID', (string) $comment['comment_id']],
+                ['User', (string) ($comment['username'] ?? 'Guest')],
+                ['User Email', (string) ($comment['email'] ?? 'N/A')],
                 ['Status', $approvalStatus],
-                ['Content Type', $comment['object_type']],
-                ['Content ID', $comment['object_id']],
-                ['Content Title', $comment['object_title'] ?? 'N/A'],
-                ['Posted', $comment['added_date']],
+                ['Content Type', (string) $comment['object_type']],
+                ['Content ID', (string) $comment['object_id']],
+                ['Content Title', (string) ($comment['object_title'] ?? 'N/A')],
+                ['Posted', (string) $comment['added_date']],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->io()->section('Comment Text');
-            $this->io()->text($comment['comment']);
+            $this->io()->text((string) $comment['comment']);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch comment: ' . $e->getMessage());
             return self::FAILURE;
@@ -288,21 +289,33 @@ HELP
                 WHERE c.comment_id = :id
             ");
             $stmt->execute(['id' => $id]);
-            $comment = $stmt->fetch();
+            $comment = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($comment === false) {
+            if (!is_array($comment)) {
                 $this->io()->error("Comment not found: $id");
                 return self::FAILURE;
+            }
+
+            $usernameRaw = $comment['username'] ?? null;
+            $username = 'Guest';
+            if ($usernameRaw !== null) {
+                $username = is_string($usernameRaw) ? $usernameRaw : (is_scalar($usernameRaw) ? (string) $usernameRaw : 'Guest');
+            }
+
+            $commentTextRaw = $comment['comment'] ?? null;
+            $commentText = '';
+            if ($commentTextRaw !== null) {
+                $commentText = is_string($commentTextRaw) ? $commentTextRaw : (is_scalar($commentTextRaw) ? (string) $commentTextRaw : '');
             }
 
             $this->io()->section("Comment to Delete");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
-                    ['ID', $comment['comment_id']],
-                    ['User', $comment['username'] ?? 'Guest'],
-                    ['Type', $comment['object_type']],
-                    ['Comment', truncate($comment['comment'], 100)],
+                    ['ID', (string) $comment['comment_id']],
+                    ['User', $username],
+                    ['Type', (string) $comment['object_type']],
+                    ['Comment', truncate($commentText, 100)],
                 ]
             );
 
@@ -347,7 +360,12 @@ HELP
                 $this->io()->error('Failed to fetch overall statistics');
                 return self::FAILURE;
             }
-            $overall = $stmt->fetch();
+            $overall = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!is_array($overall)) {
+                $this->io()->error('Failed to fetch overall statistics');
+                return self::FAILURE;
+            }
 
             // Top commenters
             $stmt = $db->query("
@@ -376,21 +394,34 @@ HELP
                 $this->io()->error('Failed to fetch recent activity statistics');
                 return self::FAILURE;
             }
-            $recentStats = $stmt->fetch();
+            $recentStats = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!is_array($recentStats)) {
+                $this->io()->error('Failed to fetch recent activity statistics');
+                return self::FAILURE;
+            }
 
             $this->io()->title('Comment Statistics');
 
             $this->io()->section('Overall Statistics');
+            $totalComments = is_numeric($overall['total_comments']) ? (int) $overall['total_comments'] : 0;
+            $uniqueUsers = is_numeric($overall['unique_users']) ? (int) $overall['unique_users'] : 0;
+            $videoComments = is_numeric($overall['video_comments']) ? (int) $overall['video_comments'] : 0;
+            $albumComments = is_numeric($overall['album_comments']) ? (int) $overall['album_comments'] : 0;
+            $recentComments = is_numeric($recentStats['recent_comments']) ? (int) $recentStats['recent_comments'] : 0;
+            $firstComment = $overall['first_comment'] ?? null;
+            $firstCommentStr = $firstComment ? (string) $firstComment : 'N/A';
+
             $this->renderTable(
                 ['Metric', 'Value'],
                 [
-                    ['Total Comments', number_format($overall['total_comments'])],
-                    ['Unique Commenters', number_format($overall['unique_users'])],
-                    ['Video Comments', number_format($overall['video_comments'])],
-                    ['Album Comments', number_format($overall['album_comments'])],
-                    ['Comments (Last 7 Days)', number_format($recentStats['recent_comments'])],
-                    ['First Comment', $overall['first_comment'] ?? 'N/A'],
-                    ['Latest Comment', $overall['last_comment'] ?? 'N/A'],
+                    ['Total Comments', number_format($totalComments)],
+                    ['Unique Commenters', number_format($uniqueUsers)],
+                    ['Video Comments', number_format($videoComments)],
+                    ['Album Comments', number_format($albumComments)],
+                    ['Comments (Last 7 Days)', number_format($recentComments)],
+                    ['First Comment', $firstCommentStr],
+                    ['Latest Comment', isset($overall['last_comment']) ? (string) $overall['last_comment'] : 'N/A'],
                 ]
             );
 

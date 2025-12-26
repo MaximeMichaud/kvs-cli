@@ -116,6 +116,24 @@ class Configuration
                 $this->dbConfig['database'] = $database;
             }
         }
+
+        // Environment variable overrides (highest priority)
+        $envHost = getenv('KVS_DB_HOST');
+        if ($envHost !== false && $envHost !== '') {
+            $this->dbConfig['host'] = $envHost;
+        }
+        $envUser = getenv('KVS_DB_USER');
+        if ($envUser !== false && $envUser !== '') {
+            $this->dbConfig['user'] = $envUser;
+        }
+        $envPass = getenv('KVS_DB_PASS');
+        if ($envPass !== false && $envPass !== '') {
+            $this->dbConfig['password'] = $envPass;
+        }
+        $envDb = getenv('KVS_DB_NAME');
+        if ($envDb !== false && $envDb !== '') {
+            $this->dbConfig['database'] = $envDb;
+        }
     }
 
     /**

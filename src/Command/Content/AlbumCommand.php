@@ -63,12 +63,12 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action') ?? 'list';
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
 
         return match ($action) {
             'list' => $this->listAlbums($input),
-            'show' => $this->showAlbum($input->getArgument('id')),
-            'delete' => $this->deleteAlbum($input->getArgument('id')),
+            'show' => $this->showAlbum($this->getStringArgument($input, 'id')),
+            'delete' => $this->deleteAlbum($this->getStringArgument($input, 'id')),
             default => $this->showHelp(),
         };
     }
@@ -88,13 +88,13 @@ HELP
 
         $params = [];
 
-        $status = $input->getOption('status');
+        $status = $this->getIntOption($input, 'status');
         if ($status !== null) {
             $query .= " AND a.status_id = :status";
             $params['status'] = $status;
         }
 
-        $user = $input->getOption('user');
+        $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
             $query .= " AND a.user_id = :user";
             $params['user'] = $user;
@@ -107,7 +107,8 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $stmt->bindValue('limit', (int)$input->getOption('limit'), \PDO::PARAM_INT);
+            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
             $albums = $stmt->fetchAll();

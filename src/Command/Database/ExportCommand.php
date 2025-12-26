@@ -66,14 +66,18 @@ EOT
         $this->io()->comment("Using: $dumpCommand");
 
         // Handle compression
-        $compressFormat = $input->getOption('compress');
+        $compressFormatRaw = $input->getOption('compress');
         $compressor = null;
         $fileExtension = '.sql';
 
-        if ($compressFormat !== false) {
+        if ($compressFormatRaw !== false) {
             // If --compress is passed without value, default to gzip
-            if ($compressFormat === null) {
+            // PHPStan: VALUE_OPTIONAL with default false = false|null|string
+            if ($compressFormatRaw === null) {
                 $compressFormat = 'gzip';
+            } else {
+                // At this point PHPStan knows it's a string
+                $compressFormat = $compressFormatRaw;
             }
 
             $compressor = $this->getCompressor($compressFormat);
@@ -95,7 +99,7 @@ EOT
             $this->io()->comment("Compression: $compressFormat");
         }
 
-        $outputFile = $input->getOption('output') ?? sprintf(
+        $outputFile = $this->getStringOption($input, 'output') ?? sprintf(
             'kvs_backup_%s%s',
             date('Y-m-d_H-i-s'),
             $fileExtension
@@ -123,11 +127,11 @@ EOT
             '--default-character-set=' . Constants::DB_CHARSET,
         ];
 
-        if ($input->getOption('no-data') !== false && $input->getOption('no-data') !== null) {
+        if ($this->getBoolOption($input, 'no-data')) {
             $command[] = '--no-data';
         }
 
-        $tables = $input->getOption('tables');
+        $tables = $this->getStringOption($input, 'tables');
         if ($tables !== null) {
             $command[] = $dbConfig['database'];
             $command = array_merge($command, explode(',', $tables));
@@ -209,34 +213,55 @@ EOT
     {
         // First, detect database type by running mysql --version
         $mysqlPathResult = shell_exec('which mysql 2>/dev/null');
-        $mysqlPath = $mysqlPathResult !== null ? trim($mysqlPathResult) : '';
+        if ($mysqlPathResult === null || $mysqlPathResult === false) {
+            return $this->tryAlternateDumpCommands();
+        }
+        $mysqlPath = trim($mysqlPathResult);
 
         if ($mysqlPath !== '') {
-            $versionOutput = shell_exec("$mysqlPath --version 2>/dev/null");
+            $versionOutputResult = shell_exec("$mysqlPath --version 2>/dev/null");
+            if ($versionOutputResult === null || $versionOutputResult === false) {
+                return $this->tryAlternateDumpCommands();
+            }
+            $versionOutput = trim($versionOutputResult);
 
             // Check if it's MariaDB
-            if ($versionOutput !== null && stripos($versionOutput, 'MariaDB') !== false) {
+            if (stripos($versionOutput, 'MariaDB') !== false) {
                 // Try mariadb-dump first
                 $mariadbDumpResult = shell_exec('which mariadb-dump 2>/dev/null');
-                $mariadbDump = $mariadbDumpResult !== null ? trim($mariadbDumpResult) : '';
-                if ($mariadbDump !== '') {
-                    return $mariadbDump;
+                if ($mariadbDumpResult !== null && $mariadbDumpResult !== false) {
+                    $mariadbDump = trim($mariadbDumpResult);
+                    if ($mariadbDump !== '') {
+                        return $mariadbDump;
+                    }
                 }
             }
         }
 
+        return $this->tryAlternateDumpCommands();
+    }
+
+    /**
+     * Try alternate dump commands
+     */
+    private function tryAlternateDumpCommands(): ?string
+    {
         // Fallback to mysqldump
         $mysqldumpResult = shell_exec('which mysqldump 2>/dev/null');
-        $mysqldump = $mysqldumpResult !== null ? trim($mysqldumpResult) : '';
-        if ($mysqldump !== '') {
-            return $mysqldump;
+        if ($mysqldumpResult !== null && $mysqldumpResult !== false) {
+            $mysqldump = trim($mysqldumpResult);
+            if ($mysqldump !== '') {
+                return $mysqldump;
+            }
         }
 
         // Try mariadb-dump as last resort
         $mariadbDumpResult = shell_exec('which mariadb-dump 2>/dev/null');
-        $mariadbDump = $mariadbDumpResult !== null ? trim($mariadbDumpResult) : '';
-        if ($mariadbDump !== '') {
-            return $mariadbDump;
+        if ($mariadbDumpResult !== null && $mariadbDumpResult !== false) {
+            $mariadbDump = trim($mariadbDumpResult);
+            if ($mariadbDump !== '') {
+                return $mariadbDump;
+            }
         }
 
         return null;
@@ -264,7 +289,10 @@ EOT
 
         // Check if command exists
         $pathResult = shell_exec("which {$compressor['command']} 2>/dev/null");
-        $path = $pathResult !== null ? trim($pathResult) : '';
+        if ($pathResult === null || $pathResult === false) {
+            return null;
+        }
+        $path = trim($pathResult);
         if ($path === '') {
             return null;
         }

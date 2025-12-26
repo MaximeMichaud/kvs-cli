@@ -37,7 +37,12 @@ EOT
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $mode = $input->getArgument('action');
+        $mode = $this->getStringArgument($input, 'action');
+        if ($mode === null) {
+            $this->io()->error('Action argument is required');
+            return self::FAILURE;
+        }
+
         $settingsFile = $this->config->getKvsPath() . '/admin/data/system/website_ui_params.dat';
         $settingsDir = dirname($settingsFile);
 

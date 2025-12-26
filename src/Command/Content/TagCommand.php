@@ -68,19 +68,18 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $identifier = $this->getStringArgument($input, 'identifier');
+        $target = $this->getStringArgument($input, 'target');
 
         return match ($action) {
             'list' => $this->listTags($input),
-            'create' => $this->createTag($input->getArgument('identifier')),
-            'delete' => $this->deleteTag($input->getArgument('identifier')),
-            'update' => $this->updateTag($input->getArgument('identifier'), $input),
-            'enable' => $this->toggleStatus($input->getArgument('identifier'), 1),
-            'disable' => $this->toggleStatus($input->getArgument('identifier'), 0),
-            'merge' => $this->mergeTags(
-                $input->getArgument('identifier'),
-                $input->getArgument('target')
-            ),
+            'create' => $this->createTag($identifier),
+            'delete' => $this->deleteTag($identifier),
+            'update' => $this->updateTag($identifier, $input),
+            'enable' => $this->toggleStatus($identifier, 1),
+            'disable' => $this->toggleStatus($identifier, 0),
+            'merge' => $this->mergeTags($identifier, $target),
             'stats' => $this->showStats(),
             default => $this->listTags($input),
         };
@@ -98,7 +97,7 @@ HELP
             $params = [];
 
             // Status filter
-            $status = $input->getOption('status');
+            $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
                 $statusId = ($status === 'active') ? 1 : 0;
                 $conditions[] = 't.status_id = :status';
@@ -106,7 +105,7 @@ HELP
             }
 
             // Search filter
-            $search = $input->getOption('search');
+            $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
                 $conditions[] = 't.tag LIKE :search';
                 $params['search'] = '%' . $search . '%';
@@ -114,7 +113,7 @@ HELP
 
             // Build query
             $whereClause = implode(' AND ', $conditions);
-            $limit = (int)$input->getOption('limit');
+            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
 
             $sql = "
                 SELECT t.*,
@@ -125,7 +124,7 @@ HELP
             ";
 
             // Unused filter
-            if ($input->getOption('unused') !== false) {
+            if ($this->getBoolOption($input, 'unused')) {
                 $sql .= " HAVING video_count = 0 AND album_count = 0";
             }
 
@@ -141,16 +140,16 @@ HELP
             $tags = $stmt->fetchAll();
 
             // Add total_usage field to each tag
-            $transformedTags = array_map(function ($tag) {
+            $transformedTags = array_values(array_map(function (array $tag): array {
                 return [
                     'tag_id' => $tag['tag_id'],
                     'tag' => $tag['tag'],
                     'video_count' => $tag['video_count'],
                     'album_count' => $tag['album_count'],
-                    'total_usage' => $tag['video_count'] + $tag['album_count'],
+                    'total_usage' => (int) $tag['video_count'] + (int) $tag['album_count'],
                     'status_id' => $tag['status_id'],
                 ];
-            }, $tags);
+            }, $tags));
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
@@ -203,7 +202,7 @@ HELP
             $this->renderTable(
                 ['Property', 'Value'],
                 [
-                    ['ID', $tagId],
+                    ['ID', (string) $tagId],
                     ['Name', $tagName],
                     ['Status', 'Active'],
                 ]
@@ -233,9 +232,9 @@ HELP
             // Get tag details
             $stmt = $db->prepare("SELECT * FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $identifier]);
-            $tag = $stmt->fetch();
+            $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($tag === false) {
+            if (!is_array($tag)) {
                 $this->io()->error("Tag not found: $identifier");
                 return self::FAILURE;
             }
@@ -247,15 +246,22 @@ HELP
                     (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = :id) as album_count
             ");
             $stmt->execute(['id' => $identifier]);
-            $usage = $stmt->fetch();
+            $usage = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            $totalUsage = $usage['video_count'] + $usage['album_count'];
+            if (!is_array($usage)) {
+                $this->io()->error('Failed to retrieve tag usage information');
+                return self::FAILURE;
+            }
+
+            $videoCount = is_numeric($usage['video_count']) ? (int) $usage['video_count'] : 0;
+            $albumCount = is_numeric($usage['album_count']) ? (int) $usage['album_count'] : 0;
+            $totalUsage = $videoCount + $albumCount;
 
             if ($totalUsage > 0) {
                 $this->io()->warning("This tag is used by $totalUsage items:");
                 $this->io()->listing([
-                    "Videos: {$usage['video_count']}",
-                    "Albums: {$usage['album_count']}",
+                    "Videos: $videoCount",
+                    "Albums: $albumCount",
                 ]);
 
                 if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
@@ -272,7 +278,9 @@ HELP
             $stmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $identifier]);
 
-            $this->io()->success("Tag '{$tag['tag']}' deleted successfully!");
+            $tagValue = $tag['tag'] ?? '';
+            $deletedTagName = is_string($tagValue) ? $tagValue : (is_scalar($tagValue) ? (string) $tagValue : '');
+            $this->io()->success("Tag '$deletedTagName' deleted successfully!");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete tag: ' . $e->getMessage());
             return self::FAILURE;
@@ -310,12 +318,28 @@ HELP
                 return self::FAILURE;
             }
 
-            $sourceTag = array_filter($tags, fn($t) => $t['tag_id'] === $sourceId)[0] ?? null;
-            $targetTag = array_filter($tags, fn($t) => $t['tag_id'] === $targetId)[0] ?? null;
+            $sourceTag = null;
+            $targetTag = null;
+            foreach ($tags as $tag) {
+                if ($tag['tag_id'] === $sourceId) {
+                    $sourceTag = $tag;
+                }
+                if ($tag['tag_id'] === $targetId) {
+                    $targetTag = $tag;
+                }
+            }
+
+            if ($sourceTag === null || $targetTag === null) {
+                $this->io()->error('One or both tags not found');
+                return self::FAILURE;
+            }
+
+            $sourceTagName = (string) $sourceTag['tag'];
+            $targetTagName = (string) $targetTag['tag'];
 
             $this->io()->section('Merge Operation');
-            $this->io()->text("Source: {$sourceTag['tag']} (ID: $sourceId)");
-            $this->io()->text("Target: {$targetTag['tag']} (ID: $targetId)");
+            $this->io()->text("Source: $sourceTagName (ID: $sourceId)");
+            $this->io()->text("Target: $targetTagName (ID: $targetId)");
             $this->io()->newLine();
             $this->io()->warning('All associations will be moved to the target tag, then source tag will be deleted.');
 
@@ -348,7 +372,7 @@ HELP
             $db->commit();
 
             $this->io()->success("Tags merged successfully!");
-            $this->io()->text("'{$sourceTag['tag']}' has been merged into '{$targetTag['tag']}'");
+            $this->io()->text("'$sourceTagName' has been merged into '$targetTagName'");
         } catch (\Exception $e) {
             if ($db->inTransaction()) {
                 $db->rollBack();
@@ -379,7 +403,11 @@ HELP
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to execute overall stats query');
             }
-            $overall = $stmt->fetch();
+            $overall = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!is_array($overall)) {
+                throw new \RuntimeException('Failed to fetch overall stats');
+            }
 
             // Usage stats
             $stmt = $db->query("
@@ -394,8 +422,15 @@ HELP
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to execute usage stats query');
             }
-            $usageStats = $stmt->fetch();
-            $unusedTags = $overall['total_tags'] - $usageStats['used_tags'];
+            $usageStats = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!is_array($usageStats)) {
+                throw new \RuntimeException('Failed to fetch usage stats');
+            }
+
+            $totalTags = is_numeric($overall['total_tags']) ? (int) $overall['total_tags'] : 0;
+            $usedTags = is_numeric($usageStats['used_tags']) ? (int) $usageStats['used_tags'] : 0;
+            $unusedTags = $totalTags - $usedTags;
 
             // Top tags
             $stmt = $db->query("
@@ -414,14 +449,17 @@ HELP
             $this->io()->title('Tag Statistics');
 
             $this->io()->section('Overall Statistics');
+            $activeTags = is_numeric($overall['active_tags']) ? (int) $overall['active_tags'] : 0;
+            $inactiveTags = is_numeric($overall['inactive_tags']) ? (int) $overall['inactive_tags'] : 0;
+
             $this->renderTable(
                 ['Metric', 'Count'],
                 [
-                    ['Total Tags', $overall['total_tags']],
-                    ['Active Tags', $overall['active_tags']],
-                    ['Inactive Tags', $overall['inactive_tags']],
-                    ['Used Tags', $usageStats['used_tags']],
-                    ['Unused Tags', $unusedTags],
+                    ['Total Tags', (string) $totalTags],
+                    ['Active Tags', (string) $activeTags],
+                    ['Inactive Tags', (string) $inactiveTags],
+                    ['Used Tags', (string) $usedTags],
+                    ['Unused Tags', (string) $unusedTags],
                 ]
             );
 
@@ -464,9 +502,9 @@ HELP
             // Get current tag
             $stmt = $db->prepare("SELECT * FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $id]);
-            $tag = $stmt->fetch();
+            $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($tag === false) {
+            if (!is_array($tag)) {
                 $this->io()->error("Tag not found: $id");
                 return self::FAILURE;
             }
@@ -475,7 +513,7 @@ HELP
             $params = ['id' => $id];
 
             // Name
-            $name = $input->getOption('name');
+            $name = $this->getStringOption($input, 'name');
             if ($name !== null) {
                 // Check if new name already exists
                 $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id !== :id");
@@ -490,7 +528,7 @@ HELP
             }
 
             // Status
-            $status = $input->getOption('status');
+            $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
                 $statusId = ($status === 'active') ? 1 : 0;
                 $updates[] = 'status_id = :status_id';
@@ -507,18 +545,19 @@ HELP
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
 
+            $tagValue = $tag['tag'] ?? '';
+            $tagStr = is_string($tagValue) ? $tagValue : (is_scalar($tagValue) ? (string) $tagValue : '');
+            $newName = $params['tag'] ?? $tagStr;
+            $currentStatusId = $params['status_id'] ?? (is_numeric($tag['status_id']) ? (int) $tag['status_id'] : 0);
+            $statusLabel = $currentStatusId !== 0 ? 'Active' : 'Inactive';
+
             $this->io()->success("Tag updated successfully!");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
                     ['ID', $id],
-                    ['New Name', $params['tag'] ?? $tag['tag']],
-                    [
-                        'Status',
-                        isset($params['status_id'])
-                            ? ($params['status_id'] !== 0 ? 'Active' : 'Inactive')
-                            : ($tag['status_id'] !== 0 ? 'Active' : 'Inactive')
-                    ],
+                    ['New Name', $newName],
+                    ['Status', $statusLabel],
                 ]
             );
         } catch (\Exception $e) {

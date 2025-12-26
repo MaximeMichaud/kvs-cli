@@ -65,12 +65,13 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listPlugins($input),
-            'show' => $this->showPlugin($input->getArgument('id')),
-            'path' => $this->showPluginPath($input->getArgument('id')),
+            'show' => $this->showPlugin($id),
+            'path' => $this->showPluginPath($id),
             'status' => $this->showStatus(),
             default => $this->listPlugins($input),
         };
@@ -86,52 +87,73 @@ HELP
         }
 
         // Apply filters
-        $statusFilter = $input->getOption('status');
-        $typeFilter = $input->getOption('type');
+        $statusFilter = $this->getStringOption($input, 'status');
+        $typeFilter = $this->getStringOption($input, 'type');
 
         if ($statusFilter !== null && $statusFilter !== 'all') {
-            $plugins = array_filter($plugins, function ($plugin) use ($statusFilter) {
+            $plugins = array_filter($plugins, function (array $plugin) use ($statusFilter): bool {
                 $isEnabled = $plugin['is_enabled'] ?? false;
                 if ($statusFilter === 'active') {
-                    return $isEnabled;
+                    return (bool)$isEnabled;
                 } elseif ($statusFilter === 'inactive') {
-                    return !$isEnabled;
+                    return !(bool)$isEnabled;
                 }
                 return true;
             });
         }
 
         if ($typeFilter !== null && $typeFilter !== '') {
-            $plugins = array_filter($plugins, function ($plugin) use ($typeFilter) {
+            $plugins = array_filter($plugins, function (array $plugin) use ($typeFilter): bool {
                 $types = $plugin['types'] ?? [];
+                if (!is_array($types)) {
+                    return false;
+                }
                 return in_array($typeFilter, $types, true);
             });
         }
 
         // Transform plugins to flattened format for Formatter
-        $transformedPlugins = array_map(function ($plugin) {
-            $filesOk = $plugin['files_ok'] ?? false;
-            $syntaxOk = $plugin['syntax_ok'] ?? false;
-            $compatible = $plugin['compatible'] ?? false;
-            $isEnabled = $plugin['is_enabled'] ?? false;
+        $transformedPlugins = array_map(function (array $plugin): array {
+            $filesOk = (bool)($plugin['files_ok'] ?? false);
+            $syntaxOk = (bool)($plugin['syntax_ok'] ?? false);
+            $compatible = (bool)($plugin['compatible'] ?? false);
+            $isEnabled = (bool)($plugin['is_enabled'] ?? false);
             $types = $plugin['types'] ?? [];
+            if (!is_array($types)) {
+                $types = [];
+            }
             $isValid = $filesOk && $syntaxOk && $compatible;
 
+            $typesStr = '';
+            if ($types !== []) {
+                $typesArr = array_map(fn($t): string => is_string($t) ? $t : '', $types);
+                $typesStr = implode(',', array_filter($typesArr, fn($t): bool => $t !== ''));
+            }
+
+            $id = $plugin['id'] ?? '';
+            $name = $plugin['name'] ?? '';
+            $title = $plugin['title'] ?? '';
+            $author = $plugin['author'] ?? '';
+            $version = $plugin['version'] ?? '';
+            $kvsVersion = $plugin['kvs_version'] ?? '';
+            $description = $plugin['description'] ?? '';
+            $path = $plugin['path'] ?? '';
+
             return [
-                'id' => $plugin['id'] ?? '',
-                'name' => $plugin['name'] ?? '',
-                'title' => $plugin['title'] ?? '',
-                'author' => $plugin['author'] ?? '',
-                'version' => $plugin['version'] ?? '',
-                'kvs_version' => $plugin['kvs_version'] ?? '',
+                'id' => is_string($id) ? $id : '',
+                'name' => is_string($name) ? $name : '',
+                'title' => is_string($title) ? $title : '',
+                'author' => is_string($author) ? $author : '',
+                'version' => is_string($version) ? $version : '',
+                'kvs_version' => is_string($kvsVersion) ? $kvsVersion : '',
                 'status' => $isEnabled ? 'Active' : 'Inactive',
-                'types' => $types !== [] ? implode(',', $types) : '',
+                'types' => $typesStr,
                 'files_ok' => $filesOk ? 'Yes' : 'No',
                 'syntax_ok' => $syntaxOk ? 'Yes' : 'No',
                 'compatible' => $compatible ? 'Yes' : 'No',
                 'valid' => $isValid ? 'Yes' : 'No',
-                'description' => $plugin['description'] ?? '',
-                'path' => $plugin['path'] ?? '',
+                'description' => is_string($description) ? $description : '',
+                'path' => is_string($path) ? $path : '',
             ];
         }, $plugins);
 
@@ -140,8 +162,7 @@ HELP
             $input->getOptions(),
             ['id', 'name', 'version', 'status', 'types']
         );
-        /** @var list<array<string, mixed>> $transformedPlugins */
-        $formatter->display($transformedPlugins, $this->io());
+        $formatter->display(array_values($transformedPlugins), $this->io());
 
         return self::SUCCESS;
     }
@@ -162,22 +183,34 @@ HELP
         }
 
         $name = $plugin['name'] ?? 'Unknown';
-        $this->io()->section("Plugin: {$name}");
+        $nameStr = is_string($name) ? $name : 'Unknown';
+        $this->io()->section("Plugin: {$nameStr}");
 
-        $filesOk = $plugin['files_ok'] ?? false;
-        $syntaxOk = $plugin['syntax_ok'] ?? false;
-        $compatible = $plugin['compatible'] ?? false;
-        $isEnabled = $plugin['is_enabled'] ?? false;
+        $filesOk = (bool)($plugin['files_ok'] ?? false);
+        $syntaxOk = (bool)($plugin['syntax_ok'] ?? false);
+        $compatible = (bool)($plugin['compatible'] ?? false);
+        $isEnabled = (bool)($plugin['is_enabled'] ?? false);
         $types = $plugin['types'] ?? [];
+        if (!is_array($types)) {
+            $types = [];
+        }
+        $typesArr = array_map(fn($t): string => is_string($t) ? $t : '', $types);
+        $typesStr = implode(', ', array_filter($typesArr, fn($t): bool => $t !== ''));
+
+        $id = $plugin['id'] ?? '';
+        $title = $plugin['title'] ?? '';
+        $author = $plugin['author'] ?? '';
+        $version = $plugin['version'] ?? '';
+        $kvsVersion = $plugin['kvs_version'] ?? '';
 
         $info = [
-            ['ID', $plugin['id'] ?? ''],
-            ['Name', $name],
-            ['Title', $plugin['title'] ?? ''],
-            ['Author', $plugin['author'] ?? ''],
-            ['Version', $plugin['version'] ?? ''],
-            ['Required KVS', $plugin['kvs_version'] ?? ''],
-            ['Types', implode(', ', $types)],
+            ['ID', is_string($id) ? $id : ''],
+            ['Name', $nameStr],
+            ['Title', is_string($title) ? $title : ''],
+            ['Author', is_string($author) ? $author : ''],
+            ['Version', is_string($version) ? $version : ''],
+            ['Required KVS', is_string($kvsVersion) ? $kvsVersion : ''],
+            ['Types', $typesStr],
             ['Files OK', $filesOk ? '<fg=green>Yes</>' : '<fg=red>No</>'],
             ['Syntax OK', $syntaxOk ? '<fg=green>Yes</>' : '<fg=red>No</>'],
             ['Compatible', $compatible ? '<fg=green>Yes</>' : '<fg=red>No</>'],
@@ -187,19 +220,22 @@ HELP
         $this->renderTable(['Property', 'Value'], $info);
 
         $description = $plugin['description'] ?? '';
-        if ($description !== '') {
+        $descriptionStr = is_string($description) ? $description : '';
+        if ($descriptionStr !== '') {
             $this->io()->section('Description');
-            $this->io()->text($description);
+            $this->io()->text($descriptionStr);
         }
 
         $pluginPath = $plugin['path'] ?? '';
         $pluginId = $plugin['id'] ?? '';
+        $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
+        $pluginIdStr = is_string($pluginId) ? $pluginId : '';
         $this->io()->section('Paths');
         $this->io()->listing([
-            "Plugin directory: {$pluginPath}",
-            "Main file: {$pluginPath}/{$pluginId}.php",
-            "Template: {$pluginPath}/{$pluginId}.tpl",
-            "Metadata: {$pluginPath}/{$pluginId}.dat",
+            "Plugin directory: {$pluginPathStr}",
+            "Main file: {$pluginPathStr}/{$pluginIdStr}.php",
+            "Template: {$pluginPathStr}/{$pluginIdStr}.tpl",
+            "Metadata: {$pluginPathStr}/{$pluginIdStr}.dat",
         ]);
 
         return self::SUCCESS;
@@ -220,7 +256,8 @@ HELP
         }
 
         $pluginPath = $plugin['path'] ?? '';
-        $this->io()->writeln($pluginPath);
+        $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
+        $this->io()->writeln($pluginPathStr);
         return self::SUCCESS;
     }
 
@@ -236,10 +273,17 @@ HELP
         $incompatible = count(array_filter($plugins, fn($p) => ($p['compatible'] ?? true) === false));
 
         // Count by type
+        /** @var array<string, int> $typeStats */
         $typeStats = [];
         foreach ($plugins as $plugin) {
             $types = $plugin['types'] ?? [];
+            if (!is_array($types)) {
+                continue;
+            }
             foreach ($types as $type) {
+                if (!is_string($type)) {
+                    continue;
+                }
                 if (!isset($typeStats[$type])) {
                     $typeStats[$type] = 0;
                 }
@@ -322,7 +366,14 @@ HELP
         }
 
         // Sort by name
-        usort($plugins, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+        usort($plugins, function (array $a, array $b): int {
+            $nameA = $a['name'] ?? '';
+            $nameB = $b['name'] ?? '';
+            return strcasecmp(
+                is_string($nameA) ? $nameA : '',
+                is_string($nameB) ? $nameB : ''
+            );
+        });
 
         return $plugins;
     }
@@ -400,11 +451,13 @@ HELP
             /** @var array<string, mixed> $lang */
             $lang = [];
             include $langFile;
-            if (isset($lang['plugins'][$id]['title'])) {
-                $plugin['title'] = $lang['plugins'][$id]['title'];
-            }
-            if (isset($lang['plugins'][$id]['description'])) {
-                $plugin['description'] = $lang['plugins'][$id]['description'];
+            if (isset($lang['plugins']) && is_array($lang['plugins']) && isset($lang['plugins'][$id]) && is_array($lang['plugins'][$id])) {
+                if (isset($lang['plugins'][$id]['title']) && is_string($lang['plugins'][$id]['title'])) {
+                    $plugin['title'] = $lang['plugins'][$id]['title'];
+                }
+                if (isset($lang['plugins'][$id]['description']) && is_string($lang['plugins'][$id]['description'])) {
+                    $plugin['description'] = $lang['plugins'][$id]['description'];
+                }
             }
         }
 

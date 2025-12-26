@@ -27,20 +27,20 @@ class CronCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('list') !== false) {
+        if ($this->getBoolOption($input, 'list')) {
             return $this->listCronTasks();
         }
 
-        if ($input->getOption('status') !== false) {
+        if ($this->getBoolOption($input, 'status')) {
             return $this->showCronStatus();
         }
 
-        $task = $input->getArgument('task');
+        $task = $this->getStringArgument($input, 'task');
         if ($task !== null) {
-            return $this->runSpecificTask($task, $input->getOption('force') !== false);
+            return $this->runSpecificTask($task, $this->getBoolOption($input, 'force'));
         }
 
-        return $this->runAllCronTasks($input->getOption('force') !== false);
+        return $this->runAllCronTasks($this->getBoolOption($input, 'force'));
     }
 
     private function listCronTasks(): int
@@ -78,8 +78,11 @@ class CronCommand extends BaseCommand
                 if (is_array($status)) {
                     $rows = [];
                     foreach ($status as $task => $lastRun) {
+                        if (!is_int($lastRun)) {
+                            continue;
+                        }
                         $rows[] = [
-                            $task,
+                            (string) $task,
                             date('Y-m-d H:i:s', $lastRun),
                             $this->getTimeDiff($lastRun),
                         ];

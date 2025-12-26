@@ -70,13 +70,13 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $input->getArgument('action') ?? 'list';
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
 
         return match ($action) {
             'list' => $this->listVideos($input),
-            'show' => $this->showVideo($input->getArgument('id')),
-            'delete' => $this->deleteVideo($input->getArgument('id')),
-            'update' => $this->updateVideo($input->getArgument('id'), $input),
+            'show' => $this->showVideo($this->getStringArgument($input, 'id')),
+            'delete' => $this->deleteVideo($this->getStringArgument($input, 'id')),
+            'update' => $this->updateVideo($this->getStringArgument($input, 'id'), $input),
             'stats' => $this->showStats(),
             default => $this->showHelp(),
         };
@@ -97,8 +97,8 @@ HELP
 
         $params = [];
 
-        $status = $input->getOption('status');
-        if (is_string($status)) {
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
             $statusMap = ['active' => 1, 'disabled' => 0, 'error' => 2];
             if (isset($statusMap[$status])) {
                 $query .= " AND v.status_id = :status";
@@ -106,20 +106,20 @@ HELP
             }
         }
 
-        $search = $input->getOption('search');
-        if (is_string($search)) {
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
             $query .= " AND v.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
-        $category = $input->getOption('category');
+        $category = $this->getIntOption($input, 'category');
         if ($category !== null) {
             $query .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
                 . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
-        $user = $input->getOption('user');
+        $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
             $query .= " AND v.user_id = :user";
             $params['user'] = $user;
@@ -132,7 +132,8 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $stmt->bindValue('limit', (int)$input->getOption('limit'), \PDO::PARAM_INT);
+            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
             $videos = $stmt->fetchAll();

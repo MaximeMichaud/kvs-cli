@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Command\Traits\InputHelperTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Command\Command;
@@ -12,6 +13,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 abstract class BaseCommand extends Command
 {
+    use InputHelperTrait;
+
     protected Configuration $config;
     protected ?SymfonyStyle $io = null;
 
@@ -76,23 +79,40 @@ abstract class BaseCommand extends Command
             return null;
         }
 
-        try {
-            $dsn = sprintf(
-                'mysql:host=%s;dbname=%s;charset=' . Constants::DB_CHARSET,
-                $dbConfig['host'],
-                $dbConfig['database']
-            );
+        // Try original host first, then fallback to localhost/127.0.0.1 for Docker scenarios
+        $hostsToTry = [$dbConfig['host']];
 
-            return new \PDO($dsn, $dbConfig['user'], $dbConfig['password'], [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-            ]);
-        } catch (\PDOException $e) {
-            if (!$quiet) {
-                $this->io()->error('Database connection failed: ' . $e->getMessage());
-            }
-            return null;
+        // If host looks like a Docker hostname (no dots, not localhost/127.0.0.1), add fallbacks
+        $originalHost = $dbConfig['host'];
+        if (!str_contains($originalHost, '.') && $originalHost !== 'localhost' && $originalHost !== '127.0.0.1') {
+            $hostsToTry[] = '127.0.0.1';
+            $hostsToTry[] = 'localhost';
         }
+
+        $lastError = null;
+        foreach ($hostsToTry as $host) {
+            try {
+                $dsn = sprintf(
+                    'mysql:host=%s;dbname=%s;charset=' . Constants::DB_CHARSET,
+                    $host,
+                    $dbConfig['database']
+                );
+
+                return new \PDO($dsn, $dbConfig['user'], $dbConfig['password'], [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+                    \PDO::ATTR_TIMEOUT => 3,
+                ]);
+            } catch (\PDOException $e) {
+                $lastError = $e;
+                continue;
+            }
+        }
+
+        if (!$quiet && $lastError !== null) {
+            $this->io()->error('Database connection failed: ' . $lastError->getMessage());
+        }
+        return null;
     }
 
     /**

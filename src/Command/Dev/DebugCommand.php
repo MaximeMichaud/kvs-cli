@@ -27,11 +27,11 @@ class DebugCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('check') === true) {
+        if ($this->getBoolOption($input, 'check')) {
             return $this->runChecks();
         }
 
-        if ($input->getOption('test-db') === true) {
+        if ($this->getBoolOption($input, 'test-db')) {
             return $this->testDatabase();
         }
 
@@ -142,12 +142,25 @@ class DebugCommand extends BaseCommand
         $this->io()->section('Debug Information');
 
         $kvsPathValue = $this->config->getKvsPath();
-        $displayErrors = ini_get('display_errors');
-        $logErrors = ini_get('log_errors');
-        $errorLog = ini_get('error_log');
-        $memoryLimit = ini_get('memory_limit');
-        $maxExecTime = ini_get('max_execution_time');
         $cwd = getcwd();
+
+        // Note: ini_get() can return false, but PHPDoc says string|numeric-string
+        /** @phpstan-ignore-next-line */
+        $memoryLimitValue = @ini_get('memory_limit') ?: 'Unknown';
+        /** @phpstan-ignore-next-line */
+        $maxExecTimeValue = @ini_get('max_execution_time') ?: 'Unknown';
+        /** @phpstan-ignore-next-line */
+        $displayErrorsRaw = @ini_get('display_errors') ?: '0';
+        /** @phpstan-ignore-next-line */
+        $logErrorsRaw = @ini_get('log_errors') ?: '0';
+        /** @phpstan-ignore-next-line */
+        $errorLogRaw = @ini_get('error_log') ?: '';
+
+        /** @phpstan-ignore-next-line */
+        $displayErrorsValue = ($displayErrorsRaw !== '0' && $displayErrorsRaw !== '') ? 'On' : 'Off';
+        /** @phpstan-ignore-next-line */
+        $logErrorsValue = ($logErrorsRaw !== '0' && $logErrorsRaw !== '') ? 'On' : 'Off';
+        $errorLogValue = $errorLogRaw !== '' ? $errorLogRaw : 'Not set';
 
         /** @var list<list<string|int|null>> $info */
         $info = [
@@ -158,12 +171,12 @@ class DebugCommand extends BaseCommand
             ['Content Path', $this->config->getContentPath()],
             ['PHP Version', PHP_VERSION],
             ['PHP SAPI', PHP_SAPI],
-            ['Memory Limit', $memoryLimit !== false ? $memoryLimit : 'Unknown'],
-            ['Max Execution Time', $maxExecTime !== false ? $maxExecTime : 'Unknown'],
+            ['Memory Limit', $memoryLimitValue],
+            ['Max Execution Time', $maxExecTimeValue],
             ['Error Reporting', (string)error_reporting()],
-            ['Display Errors', ($displayErrors !== '' && $displayErrors !== '0') ? 'On' : 'Off'],
-            ['Log Errors', ($logErrors !== '' && $logErrors !== '0') ? 'On' : 'Off'],
-            ['Error Log', ($errorLog !== '' && $errorLog !== false) ? $errorLog : 'Not set'],
+            ['Display Errors', $displayErrorsValue],
+            ['Log Errors', $logErrorsValue],
+            ['Error Log', $errorLogValue],
         ];
 
         $this->renderTable(['Parameter', 'Value'], $info);

@@ -28,12 +28,12 @@ class CacheCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('stats') !== null && $input->getOption('stats') !== false) {
+        if ($this->getBoolOption($input, 'stats')) {
             return $this->showStats();
         }
 
-        if ($input->getOption('clear') !== null && $input->getOption('clear') !== false) {
-            return $this->clearCache($input->getOption('type'));
+        if ($this->getBoolOption($input, 'clear')) {
+            return $this->clearCache($this->getStringOption($input, 'type'));
         }
 
         $this->io()->info('Available options:');

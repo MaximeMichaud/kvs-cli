@@ -91,10 +91,11 @@ HELP
 
         // Set shell variables
         $shell = new Shell($shellConfig);
-        $shell->setScopeVariables($this->getShellVariables($db));
+        $shell->setScopeVariables($this->getShellVariables());
 
         // Add custom includes
-        foreach ($input->getOption('includes') as $include) {
+        $includes = $this->getArrayOption($input, 'includes');
+        foreach ($includes as $include) {
             if (file_exists($include)) {
                 require_once $include;
             }
@@ -113,7 +114,7 @@ HELP
     {
         $kvsPath = $this->config->getKvsPath();
         $prefix = $this->config->getTablePrefix();
-        $bootstrap = $input->getOption('bootstrap');
+        $bootstrap = $this->getStringOption($input, 'bootstrap');
 
         $code = <<<PHP
 <?php
@@ -255,16 +256,16 @@ PHP;
     }
 
     /**
-     * @param \mysqli|null $db
      * @return array<string, mixed>
      */
-    private function getShellVariables($db): array
+    private function getShellVariables(): array
     {
         $vars = [
             'kvsConfig' => $this->config,
             'kvsPath' => $this->config->getKvsPath(),
         ];
 
+        $db = $this->getDatabaseConnection(true);
         if ($db !== null) {
             $vars['db'] = $db;
         }

@@ -30,27 +30,27 @@ class LogCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($input->getOption('list') !== false) {
+        if ($this->getBoolOption($input, 'list')) {
             return $this->listLogs();
         }
 
-        $type = $input->getArgument('type');
-        assert(is_string($type) || $type === null);
+        $type = $this->getStringArgument($input, 'type');
 
         // If no type specified and no options, show list
-        if ($type === null && $input->getOption('clear') === false && $input->getOption('follow') === false) {
+        if ($type === null && !$this->getBoolOption($input, 'clear') && !$this->getBoolOption($input, 'follow')) {
             return $this->listLogs();
         }
 
-        if ($input->getOption('clear') !== false) {
+        if ($this->getBoolOption($input, 'clear')) {
             return $this->clearLog($type);
         }
 
-        if ($input->getOption('follow') !== false) {
+        if ($this->getBoolOption($input, 'follow')) {
             return $this->followLog($type);
         }
 
-        return $this->showLog($type, (int)$input->getOption('tail'));
+        $tail = $this->getIntOptionOrDefault($input, 'tail', 50);
+        return $this->showLog($type, $tail);
     }
 
     private function listLogs(): int

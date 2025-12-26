@@ -97,10 +97,19 @@ class Formatter
     {
         $field = $this->args['field'];
 
+        // Type check: field must be a string
+        if (!is_string($field)) {
+            return;
+        }
+
         foreach ($items as $item) {
             $value = $this->getFieldValue($item, $field);
             if ($value !== '') {
-                $output->writeln((string)$value);
+                // Cast to string - database values are typically strings/ints/null
+                $stringValue = is_scalar($value) || $value === null ? (string)$value : '';
+                if ($stringValue !== '') {
+                    $output->writeln($stringValue);
+                }
             }
         }
     }
@@ -117,6 +126,25 @@ class Formatter
         $fields = $this->args['fields'];
         $format = $this->args['format'];
 
+        // Type check: fields must be a list of strings
+        if (!is_array($fields)) {
+            throw new \InvalidArgumentException('Fields must be an array');
+        }
+
+        // Ensure all fields are strings
+        /** @var list<string> $validFields */
+        $validFields = [];
+        foreach ($fields as $field) {
+            if (is_string($field)) {
+                $validFields[] = $field;
+            }
+        }
+
+        // Type check: format must be a string
+        if (!is_string($format)) {
+            throw new \InvalidArgumentException('Format must be a string');
+        }
+
         switch ($format) {
             case 'count':
                 $output->writeln((string)count($items));
@@ -127,19 +155,19 @@ class Formatter
                 break;
 
             case 'table':
-                $this->displayTable($items, $fields, $output);
+                $this->displayTable($items, $validFields, $output);
                 break;
 
             case 'json':
-                $this->displayJson($items, $fields, $output);
+                $this->displayJson($items, $validFields, $output);
                 break;
 
             case 'csv':
-                $this->displayCsv($items, $fields, $output);
+                $this->displayCsv($items, $validFields, $output);
                 break;
 
             case 'yaml':
-                $this->displayYaml($items, $fields, $output);
+                $this->displayYaml($items, $validFields, $output);
                 break;
 
             default:
@@ -271,9 +299,16 @@ class Formatter
 
         // Data rows
         foreach ($items as $item) {
+            /** @var array<int, string|int|float|bool|null> $row */
             $row = [];
             foreach ($fields as $field) {
-                $row[] = $this->getFieldValue($item, $field);
+                $value = $this->getFieldValue($item, $field);
+                // Cast to scalar types that fputcsv accepts (database values are typically strings/ints/null)
+                if (is_scalar($value) || $value === null) {
+                    $row[] = $value;
+                } else {
+                    $row[] = ''; // fallback for non-scalar values
+                }
             }
             fputcsv($handle, $row);
         }
@@ -294,11 +329,15 @@ class Formatter
             foreach ($fields as $field) {
                 $value = $this->getFieldValue($item, $field);
                 if ($value !== '') {
-                    // Escape special YAML characters
-                    if (is_string($value) && (str_contains($value, ':') || str_contains($value, '#'))) {
-                        $value = '"' . str_replace('"', '\\"', $value) . '"';
+                    // Convert to string for YAML output (database values are typically strings/ints/null)
+                    $stringValue = is_scalar($value) || $value === null ? (string)$value : '';
+                    if ($stringValue !== '') {
+                        // Escape special YAML characters
+                        if (str_contains($stringValue, ':') || str_contains($stringValue, '#')) {
+                            $stringValue = '"' . str_replace('"', '\\"', $stringValue) . '"';
+                        }
+                        $output->writeln("  $field: $stringValue");
                     }
-                    $output->writeln("  $field: $value");
                 }
             }
         }

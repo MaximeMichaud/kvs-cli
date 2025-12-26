@@ -56,7 +56,7 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $input->getArgument('action');
+        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
 
         return match ($action) {
             'list' => $this->listScreenshots($input),
@@ -68,9 +68,9 @@ HELP
 
     private function listScreenshots(InputInterface $input): int
     {
-        $videoId = $input->getArgument('video_id');
+        $videoId = $this->getStringArgument($input, 'video_id');
 
-        if ($videoId === null || $videoId === '') {
+        if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots list <video_id>');
             return self::FAILURE;
@@ -137,9 +137,9 @@ HELP
 
     private function generateScreenshots(InputInterface $input): int
     {
-        $videoId = $input->getArgument('video_id');
+        $videoId = $this->getStringArgument($input, 'video_id');
 
-        if ($videoId === null || $videoId === '') {
+        if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots generate <video_id>');
             return self::FAILURE;
@@ -192,7 +192,7 @@ HELP
             return self::FAILURE;
         }
 
-        $count = (int)$input->getOption('count');
+        $count = $this->getIntOptionOrDefault($input, 'count', 10);
         $this->io()->text("Generating $count screenshots from video (duration: {$duration}s)...");
 
         // Generate screenshots
@@ -237,9 +237,9 @@ HELP
 
     private function regenerateScreenshots(InputInterface $input): int
     {
-        $videoId = $input->getArgument('video_id');
+        $videoId = $this->getStringArgument($input, 'video_id');
 
-        if ($videoId === null || $videoId === '') {
+        if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
             return self::FAILURE;

@@ -53,9 +53,14 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $file = $input->getArgument('file');
-        $skipKvs = $input->getOption('skip-kvs');
-        $args = $input->getOption('args') ?? [];
+        $file = $this->getStringArgument($input, 'file');
+        if ($file === null) {
+            $this->io()->error('File argument is required');
+            return self::FAILURE;
+        }
+
+        $skipKvs = $this->getBoolOption($input, 'skip-kvs');
+        $args = $this->getArrayOption($input, 'args');
 
         // Check if file exists
         if (!file_exists($file)) {
@@ -86,7 +91,7 @@ HELP
         $argv = $_SERVER['argv'];
         $argc = $_SERVER['argc'];
 
-        if ($skipKvs === null || $skipKvs === false) {
+        if (!$skipKvs) {
             // Load KVS context
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;
@@ -150,7 +155,7 @@ HELP
 
         // Restore original argv
         $_SERVER['argv'] = $originalArgv;
-        $_SERVER['argc'] = count($originalArgv);
+        $_SERVER['argc'] = is_countable($originalArgv) ? count($originalArgv) : 0;
 
         return $errorOccurred ? self::FAILURE : self::SUCCESS;
     }

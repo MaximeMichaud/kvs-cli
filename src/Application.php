@@ -12,10 +12,12 @@ use Symfony\Component\Console\Output\ConsoleOutput;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Exception\CommandNotFoundException;
 use Symfony\Component\Console\Command\Command;
+use KVS\CLI\Command\System\BenchmarkCommand;
 use KVS\CLI\Command\System\CacheCommand;
 use KVS\CLI\Command\System\CheckCommand;
 use KVS\CLI\Command\System\CronCommand;
 use KVS\CLI\Command\System\BackupCommand;
+use KVS\CLI\Command\System\QueueCommand;
 use KVS\CLI\Command\System\StatusCommand;
 use KVS\CLI\Command\System\MaintenanceCommand;
 use KVS\CLI\Command\Content\VideoCommand;
@@ -127,7 +129,10 @@ class Application extends BaseApplication
         $state = $this->bootstrap($input, $output);
 
         // Store config if loaded
-        $this->config = $state->getValue('config');
+        $config = $state->getValue('config');
+        if ($config instanceof Configuration) {
+            $this->config = $config;
+        }
 
         // Handle bootstrap errors for non-help commands
         if ($state->hasErrors() && !$this->isHelpCommand($input)) {
@@ -163,6 +168,7 @@ class Application extends BaseApplication
     {
         $command = $input->getFirstArgument();
         $argv = $_SERVER['argv'] ?? [];
+        $argv = is_array($argv) ? $argv : [];
 
         // Check for --version/-V flag
         $isVersionRequest = in_array('--version', $argv, true) || in_array('-V', $argv, true);
@@ -213,7 +219,7 @@ class Application extends BaseApplication
         if (in_array('KVS installation not found', $state->getErrors(), true)) {
             $searchedPath = $state->getValue('searched_path');
 
-            if ($searchedPath !== null) {
+            if (is_string($searchedPath)) {
                 $io->text("The path '{$searchedPath}' does not contain a valid KVS installation.");
             } else {
                 $io->text('Solutions:');
@@ -284,10 +290,12 @@ class Application extends BaseApplication
     public function registerKvsCommands(Configuration $config): void
     {
         $this->addCommands([
+            new BenchmarkCommand($config),
             new CacheCommand($config),
             new CheckCommand($config),
             new CronCommand($config),
             new BackupCommand($config),
+            new QueueCommand($config),
             new StatusCommand($config),
             new MaintenanceCommand($config),
 

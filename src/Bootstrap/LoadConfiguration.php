@@ -18,6 +18,12 @@ class LoadConfiguration implements BootstrapStep
     public function process(BootstrapState $state): BootstrapState
     {
         $input = $state->getValue('input');
+        if (!$input instanceof InputInterface) {
+            $state->addError('Invalid input object in bootstrap state');
+            $state->setValue('config_loaded', false);
+            return $state;
+        }
+
         $pathOption = $this->extractPathOption($input);
 
         $configArray = [];
@@ -49,7 +55,10 @@ class LoadConfiguration implements BootstrapStep
         // Try to get from input options
         try {
             if ($input->hasOption('path')) {
-                return $input->getOption('path');
+                $pathOption = $input->getOption('path');
+                if (is_string($pathOption)) {
+                    return $pathOption;
+                }
             }
         } catch (\Exception $e) {
             // Input not fully parsed yet, fallback to argv
@@ -57,8 +66,12 @@ class LoadConfiguration implements BootstrapStep
 
         // Fallback: parse from argv directly
         $argv = $_SERVER['argv'] ?? [];
+        if (!is_array($argv)) {
+            return null;
+        }
+
         foreach ($argv as $arg) {
-            if (str_starts_with($arg, '--path=')) {
+            if (is_string($arg) && str_starts_with($arg, '--path=')) {
                 return substr($arg, 7);
             }
         }

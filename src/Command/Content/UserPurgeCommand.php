@@ -65,13 +65,13 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $removalRequested = (bool) $input->getOption('removal-requested');
-        $noContent = (bool) $input->getOption('no-content');
-        $inactiveDays = $input->getOption('inactive-days');
-        $minAge = $input->getOption('min-age');
-        $confirm = (bool) $input->getOption('confirm');
-        $yes = (bool) $input->getOption('yes');
-        $limit = (int) $input->getOption('limit');
+        $removalRequested = $this->getBoolOption($input, 'removal-requested');
+        $noContent = $this->getBoolOption($input, 'no-content');
+        $inactiveDays = $this->getIntOption($input, 'inactive-days');
+        $minAge = $this->getIntOption($input, 'min-age');
+        $confirm = $this->getBoolOption($input, 'confirm');
+        $yes = $this->getBoolOption($input, 'yes');
+        $limit = $this->getIntOptionOrDefault($input, 'limit', 1000);
 
         // Require at least one filter
         if (!$removalRequested && !$noContent && $inactiveDays === null && $minAge === null) {
@@ -99,12 +99,12 @@ HELP
 
         if ($inactiveDays !== null) {
             $conditions[] = 'last_login_date < DATE_SUB(NOW(), INTERVAL :inactive_days DAY)';
-            $params['inactive_days'] = (int) $inactiveDays;
+            $params['inactive_days'] = $inactiveDays;
         }
 
         if ($minAge !== null) {
             $conditions[] = 'added_date < DATE_SUB(NOW(), INTERVAL :min_age DAY)';
-            $params['min_age'] = (int) $minAge;
+            $params['min_age'] = $minAge;
         }
 
         $whereClause = implode(' AND ', $conditions);
@@ -198,9 +198,13 @@ HELP
             require_once $adminPath . '/include/functions.php';
 
             // Simulate admin session for delete_users
-            $_SESSION['userdata']['user_id'] = 1;
-            $_SESSION['userdata']['login'] = 'kvs-cli';
-            $_SESSION['userdata']['is_superadmin'] = 1;
+            /** @var array<string, mixed> $sessionUserdata */
+            $sessionUserdata = [
+                'user_id' => 1,
+                'login' => 'kvs-cli',
+                'is_superadmin' => 1,
+            ];
+            $_SESSION['userdata'] = $sessionUserdata;
 
             $userIds = array_column($users, 'user_id');
 

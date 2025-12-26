@@ -1,0 +1,201 @@
+<?php
+
+declare(strict_types=1);
+
+namespace KVS\CLI\Benchmark;
+
+/**
+ * HTTP benchmark using curl for reliable response time measurements
+ *
+ * Uses curl with precise timing to measure real page response times.
+ * This is NOT a stress test - it measures actual performance.
+ */
+class HttpBench
+{
+    private string $baseUrl;
+    private int $samples;
+
+    /** @var array<string, array{url: string, name: string}> */
+    private array $endpoints = [];
+
+    public function __construct(string $baseUrl, int $samples = 5)
+    {
+        $this->baseUrl = rtrim($baseUrl, '/');
+        $this->samples = $samples;
+
+        // Define KVS endpoints to test
+        $this->endpoints = [
+            'homepage' => ['url' => '/', 'name' => 'Homepage'],
+            'videos' => ['url' => '/videos/', 'name' => 'Video Listing'],
+            'categories' => ['url' => '/categories/', 'name' => 'Categories'],
+            'search' => ['url' => '/search/?q=test', 'name' => 'Search'],
+            'admin' => ['url' => '/admin/', 'name' => 'Admin Panel'],
+        ];
+    }
+
+    /**
+     * Check if we can reach the server
+     */
+    public function isServerReachable(): bool
+    {
+        $ch = curl_init($this->baseUrl . '/');
+        if ($ch === false) {
+            return false;
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_NOBODY => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+
+        curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $httpCode > 0 && $httpCode < 500;
+    }
+
+    /**
+     * Run HTTP benchmarks
+     */
+    public function run(BenchmarkResult $result): void
+    {
+        if (!$this->isServerReachable()) {
+            return;
+        }
+
+        foreach ($this->endpoints as $key => $endpoint) {
+            $timings = $this->measureEndpoint($endpoint['url']);
+
+            if ($timings !== []) {
+                $stats = $this->calculateStats($timings);
+                $result->recordHttp($key, $endpoint['name'], $stats);
+            }
+        }
+    }
+
+    /**
+     * Measure response time for an endpoint
+     *
+     * @return array<int, float> Array of response times in milliseconds
+     */
+    private function measureEndpoint(string $path): array
+    {
+        $url = $this->baseUrl . $path;
+        $timings = [];
+
+        for ($i = 0; $i < $this->samples; $i++) {
+            $timing = $this->curlTiming($url);
+            if ($timing !== null) {
+                $timings[] = $timing;
+            }
+            // Small delay between requests to be nice to the server
+            usleep(100000); // 100ms
+        }
+
+        return $timings;
+    }
+
+    /**
+     * Get detailed timing from curl
+     *
+     * @return float|null Response time in milliseconds, or null on error
+     */
+    private function curlTiming(string $url): ?float
+    {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return null;
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT => 'KVS-CLI-Benchmark/1.0',
+            // Don't download the body for timing - just measure TTFB
+            CURLOPT_HEADER => true,
+            CURLOPT_NOBODY => false,
+        ]);
+
+        curl_exec($ch);
+
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($httpCode === 0 || $httpCode >= 500) {
+            curl_close($ch);
+            return null;
+        }
+
+        // Get total time in milliseconds
+        $totalTime = curl_getinfo($ch, CURLINFO_TOTAL_TIME);
+        curl_close($ch);
+
+        return $totalTime * 1000;
+    }
+
+    /**
+     * Calculate statistics from timing samples
+     *
+     * @param array<int, float> $timings
+     * @return array{avg: float, min: float, max: float, p50: float, p95: float, p99: float, samples: int}
+     */
+    private function calculateStats(array $timings): array
+    {
+        if ($timings === []) {
+            return [
+                'avg' => 0.0,
+                'min' => 0.0,
+                'max' => 0.0,
+                'p50' => 0.0,
+                'p95' => 0.0,
+                'p99' => 0.0,
+                'samples' => 0,
+            ];
+        }
+
+        sort($timings);
+        $count = count($timings);
+
+        return [
+            'avg' => array_sum($timings) / $count,
+            'min' => $timings[0],
+            'max' => $timings[$count - 1],
+            'p50' => $this->percentile($timings, 50),
+            'p95' => $this->percentile($timings, 95),
+            'p99' => $this->percentile($timings, 99),
+            'samples' => $count,
+        ];
+    }
+
+    /**
+     * Calculate percentile from sorted array
+     *
+     * @param array<int, float> $sorted
+     */
+    private function percentile(array $sorted, int $p): float
+    {
+        $count = count($sorted);
+        if ($count === 0) {
+            return 0.0;
+        }
+
+        $index = (int) ceil(($p / 100) * $count) - 1;
+        $index = max(0, min($count - 1, $index));
+
+        return $sorted[$index];
+    }
+
+    /**
+     * Get base URL
+     */
+    public function getBaseUrl(): string
+    {
+        return $this->baseUrl;
+    }
+}
