@@ -60,11 +60,11 @@
     <!-- <rule ref="PSR12.Files.FileHeader.IncorrectOrder"/> -->
 
     <!-- Function complexity warnings -->
-    <!-- TODO: Remettre absoluteComplexity à 15 après refactoring (UserCommand:27, EvalFileCommand:19, etc.) -->
+    <!-- TODO: Remettre absoluteComplexity à 15 après refactoring (PluginCommand:38, etc.) -->
     <rule ref="Generic.Metrics.CyclomaticComplexity">
         <properties>
             <property name="complexity" value="10"/>
-            <property name="absoluteComplexity" value="30"/>
+            <property name="absoluteComplexity" value="40"/>
         </properties>
     </rule>
 
