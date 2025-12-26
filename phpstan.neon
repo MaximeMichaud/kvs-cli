@@ -4,8 +4,8 @@
 
 parameters:
     # Analysis level (0-10, with 10 being strictest in PHPStan 2.x)
-    # Level 8: strict property types, nullable handling
-    level: 8
+    # Level 9: strict mixed types, dead code detection
+    level: 9
 
     # Parallel processing for faster analysis
     parallel:
@@ -27,6 +27,10 @@ parameters:
     # Report unmatched ignored errors
     reportUnmatchedIgnoredErrors: false
 
+    # Symfony Console type inference
+    symfony:
+        consoleApplicationLoader: phpstan-console.php
+
 includes:
     # Baseline for existing errors (temporary)
     - phpstan-baseline.neon
@@ -38,5 +42,6 @@ includes:
 # Level 5 -> Fix obvious issues (done)
 # Level 6 -> Add strict types, fix mixed types (done)
 # Level 7 -> Remove implicit mixed (done)
-# Level 8 -> Production-ready strict mode (done - current)
-# Level 9-10 -> Maximum strictness (PHPStan 2.x)
+# Level 8 -> Production-ready strict mode (done)
+# Level 9 -> Strict mixed types + dead code (done - current, 419 in baseline)
+# Level 10 -> Maximum strictness (PHPStan 2.x)
