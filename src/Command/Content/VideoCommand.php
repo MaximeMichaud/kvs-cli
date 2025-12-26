@@ -70,7 +70,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {
             'list' => $this->listVideos($input),

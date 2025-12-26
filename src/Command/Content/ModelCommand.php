@@ -62,7 +62,7 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $action = $this->getStringArgument($input, 'action');
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {

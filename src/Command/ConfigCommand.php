@@ -47,7 +47,7 @@ class ConfigCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {
             'get' => $this->getConfig($input),

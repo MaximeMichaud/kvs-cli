@@ -68,7 +68,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgumentOrDefault($input, 'action', 'list');
+        $action = $this->getStringArgument($input, 'action');
         $identifier = $this->getStringArgument($input, 'identifier');
         $target = $this->getStringArgument($input, 'target');
 
