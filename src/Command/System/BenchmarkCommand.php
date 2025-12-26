@@ -283,11 +283,18 @@ class BenchmarkCommand extends BaseCommand
         $phpVersion = $info['php_version'] ?? 'Unknown';
         $rows[] = ['PHP', is_string($phpVersion) ? $phpVersion : 'Unknown'];
 
+        // Check if info came from Docker FPM or local CLI
+        $source = isset($info['source']) && is_string($info['source']) ? $info['source'] : '';
+        $isFpmSource = $source !== '' && str_contains($source, 'Docker');
+        $sourceLabel = $isFpmSource ? '' : ' (CLI)';
+
         $opcache = isset($info['opcache']) && $info['opcache'] === true;
-        $rows[] = ['OPcache', $opcache ? '<fg=green>Enabled</>' : '<fg=yellow>Disabled</>'];
+        $opcacheStatus = $opcache ? '<fg=green>Enabled</>' : '<fg=yellow>Disabled</>';
+        $rows[] = ['OPcache' . $sourceLabel, $opcacheStatus];
 
         $jit = isset($info['jit']) && $info['jit'] === true;
-        $rows[] = ['JIT', $jit ? '<fg=green>Enabled</>' : '<fg=yellow>Disabled</>'];
+        $jitStatus = $jit ? '<fg=green>Enabled</>' : '<fg=yellow>Disabled</>';
+        $rows[] = ['JIT' . $sourceLabel, $jitStatus];
 
         // Database info
         if (isset($info['db_type']) && is_string($info['db_type'])) {
@@ -313,6 +320,14 @@ class BenchmarkCommand extends BaseCommand
         $rows[] = ['Hostname', is_string($hostname) ? $hostname : 'unknown'];
 
         $this->renderTable(['Parameter', 'Value'], $rows);
+
+        // Add note about CLI vs FPM OPcache detection
+        if (!$isFpmSource) {
+            $this->io()->text(
+                '<fg=gray>(CLI) = PHP CLI config. PHP-FPM may have different OPcache/JIT settings. '
+                . 'Use --php-container for Docker-based detection.</>'
+            );
+        }
     }
 
     private function displayCpuResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void
