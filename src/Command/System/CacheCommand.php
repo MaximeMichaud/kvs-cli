@@ -36,8 +36,8 @@ class CacheCommand extends BaseCommand
             return $this->clearCache($input->getOption('type'));
         }
 
-        $this->io->info('Available options:');
-        $this->io->listing([
+        $this->io()->info('Available options:');
+        $this->io()->listing([
             '--clear : Clear all cache',
             '--clear --type=file : Clear file cache',
             '--clear --type=db : Clear database cache',
@@ -57,7 +57,7 @@ class CacheCommand extends BaseCommand
             $this->clearDatabaseCache();
         }
 
-        $this->io->success('Cache cleared successfully');
+        $this->io()->success('Cache cleared successfully');
         return self::SUCCESS;
     }
 
@@ -85,7 +85,7 @@ class CacheCommand extends BaseCommand
             }
 
             if ($count > 0) {
-                $this->io->info("Cleared $count files from " . basename($dir));
+                $this->io()->info("Cleared $count files from " . basename($dir));
             }
         }
     }
@@ -105,10 +105,10 @@ class CacheCommand extends BaseCommand
 
             foreach ($tables as $table) {
                 $db->exec("TRUNCATE TABLE IF EXISTS $table");
-                $this->io->info("Cleared database cache table: $table");
+                $this->io()->info("Cleared database cache table: $table");
             }
         } catch (\Exception $e) {
-            $this->io->warning('Could not clear database cache: ' . $e->getMessage());
+            $this->io()->warning('Could not clear database cache: ' . $e->getMessage());
         }
     }
 
@@ -146,8 +146,8 @@ class CacheCommand extends BaseCommand
         }
 
         if ($stats === []) {
-            $this->io->warning('No cache directories found');
-            $this->io->text('Cache directories will be created when KVS starts generating cache.');
+            $this->io()->warning('No cache directories found');
+            $this->io()->text('Cache directories will be created when KVS starts generating cache.');
             return self::SUCCESS;
         }
 
@@ -158,7 +158,7 @@ class CacheCommand extends BaseCommand
 
         $totalFiles = array_sum(array_column($stats, 1));
         if ($totalFiles === 0) {
-            $this->io->note('Cache directories exist but are empty');
+            $this->io()->note('Cache directories exist but are empty');
         }
 
         return self::SUCCESS;

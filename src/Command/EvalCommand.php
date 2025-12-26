@@ -67,7 +67,7 @@ HELP
             // Get database connection (PDO)
             $db = $this->getDatabaseConnection();
             if ($db === null) {
-                $this->io->warning('Database connection not available');
+                $this->io()->warning('Database connection not available');
             }
 
             // Get config array for easier access
@@ -106,21 +106,21 @@ HELP
             $result = eval($code);
         } catch (\ParseError $e) {
             $errorOccurred = true;
-            $this->io->error('Parse Error: ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Parse Error: ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text($e->getTraceAsString());
             }
         } catch (\Exception $e) {
             $errorOccurred = true;
-            $this->io->error('Error: ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Error: ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text($e->getTraceAsString());
             }
         } catch (\Error $e) {
             $errorOccurred = true;
-            $this->io->error('Fatal Error: ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Fatal Error: ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text($e->getTraceAsString());
             }
         }
 
@@ -128,15 +128,15 @@ HELP
 
         // Display output
         if ($outputStr !== false && $outputStr !== '') {
-            $this->io->write($outputStr);
+            $this->io()->write($outputStr);
         }
 
         // Display return value if any
         if (!$errorOccurred && $result !== null) {
             if (is_bool($result)) {
-                $this->io->writeln($result ? 'true' : 'false');
+                $this->io()->writeln($result ? 'true' : 'false');
             } elseif (is_scalar($result)) {
-                $this->io->writeln((string)$result);
+                $this->io()->writeln((string)$result);
             } else {
                 var_dump($result);
             }

@@ -62,24 +62,24 @@ class ConfigCommand extends BaseCommand
     {
         $key = $input->getArgument('key');
         if ($key === null || $key === '') {
-            $this->io->error('Configuration key is required for get action');
+            $this->io()->error('Configuration key is required for get action');
             return self::FAILURE;
         }
 
         $value = $this->getConfigValue($key);
 
         if ($value === null) {
-            $this->io->error("Configuration key not found: $key");
+            $this->io()->error("Configuration key not found: $key");
 
             // Suggest similar keys
             $allConfigs = $this->getAllConfigs('all');
             $suggestions = $this->findSimilarKeys($key, $allConfigs);
 
             if ($suggestions !== []) {
-                $this->io->text('Did you mean one of these?');
-                $this->io->listing($suggestions);
+                $this->io()->text('Did you mean one of these?');
+                $this->io()->listing($suggestions);
             } else {
-                $this->io->text('Use "kvs config list" to see all available keys.');
+                $this->io()->text('Use "kvs config list" to see all available keys.');
             }
 
             return self::FAILURE;
@@ -91,9 +91,9 @@ class ConfigCommand extends BaseCommand
         }
 
         if ($input->getOption('json') === true) {
-            $this->io->writeln((string) json_encode([$key => $value]));
+            $this->io()->writeln((string) json_encode([$key => $value]));
         } else {
-            $this->io->writeln("<info>$key</info> = $value");
+            $this->io()->writeln("<info>$key</info> = $value");
         }
 
         return self::SUCCESS;
@@ -105,13 +105,13 @@ class ConfigCommand extends BaseCommand
         $value = $input->getArgument('value');
 
         if ($key === null || $key === '' || $value === null) {
-            $this->io->error('Both key and value are required for set action');
+            $this->io()->error('Both key and value are required for set action');
             return self::FAILURE;
         }
 
         // Validate key format
         if (preg_match('/^[a-z]+\.[a-z_]+$/i', $key) !== 1) {
-            $this->io->error('Invalid key format. Use format: category.key (e.g., db.host)');
+            $this->io()->error('Invalid key format. Use format: category.key (e.g., db.host)');
             return self::FAILURE;
         }
 
@@ -126,7 +126,7 @@ class ConfigCommand extends BaseCommand
         // Determine file
         $file = $this->getConfigFile($category);
         if ($file === null) {
-            $this->io->error("Unknown configuration category: $category");
+            $this->io()->error("Unknown configuration category: $category");
             return self::FAILURE;
         }
 
@@ -140,7 +140,7 @@ class ConfigCommand extends BaseCommand
             return $this->setMainConfig($configKey, $value);
         }
 
-        $this->io->warning('Setting config for this category is not yet implemented');
+        $this->io()->warning('Setting config for this category is not yet implemented');
         return self::FAILURE;
     }
 
@@ -160,12 +160,12 @@ class ConfigCommand extends BaseCommand
                     }
                 }
             }
-            $this->io->writeln((string) json_encode($configs, JSON_PRETTY_PRINT));
+            $this->io()->writeln((string) json_encode($configs, JSON_PRETTY_PRINT));
             return self::SUCCESS;
         }
 
         // Table output
-        $this->io->title('KVS Configuration');
+        $this->io()->title('KVS Configuration');
 
         // Get all main configs
         $mainConfigs = $this->getMainConfigs();
@@ -224,7 +224,7 @@ class ConfigCommand extends BaseCommand
 
         // Database configs
         if ($file === 'db' || $file === 'all') {
-            $this->io->section('Database Configuration');
+            $this->io()->section('Database Configuration');
             $dbConfigs = $this->getDatabaseConfigs();
             $rows = [];
             foreach ($dbConfigs as $key => $value) {
@@ -276,7 +276,7 @@ class ConfigCommand extends BaseCommand
         }
 
         if ($rows !== []) {
-            $this->io->section($title);
+            $this->io()->section($title);
             $this->renderTable(['Parameter', 'Value'], $rows);
         }
     }
@@ -308,7 +308,7 @@ class ConfigCommand extends BaseCommand
         }
 
         if ($rows !== []) {
-            $this->io->section($title);
+            $this->io()->section($title);
             $this->renderTable(['Content Type', 'Local Path', 'URL'], $rows);
         }
     }
@@ -319,7 +319,7 @@ class ConfigCommand extends BaseCommand
 
         $filePath = $this->getConfigFilePath($file);
         if ($filePath === null) {
-            $this->io->error("Unknown config file: $file");
+            $this->io()->error("Unknown config file: $file");
             return self::FAILURE;
         }
 
@@ -330,28 +330,28 @@ class ConfigCommand extends BaseCommand
         // Create backup
         $backupFile = $filePath . '.backup.' . date('YmdHis');
         copy($filePath, $backupFile);
-        $this->io->info("Backup created: $backupFile");
+        $this->io()->info("Backup created: $backupFile");
 
         // Open in editor
         $command = sprintf('%s %s', escapeshellcmd($editor), escapeshellarg($filePath));
 
-        $this->io->info("Opening $filePath in $editor...");
+        $this->io()->info("Opening $filePath in $editor...");
         passthru($command, $returnCode);
 
         if ($returnCode === 0) {
-            $this->io->success('Configuration file edited successfully');
+            $this->io()->success('Configuration file edited successfully');
 
             // Validate syntax
             $result = shell_exec("php -l $filePath 2>&1");
             if ($result === null || $result === false || strpos($result, 'No syntax errors') === false) {
-                $this->io->error('Syntax error in configuration file!');
+                $this->io()->error('Syntax error in configuration file!');
                 if (is_string($result)) {
-                    $this->io->warning($result);
+                    $this->io()->warning($result);
                 }
 
-                if ($this->io->confirm('Restore from backup?', true) === true) {
+                if ($this->io()->confirm('Restore from backup?', true) === true) {
                     copy($backupFile, $filePath);
-                    $this->io->success('Restored from backup');
+                    $this->io()->success('Restored from backup');
                 }
             }
         }
@@ -519,7 +519,7 @@ class ConfigCommand extends BaseCommand
     {
         $file = $this->config->getKvsPath() . '/admin/include/setup_db.php';
         if (!file_exists($file)) {
-            $this->io->error('Database configuration file not found');
+            $this->io()->error('Database configuration file not found');
             return self::FAILURE;
         }
 
@@ -528,7 +528,7 @@ class ConfigCommand extends BaseCommand
 
         // Check if key exists
         if (preg_match("/define\('$defineKey',/", $content) !== 1) {
-            $this->io->error("Configuration key not found: db.$key");
+            $this->io()->error("Configuration key not found: db.$key");
             return self::FAILURE;
         }
 
@@ -540,16 +540,16 @@ class ConfigCommand extends BaseCommand
         // Write file
         file_put_contents($file, $newContent);
 
-        $this->io->success("Configuration updated: db.$key = $value");
+        $this->io()->success("Configuration updated: db.$key = $value");
 
         // Test database connection if it's a db setting
         if (in_array($key, ['host', 'login', 'pass', 'device'], true)) {
-            $this->io->info('Testing database connection...');
+            $this->io()->info('Testing database connection...');
             $db = $this->getDatabaseConnection();
             if ($db !== null) {
-                $this->io->success('Database connection successful');
+                $this->io()->success('Database connection successful');
             } else {
-                $this->io->warning('Database connection failed with new settings');
+                $this->io()->warning('Database connection failed with new settings');
             }
         }
 
@@ -560,7 +560,7 @@ class ConfigCommand extends BaseCommand
     {
         $file = $this->config->getKvsPath() . '/admin/include/setup.php';
         if (!file_exists($file)) {
-            $this->io->error('Main configuration file not found');
+            $this->io()->error('Main configuration file not found');
             return self::FAILURE;
         }
 
@@ -588,14 +588,14 @@ class ConfigCommand extends BaseCommand
         }
 
         if (!$found) {
-            $this->io->error("Configuration key not found: main.$key");
+            $this->io()->error("Configuration key not found: main.$key");
             return self::FAILURE;
         }
 
         // Write file
         file_put_contents($file, $content);
 
-        $this->io->success("Configuration updated: main.$key = $value");
+        $this->io()->success("Configuration updated: main.$key = $value");
         return self::SUCCESS;
     }
 
@@ -628,7 +628,7 @@ class ConfigCommand extends BaseCommand
         if ($file !== null) {
             $backupFile = $file . '.backup.' . date('YmdHis');
             copy($file, $backupFile);
-            $this->io->info("Backup created: $backupFile");
+            $this->io()->info("Backup created: $backupFile");
         }
     }
 
@@ -677,19 +677,19 @@ class ConfigCommand extends BaseCommand
 
     private function showHelp(): int
     {
-        $this->io->info('Usage: kvs config <action> [key] [value] [options]');
-        $this->io->newLine();
+        $this->io()->info('Usage: kvs config <action> [key] [value] [options]');
+        $this->io()->newLine();
 
-        $this->io->section('Actions');
-        $this->io->listing([
+        $this->io()->section('Actions');
+        $this->io()->listing([
             'get <key> : Get a configuration value',
             'set <key> <value> : Set a configuration value',
             'list : List all configurations',
             'edit : Open config file in editor',
         ]);
 
-        $this->io->section('Examples');
-        $this->io->listing([
+        $this->io()->section('Examples');
+        $this->io()->listing([
             'kvs config get db.host',
             'kvs config set db.host 127.0.0.1',
             'kvs config set db.port 3307',
@@ -699,8 +699,8 @@ class ConfigCommand extends BaseCommand
             'kvs config edit --file=db',
         ]);
 
-        $this->io->section('Available Keys');
-        $this->io->listing([
+        $this->io()->section('Available Keys');
+        $this->io()->listing([
             'db.host : Database host',
             'db.login : Database username',
             'db.pass : Database password (protected)',

@@ -109,11 +109,11 @@ HELP
                 $input->getOptions(),
                 ['category_id', 'title', 'video_count', 'album_count', 'status_id']
             );
-            $formatter->display($categories, $this->io);
+            $formatter->display($categories, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch categories: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch categories: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -133,21 +133,21 @@ HELP
                 ORDER BY parent_id, title
             ");
             if ($stmt === false) {
-                $this->io->error('Failed to execute query');
+                $this->io()->error('Failed to execute query');
                 return self::FAILURE;
             }
             $categories = $stmt->fetchAll();
 
-            $this->io->section('Category Tree');
+            $this->io()->section('Category Tree');
 
             foreach ($categories as $cat) {
                 $prefix = isset($cat['parent_id']) ? '  └─ ' : '';
                 $count = " ({$cat['video_count']} videos)";
                 $status = (int) $cat['status_id'] === 1 ? '' : ' <fg=yellow>[Inactive]</>';
-                $this->io->text($prefix . $cat['title'] . $count . $status);
+                $this->io()->text($prefix . $cat['title'] . $count . $status);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch categories: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch categories: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -157,7 +157,7 @@ HELP
     private function showCategory(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Category ID is required');
+            $this->io()->error('Category ID is required');
             return self::FAILURE;
         }
 
@@ -172,11 +172,11 @@ HELP
             $category = $stmt->fetch();
 
             if ($category === false) {
-                $this->io->error("Category not found: $id");
+                $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io->section("Category: {$category['title']}");
+            $this->io()->section("Category: {$category['title']}");
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
@@ -199,11 +199,11 @@ HELP
             $this->renderTable(['Property', 'Value'], $info);
 
             if (isset($category['description']) && $category['description'] !== '') {
-                $this->io->section('Description');
-                $this->io->text((string) $category['description']);
+                $this->io()->section('Description');
+                $this->io()->text((string) $category['description']);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch category: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch category: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -216,9 +216,9 @@ HELP
         $title = ($titleOption !== null && $titleOption !== '') ? $titleOption : $input->getArgument('id');
 
         if ($title === null || $title === '') {
-            $this->io->error('Category title is required');
-            $this->io->text('Usage: kvs content:category create "Category Name"');
-            $this->io->text('   or: kvs content:category create --title="Category Name" --description="..." --parent=5');
+            $this->io()->error('Category title is required');
+            $this->io()->text('Usage: kvs content:category create "Category Name"');
+            $this->io()->text('   or: kvs content:category create --title="Category Name" --description="..." --parent=5');
             return self::FAILURE;
         }
 
@@ -233,7 +233,7 @@ HELP
             $stmt->execute(['title' => $title]);
 
             if ($stmt->fetch() !== false) {
-                $this->io->error("Category already exists: $title");
+                $this->io()->error("Category already exists: $title");
                 return self::FAILURE;
             }
 
@@ -247,7 +247,7 @@ HELP
                 $stmt = $db->prepare("SELECT category_id FROM {$this->table('categories')} WHERE category_id = :id");
                 $stmt->execute(['id' => $parentId]);
                 if ($stmt->fetch() === false) {
-                    $this->io->error("Parent category not found: $parentId");
+                    $this->io()->error("Parent category not found: $parentId");
                     return self::FAILURE;
                 }
             }
@@ -267,7 +267,7 @@ HELP
 
             $categoryId = $db->lastInsertId();
 
-            $this->io->success("Category created successfully!");
+            $this->io()->success("Category created successfully!");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
@@ -279,7 +279,7 @@ HELP
                 ]
             );
         } catch (\Exception $e) {
-            $this->io->error('Failed to create category: ' . $e->getMessage());
+            $this->io()->error('Failed to create category: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -289,8 +289,8 @@ HELP
     private function deleteCategory(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Category ID is required');
-            $this->io->text('Usage: kvs content:category delete <category_id>');
+            $this->io()->error('Category ID is required');
+            $this->io()->text('Usage: kvs content:category delete <category_id>');
             return self::FAILURE;
         }
 
@@ -306,7 +306,7 @@ HELP
             $category = $stmt->fetch();
 
             if ($category === false) {
-                $this->io->error("Category not found: $id");
+                $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
 
@@ -316,8 +316,8 @@ HELP
             $childCount = $stmt->fetchColumn();
 
             if ($childCount > 0) {
-                $this->io->error("Cannot delete category with $childCount child categories.");
-                $this->io->text('Please delete or reassign child categories first.');
+                $this->io()->error("Cannot delete category with $childCount child categories.");
+                $this->io()->text('Please delete or reassign child categories first.');
                 return self::FAILURE;
             }
 
@@ -333,14 +333,14 @@ HELP
             $totalUsage = $usage['video_count'] + $usage['album_count'];
 
             if ($totalUsage > 0) {
-                $this->io->warning("This category is used by $totalUsage items:");
-                $this->io->listing([
+                $this->io()->warning("This category is used by $totalUsage items:");
+                $this->io()->listing([
                     "Videos: {$usage['video_count']}",
                     "Albums: {$usage['album_count']}",
                 ]);
 
-                if ($this->io->confirm('Delete anyway? This will remove all associations.', false) !== true) {
-                    $this->io->info('Operation cancelled');
+                if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
+                    $this->io()->info('Operation cancelled');
                     return self::SUCCESS;
                 }
             }
@@ -353,9 +353,9 @@ HELP
             $stmt = $db->prepare("DELETE FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
 
-            $this->io->success("Category '{$category['title']}' deleted successfully!");
+            $this->io()->success("Category '{$category['title']}' deleted successfully!");
         } catch (\Exception $e) {
-            $this->io->error('Failed to delete category: ' . $e->getMessage());
+            $this->io()->error('Failed to delete category: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -365,8 +365,8 @@ HELP
     private function updateCategory(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Category ID is required');
-            $this->io->text('Usage: kvs content:category update <category_id> --title="New Title" --description="..." --status=inactive');
+            $this->io()->error('Category ID is required');
+            $this->io()->text('Usage: kvs content:category update <category_id> --title="New Title" --description="..." --status=inactive');
             return self::FAILURE;
         }
 
@@ -382,7 +382,7 @@ HELP
             $category = $stmt->fetch();
 
             if ($category === false) {
-                $this->io->error("Category not found: $id");
+                $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
 
@@ -406,7 +406,7 @@ HELP
             if ($input->hasOption('parent') && $input->getOption('parent') !== null) {
                 $parentId = $input->getOption('parent');
                 if ($parentId === $id) {
-                    $this->io->error('Category cannot be its own parent');
+                    $this->io()->error('Category cannot be its own parent');
                     return self::FAILURE;
                 }
                 $updates[] = 'parent_id = :parent_id';
@@ -422,7 +422,7 @@ HELP
             }
 
             if ($updates === []) {
-                $this->io->warning('No changes specified. Use --title, --description, --parent, or --status options.');
+                $this->io()->warning('No changes specified. Use --title, --description, --parent, or --status options.');
                 return self::FAILURE;
             }
 
@@ -431,12 +431,12 @@ HELP
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
 
-            $this->io->success("Category updated successfully!");
+            $this->io()->success("Category updated successfully!");
 
             // Show updated category
             return $this->showCategory($id);
         } catch (\Exception $e) {
-            $this->io->error('Failed to update category: ' . $e->getMessage());
+            $this->io()->error('Failed to update category: ' . $e->getMessage());
             return self::FAILURE;
         }
     }

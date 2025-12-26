@@ -71,22 +71,22 @@ HELP
         $videoId = $input->getArgument('video_id');
 
         if ($videoId === null || $videoId === '') {
-            $this->io->error('Video ID is required');
-            $this->io->text('Usage: kvs video:screenshots list <video_id>');
+            $this->io()->error('Video ID is required');
+            $this->io()->text('Usage: kvs video:screenshots list <video_id>');
             return self::FAILURE;
         }
 
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($screenshotsBasePath === '') {
-            $this->io->error('Screenshots path not configured');
+            $this->io()->error('Screenshots path not configured');
             return self::FAILURE;
         }
 
         $screenshotsPath = "$screenshotsBasePath/$videoId";
 
         if (!is_dir($screenshotsPath)) {
-            $this->io->warning("Screenshots directory not found: $screenshotsPath");
-            $this->io->note("The video might not have screenshots generated yet.");
+            $this->io()->warning("Screenshots directory not found: $screenshotsPath");
+            $this->io()->note("The video might not have screenshots generated yet.");
             return self::SUCCESS;
         }
 
@@ -102,8 +102,8 @@ HELP
         }
 
         if ($files === []) {
-            $this->io->warning('No screenshot files found in directory');
-            $this->io->text("Directory: $screenshotsPath");
+            $this->io()->warning('No screenshot files found in directory');
+            $this->io()->text("Directory: $screenshotsPath");
             return self::SUCCESS;
         }
 
@@ -130,7 +130,7 @@ HELP
         $defaultFields = ['filename', 'size', 'dimensions'];
 
         $formatter = new Formatter($input->getOptions(), $defaultFields);
-        $formatter->display($screenshots, $this->io);
+        $formatter->display($screenshots, $this->io());
 
         return self::SUCCESS;
     }
@@ -140,28 +140,28 @@ HELP
         $videoId = $input->getArgument('video_id');
 
         if ($videoId === null || $videoId === '') {
-            $this->io->error('Video ID is required');
-            $this->io->text('Usage: kvs video:screenshots generate <video_id>');
+            $this->io()->error('Video ID is required');
+            $this->io()->text('Usage: kvs video:screenshots generate <video_id>');
             return self::FAILURE;
         }
 
         // Check if ffmpeg is available
         if (!$this->checkFfmpegAvailable()) {
-            $this->io->error('ffmpeg is not installed or not accessible');
-            $this->io->text('Screenshot generation requires ffmpeg.');
-            $this->io->newLine();
-            $this->io->text('Installation:');
-            $this->io->text('  • Debian/Ubuntu: apt-get install ffmpeg');
-            $this->io->text('  • Arch/CachyOS:  pacman -S ffmpeg');
-            $this->io->text('  • RHEL/CentOS:   yum install ffmpeg');
-            $this->io->text('  • macOS:         brew install ffmpeg');
+            $this->io()->error('ffmpeg is not installed or not accessible');
+            $this->io()->text('Screenshot generation requires ffmpeg.');
+            $this->io()->newLine();
+            $this->io()->text('Installation:');
+            $this->io()->text('  • Debian/Ubuntu: apt-get install ffmpeg');
+            $this->io()->text('  • Arch/CachyOS:  pacman -S ffmpeg');
+            $this->io()->text('  • RHEL/CentOS:   yum install ffmpeg');
+            $this->io()->text('  • macOS:         brew install ffmpeg');
             return self::FAILURE;
         }
 
         $videoSourcesPath = $this->config->getVideoSourcesPath();
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($videoSourcesPath === '' || $screenshotsBasePath === '') {
-            $this->io->error('Content paths not configured');
+            $this->io()->error('Content paths not configured');
             return self::FAILURE;
         }
 
@@ -171,29 +171,29 @@ HELP
         // Find video source file
         $videoFile = $this->findVideoFile($videoPath);
         if ($videoFile === null) {
-            $this->io->error("No video file found in: $videoPath");
-            $this->io->note("Make sure video files exist before generating screenshots.");
+            $this->io()->error("No video file found in: $videoPath");
+            $this->io()->note("Make sure video files exist before generating screenshots.");
             return self::FAILURE;
         }
 
         // Create screenshots directory if it doesn't exist
         if (!is_dir($screenshotsPath)) {
             if (!mkdir($screenshotsPath, 0755, true)) {
-                $this->io->error("Failed to create screenshots directory: $screenshotsPath");
+                $this->io()->error("Failed to create screenshots directory: $screenshotsPath");
                 return self::FAILURE;
             }
-            $this->io->text("Created screenshots directory: $screenshotsPath");
+            $this->io()->text("Created screenshots directory: $screenshotsPath");
         }
 
         // Get video duration
         $duration = $this->getVideoDuration($videoFile);
         if ($duration === null) {
-            $this->io->error("Failed to get video duration for: $videoFile");
+            $this->io()->error("Failed to get video duration for: $videoFile");
             return self::FAILURE;
         }
 
         $count = (int)$input->getOption('count');
-        $this->io->text("Generating $count screenshots from video (duration: {$duration}s)...");
+        $this->io()->text("Generating $count screenshots from video (duration: {$duration}s)...");
 
         // Generate screenshots
         $interval = $duration / ($count + 1); // +1 to avoid first/last frame
@@ -216,19 +216,19 @@ HELP
 
             if ($returnCode === 0 && file_exists($outputFile)) {
                 $success++;
-                $this->io->text("  ✓ Generated $filename");
+                $this->io()->text("  ✓ Generated $filename");
             } else {
                 $failed++;
-                $this->io->text("  ✗ Failed to generate $filename");
+                $this->io()->text("  ✗ Failed to generate $filename");
             }
         }
 
-        $this->io->newLine();
+        $this->io()->newLine();
         if ($success > 0) {
-            $this->io->success("Generated $success screenshots successfully!");
+            $this->io()->success("Generated $success screenshots successfully!");
         }
         if ($failed > 0) {
-            $this->io->warning("Failed to generate $failed screenshots");
+            $this->io()->warning("Failed to generate $failed screenshots");
             return self::FAILURE;
         }
 
@@ -240,14 +240,14 @@ HELP
         $videoId = $input->getArgument('video_id');
 
         if ($videoId === null || $videoId === '') {
-            $this->io->error('Video ID is required');
-            $this->io->text('Usage: kvs video:screenshots regenerate <video_id>');
+            $this->io()->error('Video ID is required');
+            $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
             return self::FAILURE;
         }
 
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($screenshotsBasePath === '') {
-            $this->io->error('Screenshots path not configured');
+            $this->io()->error('Screenshots path not configured');
             return self::FAILURE;
         }
 
@@ -255,7 +255,7 @@ HELP
 
         // Delete existing screenshots
         if (is_dir($screenshotsPath)) {
-            $this->io->text("Deleting existing screenshots...");
+            $this->io()->text("Deleting existing screenshots...");
 
             $extensions = ['jpg', 'jpeg', 'png', 'webp'];
             $deleted = 0;
@@ -271,8 +271,8 @@ HELP
                 }
             }
 
-            $this->io->text("Deleted $deleted existing screenshots");
-            $this->io->newLine();
+            $this->io()->text("Deleted $deleted existing screenshots");
+            $this->io()->newLine();
         }
 
         // Generate new screenshots

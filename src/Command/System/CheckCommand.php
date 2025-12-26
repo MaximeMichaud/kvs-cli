@@ -77,7 +77,7 @@ class CheckCommand extends BaseCommand
         $this->silent = $jsonOutput;
 
         if (!$this->silent) {
-            $this->io->title('KVS Configuration Check');
+            $this->io()->title('KVS Configuration Check');
         }
 
         $results = [];
@@ -108,18 +108,18 @@ class CheckCommand extends BaseCommand
                 $output->writeln($json);
             }
         } else {
-            $this->io->newLine();
-            $this->io->writeln(str_repeat('─', 42));
+            $this->io()->newLine();
+            $this->io()->writeln(str_repeat('─', 42));
 
             if ($this->errors === 0 && $this->warnings === 0) {
-                $this->io->success('All checks passed!');
+                $this->io()->success('All checks passed!');
             } else {
                 $summary = sprintf(
                     'Result: %s, %s',
                     $this->errors === 0 ? 'no errors' : "<fg=red>{$this->errors} error(s)</>",
                     $this->warnings === 0 ? 'no warnings' : "<fg=yellow>{$this->warnings} warning(s)</>"
                 );
-                $this->io->writeln($summary);
+                $this->io()->writeln($summary);
             }
         }
 
@@ -1554,7 +1554,7 @@ class CheckCommand extends BaseCommand
     private function printSection(string $title): void
     {
         if (!$this->silent) {
-            $this->io->section($title);
+            $this->io()->section($title);
         }
     }
 
@@ -1579,7 +1579,7 @@ class CheckCommand extends BaseCommand
             default => $value,
         };
 
-        $this->io->writeln("  $icon $label: $valueFormatted");
+        $this->io()->writeln("  $icon $label: $valueFormatted");
     }
 
     private function parseIniSize(string|false $size): int

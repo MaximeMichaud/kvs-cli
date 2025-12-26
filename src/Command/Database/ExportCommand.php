@@ -48,22 +48,22 @@ EOT
         $dbConfig = $this->config->getDatabaseConfig();
 
         if ($dbConfig === []) {
-            $this->io->error('Database configuration not found');
+            $this->io()->error('Database configuration not found');
             return self::FAILURE;
         }
 
         // Detect dump command (mariadb-dump or mysqldump)
         $dumpCommand = $this->getDumpCommand();
         if ($dumpCommand === null || $dumpCommand === '') {
-            $this->io->error('Database dump command not found');
-            $this->io->newLine();
-            $this->io->text('<comment>Install one of:</comment>');
-            $this->io->text('  • <info>apt install mariadb-client</info>  (for MariaDB)');
-            $this->io->text('  • <info>apt install mysql-client</info>    (for MySQL)');
+            $this->io()->error('Database dump command not found');
+            $this->io()->newLine();
+            $this->io()->text('<comment>Install one of:</comment>');
+            $this->io()->text('  • <info>apt install mariadb-client</info>  (for MariaDB)');
+            $this->io()->text('  • <info>apt install mysql-client</info>    (for MySQL)');
             return self::FAILURE;
         }
 
-        $this->io->comment("Using: $dumpCommand");
+        $this->io()->comment("Using: $dumpCommand");
 
         // Handle compression
         $compressFormat = $input->getOption('compress');
@@ -78,21 +78,21 @@ EOT
 
             $compressor = $this->getCompressor($compressFormat);
             if ($compressor === null) {
-                $this->io->error("Compression format '$compressFormat' not supported or command not found");
-                $this->io->newLine();
-                $this->io->text('<comment>Available formats:</comment>');
-                $this->io->text('  • gzip  - Standard compression (best compatibility)');
-                $this->io->text('  • zstd  - Modern compression (fast, great ratio)');
-                $this->io->text('  • xz    - Maximum compression (slower)');
-                $this->io->text('  • bzip2 - Good compression');
-                $this->io->newLine();
-                $this->io->text('<comment>Install missing tools:</comment>');
-                $this->io->text('  apt install gzip zstd xz-utils bzip2');
+                $this->io()->error("Compression format '$compressFormat' not supported or command not found");
+                $this->io()->newLine();
+                $this->io()->text('<comment>Available formats:</comment>');
+                $this->io()->text('  • gzip  - Standard compression (best compatibility)');
+                $this->io()->text('  • zstd  - Modern compression (fast, great ratio)');
+                $this->io()->text('  • xz    - Maximum compression (slower)');
+                $this->io()->text('  • bzip2 - Good compression');
+                $this->io()->newLine();
+                $this->io()->text('<comment>Install missing tools:</comment>');
+                $this->io()->text('  apt install gzip zstd xz-utils bzip2');
                 return self::FAILURE;
             }
 
             $fileExtension .= '.' . $compressFormat;
-            $this->io->comment("Compression: $compressFormat");
+            $this->io()->comment("Compression: $compressFormat");
         }
 
         $outputFile = $input->getOption('output') ?? sprintf(
@@ -101,7 +101,7 @@ EOT
             $fileExtension
         );
 
-        $this->io->info('Starting database export...');
+        $this->io()->info('Starting database export...');
 
         // Parse host and port
         $host = $dbConfig['host'];
@@ -138,7 +138,7 @@ EOT
         $process = new Process($command);
         $process->setTimeout(3600);
 
-        $progressBar = $this->io->createProgressBar();
+        $progressBar = $this->io()->createProgressBar();
         $progressBar->start();
 
         $process->run(function ($type, $buffer) use ($progressBar) {
@@ -146,24 +146,24 @@ EOT
         });
 
         $progressBar->finish();
-        $this->io->newLine();
+        $this->io()->newLine();
 
         if (!$process->isSuccessful()) {
-            $this->io->error('Database export failed');
-            $this->io->newLine();
+            $this->io()->error('Database export failed');
+            $this->io()->newLine();
 
             $errorOutput = trim($process->getErrorOutput());
             if ($errorOutput !== '') {
-                $this->io->text('<error>Error details:</error>');
-                $this->io->text($errorOutput);
+                $this->io()->text('<error>Error details:</error>');
+                $this->io()->text($errorOutput);
             }
 
             // Common error hints
-            $this->io->newLine();
-            $this->io->text('<comment>Common issues:</comment>');
-            $this->io->text('  • Wrong database credentials in setup_db.php');
-            $this->io->text('  • Database server not running');
-            $this->io->text('  • Insufficient permissions');
+            $this->io()->newLine();
+            $this->io()->text('<comment>Common issues:</comment>');
+            $this->io()->text('  • Wrong database credentials in setup_db.php');
+            $this->io()->text('  • Database server not running');
+            $this->io()->text('  • Insufficient permissions');
 
             return self::FAILURE;
         }
@@ -172,13 +172,13 @@ EOT
 
         // Compress if requested
         if ($compressor !== null) {
-            $this->io->info("Compressing with $compressFormat...");
+            $this->io()->info("Compressing with $compressFormat...");
             $compressProcess = new Process([$compressor['command']]);
             $compressProcess->setInput($sqlContent);
             $compressProcess->run();
 
             if (!$compressProcess->isSuccessful()) {
-                $this->io->error("Compression failed");
+                $this->io()->error("Compression failed");
                 return self::FAILURE;
             }
 
@@ -189,11 +189,11 @@ EOT
 
         $fileSize = filesize($outputFile);
         if ($fileSize === false) {
-            $this->io->error('Failed to get file size');
+            $this->io()->error('Failed to get file size');
             return self::FAILURE;
         }
 
-        $this->io->success(sprintf(
+        $this->io()->success(sprintf(
             'Database exported successfully to %s (%.2f MB)',
             $outputFile,
             $fileSize / 1024 / 1024

@@ -142,11 +142,11 @@ HELP
                 ['album_id', 'title', 'image_count', 'status_id', 'username', 'post_date']
             );
             /** @var list<array<string, mixed>> $transformedAlbums */
-            $formatter->display($transformedAlbums, $this->io);
+            $formatter->display($transformedAlbums, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch albums: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch albums: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -154,7 +154,7 @@ HELP
     private function showAlbum(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Album ID is required');
+            $this->io()->error('Album ID is required');
             return self::FAILURE;
         }
 
@@ -169,11 +169,11 @@ HELP
             $album = $stmt->fetch();
 
             if ($album === false) {
-                $this->io->error("Album not found: $id");
+                $this->io()->error("Album not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io->section("Album #$id");
+            $this->io()->section("Album #$id");
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')}_images WHERE album_id = :id");
             $stmt->execute(['id' => $id]);
@@ -195,7 +195,7 @@ HELP
 
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch album: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch album: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -205,13 +205,13 @@ HELP
     private function deleteAlbum(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Album ID is required');
+            $this->io()->error('Album ID is required');
             return self::FAILURE;
         }
 
-        $this->io->warning("This will permanently delete album #$id");
+        $this->io()->warning("This will permanently delete album #$id");
 
-        if ($this->io->confirm('Do you want to continue?', false) !== true) {
+        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
@@ -236,10 +236,10 @@ HELP
             }
 
             $db->commit();
-            $this->io->success("Album #$id deleted successfully");
+            $this->io()->success("Album #$id deleted successfully");
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->io->error('Failed to delete album: ' . $e->getMessage());
+            $this->io()->error('Failed to delete album: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -248,8 +248,8 @@ HELP
 
     private function showHelp(): int
     {
-        $this->io->info('Available actions:');
-        $this->io->listing([
+        $this->io()->info('Available actions:');
+        $this->io()->listing([
             'list : List albums',
             'show <id> : Show album details',
             'delete <id> : Delete an album',

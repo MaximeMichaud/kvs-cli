@@ -182,11 +182,11 @@ HELP
                 $input->getOptions(),
                 ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date']
             );
-            $formatter->display($transformedComments, $this->io);
+            $formatter->display($transformedComments, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch comments: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch comments: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -194,8 +194,8 @@ HELP
     private function showComment(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Comment ID is required');
-            $this->io->text('Usage: kvs content:comment show <comment_id>');
+            $this->io()->error('Comment ID is required');
+            $this->io()->text('Usage: kvs content:comment show <comment_id>');
             return self::FAILURE;
         }
 
@@ -227,11 +227,11 @@ HELP
             $comment = $stmt->fetch();
 
             if ($comment === false) {
-                $this->io->error("Comment not found: $id");
+                $this->io()->error("Comment not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io->title("Comment #$id");
+            $this->io()->title("Comment #$id");
 
             $approvalStatus = (bool)($comment['is_approved'] ?? 0)
                 ? '<fg=green>Approved</>'
@@ -250,10 +250,10 @@ HELP
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            $this->io->section('Comment Text');
-            $this->io->text($comment['comment']);
+            $this->io()->section('Comment Text');
+            $this->io()->text($comment['comment']);
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch comment: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch comment: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -263,8 +263,8 @@ HELP
     private function deleteComment(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Comment ID is required');
-            $this->io->text('Usage: kvs content:comment delete <comment_id>');
+            $this->io()->error('Comment ID is required');
+            $this->io()->text('Usage: kvs content:comment delete <comment_id>');
             return self::FAILURE;
         }
 
@@ -291,11 +291,11 @@ HELP
             $comment = $stmt->fetch();
 
             if ($comment === false) {
-                $this->io->error("Comment not found: $id");
+                $this->io()->error("Comment not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io->section("Comment to Delete");
+            $this->io()->section("Comment to Delete");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
@@ -306,8 +306,8 @@ HELP
                 ]
             );
 
-            if ($this->io->confirm('Delete this comment?', false) !== true) {
-                $this->io->info('Operation cancelled');
+            if ($this->io()->confirm('Delete this comment?', false) !== true) {
+                $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }
 
@@ -315,9 +315,9 @@ HELP
             $stmt = $db->prepare("DELETE FROM {$this->table('comments')} WHERE comment_id = :id");
             $stmt->execute(['id' => $id]);
 
-            $this->io->success('Comment deleted successfully!');
+            $this->io()->success('Comment deleted successfully!');
         } catch (\Exception $e) {
-            $this->io->error('Failed to delete comment: ' . $e->getMessage());
+            $this->io()->error('Failed to delete comment: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -344,7 +344,7 @@ HELP
                 FROM {$this->table('comments')}
             ");
             if ($stmt === false) {
-                $this->io->error('Failed to fetch overall statistics');
+                $this->io()->error('Failed to fetch overall statistics');
                 return self::FAILURE;
             }
             $overall = $stmt->fetch();
@@ -361,7 +361,7 @@ HELP
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
             if ($stmt === false) {
-                $this->io->error('Failed to fetch top commenters');
+                $this->io()->error('Failed to fetch top commenters');
                 return self::FAILURE;
             }
             $topCommenters = $stmt->fetchAll();
@@ -373,14 +373,14 @@ HELP
                 WHERE added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_DAYS . " DAY)
             ");
             if ($stmt === false) {
-                $this->io->error('Failed to fetch recent activity statistics');
+                $this->io()->error('Failed to fetch recent activity statistics');
                 return self::FAILURE;
             }
             $recentStats = $stmt->fetch();
 
-            $this->io->title('Comment Statistics');
+            $this->io()->title('Comment Statistics');
 
-            $this->io->section('Overall Statistics');
+            $this->io()->section('Overall Statistics');
             $this->renderTable(
                 ['Metric', 'Value'],
                 [
@@ -395,7 +395,7 @@ HELP
             );
 
             if ($topCommenters !== []) {
-                $this->io->section('Top 10 Commenters');
+                $this->io()->section('Top 10 Commenters');
                 $rows = [];
                 foreach ($topCommenters as $commenter) {
                     $rows[] = [
@@ -406,7 +406,7 @@ HELP
                 $this->renderTable(['User', 'Comments'], $rows);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch stats: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
             return self::FAILURE;
         }
 

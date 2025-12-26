@@ -51,17 +51,17 @@ HELP
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         if (!class_exists('Psy\Shell')) {
-            $this->io->error('PsySH is not installed. Run: composer require psy/psysh');
+            $this->io()->error('PsySH is not installed. Run: composer require psy/psysh');
             return self::FAILURE;
         }
 
-        $this->io->title('KVS Interactive Shell');
-        $this->io->info('Loading KVS context...');
+        $this->io()->title('KVS Interactive Shell');
+        $this->io()->info('Loading KVS context...');
 
         // Get database connection
         $db = $this->getDatabaseConnection();
         if ($db === null) {
-            $this->io->warning('Database connection not available');
+            $this->io()->warning('Database connection not available');
         }
 
         // Prepare shell configuration

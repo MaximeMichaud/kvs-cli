@@ -156,11 +156,11 @@ HELP
 
             // Format and display using Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
-            $formatter->display($transformedModels, $this->io);
+            $formatter->display($transformedModels, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch models: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch models: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -168,7 +168,7 @@ HELP
     private function showModel(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Model ID is required');
+            $this->io()->error('Model ID is required');
             return self::FAILURE;
         }
 
@@ -191,12 +191,12 @@ HELP
             $model = $stmt->fetch();
 
             if ($model === false) {
-                $this->io->error("Model not found: $id");
+                $this->io()->error("Model not found: $id");
                 return self::FAILURE;
             }
 
             // Display model details
-            $this->io->title("Model: {$model['title']}");
+            $this->io()->title("Model: {$model['title']}");
 
             $info = [
                 ['Model ID', $model['model_id']],
@@ -246,7 +246,7 @@ HELP
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch model: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch model: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -291,12 +291,12 @@ HELP
                 $stats[] = ['Total Video Relations', number_format((int) $stmt->fetchColumn())];
             }
 
-            $this->io->title('Model Statistics');
+            $this->io()->title('Model Statistics');
             $this->renderTable(['Metric', 'Value'], $stats);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch statistics: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
     }

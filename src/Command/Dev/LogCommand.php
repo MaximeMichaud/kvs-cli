@@ -90,7 +90,7 @@ class LogCommand extends BaseCommand
         }
 
         if ($logs === []) {
-            $this->io->info('No log files found');
+            $this->io()->info('No log files found');
             return self::SUCCESS;
         }
 
@@ -102,31 +102,31 @@ class LogCommand extends BaseCommand
     private function showLog(?string $type, int $lines): int
     {
         if ($type === null) {
-            $this->io->error('Log type is required');
-            $this->io->note('Use --list to see available logs');
+            $this->io()->error('Log type is required');
+            $this->io()->note('Use --list to see available logs');
             return self::FAILURE;
         }
 
         $logFile = $this->findLogFile($type);
 
         if ($logFile === null) {
-            $this->io->error("Log file not found: $type");
-            $this->io->note('Use --list to see available logs');
+            $this->io()->error("Log file not found: $type");
+            $this->io()->note('Use --list to see available logs');
             return self::FAILURE;
         }
 
-        $this->io->section("Log: $type");
-        $this->io->info("File: $logFile");
+        $this->io()->section("Log: $type");
+        $this->io()->info("File: $logFile");
 
         if (!file_exists($logFile)) {
-            $this->io->warning('Log file is empty or does not exist');
+            $this->io()->warning('Log file is empty or does not exist');
             return self::SUCCESS;
         }
 
         $content = $this->tail($logFile, $lines);
 
         if ($content === []) {
-            $this->io->info('No log entries');
+            $this->io()->info('No log entries');
         } else {
             foreach ($content as $line) {
                 $this->formatLogLine($line);
@@ -139,24 +139,24 @@ class LogCommand extends BaseCommand
     private function followLog(?string $type): int
     {
         if ($type === null) {
-            $this->io->error('Log type is required');
+            $this->io()->error('Log type is required');
             return self::FAILURE;
         }
 
         $logFile = $this->findLogFile($type);
 
         if ($logFile === null) {
-            $this->io->error("Log file not found: $type");
+            $this->io()->error("Log file not found: $type");
             return self::FAILURE;
         }
 
-        $this->io->info("Following log: $logFile");
-        $this->io->info('Press Ctrl+C to stop');
-        $this->io->newLine();
+        $this->io()->info("Following log: $logFile");
+        $this->io()->info('Press Ctrl+C to stop');
+        $this->io()->newLine();
 
         $initialSize = filesize($logFile);
         if ($initialSize === false) {
-            $this->io->error('Unable to read log file size');
+            $this->io()->error('Unable to read log file size');
             return self::FAILURE;
         }
 
@@ -167,14 +167,14 @@ class LogCommand extends BaseCommand
             $currentSize = filesize($logFile);
 
             if ($currentSize === false) {
-                $this->io->error('Unable to read log file size');
+                $this->io()->error('Unable to read log file size');
                 return self::FAILURE;
             }
 
             if ($currentSize > $lastPosition) {
                 $fp = fopen($logFile, 'r');
                 if ($fp === false) {
-                    $this->io->error('Unable to open log file');
+                    $this->io()->error('Unable to open log file');
                     return self::FAILURE;
                 }
 
@@ -203,25 +203,25 @@ class LogCommand extends BaseCommand
     private function clearLog(?string $type): int
     {
         if ($type === null) {
-            $this->io->error('Log type is required');
+            $this->io()->error('Log type is required');
             return self::FAILURE;
         }
 
         $logFile = $this->findLogFile($type);
 
         if ($logFile === null) {
-            $this->io->error("Log file not found: $type");
+            $this->io()->error("Log file not found: $type");
             return self::FAILURE;
         }
 
-        $this->io->warning("This will clear the log file: $logFile");
+        $this->io()->warning("This will clear the log file: $logFile");
 
-        if ($this->io->confirm('Do you want to continue?', false) !== true) {
+        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
         file_put_contents($logFile, '');
-        $this->io->success('Log file cleared');
+        $this->io()->success('Log file cleared');
 
         return self::SUCCESS;
     }
@@ -312,13 +312,13 @@ class LogCommand extends BaseCommand
         }
 
         if (str_contains(strtolower($line), 'error')) {
-            $this->io->text("<fg=red>$line</>");
+            $this->io()->text("<fg=red>$line</>");
         } elseif (str_contains(strtolower($line), 'warning')) {
-            $this->io->text("<fg=yellow>$line</>");
+            $this->io()->text("<fg=yellow>$line</>");
         } elseif (str_contains(strtolower($line), 'info')) {
-            $this->io->text("<fg=cyan>$line</>");
+            $this->io()->text("<fg=cyan>$line</>");
         } else {
-            $this->io->text($line);
+            $this->io()->text($line);
         }
     }
 }

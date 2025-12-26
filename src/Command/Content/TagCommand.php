@@ -157,9 +157,9 @@ HELP
                 $input->getOptions(),
                 ['tag_id', 'tag', 'video_count', 'album_count', 'total_usage', 'status_id']
             );
-            $formatter->display($transformedTags, $this->io);
+            $formatter->display($transformedTags, $this->io());
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch tags: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch tags: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -169,8 +169,8 @@ HELP
     private function createTag(?string $tagName): int
     {
         if ($tagName === null || $tagName === '') {
-            $this->io->error('Tag name is required');
-            $this->io->text('Usage: kvs content:tag create "Tag Name"');
+            $this->io()->error('Tag name is required');
+            $this->io()->text('Usage: kvs content:tag create "Tag Name"');
             return self::FAILURE;
         }
 
@@ -185,7 +185,7 @@ HELP
             $stmt->execute(['tag' => $tagName]);
 
             if ($stmt->fetch() !== false) {
-                $this->io->error("Tag already exists: $tagName");
+                $this->io()->error("Tag already exists: $tagName");
                 return self::FAILURE;
             }
 
@@ -199,7 +199,7 @@ HELP
 
             $tagId = $db->lastInsertId();
 
-            $this->io->success("Tag created successfully!");
+            $this->io()->success("Tag created successfully!");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
@@ -209,7 +209,7 @@ HELP
                 ]
             );
         } catch (\Exception $e) {
-            $this->io->error('Failed to create tag: ' . $e->getMessage());
+            $this->io()->error('Failed to create tag: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -219,8 +219,8 @@ HELP
     private function deleteTag(?string $identifier): int
     {
         if ($identifier === null || $identifier === '') {
-            $this->io->error('Tag ID is required');
-            $this->io->text('Usage: kvs content:tag delete <tag_id>');
+            $this->io()->error('Tag ID is required');
+            $this->io()->text('Usage: kvs content:tag delete <tag_id>');
             return self::FAILURE;
         }
 
@@ -236,7 +236,7 @@ HELP
             $tag = $stmt->fetch();
 
             if ($tag === false) {
-                $this->io->error("Tag not found: $identifier");
+                $this->io()->error("Tag not found: $identifier");
                 return self::FAILURE;
             }
 
@@ -252,14 +252,14 @@ HELP
             $totalUsage = $usage['video_count'] + $usage['album_count'];
 
             if ($totalUsage > 0) {
-                $this->io->warning("This tag is used by $totalUsage items:");
-                $this->io->listing([
+                $this->io()->warning("This tag is used by $totalUsage items:");
+                $this->io()->listing([
                     "Videos: {$usage['video_count']}",
                     "Albums: {$usage['album_count']}",
                 ]);
 
-                if ($this->io->confirm('Delete anyway? This will remove all associations.', false) !== true) {
-                    $this->io->info('Operation cancelled');
+                if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
+                    $this->io()->info('Operation cancelled');
                     return self::SUCCESS;
                 }
             }
@@ -272,9 +272,9 @@ HELP
             $stmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
             $stmt->execute(['id' => $identifier]);
 
-            $this->io->success("Tag '{$tag['tag']}' deleted successfully!");
+            $this->io()->success("Tag '{$tag['tag']}' deleted successfully!");
         } catch (\Exception $e) {
-            $this->io->error('Failed to delete tag: ' . $e->getMessage());
+            $this->io()->error('Failed to delete tag: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -284,13 +284,13 @@ HELP
     private function mergeTags(?string $sourceId, ?string $targetId): int
     {
         if ($sourceId === null || $sourceId === '' || $targetId === null || $targetId === '') {
-            $this->io->error('Both source and target tag IDs are required');
-            $this->io->text('Usage: kvs content:tag merge <source_tag_id> <target_tag_id>');
+            $this->io()->error('Both source and target tag IDs are required');
+            $this->io()->text('Usage: kvs content:tag merge <source_tag_id> <target_tag_id>');
             return self::FAILURE;
         }
 
         if ($sourceId === $targetId) {
-            $this->io->error('Source and target tags must be different');
+            $this->io()->error('Source and target tags must be different');
             return self::FAILURE;
         }
 
@@ -306,21 +306,21 @@ HELP
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             if (count($tags) !== 2) {
-                $this->io->error('One or both tags not found');
+                $this->io()->error('One or both tags not found');
                 return self::FAILURE;
             }
 
             $sourceTag = array_filter($tags, fn($t) => $t['tag_id'] === $sourceId)[0] ?? null;
             $targetTag = array_filter($tags, fn($t) => $t['tag_id'] === $targetId)[0] ?? null;
 
-            $this->io->section('Merge Operation');
-            $this->io->text("Source: {$sourceTag['tag']} (ID: $sourceId)");
-            $this->io->text("Target: {$targetTag['tag']} (ID: $targetId)");
-            $this->io->newLine();
-            $this->io->warning('All associations will be moved to the target tag, then source tag will be deleted.');
+            $this->io()->section('Merge Operation');
+            $this->io()->text("Source: {$sourceTag['tag']} (ID: $sourceId)");
+            $this->io()->text("Target: {$targetTag['tag']} (ID: $targetId)");
+            $this->io()->newLine();
+            $this->io()->warning('All associations will be moved to the target tag, then source tag will be deleted.');
 
-            if ($this->io->confirm('Continue with merge?', false) !== true) {
-                $this->io->info('Operation cancelled');
+            if ($this->io()->confirm('Continue with merge?', false) !== true) {
+                $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }
 
@@ -347,13 +347,13 @@ HELP
 
             $db->commit();
 
-            $this->io->success("Tags merged successfully!");
-            $this->io->text("'{$sourceTag['tag']}' has been merged into '{$targetTag['tag']}'");
+            $this->io()->success("Tags merged successfully!");
+            $this->io()->text("'{$sourceTag['tag']}' has been merged into '{$targetTag['tag']}'");
         } catch (\Exception $e) {
             if ($db->inTransaction()) {
                 $db->rollBack();
             }
-            $this->io->error('Failed to merge tags: ' . $e->getMessage());
+            $this->io()->error('Failed to merge tags: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -411,9 +411,9 @@ HELP
             }
             $topTags = $stmt->fetchAll();
 
-            $this->io->title('Tag Statistics');
+            $this->io()->title('Tag Statistics');
 
-            $this->io->section('Overall Statistics');
+            $this->io()->section('Overall Statistics');
             $this->renderTable(
                 ['Metric', 'Count'],
                 [
@@ -426,7 +426,7 @@ HELP
             );
 
             if ($topTags !== []) {
-                $this->io->section('Top 10 Most Used Tags');
+                $this->io()->section('Top 10 Most Used Tags');
                 $rows = [];
                 foreach ($topTags as $tag) {
                     $total = $tag['video_count'] + $tag['album_count'];
@@ -440,7 +440,7 @@ HELP
                 $this->renderTable(['Tag', 'Videos', 'Albums', 'Total'], $rows);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch stats: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -450,8 +450,8 @@ HELP
     private function updateTag(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Tag ID is required');
-            $this->io->text('Usage: kvs content:tag update <tag_id> --name="New Name" --status=inactive');
+            $this->io()->error('Tag ID is required');
+            $this->io()->text('Usage: kvs content:tag update <tag_id> --name="New Name" --status=inactive');
             return self::FAILURE;
         }
 
@@ -467,7 +467,7 @@ HELP
             $tag = $stmt->fetch();
 
             if ($tag === false) {
-                $this->io->error("Tag not found: $id");
+                $this->io()->error("Tag not found: $id");
                 return self::FAILURE;
             }
 
@@ -481,8 +481,8 @@ HELP
                 $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id !== :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
                 if ($stmt->fetch() !== false) {
-                    $this->io->error("Tag name already exists: $name");
-                    $this->io->text('Hint: Use merge command to combine duplicate tags');
+                    $this->io()->error("Tag name already exists: $name");
+                    $this->io()->text('Hint: Use merge command to combine duplicate tags');
                     return self::FAILURE;
                 }
                 $updates[] = 'tag = :tag';
@@ -498,7 +498,7 @@ HELP
             }
 
             if ($updates === []) {
-                $this->io->warning('No changes specified. Use --name or --status options.');
+                $this->io()->warning('No changes specified. Use --name or --status options.');
                 return self::FAILURE;
             }
 
@@ -507,7 +507,7 @@ HELP
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
 
-            $this->io->success("Tag updated successfully!");
+            $this->io()->success("Tag updated successfully!");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
@@ -522,7 +522,7 @@ HELP
                 ]
             );
         } catch (\Exception $e) {
-            $this->io->error('Failed to update tag: ' . $e->getMessage());
+            $this->io()->error('Failed to update tag: ' . $e->getMessage());
             return self::FAILURE;
         }
 

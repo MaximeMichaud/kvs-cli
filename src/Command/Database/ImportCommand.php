@@ -48,35 +48,35 @@ EOT
         $file = $input->getArgument('file');
 
         if (!file_exists($file)) {
-            $this->io->error("File not found: $file");
+            $this->io()->error("File not found: $file");
             return self::FAILURE;
         }
 
         $dbConfig = $this->config->getDatabaseConfig();
 
         if ($dbConfig === []) {
-            $this->io->error('Database configuration not found');
+            $this->io()->error('Database configuration not found');
             return self::FAILURE;
         }
 
-        $this->io->warning('This will overwrite existing data in the database!');
+        $this->io()->warning('This will overwrite existing data in the database!');
 
-        if ($this->io->confirm('Do you want to continue?', false) !== true) {
+        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
-        $this->io->info('Starting database import...');
+        $this->io()->info('Starting database import...');
 
         // Detect compression format
         $compressionFormat = $this->detectCompressionFormat($file);
         $tempFile = null;
 
         if ($compressionFormat !== null && $compressionFormat !== '') {
-            $this->io->info("Decompressing file ($compressionFormat)...");
+            $this->io()->info("Decompressing file ($compressionFormat)...");
             $sqlContent = $this->decompressFile($file, $compressionFormat);
 
             if ($sqlContent === false) {
-                $this->io->error("Failed to decompress file");
+                $this->io()->error("Failed to decompress file");
                 return self::FAILURE;
             }
 
@@ -97,35 +97,35 @@ EOT
         $process = new Process($command);
         $fileContents = file_get_contents($file);
         if ($fileContents === false) {
-            $this->io->error('Failed to read file contents');
+            $this->io()->error('Failed to read file contents');
             return self::FAILURE;
         }
         $process->setInput($fileContents);
         $process->setTimeout(3600);
 
-        $progressBar = $this->io->createProgressBar();
+        $progressBar = $this->io()->createProgressBar();
         $progressBar->start();
 
         $process->run(function ($type, $buffer) use ($progressBar) {
             if ($type === Process::ERR && trim($buffer) !== '') {
-                $this->io->warning($buffer);
+                $this->io()->warning($buffer);
             }
             $progressBar->advance();
         });
 
         $progressBar->finish();
-        $this->io->newLine();
+        $this->io()->newLine();
 
         if ($tempFile !== null && file_exists($tempFile)) {
             unlink($tempFile);
         }
 
         if (!$process->isSuccessful()) {
-            $this->io->error('Database import failed');
+            $this->io()->error('Database import failed');
             return self::FAILURE;
         }
 
-        $this->io->success('Database imported successfully');
+        $this->io()->success('Database imported successfully');
 
         return self::SUCCESS;
     }

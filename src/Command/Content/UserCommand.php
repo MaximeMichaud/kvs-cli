@@ -201,11 +201,11 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
             /** @var list<array<string, mixed>> $users */
-            $formatter->display($users, $this->io);
+            $formatter->display($users, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch users: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch users: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -303,7 +303,7 @@ HELP
     private function showUser(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('User ID or username is required');
+            $this->io()->error('User ID or username is required');
             return self::FAILURE;
         }
 
@@ -319,11 +319,11 @@ HELP
             $user = $stmt->fetch();
 
             if ($user === false) {
-                $this->io->error("User not found: $id");
+                $this->io()->error("User not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io->section("User: {$user['username']}");
+            $this->io()->section("User: {$user['username']}");
 
             $info = [
                 ['User ID', (string)$user['user_id']],
@@ -355,7 +355,7 @@ HELP
             $stmt->execute(['id' => $user['user_id']]);
             $commentCount = $stmt->fetchColumn();
 
-            $this->io->section('Content Statistics');
+            $this->io()->section('Content Statistics');
             $stats = [
                 ['Videos Uploaded', (string)$videoCount],
                 ['Albums Created', (string)$albumCount],
@@ -364,7 +364,7 @@ HELP
             ];
             $this->renderTable(['Metric', 'Count'], $stats);
 
-            $this->io->section('Activity');
+            $this->io()->section('Activity');
             $activityStats = [
                 ['Logins Count', number_format((int)($user['logins_count'] ?? 0))],
                 ['Activity Score', number_format((int)($user['activity'] ?? 0))],
@@ -374,7 +374,7 @@ HELP
             $hasTokens = ($user['tokens_available'] !== 0 && $user['tokens_available'] !== null)
                 || ($user['tokens_required'] !== 0 && $user['tokens_required'] !== null);
             if ($hasTokens) {
-                $this->io->section('Token Information');
+                $this->io()->section('Token Information');
                 $tokens = [
                     ['Available Tokens', (string)($user['tokens_available'] ?? 0)],
                     ['Required Tokens', (string)($user['tokens_required'] ?? 0)],
@@ -382,7 +382,7 @@ HELP
                 $this->renderTable(['Type', 'Amount'], $tokens);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch user: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch user: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -391,15 +391,15 @@ HELP
 
     private function createUser(InputInterface $input): int
     {
-        $this->io->section('Create New User');
+        $this->io()->section('Create New User');
 
-        $username = $this->io->ask('Username');
-        $email = $this->io->ask('Email');
-        $password = $this->io->askHidden('Password');
-        $displayName = $this->io->ask('Display Name (optional)');
+        $username = $this->io()->ask('Username');
+        $email = $this->io()->ask('Email');
+        $password = $this->io()->askHidden('Password');
+        $displayName = $this->io()->ask('Display Name (optional)');
 
         if ($username === null || $username === '' || $email === null || $email === '' || $password === null || $password === '') {
-            $this->io->error('Username, email, and password are required');
+            $this->io()->error('Username, email, and password are required');
             return self::FAILURE;
         }
 
@@ -413,7 +413,7 @@ HELP
             $stmt->execute(['username' => $username, 'email' => $email]);
 
             if ($stmt->fetchColumn() > 0) {
-                $this->io->error('Username or email already exists');
+                $this->io()->error('Username or email already exists');
                 return self::FAILURE;
             }
 
@@ -431,9 +431,9 @@ HELP
             ]);
 
             $userId = $db->lastInsertId();
-            $this->io->success("User created successfully with ID: $userId");
+            $this->io()->success("User created successfully with ID: $userId");
         } catch (\Exception $e) {
-            $this->io->error('Failed to create user: ' . $e->getMessage());
+            $this->io()->error('Failed to create user: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -443,14 +443,14 @@ HELP
     private function deleteUser(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('User ID or username is required');
+            $this->io()->error('User ID or username is required');
             return self::FAILURE;
         }
 
-        $this->io->warning("This will permanently delete user: $id");
-        $this->io->warning("All associated content will also be deleted");
+        $this->io()->warning("This will permanently delete user: $id");
+        $this->io()->warning("All associated content will also be deleted");
 
-        if ($this->io->confirm('Do you want to continue?', false) !== true) {
+        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
@@ -465,7 +465,7 @@ HELP
             $userId = $stmt->fetchColumn();
 
             if ($userId === false || $userId === null || $userId === '' || $userId === 0) {
-                $this->io->error("User not found: $id");
+                $this->io()->error("User not found: $id");
                 return self::FAILURE;
             }
 
@@ -484,10 +484,10 @@ HELP
             }
 
             $db->commit();
-            $this->io->success("User and all associated content deleted successfully");
+            $this->io()->success("User and all associated content deleted successfully");
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->io->error('Failed to delete user: ' . $e->getMessage());
+            $this->io()->error('Failed to delete user: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -540,7 +540,7 @@ HELP
             $recentUsers = $stmt->fetchAll();
 
             if ($recentUsers !== []) {
-                $this->io->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
+                $this->io()->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
                 $rows = [];
                 foreach ($recentUsers as $user) {
                     $rows[] = [
@@ -553,7 +553,7 @@ HELP
                 $this->renderTable(['Username', 'Videos', 'Albums', 'Joined'], $rows);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch statistics: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
 

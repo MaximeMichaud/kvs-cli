@@ -20,7 +20,7 @@ class StatusCommand extends BaseCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->io->title('KVS System Status');
+        $this->io()->title('KVS System Status');
 
         $this->showInstallationInfo();
         $this->showDatabaseStatus();
@@ -37,7 +37,7 @@ class StatusCommand extends BaseCommand
 
     private function showInstallationInfo(): void
     {
-        $this->io->section('Installation');
+        $this->io()->section('Installation');
 
         $info = [];
 
@@ -60,12 +60,12 @@ class StatusCommand extends BaseCommand
 
     private function showDatabaseStatus(): void
     {
-        $this->io->section('Database');
+        $this->io()->section('Database');
 
         $db = $this->getDatabaseConnection();
 
         if ($db === null) {
-            $this->io->error('Database connection failed');
+            $this->io()->error('Database connection failed');
             return;
         }
 
@@ -96,7 +96,7 @@ class StatusCommand extends BaseCommand
             }
             $info[] = ['Database Size', format_bytes($totalSize)];
         } catch (\Exception $e) {
-            $this->io->warning('Could not fetch database statistics');
+            $this->io()->warning('Could not fetch database statistics');
         }
 
         $this->renderTable(['Parameter', 'Value'], $info);
@@ -104,7 +104,7 @@ class StatusCommand extends BaseCommand
 
     private function showSystemInfo(): void
     {
-        $this->io->section('System');
+        $this->io()->section('System');
 
         $info = [];
 
@@ -142,7 +142,7 @@ class StatusCommand extends BaseCommand
 
     private function showContentStats(): void
     {
-        $this->io->section('Content Statistics');
+        $this->io()->section('Content Statistics');
 
         $db = $this->getDatabaseConnection();
 
@@ -178,7 +178,7 @@ class StatusCommand extends BaseCommand
                 }
             }
         } catch (\Exception $e) {
-            $this->io->warning('Could not fetch content statistics');
+            $this->io()->warning('Could not fetch content statistics');
             return;
         }
 
@@ -238,7 +238,7 @@ class StatusCommand extends BaseCommand
 
     private function showServicesStatus(): void
     {
-        $this->io->section('Services Status');
+        $this->io()->section('Services Status');
 
         $services = [];
 
@@ -351,11 +351,11 @@ class StatusCommand extends BaseCommand
 
     private function showConversionQueue(): void
     {
-        $this->io->section('Video Processing');
+        $this->io()->section('Video Processing');
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
-            $this->io->warning('Database connection not available');
+            $this->io()->warning('Database connection not available');
             return;
         }
 
@@ -363,7 +363,7 @@ class StatusCommand extends BaseCommand
             // Check if background_tasks table exists
             $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "background_tasks'");
             if ($stmt === false || $stmt->rowCount() === 0) {
-                $this->io->text('No conversion queue table found (' . $this->table('background_tasks') . ')');
+                $this->io()->text('No conversion queue table found (' . $this->table('background_tasks') . ')');
                 return;
             }
 
@@ -418,19 +418,19 @@ class StatusCommand extends BaseCommand
 
             $this->renderTable(['Metric', 'Value'], $stats);
         } catch (\Exception $e) {
-            $this->io->warning('Could not fetch conversion queue data: ' . $e->getMessage());
+            $this->io()->warning('Could not fetch conversion queue data: ' . $e->getMessage());
         }
     }
 
     private function showStorageBreakdown(): void
     {
-        $this->io->section('Storage Breakdown');
+        $this->io()->section('Storage Breakdown');
 
         $contentPath = $this->config->getContentPath();
         if ($contentPath === '' || !is_dir($contentPath)) {
-            $this->io->warning('Content directory not found: ' . ($contentPath !== '' ? $contentPath : 'not configured'));
-            $this->io->text('This is normal if content is stored on external storage servers.');
-            $this->io->text('Check KVS config for content_path_* settings.');
+            $this->io()->warning('Content directory not found: ' . ($contentPath !== '' ? $contentPath : 'not configured'));
+            $this->io()->text('This is normal if content is stored on external storage servers.');
+            $this->io()->text('Check KVS config for content_path_* settings.');
             return;
         }
 
@@ -541,7 +541,7 @@ class StatusCommand extends BaseCommand
 
     private function showHealthChecks(): void
     {
-        $this->io->section('System Health');
+        $this->io()->section('System Health');
 
         $health = [];
 
@@ -611,7 +611,7 @@ class StatusCommand extends BaseCommand
 
     private function showSecurityWarnings(): void
     {
-        $this->io->section('Security');
+        $this->io()->section('Security');
 
         $security = [];
 

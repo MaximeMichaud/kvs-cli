@@ -92,7 +92,7 @@ class CronCommand extends BaseCommand
                 }
             }
         } else {
-            $this->io->warning('No cron status information available');
+            $this->io()->warning('No cron status information available');
         }
 
         return self::SUCCESS;
@@ -113,26 +113,26 @@ class CronCommand extends BaseCommand
         ];
 
         if (!isset($cronScripts[$task])) {
-            $this->io->error("Unknown cron task: $task");
-            $this->io->note('Use --list to see available tasks');
+            $this->io()->error("Unknown cron task: $task");
+            $this->io()->note('Use --list to see available tasks');
             return self::FAILURE;
         }
 
         $scriptPath = $this->config->getAdminPath() . '/include/' . $cronScripts[$task];
 
         if (!file_exists($scriptPath)) {
-            $this->io->error("Cron script not found: $scriptPath");
+            $this->io()->error("Cron script not found: $scriptPath");
             return self::FAILURE;
         }
 
-        $this->io->info("Running cron task: $task");
+        $this->io()->info("Running cron task: $task");
 
         $output = $this->executePhpScript($scriptPath, $force ? ['--force'] : []);
 
         if ($output !== null) {
-            $this->io->success("Cron task '$task' completed successfully");
+            $this->io()->success("Cron task '$task' completed successfully");
             if ($output !== '') {
-                $this->io->text($output);
+                $this->io()->text($output);
             }
             return self::SUCCESS;
         }
@@ -145,18 +145,18 @@ class CronCommand extends BaseCommand
         $cronScript = $this->config->getAdminPath() . '/include/cron.php';
 
         if (!file_exists($cronScript)) {
-            $this->io->error("Main cron script not found: $cronScript");
+            $this->io()->error("Main cron script not found: $cronScript");
             return self::FAILURE;
         }
 
-        $this->io->info('Running all cron tasks...');
+        $this->io()->info('Running all cron tasks...');
 
         $output = $this->executePhpScript($cronScript, $force ? ['--force'] : []);
 
         if ($output !== null) {
-            $this->io->success('All cron tasks completed successfully');
+            $this->io()->success('All cron tasks completed successfully');
             if ($output !== '') {
-                $this->io->text($output);
+                $this->io()->text($output);
             }
             return self::SUCCESS;
         }

@@ -57,12 +57,12 @@ EOT
                 return $this->disableMaintenance($output, $settingsFile);
 
             default:
-                $this->io->error('Invalid action: ' . $mode);
-                $this->io->newLine();
-                $this->io->text('<info>Usage:</info>');
-                $this->io->text('  kvs maintenance <comment>on</comment>      - Enable maintenance mode');
-                $this->io->text('  kvs maintenance <comment>off</comment>     - Disable maintenance mode');
-                $this->io->text('  kvs maintenance <comment>status</comment>  - Check maintenance status');
+                $this->io()->error('Invalid action: ' . $mode);
+                $this->io()->newLine();
+                $this->io()->text('<info>Usage:</info>');
+                $this->io()->text('  kvs maintenance <comment>on</comment>      - Enable maintenance mode');
+                $this->io()->text('  kvs maintenance <comment>off</comment>     - Disable maintenance mode');
+                $this->io()->text('  kvs maintenance <comment>status</comment>  - Check maintenance status');
                 return self::FAILURE;
         }
     }
@@ -72,11 +72,11 @@ EOT
         $isEnabled = $this->getMaintenanceStatus($settingsFile);
 
         if ($isEnabled) {
-            $this->io->warning('Maintenance mode is ENABLED');
-            $this->io->text('Website offline for visitors');
+            $this->io()->warning('Maintenance mode is ENABLED');
+            $this->io()->text('Website offline for visitors');
         } else {
-            $this->io->success('Maintenance mode is DISABLED');
-            $this->io->text('Website online for everyone');
+            $this->io()->success('Maintenance mode is DISABLED');
+            $this->io()->text('Website online for everyone');
         }
 
         return self::SUCCESS;
@@ -88,8 +88,8 @@ EOT
         $settings['DISABLE_WEBSITE'] = 1;
         $this->saveSettings($settingsFile, $settings);
 
-        $this->io->success('Maintenance mode enabled');
-        $this->io->text('Website is now offline for visitors (admins can still access)');
+        $this->io()->success('Maintenance mode enabled');
+        $this->io()->text('Website is now offline for visitors (admins can still access)');
 
         return self::SUCCESS;
     }
@@ -100,8 +100,8 @@ EOT
         $settings['DISABLE_WEBSITE'] = 0;
         $this->saveSettings($settingsFile, $settings);
 
-        $this->io->success('Maintenance mode disabled');
-        $this->io->text('Website is now online for everyone');
+        $this->io()->success('Maintenance mode disabled');
+        $this->io()->text('Website is now online for everyone');
 
         return self::SUCCESS;
     }

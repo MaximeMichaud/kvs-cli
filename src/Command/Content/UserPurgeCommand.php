@@ -75,7 +75,7 @@ HELP
 
         // Require at least one filter
         if (!$removalRequested && !$noContent && $inactiveDays === null && $minAge === null) {
-            $this->io->error('At least one filter is required: --removal-requested, --no-content, --inactive-days, or --min-age');
+            $this->io()->error('At least one filter is required: --removal-requested, --no-content, --inactive-days, or --min-age');
             return self::FAILURE;
         }
 
@@ -123,19 +123,19 @@ HELP
             $stmt->execute();
             $users = $stmt->fetchAll();
         } catch (\Exception $e) {
-            $this->io->error('Failed to query users: ' . $e->getMessage());
+            $this->io()->error('Failed to query users: ' . $e->getMessage());
             return self::FAILURE;
         }
 
         $count = count($users);
 
         if ($count === 0) {
-            $this->io->success('No users match the specified criteria.');
+            $this->io()->success('No users match the specified criteria.');
             return self::SUCCESS;
         }
 
         // Display users
-        $this->io->title($confirm ? 'Users to Delete' : 'Users Matching Criteria (Dry-Run)');
+        $this->io()->title($confirm ? 'Users to Delete' : 'Users Matching Criteria (Dry-Run)');
 
         $rows = [];
         foreach ($users as $user) {
@@ -151,41 +151,41 @@ HELP
 
         $this->renderTable(['ID', 'Username', 'Email', 'Last Login', 'Created'], $rows);
 
-        $this->io->newLine();
-        $this->io->text(sprintf('<info>Total:</info> %d users', $count));
+        $this->io()->newLine();
+        $this->io()->text(sprintf('<info>Total:</info> %d users', $count));
 
         if ($confirm === false) {
-            $this->io->newLine();
-            $this->io->note('This is a DRY-RUN. Use --confirm to actually delete users.');
+            $this->io()->newLine();
+            $this->io()->note('This is a DRY-RUN. Use --confirm to actually delete users.');
             return self::SUCCESS;
         }
 
         // Confirmation
         if ($yes === false) {
-            $this->io->newLine();
-            $this->io->warning(sprintf('You are about to DELETE %d users permanently!', $count));
+            $this->io()->newLine();
+            $this->io()->warning(sprintf('You are about to DELETE %d users permanently!', $count));
 
-            if ($this->io->confirm('Are you sure you want to continue?', false) !== true) {
-                $this->io->text('Operation cancelled.');
+            if ($this->io()->confirm('Are you sure you want to continue?', false) !== true) {
+                $this->io()->text('Operation cancelled.');
                 return self::SUCCESS;
             }
         }
 
         // Load KVS admin context and delete
-        $this->io->text('Loading KVS admin context...');
+        $this->io()->text('Loading KVS admin context...');
 
         $kvsPath = $this->config->getKvsPath();
         $adminPath = $kvsPath . '/admin';
 
         if (!is_dir($adminPath)) {
-            $this->io->error(sprintf('KVS admin directory not found: %s', $adminPath));
+            $this->io()->error(sprintf('KVS admin directory not found: %s', $adminPath));
             return self::FAILURE;
         }
 
         // Change to admin directory for relative includes
         $originalDir = getcwd();
         if ($originalDir === false) {
-            $this->io->error('Failed to get current working directory');
+            $this->io()->error('Failed to get current working directory');
             return self::FAILURE;
         }
         chdir($adminPath);
@@ -204,7 +204,7 @@ HELP
 
             $userIds = array_column($users, 'user_id');
 
-            $this->io->text(sprintf('Deleting %d users...', $count));
+            $this->io()->text(sprintf('Deleting %d users...', $count));
 
             // Use KVS delete_users function with 'ap' context
             // @phpstan-ignore-next-line (function is loaded dynamically from KVS)
@@ -212,13 +212,13 @@ HELP
 
             chdir($originalDir);
 
-            $this->io->success(sprintf('Successfully deleted %d users.', $count));
+            $this->io()->success(sprintf('Successfully deleted %d users.', $count));
             return self::SUCCESS;
         } catch (\Throwable $e) {
             chdir($originalDir);
-            $this->io->error('Failed to delete users: ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Failed to delete users: ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text($e->getTraceAsString());
             }
             return self::FAILURE;
         }

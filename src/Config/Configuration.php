@@ -98,13 +98,23 @@ class Configuration
                 return;
             }
 
-            $this->dbConfig['host'] = $this->extractDefineValue($content, 'DB_HOST');
-            $this->dbConfig['user'] = $this->extractDefineValue($content, 'DB_LOGIN');
-            $this->dbConfig['password'] = $this->extractDefineValue($content, 'DB_PASS');
-            $this->dbConfig['database'] = $this->extractDefineValue($content, 'DB_DEVICE');
+            $host = $this->extractDefineValue($content, 'DB_HOST');
+            $user = $this->extractDefineValue($content, 'DB_LOGIN');
+            $password = $this->extractDefineValue($content, 'DB_PASS');
+            $database = $this->extractDefineValue($content, 'DB_DEVICE');
 
-            // Remove empty values
-            $this->dbConfig = array_filter($this->dbConfig, fn($v) => $v !== null && $v !== '');
+            if ($host !== null && $host !== '') {
+                $this->dbConfig['host'] = $host;
+            }
+            if ($user !== null && $user !== '') {
+                $this->dbConfig['user'] = $user;
+            }
+            if ($password !== null && $password !== '') {
+                $this->dbConfig['password'] = $password;
+            }
+            if ($database !== null && $database !== '') {
+                $this->dbConfig['database'] = $database;
+            }
         }
     }
 

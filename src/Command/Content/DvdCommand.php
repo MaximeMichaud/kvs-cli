@@ -143,11 +143,11 @@ HELP
 
             // Format and display using Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
-            $formatter->display($transformedDvds, $this->io);
+            $formatter->display($transformedDvds, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch DVDs: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch DVDs: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -155,7 +155,7 @@ HELP
     private function showDvd(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('DVD ID is required');
+            $this->io()->error('DVD ID is required');
             return self::FAILURE;
         }
 
@@ -174,12 +174,12 @@ HELP
             $dvd = $stmt->fetch();
 
             if ($dvd === false) {
-                $this->io->error("DVD not found: $id");
+                $this->io()->error("DVD not found: $id");
                 return self::FAILURE;
             }
 
             // Display DVD details
-            $this->io->title("DVD: {$dvd['title']}");
+            $this->io()->title("DVD: {$dvd['title']}");
 
             $info = [
                 ['DVD ID', $dvd['dvd_id']],
@@ -221,7 +221,7 @@ HELP
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch DVD: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch DVD: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -254,12 +254,12 @@ HELP
                 $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
             }
 
-            $this->io->title('DVD Statistics');
+            $this->io()->title('DVD Statistics');
             $this->renderTable(['Metric', 'Value'], $stats);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch statistics: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
     }

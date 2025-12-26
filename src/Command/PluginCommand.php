@@ -81,7 +81,7 @@ HELP
         $plugins = $this->getAllPlugins();
 
         if ($plugins === []) {
-            $this->io->info('No plugins found');
+            $this->io()->info('No plugins found');
             return self::SUCCESS;
         }
 
@@ -141,7 +141,7 @@ HELP
             ['id', 'name', 'version', 'status', 'types']
         );
         /** @var list<array<string, mixed>> $transformedPlugins */
-        $formatter->display($transformedPlugins, $this->io);
+        $formatter->display($transformedPlugins, $this->io());
 
         return self::SUCCESS;
     }
@@ -149,20 +149,20 @@ HELP
     private function showPlugin(?string $id): int
     {
         if ($id === null || $id === "") {
-            $this->io->error('Plugin ID is required');
-            $this->io->text('Usage: kvs plugin show <plugin_id>');
+            $this->io()->error('Plugin ID is required');
+            $this->io()->text('Usage: kvs plugin show <plugin_id>');
             return self::FAILURE;
         }
 
         $plugin = $this->getPluginById($id);
 
         if ($plugin === null) {
-            $this->io->error("Plugin not found: $id");
+            $this->io()->error("Plugin not found: $id");
             return self::FAILURE;
         }
 
         $name = $plugin['name'] ?? 'Unknown';
-        $this->io->section("Plugin: {$name}");
+        $this->io()->section("Plugin: {$name}");
 
         $filesOk = $plugin['files_ok'] ?? false;
         $syntaxOk = $plugin['syntax_ok'] ?? false;
@@ -188,14 +188,14 @@ HELP
 
         $description = $plugin['description'] ?? '';
         if ($description !== '') {
-            $this->io->section('Description');
-            $this->io->text($description);
+            $this->io()->section('Description');
+            $this->io()->text($description);
         }
 
         $pluginPath = $plugin['path'] ?? '';
         $pluginId = $plugin['id'] ?? '';
-        $this->io->section('Paths');
-        $this->io->listing([
+        $this->io()->section('Paths');
+        $this->io()->listing([
             "Plugin directory: {$pluginPath}",
             "Main file: {$pluginPath}/{$pluginId}.php",
             "Template: {$pluginPath}/{$pluginId}.tpl",
@@ -208,19 +208,19 @@ HELP
     private function showPluginPath(?string $id): int
     {
         if ($id === null || $id === "") {
-            $this->io->error('Plugin ID is required');
+            $this->io()->error('Plugin ID is required');
             return self::FAILURE;
         }
 
         $plugin = $this->getPluginById($id);
 
         if ($plugin === null) {
-            $this->io->error("Plugin not found: $id");
+            $this->io()->error("Plugin not found: $id");
             return self::FAILURE;
         }
 
         $pluginPath = $plugin['path'] ?? '';
-        $this->io->writeln($pluginPath);
+        $this->io()->writeln($pluginPath);
         return self::SUCCESS;
     }
 
@@ -247,7 +247,7 @@ HELP
             }
         }
 
-        $this->io->section('Plugin Statistics');
+        $this->io()->section('Plugin Statistics');
 
         $stats = [
             ['Total Plugins', $total],
@@ -269,7 +269,7 @@ HELP
         $this->renderTable(['Metric', 'Count'], $stats);
 
         if ($typeStats !== []) {
-            $this->io->section('By Type');
+            $this->io()->section('By Type');
             $typeRows = [];
             foreach ($typeStats as $type => $count) {
                 $typeRows[] = [ucfirst($type), $count];

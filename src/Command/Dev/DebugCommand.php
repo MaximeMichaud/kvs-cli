@@ -40,7 +40,7 @@ class DebugCommand extends BaseCommand
 
     private function runChecks(): int
     {
-        $this->io->section('System Checks');
+        $this->io()->section('System Checks');
 
         $checks = [];
 
@@ -77,27 +77,27 @@ class DebugCommand extends BaseCommand
         $errors = array_filter($checks, fn($c) => $c[2] === 'ERROR');
 
         if ($errors === []) {
-            $this->io->success('All checks passed');
+            $this->io()->success('All checks passed');
             return self::SUCCESS;
         } else {
-            $this->io->error(sprintf('%d check(s) failed', count($errors)));
+            $this->io()->error(sprintf('%d check(s) failed', count($errors)));
             return self::FAILURE;
         }
     }
 
     private function testDatabase(): int
     {
-        $this->io->section('Database Connection Test');
+        $this->io()->section('Database Connection Test');
 
         $dbConfig = $this->config->getDatabaseConfig();
 
         if ($dbConfig === []) {
-            $this->io->error('Database configuration not found');
+            $this->io()->error('Database configuration not found');
             return self::FAILURE;
         }
 
-        $this->io->info('Configuration:');
-        $this->io->listing([
+        $this->io()->info('Configuration:');
+        $this->io()->listing([
             'Host: ' . $dbConfig['host'],
             'Database: ' . $dbConfig['database'],
             'User: ' . $dbConfig['user'],
@@ -106,7 +106,7 @@ class DebugCommand extends BaseCommand
         $db = $this->getDatabaseConnection();
 
         if ($db === null) {
-            $this->io->error('Connection failed');
+            $this->io()->error('Connection failed');
             return self::FAILURE;
         }
 
@@ -116,7 +116,7 @@ class DebugCommand extends BaseCommand
                 throw new \Exception('Failed to query MySQL version');
             }
             $version = $stmt->fetchColumn();
-            $this->io->success("Connected successfully! MySQL version: $version");
+            $this->io()->success("Connected successfully! MySQL version: $version");
 
             $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "%'");
             if ($stmt === false) {
@@ -124,13 +124,13 @@ class DebugCommand extends BaseCommand
             }
             $tables = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-            $this->io->info(sprintf('Found %d KVS tables', count($tables)));
+            $this->io()->info(sprintf('Found %d KVS tables', count($tables)));
 
-            if ($this->io->isVerbose()) {
-                $this->io->listing($tables);
+            if ($this->io()->isVerbose()) {
+                $this->io()->listing($tables);
             }
         } catch (\Exception $e) {
-            $this->io->error('Query failed: ' . $e->getMessage());
+            $this->io()->error('Query failed: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -139,7 +139,7 @@ class DebugCommand extends BaseCommand
 
     private function showDebugInfo(): int
     {
-        $this->io->section('Debug Information');
+        $this->io()->section('Debug Information');
 
         $kvsPathValue = $this->config->getKvsPath();
         $displayErrors = ini_get('display_errors');
@@ -168,7 +168,7 @@ class DebugCommand extends BaseCommand
 
         $this->renderTable(['Parameter', 'Value'], $info);
 
-        $this->io->section('Environment Variables');
+        $this->io()->section('Environment Variables');
 
         $envVars = [
             'PATH' => getenv('PATH'),

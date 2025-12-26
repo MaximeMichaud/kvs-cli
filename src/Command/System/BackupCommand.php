@@ -48,8 +48,8 @@ class BackupCommand extends BaseCommand
             return $this->listBackups();
         }
 
-        $this->io->info('Available options:');
-        $this->io->listing([
+        $this->io()->info('Available options:');
+        $this->io()->listing([
             '--create : Create a new backup',
             '--create --type=db : Create database backup only',
             '--create --type=files : Create files backup only',
@@ -83,7 +83,7 @@ class BackupCommand extends BaseCommand
             $this->createFullArchive($outputDir, $backupName);
         }
 
-        $this->io->success("Backup created: $outputDir/$backupName");
+        $this->io()->success("Backup created: $outputDir/$backupName");
         return self::SUCCESS;
     }
 
@@ -92,7 +92,7 @@ class BackupCommand extends BaseCommand
         $dbConfig = $this->config->getDatabaseConfig();
 
         if ($dbConfig === []) {
-            $this->io->error('Database configuration not found');
+            $this->io()->error('Database configuration not found');
             return;
         }
 
@@ -113,7 +113,7 @@ class BackupCommand extends BaseCommand
         $process = new Process($command);
         $process->setTimeout(3600);
 
-        $this->io->info('Creating database backup...');
+        $this->io()->info('Creating database backup...');
 
         $process->run();
 
@@ -123,14 +123,14 @@ class BackupCommand extends BaseCommand
             $gzFile = "$dumpFile.gz";
             $fp = gzopen($gzFile, 'w9');
             if ($fp === false) {
-                $this->io->error('Failed to create compressed backup file');
+                $this->io()->error('Failed to create compressed backup file');
                 return;
             }
 
             $sqlContent = file_get_contents($dumpFile);
             if ($sqlContent === false) {
                 gzclose($fp);
-                $this->io->error('Failed to read SQL dump file');
+                $this->io()->error('Failed to read SQL dump file');
                 return;
             }
 
@@ -138,9 +138,9 @@ class BackupCommand extends BaseCommand
             gzclose($fp);
             unlink($dumpFile);
 
-            $this->io->info('Database backup created: ' . basename($gzFile));
+            $this->io()->info('Database backup created: ' . basename($gzFile));
         } else {
-            $this->io->error('Database backup failed: ' . $process->getErrorOutput());
+            $this->io()->error('Database backup failed: ' . $process->getErrorOutput());
         }
     }
 
@@ -173,14 +173,14 @@ class BackupCommand extends BaseCommand
         $process = new Process($command);
         $process->setTimeout(7200);
 
-        $this->io->info('Creating files backup...');
+        $this->io()->info('Creating files backup...');
 
         $process->run();
 
         if ($process->isSuccessful()) {
-            $this->io->info('Files backup created: ' . basename($tarFile));
+            $this->io()->info('Files backup created: ' . basename($tarFile));
         } else {
-            $this->io->error('Files backup failed: ' . $process->getErrorOutput());
+            $this->io()->error('Files backup failed: ' . $process->getErrorOutput());
         }
     }
 
@@ -209,7 +209,7 @@ class BackupCommand extends BaseCommand
                 $gzProcess = new Process($gzCommand);
                 $gzProcess->run();
 
-                $this->io->info('Full backup archive created: ' . basename("$fullFile.gz"));
+                $this->io()->info('Full backup archive created: ' . basename("$fullFile.gz"));
             }
         }
     }
@@ -217,17 +217,17 @@ class BackupCommand extends BaseCommand
     private function restoreBackup(string $backupFile): int
     {
         if (!file_exists($backupFile)) {
-            $this->io->error("Backup file not found: $backupFile");
+            $this->io()->error("Backup file not found: $backupFile");
             return self::FAILURE;
         }
 
-        $this->io->warning('Restore operation will overwrite existing data!');
+        $this->io()->warning('Restore operation will overwrite existing data!');
 
-        if ($this->io->confirm('Do you want to continue?', false) !== true) {
+        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
-        $this->io->info('Restoring from backup: ' . basename($backupFile));
+        $this->io()->info('Restoring from backup: ' . basename($backupFile));
 
         return self::SUCCESS;
     }
@@ -237,14 +237,14 @@ class BackupCommand extends BaseCommand
         $backupDir = dirname($this->config->getKvsPath()) . '/backups';
 
         if (!is_dir($backupDir)) {
-            $this->io->warning('No backups directory found');
+            $this->io()->warning('No backups directory found');
             return self::SUCCESS;
         }
 
         $files = glob("$backupDir/kvs_backup_*.{tar.gz,sql.gz}", GLOB_BRACE);
 
         if ($files === false || $files === []) {
-            $this->io->info('No backups found');
+            $this->io()->info('No backups found');
             return self::SUCCESS;
         }
 

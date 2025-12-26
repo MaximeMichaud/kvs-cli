@@ -21,13 +21,22 @@ abstract class BaseCommand extends Command
         parent::__construct();
     }
 
+    /**
+     * Get SymfonyStyle IO instance (guaranteed non-null after initialize)
+     */
+    protected function io(): SymfonyStyle
+    {
+        assert($this->io !== null, 'io() called before initialize()');
+        return $this->io;
+    }
+
     protected function initialize(InputInterface $input, OutputInterface $output): void
     {
         $this->io = new SymfonyStyle($input, $output);
 
         if (!$this->config->isKvsInstalled()) {
-            $this->io->warning('KVS installation not found or not properly configured.');
-            $this->io->note('Make sure KVS is installed and the database is configured.');
+            $this->io()->warning('KVS installation not found or not properly configured.');
+            $this->io()->note('Make sure KVS is installed and the database is configured.');
         }
     }
 
@@ -37,7 +46,7 @@ abstract class BaseCommand extends Command
     protected function executePhpScript(string $scriptPath, array $args = []): ?string
     {
         if (!file_exists($scriptPath)) {
-            $this->io->error("Script not found: $scriptPath");
+            $this->io()->error("Script not found: $scriptPath");
             return null;
         }
 
@@ -49,7 +58,7 @@ abstract class BaseCommand extends Command
         exec($command . ' 2>&1', $output, $returnCode);
 
         if ($returnCode !== 0) {
-            $this->io->error("Script execution failed: " . implode("\n", $output));
+            $this->io()->error("Script execution failed: " . implode("\n", $output));
             return null;
         }
 
@@ -62,7 +71,7 @@ abstract class BaseCommand extends Command
 
         if ($dbConfig === []) {
             if (!$quiet) {
-                $this->io->error('Database configuration not found');
+                $this->io()->error('Database configuration not found');
             }
             return null;
         }
@@ -80,7 +89,7 @@ abstract class BaseCommand extends Command
             ]);
         } catch (\PDOException $e) {
             if (!$quiet) {
-                $this->io->error('Database connection failed: ' . $e->getMessage());
+                $this->io()->error('Database connection failed: ' . $e->getMessage());
             }
             return null;
         }
@@ -94,7 +103,7 @@ abstract class BaseCommand extends Command
      */
     protected function renderTable(array $headers, array $rows): void
     {
-        $table = new Table($this->io);
+        $table = new Table($this->io());
         $table->setStyle(Constants::TABLE_STYLE);
         $table->setHeaders($headers);
         $table->setRows($rows);

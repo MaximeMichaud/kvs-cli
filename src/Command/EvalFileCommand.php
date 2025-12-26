@@ -64,19 +64,19 @@ HELP
             if (file_exists($altFile)) {
                 $file = $altFile;
             } else {
-                $this->io->error("File not found: $file");
+                $this->io()->error("File not found: $file");
                 return self::FAILURE;
             }
         }
 
         if (!is_readable($file)) {
-            $this->io->error("File is not readable: $file");
+            $this->io()->error("File is not readable: $file");
             return self::FAILURE;
         }
 
-        $this->io->info("Executing: $file");
+        $this->io()->info("Executing: $file");
         if ($args !== []) {
-            $this->io->comment('Arguments: ' . implode(' ', $args));
+            $this->io()->comment('Arguments: ' . implode(' ', $args));
         }
 
         // Set up script arguments
@@ -95,7 +95,7 @@ HELP
             // Get database connection
             $db = $this->getDatabaseConnection();
             if ($db === null) {
-                $this->io->warning('Database connection not available');
+                $this->io()->warning('Database connection not available');
             }
 
             // Load bootstrap (this defines Model and DB classes and auto-initializes with $db)
@@ -112,22 +112,22 @@ HELP
             $result = include $file;
         } catch (\ParseError $e) {
             $errorOccurred = true;
-            $this->io->error('Parse Error in ' . basename($file) . ': ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text('Line ' . $e->getLine() . ': ' . $this->getFileLine($file, $e->getLine()));
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Parse Error in ' . basename($file) . ': ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text('Line ' . $e->getLine() . ': ' . $this->getFileLine($file, $e->getLine()));
+                $this->io()->text($e->getTraceAsString());
             }
         } catch (\Exception $e) {
             $errorOccurred = true;
-            $this->io->error('Error: ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Error: ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text($e->getTraceAsString());
             }
         } catch (\Error $e) {
             $errorOccurred = true;
-            $this->io->error('Fatal Error: ' . $e->getMessage());
-            if ($this->io->isVerbose()) {
-                $this->io->text($e->getTraceAsString());
+            $this->io()->error('Fatal Error: ' . $e->getMessage());
+            if ($this->io()->isVerbose()) {
+                $this->io()->text($e->getTraceAsString());
             }
         }
 
@@ -135,14 +135,14 @@ HELP
 
         // Display output
         if ($capturedOutput !== false && $capturedOutput !== '') {
-            $this->io->write($capturedOutput);
+            $this->io()->write($capturedOutput);
         }
 
         // Display return value if script returned something
         if (!$errorOccurred && $result !== null && $result !== 1 && $result !== true) {
-            $this->io->section('Script returned');
+            $this->io()->section('Script returned');
             if (is_scalar($result)) {
-                $this->io->writeln((string)$result);
+                $this->io()->writeln((string)$result);
             } else {
                 var_dump($result);
             }

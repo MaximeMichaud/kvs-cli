@@ -64,22 +64,22 @@ HELP
         $videoId = $input->getArgument('video_id');
 
         if ($videoId === null || $videoId === false || $videoId === '') {
-            $this->io->error('Video ID is required');
-            $this->io->text('Usage: kvs video:formats list <video_id>');
+            $this->io()->error('Video ID is required');
+            $this->io()->text('Usage: kvs video:formats list <video_id>');
             return self::FAILURE;
         }
 
         $videoSourcesPath = $this->config->getVideoSourcesPath();
         if ($videoSourcesPath === '') {
-            $this->io->error('Video sources path not configured');
+            $this->io()->error('Video sources path not configured');
             return self::FAILURE;
         }
 
         $videoPath = "$videoSourcesPath/$videoId";
 
         if (!is_dir($videoPath)) {
-            $this->io->error("Video directory not found: $videoPath");
-            $this->io->note("The video might not exist or formats haven't been generated yet.");
+            $this->io()->error("Video directory not found: $videoPath");
+            $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
         }
 
@@ -95,8 +95,8 @@ HELP
         }
 
         if ($files === []) {
-            $this->io->warning('No video files found in directory');
-            $this->io->text("Directory: $videoPath");
+            $this->io()->warning('No video files found in directory');
+            $this->io()->text("Directory: $videoPath");
             return self::SUCCESS;
         }
 
@@ -128,7 +128,7 @@ HELP
         $defaultFields = ['format', 'file', 'size', 'dimensions'];
 
         $formatter = new Formatter($input->getOptions(), $defaultFields);
-        $formatter->display($formats, $this->io);
+        $formatter->display($formats, $this->io());
 
         return self::SUCCESS;
     }
@@ -138,33 +138,33 @@ HELP
         $videoId = $input->getArgument('video_id');
 
         if ($videoId === null || $videoId === false || $videoId === '') {
-            $this->io->error('Video ID is required');
-            $this->io->text('Usage: kvs video:formats check <video_id>');
+            $this->io()->error('Video ID is required');
+            $this->io()->text('Usage: kvs video:formats check <video_id>');
             return self::FAILURE;
         }
 
         $videoSourcesPath = $this->config->getVideoSourcesPath();
         if ($videoSourcesPath === '') {
-            $this->io->error('Video sources path not configured');
+            $this->io()->error('Video sources path not configured');
             return self::FAILURE;
         }
 
         $videoPath = "$videoSourcesPath/$videoId";
 
         if (!is_dir($videoPath)) {
-            $this->io->error("Video directory not found for video ID: $videoId");
+            $this->io()->error("Video directory not found for video ID: $videoId");
             return self::FAILURE;
         }
 
-        $this->io->title("Format Status for Video $videoId");
+        $this->io()->title("Format Status for Video $videoId");
 
         // Get configured formats from database
         $configuredFormats = $this->getFormatsFromDatabase();
 
         if ($configuredFormats === []) {
-            $this->io->warning('No formats configured in database');
-            $this->io->text('Cannot check formats without KVS format configuration.');
-            $this->io->text('Use "kvs video:formats list <video_id>" to see actual files.');
+            $this->io()->warning('No formats configured in database');
+            $this->io()->text('Cannot check formats without KVS format configuration.');
+            $this->io()->text('Use "kvs video:formats list <video_id>" to see actual files.');
             return self::FAILURE;
         }
 
@@ -195,18 +195,18 @@ HELP
         }
 
         if ($available !== []) {
-            $this->io->section('✓ Available Formats');
-            $this->io->listing($available);
+            $this->io()->section('✓ Available Formats');
+            $this->io()->listing($available);
         }
 
         if ($missing !== []) {
-            $this->io->section('✗ Missing Formats');
-            $this->io->listing($missing);
-            $this->io->note('These formats can be generated via video conversion process');
+            $this->io()->section('✗ Missing Formats');
+            $this->io()->listing($missing);
+            $this->io()->note('These formats can be generated via video conversion process');
         }
 
         if ($available === [] && $missing === []) {
-            $this->io->warning('No standard formats found in directory');
+            $this->io()->warning('No standard formats found in directory');
         }
 
         return self::SUCCESS;
@@ -214,16 +214,16 @@ HELP
 
     private function showAvailableFormats(InputInterface $input): int
     {
-        $this->io->title('Available Format Configurations');
+        $this->io()->title('Available Format Configurations');
 
         // Try to read from KVS database configuration
         $formats = $this->getFormatsFromDatabase();
 
         if ($formats === []) {
             // Fallback: scan filesystem to see what formats actually exist
-            $this->io->warning('No formats configured in database');
-            $this->io->text('Reading format configuration from KVS database failed.');
-            $this->io->text('This might be a test environment without format configuration.');
+            $this->io()->warning('No formats configured in database');
+            $this->io()->text('Reading format configuration from KVS database failed.');
+            $this->io()->text('This might be a test environment without format configuration.');
             return self::FAILURE;
         }
 
@@ -231,10 +231,10 @@ HELP
 
         $formatter = new Formatter($input->getOptions(), $defaultFields);
         /** @var list<array<string, mixed>> $formats */
-        $formatter->display($formats, $this->io);
+        $formatter->display($formats, $this->io());
 
-        $this->io->newLine();
-        $this->io->note('These formats are configured in KVS (table: ' . $this->table('formats_videos') . ')');
+        $this->io()->newLine();
+        $this->io()->note('These formats are configured in KVS (table: ' . $this->table('formats_videos') . ')');
 
         return self::SUCCESS;
     }

@@ -157,11 +157,11 @@ HELP
                 $input->getOptions(),
                 ['video_id', 'title', 'status_id', 'views', 'username', 'post_date']
             );
-            $formatter->display($videos, $this->io);
+            $formatter->display($videos, $this->io());
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch videos: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch videos: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -169,7 +169,7 @@ HELP
     private function showVideo(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Video ID is required');
+            $this->io()->error('Video ID is required');
             return self::FAILURE;
         }
 
@@ -184,11 +184,11 @@ HELP
             $video = $stmt->fetch();
 
             if ($video === false) {
-                $this->io->error("Video not found: $id");
+                $this->io()->error("Video not found: $id");
                 return self::FAILURE;
             }
 
-            $this->io->section("Video #$id");
+            $this->io()->section("Video #$id");
 
             $info = [
                 ['Title', $video['title']],
@@ -217,8 +217,8 @@ HELP
             $this->renderTable(['Property', 'Value'], $info);
 
             if (isset($video['description']) && $video['description'] !== '') {
-                $this->io->section('Description');
-                $this->io->text($video['description']);
+                $this->io()->section('Description');
+                $this->io()->text($video['description']);
             }
 
             $stmt = $db->prepare("
@@ -230,8 +230,8 @@ HELP
             $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             if ($categories !== []) {
-                $this->io->section('Categories');
-                $this->io->listing($categories);
+                $this->io()->section('Categories');
+                $this->io()->listing($categories);
             }
 
             $stmt = $db->prepare("
@@ -243,11 +243,11 @@ HELP
             $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             if ($tags !== []) {
-                $this->io->section('Tags');
-                $this->io->text(implode(', ', $tags));
+                $this->io()->section('Tags');
+                $this->io()->text(implode(', ', $tags));
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch video: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch video: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -257,13 +257,13 @@ HELP
     private function deleteVideo(?string $id): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Video ID is required');
+            $this->io()->error('Video ID is required');
             return self::FAILURE;
         }
 
-        $this->io->warning("This will permanently delete video #$id");
+        $this->io()->warning("This will permanently delete video #$id");
 
-        if ($this->io->confirm('Do you want to continue?', false) !== true) {
+        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
         }
 
@@ -311,10 +311,10 @@ HELP
             }
 
             $db->commit();
-            $this->io->success("Video #$id deleted successfully");
+            $this->io()->success("Video #$id deleted successfully");
         } catch (\Exception $e) {
             $db->rollBack();
-            $this->io->error('Failed to delete video: ' . $e->getMessage());
+            $this->io()->error('Failed to delete video: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -324,12 +324,12 @@ HELP
     private function updateVideo(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
-            $this->io->error('Video ID is required');
+            $this->io()->error('Video ID is required');
             return self::FAILURE;
         }
 
-        $this->io->info("Update functionality would be implemented here for video #$id");
-        $this->io->note('This would allow updating title, status, categories, etc.');
+        $this->io()->info("Update functionality would be implemented here for video #$id");
+        $this->io()->note('This would allow updating title, status, categories, etc.');
 
         return self::SUCCESS;
     }
@@ -384,7 +384,7 @@ HELP
             $topVideos = $stmt !== false ? $stmt->fetchAll() : [];
 
             if ($topVideos !== []) {
-                $this->io->section('Top 10 Most Viewed Videos');
+                $this->io()->section('Top 10 Most Viewed Videos');
                 $rows = [];
                 foreach ($topVideos as $i => $video) {
                     $rows[] = [
@@ -396,7 +396,7 @@ HELP
                 $this->renderTable(['#', 'Title', 'Views'], $rows);
             }
         } catch (\Exception $e) {
-            $this->io->error('Failed to fetch statistics: ' . $e->getMessage());
+            $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
 
@@ -405,8 +405,8 @@ HELP
 
     private function showHelp(): int
     {
-        $this->io->info('Available actions:');
-        $this->io->listing([
+        $this->io()->info('Available actions:');
+        $this->io()->listing([
             'list : List videos with filters',
             'show <id> : Show details for a specific video',
             'delete <id> : Delete a video',
@@ -414,8 +414,8 @@ HELP
             'stats : Show video statistics',
         ]);
 
-        $this->io->section('Examples');
-        $this->io->text([
+        $this->io()->section('Examples');
+        $this->io()->text([
             'kvs content:video list --status=active --limit=10',
             'kvs content:video show 123',
             'kvs content:video list --search="example" --category=5',
