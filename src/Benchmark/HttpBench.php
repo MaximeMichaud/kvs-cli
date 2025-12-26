@@ -143,7 +143,11 @@ class HttpBench
      * Calculate statistics from timing samples
      *
      * @param array<int, float> $timings
-     * @return array{avg: float, min: float, max: float, p50: float, p95: float, p99: float, samples: int}
+     * @return array{
+     *     avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float,
+     *     req_sec: float, samples: int
+     * }
      */
     private function calculateStats(array $timings): array
     {
@@ -155,20 +159,23 @@ class HttpBench
                 'p50' => 0.0,
                 'p95' => 0.0,
                 'p99' => 0.0,
+                'req_sec' => 0.0,
                 'samples' => 0,
             ];
         }
 
         sort($timings);
         $count = count($timings);
+        $avg = array_sum($timings) / $count;
 
         return [
-            'avg' => array_sum($timings) / $count,
+            'avg' => $avg,
             'min' => $timings[0],
             'max' => $timings[$count - 1],
             'p50' => $this->percentile($timings, 50),
             'p95' => $this->percentile($timings, 95),
             'p99' => $this->percentile($timings, 99),
+            'req_sec' => $avg > 0 ? round(1000 / $avg, 2) : 0.0,
             'samples' => $count,
         ];
     }

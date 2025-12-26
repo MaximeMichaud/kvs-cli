@@ -375,7 +375,7 @@ class BenchmarkCommand extends BaseCommand
         $httpResults = $result->getHttpResults();
         $baselineHttp = $baseline !== null ? $baseline->getHttpResults() : [];
 
-        $headers = ['Endpoint', 'Avg', 'Min', 'Max', 'p50', 'p95', 'p99'];
+        $headers = ['Endpoint', 'Avg (ms)', 'Min', 'Max', 'p50', 'p95', 'Req/sec'];
         if ($baseline !== null) {
             $headers[] = 'vs Base';
         }
@@ -389,11 +389,12 @@ class BenchmarkCommand extends BaseCommand
                 $this->formatMs($data['max']),
                 $this->formatMs($data['p50']),
                 $this->formatMs($data['p95']),
-                $this->formatMs($data['p99']),
+                $this->formatNumber($data['req_sec']),
             ];
 
             if ($baseline !== null && isset($baselineHttp[$key])) {
-                $row[] = $this->formatComparison($data['avg'], $baselineHttp[$key]['avg'], true);
+                // Compare req/sec (higher is better)
+                $row[] = $this->formatComparison($data['req_sec'], $baselineHttp[$key]['req_sec'], false);
             } elseif ($baseline !== null) {
                 $row[] = '<fg=gray>N/A</>';
             }
@@ -402,7 +403,7 @@ class BenchmarkCommand extends BaseCommand
         }
 
         $this->renderTable($headers, $rows);
-        $this->io()->text('<fg=gray>All times in milliseconds. Lower is better.</>');
+        $this->io()->text('<fg=gray>Latency in ms (lower = better). Req/sec = theoretical max throughput (higher = better).</>');
     }
 
     private function displayDbResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void

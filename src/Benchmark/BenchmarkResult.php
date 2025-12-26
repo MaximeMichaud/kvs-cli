@@ -9,7 +9,12 @@ namespace KVS\CLI\Benchmark;
  */
 class BenchmarkResult
 {
-    /** @var array<string, array{name: string, avg: float, min: float, max: float, p50: float, p95: float, p99: float, samples: int}> */
+    /**
+     * @var array<string, array{
+     *     name: string, avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, req_sec: float, samples: int
+     * }>
+     */
     private array $httpResults = [];
 
     /** @var array<string, array{name: string, avg_ms: float, queries_sec: float, total_queries: int}> */
@@ -45,7 +50,10 @@ class BenchmarkResult
     /**
      * Record HTTP benchmark result
      *
-     * @param array{avg: float, min: float, max: float, p50: float, p95: float, p99: float, samples: int} $stats
+     * @param array{
+     *     avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, req_sec: float, samples: int
+     * } $stats
      */
     public function recordHttp(string $key, string $name, array $stats): void
     {
@@ -133,7 +141,10 @@ class BenchmarkResult
     }
 
     /**
-     * @return array<string, array{name: string, avg: float, min: float, max: float, p50: float, p95: float, p99: float, samples: int}>
+     * @return array<string, array{
+     *     name: string, avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, req_sec: float, samples: int
+     * }>
      */
     public function getHttpResults(): array
     {
@@ -382,14 +393,17 @@ class BenchmarkResult
                 continue;
             }
             $name = $stats['name'];
+            $avg = self::getFloat($stats, 'avg');
+            $reqSec = self::getFloat($stats, 'req_sec');
             $result->httpResults[(string)$key] = [
                 'name' => is_string($name) ? $name : '',
-                'avg' => self::getFloat($stats, 'avg'),
+                'avg' => $avg,
                 'min' => self::getFloat($stats, 'min'),
                 'max' => self::getFloat($stats, 'max'),
                 'p50' => self::getFloat($stats, 'p50'),
                 'p95' => self::getFloat($stats, 'p95'),
                 'p99' => self::getFloat($stats, 'p99'),
+                'req_sec' => $reqSec > 0 ? $reqSec : ($avg > 0 ? round(1000 / $avg, 2) : 0.0),
                 'samples' => self::getInt($stats, 'samples'),
             ];
         }
