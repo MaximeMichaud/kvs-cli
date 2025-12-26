@@ -327,7 +327,13 @@ class SystemBench
     {
         $info = [];
 
-        // First, try to get info from response headers
+        // First, try the probe endpoint (most accurate)
+        $probeInfo = $this->getPhpInfoFromProbe($baseUrl);
+        if ($probeInfo !== []) {
+            return $probeInfo;
+        }
+
+        // Fallback: get info from response headers
         $headerInfo = $this->getPhpInfoFromHeaders($baseUrl);
         if ($headerInfo !== []) {
             $info = array_merge($info, $headerInfo);
@@ -345,6 +351,95 @@ class SystemBench
         }
 
         return $info;
+    }
+
+    /**
+     * Get PHP-FPM info from a probe endpoint
+     *
+     * Looks for /_kvs_bench_probe.php which should return JSON with:
+     * {"php_version": "8.1.x", "opcache": true, "jit": true, ...}
+     *
+     * @return array<string, string|bool>
+     */
+    private function getPhpInfoFromProbe(string $baseUrl): array
+    {
+        $probeUrls = [
+            $baseUrl . '/_kvs_bench_probe.php',
+            $baseUrl . '/kvs_bench_probe.php',
+        ];
+
+        foreach ($probeUrls as $probeUrl) {
+            $ch = curl_init($probeUrl);
+            if ($ch === false) {
+                continue;
+            }
+
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_USERAGENT => 'KVS-CLI-Benchmark/1.0',
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if (!is_string($response) || $httpCode !== 200) {
+                continue;
+            }
+
+            // Try to parse as JSON
+            try {
+                $data = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
+                if (!is_array($data)) {
+                    continue;
+                }
+
+                $info = [];
+
+                if (isset($data['php_version']) && is_string($data['php_version'])) {
+                    $info['php_version'] = $data['php_version'];
+                }
+
+                if (isset($data['opcache'])) {
+                    $info['opcache'] = (bool)$data['opcache'];
+                }
+
+                if (isset($data['jit'])) {
+                    $info['jit'] = (bool)$data['jit'];
+                }
+
+                if (isset($data['jit_mode']) && is_string($data['jit_mode'])) {
+                    $info['jit_mode'] = $data['jit_mode'];
+                }
+
+                if (isset($data['memory_limit']) && is_string($data['memory_limit'])) {
+                    $info['memory_limit'] = $data['memory_limit'];
+                }
+
+                // Need at least php_version or opcache to be useful
+                if (!isset($info['php_version']) && !isset($info['opcache'])) {
+                    continue;
+                }
+
+                if (isset($data['sapi']) && is_string($data['sapi'])) {
+                    $info['php_sapi'] = $data['sapi'];
+                } else {
+                    $info['php_sapi'] = 'fpm';
+                }
+
+                $info['source'] = 'HTTP probe';
+                return $info;
+            } catch (\JsonException $e) {
+                // Not valid JSON, continue to next probe URL
+                continue;
+            }
+        }
+
+        return [];
     }
 
     /**
