@@ -271,125 +271,162 @@ HELP
         }
 
         try {
-            // Try active tasks first
-            $stmt = $db->prepare("
-                SELECT bt.*, cs.title as server_name
-                FROM {$this->table('background_tasks')} bt
-                LEFT JOIN {$this->table('admin_conversion_servers')} cs
-                    ON bt.server_id = cs.server_id
-                WHERE bt.task_id = :id
-            ");
-            $stmt->execute(['id' => $id]);
-            /** @var array<string, mixed>|false $task */
-            $task = $stmt->fetch();
-
-            $isHistory = false;
-            if ($task === false) {
-                // Try history table
-                $stmt = $db->prepare("
-                    SELECT * FROM {$this->table('background_tasks_history')}
-                    WHERE task_id = :id
-                ");
-                $stmt->execute(['id' => $id]);
-                /** @var array<string, mixed>|false $task */
-                $task = $stmt->fetch();
-                $isHistory = true;
-            }
-
-            if ($task === false) {
+            $result = $this->fetchTask($db, $id);
+            if ($result === null) {
                 $this->io()->error("Task not found: $id");
                 return self::FAILURE;
             }
 
+            [$task, $isHistory] = $result;
             $this->io()->title("Task #$id" . ($isHistory ? ' (History)' : ''));
 
-            $statusId = (int)$task['status_id'];
-            $typeId = (int)$task['type_id'];
-            $priority = (int)$task['priority'];
-            $videoId = (int)($task['video_id'] ?? 0);
-            $albumId = (int)($task['album_id'] ?? 0);
-            $serverId = (int)($task['server_id'] ?? 0);
-            $serverName = $task['server_name'] ?? null;
-            $errorCode = (int)($task['error_code'] ?? 0);
-            $timesRestarted = (int)($task['times_restarted'] ?? 0);
-            $addedDate = (string)($task['added_date'] ?? '');
-            $startDate = (string)($task['start_date'] ?? '');
-            $message = (string)($task['message'] ?? '');
-            $data = $task['data'] ?? null;
-
-            /** @var list<list<string|int|null>> $info */
-            $info = [
-                ['Status', StatusFormatter::task($statusId)],
-                ['Type', self::TASK_TYPES[$typeId] ?? "Type #{$typeId}"],
-                ['Priority', (string)$priority],
-            ];
-
-            if ($videoId > 0) {
-                $info[] = ['Video ID', (string)$videoId];
-            }
-            if ($albumId > 0) {
-                $info[] = ['Album ID', (string)$albumId];
-            }
-
-            $serverDisplay = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : 'None');
-            $info[] = ['Server', $serverDisplay];
-
-            if ($errorCode > 0) {
-                $errorText = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
-                $info[] = ['Error Code', "<fg=red>{$errorText}</>"];
-            }
-
-            if ($message !== '') {
-                $info[] = ['Message', $message];
-            }
-
-            $info[] = ['Restarts', (string)$timesRestarted];
-            $info[] = ['Added', $addedDate];
-
-            if ($startDate !== '' && $startDate !== '0000-00-00 00:00:00') {
-                $info[] = ['Started', $startDate];
-            }
-
-            if ($isHistory) {
-                $endDate = (string)($task['end_date'] ?? '');
-                $effectiveDuration = (int)($task['effective_duration'] ?? 0);
-                if ($endDate !== '') {
-                    $info[] = ['Ended', $endDate];
-                }
-                if ($effectiveDuration > 0) {
-                    $info[] = ['Duration', $this->formatDuration($effectiveDuration)];
-                }
-            }
-
+            $info = $this->buildTaskInfo($task, $isHistory);
             $this->renderTable(['Property', 'Value'], $info);
 
-            // Show task data if present
-            if ($data !== null && $data !== '') {
-                $this->io()->section('Task Data');
-                $unserialized = @unserialize((string)$data);
-                if ($unserialized !== false) {
-                    $this->io()->text(print_r($unserialized, true));
-                } else {
-                    $this->io()->text((string)$data);
-                }
-            }
-
-            // Try to show progress for active processing tasks
-            if (!$isHistory && $statusId === StatusFormatter::TASK_PROCESSING) {
-                $progressFile = $this->config->getKvsPath() . '/admin/data/engine/tasks/' . $id . '.dat';
-                if (file_exists($progressFile)) {
-                    $progress = @file_get_contents($progressFile);
-                    if ($progress !== false && $progress !== '') {
-                        $this->io()->section('Progress');
-                        $this->io()->text("Progress: {$progress}%");
-                    }
-                }
-            }
+            $this->displayTaskData($task);
+            $this->displayTaskProgress($task, $id, $isHistory);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch task: ' . $e->getMessage());
             return self::FAILURE;
+        }
+    }
+
+    /**
+     * Fetch task from active or history table
+     * @return array{0: array<string, mixed>, 1: bool}|null
+     */
+    private function fetchTask(\PDO $db, string $id): ?array
+    {
+        $stmt = $db->prepare("
+            SELECT bt.*, cs.title as server_name
+            FROM {$this->table('background_tasks')} bt
+            LEFT JOIN {$this->table('admin_conversion_servers')} cs
+                ON bt.server_id = cs.server_id
+            WHERE bt.task_id = :id
+        ");
+        $stmt->execute(['id' => $id]);
+        /** @var array<string, mixed>|false $task */
+        $task = $stmt->fetch();
+
+        if ($task !== false) {
+            return [$task, false];
+        }
+
+        $stmt = $db->prepare("
+            SELECT * FROM {$this->table('background_tasks_history')}
+            WHERE task_id = :id
+        ");
+        $stmt->execute(['id' => $id]);
+        /** @var array<string, mixed>|false $task */
+        $task = $stmt->fetch();
+
+        return $task !== false ? [$task, true] : null;
+    }
+
+    /**
+     * Build task info array for display
+     * @param array<string, mixed> $task
+     * @return list<list<string|int|null>>
+     */
+    private function buildTaskInfo(array $task, bool $isHistory): array
+    {
+        $statusId = (int)$task['status_id'];
+        $typeId = (int)$task['type_id'];
+        $videoId = (int)($task['video_id'] ?? 0);
+        $albumId = (int)($task['album_id'] ?? 0);
+        $serverId = (int)($task['server_id'] ?? 0);
+        $serverName = $task['server_name'] ?? null;
+        $errorCode = (int)($task['error_code'] ?? 0);
+
+        $info = [
+            ['Status', StatusFormatter::task($statusId)],
+            ['Type', self::TASK_TYPES[$typeId] ?? "Type #{$typeId}"],
+            ['Priority', (string)(int)$task['priority']],
+        ];
+
+        if ($videoId > 0) {
+            $info[] = ['Video ID', (string)$videoId];
+        }
+        if ($albumId > 0) {
+            $info[] = ['Album ID', (string)$albumId];
+        }
+
+        $serverDisplay = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : 'None');
+        $info[] = ['Server', $serverDisplay];
+
+        if ($errorCode > 0) {
+            $errorText = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
+            $info[] = ['Error Code', "<fg=red>{$errorText}</>"];
+        }
+
+        $message = (string)($task['message'] ?? '');
+        if ($message !== '') {
+            $info[] = ['Message', $message];
+        }
+
+        $info[] = ['Restarts', (string)(int)($task['times_restarted'] ?? 0)];
+        $info[] = ['Added', (string)($task['added_date'] ?? '')];
+
+        $startDate = (string)($task['start_date'] ?? '');
+        if ($startDate !== '' && $startDate !== '0000-00-00 00:00:00') {
+            $info[] = ['Started', $startDate];
+        }
+
+        if ($isHistory) {
+            $endDate = (string)($task['end_date'] ?? '');
+            $effectiveDuration = (int)($task['effective_duration'] ?? 0);
+            if ($endDate !== '') {
+                $info[] = ['Ended', $endDate];
+            }
+            if ($effectiveDuration > 0) {
+                $info[] = ['Duration', $this->formatDuration($effectiveDuration)];
+            }
+        }
+
+        return $info;
+    }
+
+    /**
+     * Display serialized task data if present
+     * @param array<string, mixed> $task
+     */
+    private function displayTaskData(array $task): void
+    {
+        $data = $task['data'] ?? null;
+        if ($data === null || $data === '') {
+            return;
+        }
+
+        $this->io()->section('Task Data');
+        $unserialized = @unserialize((string)$data);
+        if ($unserialized !== false) {
+            $this->io()->text(print_r($unserialized, true));
+        } else {
+            $this->io()->text((string)$data);
+        }
+    }
+
+    /**
+     * Display task progress for active processing tasks
+     * @param array<string, mixed> $task
+     */
+    private function displayTaskProgress(array $task, string $id, bool $isHistory): void
+    {
+        if ($isHistory || (int)$task['status_id'] !== StatusFormatter::TASK_PROCESSING) {
+            return;
+        }
+
+        $progressFile = $this->config->getKvsPath() . '/admin/data/engine/tasks/' . $id . '.dat';
+        if (!file_exists($progressFile)) {
+            return;
+        }
+
+        $progress = @file_get_contents($progressFile);
+        if ($progress !== false && $progress !== '') {
+            $this->io()->section('Progress');
+            $this->io()->text("Progress: {$progress}%");
         }
     }
 

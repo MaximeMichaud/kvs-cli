@@ -531,7 +531,7 @@ parameters:
 		-
 			message: '#^Cannot cast mixed to int\.$#'
 			identifier: cast.int
-			count: 35
+			count: 36
 			path: src/Command/System/QueueCommand.php
 
 		-
