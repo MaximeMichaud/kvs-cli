@@ -7,6 +7,8 @@ Command-line interface for [KVS (Kernel Video Sharing)](https://www.kernel-video
 
 Tested with KVS 6.3.2.
 
+> **⚠️ Beta Notice**: This CLI has been tested with limited datasets. Read operations should work reliably, but exercise caution with any create, update, or delete operations. Always backup your data before performing write operations.
+
 ## Features
 
 - **Intelligent path detection** - Auto-detects KVS installation by walking up directory tree
@@ -21,14 +23,9 @@ Tested with KVS 6.3.2.
 ## Installation
 
 ```bash
-# Download latest release (includes pre-releases)
 curl -sL $(curl -s https://api.github.com/repos/MaximeMichaud/kvs-cli/releases | grep -o 'https://[^"]*kvs\.phar' | head -1) -o kvs.phar
-
-# Make executable and install globally
 chmod +x kvs.phar
-mv kvs.phar /usr/local/bin/kvs
-
-# Verify installation
+sudo mv kvs.phar /usr/local/bin/kvs
 kvs --version
 ```
 
