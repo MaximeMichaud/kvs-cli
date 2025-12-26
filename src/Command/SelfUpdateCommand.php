@@ -293,6 +293,37 @@ HELP
             return false;
         }
 
+        // Detect HTML error pages (common with nightly.link rate limiting)
+        $prefix = substr($content, 0, 100);
+        if (
+            stripos($prefix, '<!DOCTYPE') !== false ||
+            stripos($prefix, '<html') !== false ||
+            stripos($prefix, '<!doctype') !== false
+        ) {
+            $io->error('Download returned an HTML error page instead of the file.');
+            $io->text('This usually means the download service is rate-limited or temporarily unavailable.');
+            $io->text('Try again in a few minutes, or download manually from GitHub.');
+            return false;
+        }
+
+        // Validate file signature based on expected type
+        $extension = pathinfo($destination, PATHINFO_EXTENSION);
+        if ($extension === 'zip') {
+            // ZIP files should start with PK (0x504B)
+            if (substr($content, 0, 2) !== 'PK') {
+                $io->error('Downloaded file is not a valid ZIP archive.');
+                $io->text('The download may have been corrupted or interrupted.');
+                return false;
+            }
+        } elseif ($extension === 'phar') {
+            // PHAR files should start with shebang or <?php
+            if (substr($content, 0, 2) !== '#!' && substr($content, 0, 5) !== '<?php') {
+                $io->error('Downloaded file is not a valid PHAR archive.');
+                $io->text('The download may have been corrupted or interrupted.');
+                return false;
+            }
+        }
+
         if (file_put_contents($destination, $content) === false) {
             $io->error('Failed to save downloaded file.');
             return false;
