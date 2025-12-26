@@ -63,9 +63,9 @@ class BenchmarkRunner
         $result = new BenchmarkResult();
         $startTime = microtime(true);
 
-        // Collect system info
+        // Collect system info (use HTTP to detect FPM config if URL available)
         $systemBench = new SystemBench();
-        $systemInfo = $systemBench->getSystemInfo();
+        $systemInfo = $systemBench->getCombinedSystemInfo($this->baseUrl);
 
         // Add database info to system info
         if ($this->db !== null) {

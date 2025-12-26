@@ -89,6 +89,12 @@ class BenchmarkCommand extends BaseCommand
                 'c',
                 InputOption::VALUE_REQUIRED,
                 'Compare with baseline JSON file'
+            )
+            ->addOption(
+                'php-container',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Docker container name to fetch PHP-FPM config from (e.g., "kvs-php")'
             );
     }
 
@@ -125,6 +131,9 @@ class BenchmarkCommand extends BaseCommand
 
         $tagOption = $input->getOption('tag');
         $tag = is_string($tagOption) ? $tagOption : '';
+
+        $phpContainerOption = $input->getOption('php-container');
+        $phpContainer = is_string($phpContainerOption) ? $phpContainerOption : '';
 
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
@@ -175,6 +184,21 @@ class BenchmarkCommand extends BaseCommand
         // Set tag if provided
         if ($tag !== '') {
             $result->setTag($tag);
+        }
+
+        // Fetch PHP-FPM config from Docker container (auto-detect if not specified)
+        if ($phpContainer === '') {
+            $phpContainer = $this->autoDetectPhpContainer();
+        }
+
+        if ($phpContainer !== '') {
+            $fpmInfo = $this->getPhpFpmInfoFromDocker($phpContainer);
+            if ($fpmInfo !== []) {
+                $systemInfo = $result->getSystemInfo();
+                $systemInfo = array_merge($systemInfo, $fpmInfo);
+                $systemInfo['source'] = "Docker ({$phpContainer})";
+                $result->setSystemInfo($systemInfo);
+            }
         }
 
         // Display results
@@ -588,5 +612,103 @@ class BenchmarkCommand extends BaseCommand
         }
 
         $this->io()->success("Results exported to: {$path}");
+    }
+
+    /**
+     * Auto-detect PHP Docker container
+     *
+     * Tries common container names and returns the first one that exists.
+     */
+    private function autoDetectPhpContainer(): string
+    {
+        // Check if docker is available
+        exec('which docker 2>/dev/null', $output, $returnCode);
+        if ($returnCode !== 0) {
+            return '';
+        }
+
+        // Common PHP container names to try
+        $commonNames = ['kvs-php', 'php-fpm', 'php', 'web', 'app'];
+
+        foreach ($commonNames as $name) {
+            $cmd = sprintf('docker inspect %s 2>/dev/null', escapeshellarg($name));
+            exec($cmd, $output, $returnCode);
+            if ($returnCode === 0) {
+                return $name;
+            }
+            $output = [];
+        }
+
+        return '';
+    }
+
+    /**
+     * Get PHP-FPM configuration from a Docker container
+     *
+     * Uses php-fpm -i to get the actual FPM configuration, not CLI config.
+     *
+     * @return array<string, mixed>
+     */
+    private function getPhpFpmInfoFromDocker(string $container): array
+    {
+        // Check if docker command is available
+        exec('which docker 2>/dev/null', $output, $returnCode);
+        if ($returnCode !== 0) {
+            $this->io()->warning('Docker command not found');
+            return [];
+        }
+
+        // Get PHP version
+        $cmd = sprintf('docker exec %s php -v 2>/dev/null | head -1', escapeshellarg($container));
+        $versionOutput = [];
+        exec($cmd, $versionOutput, $returnCode);
+
+        $phpVersion = 'Unknown';
+        if ($returnCode === 0 && isset($versionOutput[0])) {
+            if (preg_match('/PHP\s+([0-9.]+)/', $versionOutput[0], $matches) === 1) {
+                $phpVersion = $matches[1];
+            }
+        }
+
+        // Get FPM configuration using php-fpm -i
+        $cmd = sprintf('docker exec %s php-fpm -i 2>/dev/null', escapeshellarg($container));
+        $output = [];
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0 || $output === []) {
+            $this->io()->warning("Failed to get PHP-FPM info from container: {$container}");
+            return [];
+        }
+
+        $info = [
+            'php_version' => $phpVersion,
+            'php_sapi' => 'fpm',
+        ];
+
+        $fpmConfig = implode("\n", $output);
+
+        // Parse OPcache status
+        if (preg_match('/^opcache\.enable\s+=>\s+(\w+)/m', $fpmConfig, $matches) === 1) {
+            $info['opcache'] = strtolower($matches[1]) === 'on';
+        }
+
+        // Parse JIT status
+        if (preg_match('/^opcache\.jit\s+=>\s+(\w+)/m', $fpmConfig, $matches) === 1) {
+            $jitValue = strtolower($matches[1]);
+            $info['jit'] = $jitValue !== 'off' && $jitValue !== 'disable' && $jitValue !== '0';
+            $info['jit_mode'] = $matches[1];
+        }
+
+        // Parse memory limit
+        if (preg_match('/^memory_limit\s+=>\s+([^\s]+)/m', $fpmConfig, $matches) === 1) {
+            $info['memory_limit'] = $matches[1];
+        }
+
+        // Parse max execution time
+        if (preg_match('/^max_execution_time\s+=>\s+(\d+)/m', $fpmConfig, $matches) === 1) {
+            $info['max_execution_time'] = $matches[1];
+        }
+
+        return $info;
     }
 }

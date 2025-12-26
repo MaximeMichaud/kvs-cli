@@ -314,4 +314,161 @@ class SystemBench
 
         return $info;
     }
+
+    /**
+     * Get PHP-FPM info via HTTP request
+     *
+     * This fetches the actual PHP configuration from the web server,
+     * not the CLI configuration which can be different.
+     *
+     * @return array<string, string|bool|array<int, string>>
+     */
+    public function getSystemInfoViaHttp(string $baseUrl): array
+    {
+        $info = [];
+
+        // First, try to get info from response headers
+        $headerInfo = $this->getPhpInfoFromHeaders($baseUrl);
+        if ($headerInfo !== []) {
+            $info = array_merge($info, $headerInfo);
+        }
+
+        // Try to fetch PHP info from a KVS admin endpoint that exposes PHP version
+        $adminInfo = $this->getPhpInfoFromAdmin($baseUrl);
+        if ($adminInfo !== []) {
+            $info = array_merge($info, $adminInfo);
+        }
+
+        // If we got PHP version from HTTP, mark it as FPM info
+        if (isset($info['php_version'])) {
+            $info['php_sapi'] = 'fpm (detected via HTTP)';
+        }
+
+        return $info;
+    }
+
+    /**
+     * Get PHP info from HTTP response headers
+     *
+     * @return array<string, string>
+     */
+    private function getPhpInfoFromHeaders(string $baseUrl): array
+    {
+        $ch = curl_init($baseUrl . '/');
+        if ($ch === false) {
+            return [];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_NOBODY => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_FOLLOWLOCATION => true,
+        ]);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        if (!is_string($response)) {
+            return [];
+        }
+
+        $info = [];
+
+        // Parse X-Powered-By header for PHP version
+        if (preg_match('/X-Powered-By:\s*PHP\/([0-9.]+)/i', $response, $matches) === 1) {
+            $info['php_version'] = $matches[1];
+        }
+
+        // Parse Server header for web server info
+        if (preg_match('/Server:\s*([^\r\n]+)/i', $response, $matches) === 1) {
+            $info['web_server'] = trim($matches[1]);
+        }
+
+        return $info;
+    }
+
+    /**
+     * Get PHP info from KVS admin page (parses HTML for PHP version)
+     *
+     * @return array<string, string|bool>
+     */
+    private function getPhpInfoFromAdmin(string $baseUrl): array
+    {
+        $ch = curl_init($baseUrl . '/admin/');
+        if ($ch === false) {
+            return [];
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT => 'KVS-CLI-Benchmark/1.0',
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if (!is_string($response) || $httpCode !== 200) {
+            return [];
+        }
+
+        $info = [];
+
+        // KVS admin pages sometimes show PHP version in footer or system info
+        // Look for common patterns
+        if (preg_match('/PHP\s+Version[:\s]+([0-9.]+)/i', $response, $matches) === 1) {
+            $info['php_version'] = $matches[1];
+        }
+
+        // Check for OPcache mentions
+        if (stripos($response, 'opcache') !== false) {
+            // If OPcache is mentioned, it's likely enabled
+            if (preg_match('/opcache[:\s]*(enabled|on|active)/i', $response) === 1) {
+                $info['opcache'] = true;
+            }
+        }
+
+        return $info;
+    }
+
+    /**
+     * Get combined system info (CLI + HTTP/FPM)
+     *
+     * Prefers HTTP-detected info for PHP version and OPcache since that's
+     * what actually serves web requests.
+     *
+     * @return array<string, string|bool|array<int, string>>
+     */
+    public function getCombinedSystemInfo(string $baseUrl = ''): array
+    {
+        // Get CLI info as base
+        $info = $this->getSystemInfo();
+
+        // If we have a URL, try to get FPM info and override relevant fields
+        if ($baseUrl !== '') {
+            $httpInfo = $this->getSystemInfoViaHttp($baseUrl);
+
+            if (isset($httpInfo['php_version'])) {
+                $info['php_version'] = $httpInfo['php_version'];
+                $info['php_sapi'] = 'fpm';
+                $info['source'] = 'HTTP (PHP-FPM)';
+            }
+
+            if (isset($httpInfo['opcache'])) {
+                $info['opcache'] = $httpInfo['opcache'];
+            }
+
+            if (isset($httpInfo['web_server'])) {
+                $info['web_server'] = $httpInfo['web_server'];
+            }
+        }
+
+        return $info;
+    }
 }
