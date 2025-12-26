@@ -21,6 +21,17 @@ class BenchmarkResult
     /** @var array<string, array{name: string, avg: float, min: float, max: float, ops_sec: float, samples: int}> */
     private array $fileIOResults = [];
 
+    /**
+     * CPU benchmark results
+     *
+     * @var array<string, array{
+     *     name: string, avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, std_dev: float,
+     *     ops_sec: float, samples: int
+     * }>
+     */
+    private array $cpuResults = [];
+
     /** @var array<string, mixed> */
     private array $systemMetrics = [];
 
@@ -72,6 +83,20 @@ class BenchmarkResult
     public function recordFileIO(string $key, string $name, array $stats): void
     {
         $this->fileIOResults[$key] = array_merge(['name' => $name], $stats);
+    }
+
+    /**
+     * Record CPU benchmark result
+     *
+     * @param array{
+     *     avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, std_dev: float,
+     *     ops_sec: float, samples: int
+     * } $stats
+     */
+    public function recordCpu(string $key, string $name, array $stats): void
+    {
+        $this->cpuResults[$key] = array_merge(['name' => $name], $stats);
     }
 
     /**
@@ -146,6 +171,18 @@ class BenchmarkResult
     }
 
     /**
+     * @return array<string, array{
+     *     name: string, avg: float, min: float, max: float,
+     *     p50: float, p95: float, p99: float, std_dev: float,
+     *     ops_sec: float, samples: int
+     * }>
+     */
+    public function getCpuResults(): array
+    {
+        return $this->cpuResults;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function getSystemMetrics(): array
@@ -196,6 +233,14 @@ class BenchmarkResult
     public function hasFileIOResults(): bool
     {
         return $this->fileIOResults !== [];
+    }
+
+    /**
+     * Check if we have CPU results
+     */
+    public function hasCpuResults(): bool
+    {
+        return $this->cpuResults !== [];
     }
 
     /**
@@ -277,6 +322,7 @@ class BenchmarkResult
             'db_results' => $this->dbResults,
             'cache_results' => $this->cacheResults,
             'fileio_results' => $this->fileIOResults,
+            'cpu_results' => $this->cpuResults,
             'system_metrics' => $this->systemMetrics,
             'total_time' => $this->totalTime,
             'score' => $this->calculateScore(),
@@ -304,6 +350,7 @@ class BenchmarkResult
         self::parseDbResults($result, $data);
         self::parseCacheResults($result, $data);
         self::parseFileIOResults($result, $data);
+        self::parseCpuResults($result, $data);
         self::parseMetadata($result, $data);
 
         return $result;
@@ -422,6 +469,35 @@ class BenchmarkResult
                 'avg' => self::getFloat($stats, 'avg'),
                 'min' => self::getFloat($stats, 'min'),
                 'max' => self::getFloat($stats, 'max'),
+                'ops_sec' => self::getFloat($stats, 'ops_sec'),
+                'samples' => self::getInt($stats, 'samples'),
+            ];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function parseCpuResults(self $result, array $data): void
+    {
+        if (!isset($data['cpu_results']) || !is_array($data['cpu_results'])) {
+            return;
+        }
+
+        foreach ($data['cpu_results'] as $key => $stats) {
+            if (!is_array($stats) || !isset($stats['name'])) {
+                continue;
+            }
+            $name = $stats['name'];
+            $result->cpuResults[(string)$key] = [
+                'name' => is_string($name) ? $name : '',
+                'avg' => self::getFloat($stats, 'avg'),
+                'min' => self::getFloat($stats, 'min'),
+                'max' => self::getFloat($stats, 'max'),
+                'p50' => self::getFloat($stats, 'p50'),
+                'p95' => self::getFloat($stats, 'p95'),
+                'p99' => self::getFloat($stats, 'p99'),
+                'std_dev' => self::getFloat($stats, 'std_dev'),
                 'ops_sec' => self::getFloat($stats, 'ops_sec'),
                 'samples' => self::getInt($stats, 'samples'),
             ];

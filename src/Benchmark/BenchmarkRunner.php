@@ -10,6 +10,7 @@ use PDO;
  * Orchestrates all benchmark tests
  *
  * Runs comprehensive benchmarks for:
+ * - CPU operations (hashing, serialization, string ops)
  * - HTTP response times
  * - Database queries (basic and heavy KVS queries)
  * - Memcached cache operations
@@ -29,6 +30,7 @@ class BenchmarkRunner
 
     private int $cacheIterations;
     private int $fileIterations;
+    private int $cpuIterations;
 
     /**
      * @param array{host?: string, port?: int} $memcachedConfig
@@ -41,7 +43,8 @@ class BenchmarkRunner
         int $dbIterations = 10,
         array $memcachedConfig = [],
         int $cacheIterations = 100,
-        int $fileIterations = 100
+        int $fileIterations = 100,
+        int $cpuIterations = 1000
     ) {
         $this->db = $db;
         $this->tablePrefix = $tablePrefix;
@@ -51,6 +54,7 @@ class BenchmarkRunner
         $this->memcachedConfig = $memcachedConfig;
         $this->cacheIterations = $cacheIterations;
         $this->fileIterations = $fileIterations;
+        $this->cpuIterations = $cpuIterations;
     }
 
     /**
@@ -76,6 +80,11 @@ class BenchmarkRunner
         }
 
         $result->setSystemInfo($systemInfo);
+
+        // CPU benchmarks (most important for PHP version comparison)
+        $this->runProgress($progressCallback, 'cpu', 'Testing CPU performance...');
+        $cpuBench = new CpuBench($this->cpuIterations);
+        $cpuBench->run($result);
 
         // HTTP benchmarks (if URL provided)
         if ($this->baseUrl !== '') {

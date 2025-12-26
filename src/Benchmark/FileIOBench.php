@@ -12,9 +12,12 @@ namespace KVS\CLI\Benchmark;
  * - Small file reads (language files, configs)
  * - Temp file writes (cache, sessions)
  * - Directory scanning (plugin/block discovery)
+ * - Lock contention (LOCK_EX for stats logging)
  */
 class FileIOBench
 {
+    use BenchmarkHelper;
+
     private int $iterations;
     private string $tempDir;
     private bool $cleanupNeeded = false;
@@ -47,6 +50,9 @@ class FileIOBench
 
             // Test 4: Directory listing (plugin/block scanning)
             $this->benchDirectoryListing($result);
+
+            // Test 5: Lock contention (KVS stats logging pattern)
+            $this->benchLockContention($result);
         } finally {
             // Always cleanup
             $this->cleanup();
@@ -105,10 +111,10 @@ class FileIOBench
             $configTimings[] = (microtime(true) - $start) * 1000;
         }
 
-        $result->recordFileIO('serialize', 'Serialize Config', $this->calculateStats($serializeTimings));
-        $result->recordFileIO('unserialize', 'Unserialize Config', $this->calculateStats($unserializeTimings));
-        $result->recordFileIO('lang_serialize', 'Serialize Lang (~500 strings)', $this->calculateStats($langTimings));
-        $result->recordFileIO('config_load', 'Config Load (read+unserialize)', $this->calculateStats($configTimings));
+        $result->recordFileIO('serialize', 'Serialize Config', $this->calculateFileStats($serializeTimings));
+        $result->recordFileIO('unserialize', 'Unserialize Config', $this->calculateFileStats($unserializeTimings));
+        $result->recordFileIO('lang_serialize', 'Serialize Lang (~500 strings)', $this->calculateFileStats($langTimings));
+        $result->recordFileIO('config_load', 'Config Load (read+unserialize)', $this->calculateFileStats($configTimings));
     }
 
     /**
@@ -145,9 +151,9 @@ class FileIOBench
             }
         }
 
-        $result->recordFileIO('read_1kb', 'Read 1KB file', $this->calculateStats($timings['tiny']));
-        $result->recordFileIO('read_10kb', 'Read 10KB file', $this->calculateStats($timings['small']));
-        $result->recordFileIO('read_100kb', 'Read 100KB file', $this->calculateStats($timings['medium']));
+        $result->recordFileIO('read_1kb', 'Read 1KB file', $this->calculateFileStats($timings['tiny']));
+        $result->recordFileIO('read_10kb', 'Read 10KB file', $this->calculateFileStats($timings['small']));
+        $result->recordFileIO('read_100kb', 'Read 100KB file', $this->calculateFileStats($timings['medium']));
     }
 
     /**
@@ -183,8 +189,8 @@ class FileIOBench
             $syncTimings[] = (microtime(true) - $start) * 1000;
         }
 
-        $result->recordFileIO('write_10kb', 'Write 10KB file', $this->calculateStats($timings));
-        $result->recordFileIO('write_sync', 'Write + fsync', $this->calculateStats($syncTimings));
+        $result->recordFileIO('write_10kb', 'Write 10KB file', $this->calculateFileStats($timings));
+        $result->recordFileIO('write_sync', 'Write + fsync', $this->calculateFileStats($syncTimings));
     }
 
     /**
@@ -232,9 +238,65 @@ class FileIOBench
             $statTimings[] = (microtime(true) - $start) * 1000;
         }
 
-        $result->recordFileIO('scandir', 'scandir() 65 files', $this->calculateStats($scanTimings));
-        $result->recordFileIO('glob', 'glob() pattern match', $this->calculateStats($globTimings));
-        $result->recordFileIO('stat', 'filemtime() 65 files', $this->calculateStats($statTimings));
+        $result->recordFileIO('scandir', 'scandir() 65 files', $this->calculateFileStats($scanTimings));
+        $result->recordFileIO('glob', 'glob() pattern match', $this->calculateFileStats($globTimings));
+        $result->recordFileIO('stat', 'filemtime() 65 files', $this->calculateFileStats($statTimings));
+    }
+
+    /**
+     * Benchmark file lock contention (KVS stats logging pattern)
+     *
+     * KVS pattern from player/stats.php:
+     * file_put_contents($file, $data, FILE_APPEND | LOCK_EX);
+     *
+     * This tests the overhead of exclusive locking on append operations,
+     * simulating what happens when many concurrent requests log stats.
+     */
+    private function benchLockContention(BenchmarkResult $result): void
+    {
+        $statsFile = $this->tempDir . '/stats_log.dat';
+        $logEntry = date('Y-m-d H:i:s') . '|view|video_123|user_456|' . "\n";
+
+        // Initialize file
+        file_put_contents($statsFile, '');
+
+        // Append without lock
+        $noLockTimings = [];
+        for ($i = 0; $i < $this->iterations; $i++) {
+            $start = $this->startTimer();
+            file_put_contents($statsFile, $logEntry, FILE_APPEND);
+            $noLockTimings[] = $this->stopTimer($start);
+        }
+
+        // Reset file
+        file_put_contents($statsFile, '');
+
+        // Append with LOCK_EX (what KVS uses)
+        $lockTimings = [];
+        for ($i = 0; $i < $this->iterations; $i++) {
+            $start = $this->startTimer();
+            file_put_contents($statsFile, $logEntry, FILE_APPEND | LOCK_EX);
+            $lockTimings[] = $this->stopTimer($start);
+        }
+
+        // Also test flock pattern (more control)
+        file_put_contents($statsFile, '');
+        $flockTimings = [];
+        for ($i = 0; $i < $this->iterations; $i++) {
+            $start = $this->startTimer();
+            $fp = fopen($statsFile, 'a');
+            if ($fp !== false) {
+                flock($fp, LOCK_EX);
+                fwrite($fp, $logEntry);
+                flock($fp, LOCK_UN);
+                fclose($fp);
+            }
+            $flockTimings[] = $this->stopTimer($start);
+        }
+
+        $result->recordFileIO('append_no_lock', 'Append (no lock)', $this->calculateFileStats($noLockTimings));
+        $result->recordFileIO('append_lock_ex', 'Append (LOCK_EX)', $this->calculateFileStats($lockTimings));
+        $result->recordFileIO('append_flock', 'Append (flock)', $this->calculateFileStats($flockTimings));
     }
 
     /**
@@ -284,12 +346,12 @@ class FileIOBench
     }
 
     /**
-     * Calculate statistics from timings
+     * Calculate statistics from timings for file I/O results
      *
      * @param array<int, float> $timings
      * @return array{avg: float, min: float, max: float, ops_sec: float, samples: int}
      */
-    private function calculateStats(array $timings): array
+    private function calculateFileStats(array $timings): array
     {
         if ($timings === []) {
             return [
@@ -305,10 +367,10 @@ class FileIOBench
         $avg = array_sum($timings) / $count;
 
         return [
-            'avg' => $avg,
-            'min' => min($timings),
-            'max' => max($timings),
-            'ops_sec' => $avg > 0 ? 1000 / $avg : 0,
+            'avg' => round($avg, 4),
+            'min' => round(min($timings), 4),
+            'max' => round(max($timings), 4),
+            'ops_sec' => $avg > 0 ? round(1000 / $avg, 2) : 0,
             'samples' => $count,
         ];
     }

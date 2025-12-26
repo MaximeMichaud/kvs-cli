@@ -59,6 +59,13 @@ class BenchmarkCommand extends BaseCommand
                 '100'
             )
             ->addOption(
+                'cpu-iterations',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Number of iterations for CPU tests',
+                '1000'
+            )
+            ->addOption(
                 'memcached-host',
                 null,
                 InputOption::VALUE_REQUIRED,
@@ -123,6 +130,9 @@ class BenchmarkCommand extends BaseCommand
         $fileIterOption = $input->getOption('file-iterations');
         $fileIterations = is_numeric($fileIterOption) ? (int)$fileIterOption : 100;
 
+        $cpuIterOption = $input->getOption('cpu-iterations');
+        $cpuIterations = is_numeric($cpuIterOption) ? (int)$cpuIterOption : 1000;
+
         $mcHostOption = $input->getOption('memcached-host');
         $mcHost = $mcHostOption;
 
@@ -174,7 +184,8 @@ class BenchmarkCommand extends BaseCommand
             $dbIterations,
             ['host' => $mcHost, 'port' => $mcPort],
             $cacheIterations,
-            $fileIterations
+            $fileIterations,
+            $cpuIterations
         );
 
         $result = $runner->run(function (string $stage, string $message): void {
@@ -217,6 +228,12 @@ class BenchmarkCommand extends BaseCommand
         // System info
         $this->io()->section('System Information');
         $this->displaySystemInfo($result);
+
+        // CPU results (most important for PHP version comparison)
+        if ($result->hasCpuResults()) {
+            $this->io()->section('CPU Performance');
+            $this->displayCpuResults($result, $baseline);
+        }
 
         // HTTP results
         if ($result->hasHttpResults()) {
@@ -296,6 +313,61 @@ class BenchmarkCommand extends BaseCommand
         $rows[] = ['Hostname', is_string($hostname) ? $hostname : 'unknown'];
 
         $this->renderTable(['Parameter', 'Value'], $rows);
+    }
+
+    private function displayCpuResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void
+    {
+        $cpuResults = $result->getCpuResults();
+        $baselineCpu = $baseline !== null ? $baseline->getCpuResults() : [];
+
+        // Group results by category
+        $categories = [
+            'Hashing (MD5)' => ['md5_simple', 'md5_session', 'md5_cache_key', 'md5_file_1kb', 'md5_file_100kb'],
+            'Serialization' => ['serialize_config', 'serialize_lang', 'json_config', 'json_lang'],
+            'String Ops' => ['str_replace', 'htmlspecialchars', 'concat', 'sprintf'],
+            'Regex' => ['regex_routing', 'regex_content', 'regex_email'],
+            'Math/Stats' => ['math_stats', 'math_sort', 'math_percentile'],
+            'Arrays' => ['array_map', 'array_filter', 'array_column', 'array_merge', 'usort'],
+        ];
+
+        $headers = ['Operation', 'Avg (ms)', 'p50', 'p95', 'StdDev', 'Ops/sec'];
+        if ($baseline !== null) {
+            $headers[] = 'vs Base';
+        }
+
+        foreach ($categories as $categoryName => $keys) {
+            $rows = [];
+            foreach ($keys as $key) {
+                if (!isset($cpuResults[$key])) {
+                    continue;
+                }
+                $data = $cpuResults[$key];
+                $row = [
+                    $data['name'],
+                    $this->formatMs($data['avg']),
+                    $this->formatMs($data['p50']),
+                    $this->formatMs($data['p95']),
+                    $this->formatMs($data['std_dev']),
+                    $this->formatNumber($data['ops_sec']),
+                ];
+
+                if ($baseline !== null && isset($baselineCpu[$key])) {
+                    // Compare ops/sec (higher is better)
+                    $row[] = $this->formatComparison($data['ops_sec'], $baselineCpu[$key]['ops_sec'], false);
+                } elseif ($baseline !== null) {
+                    $row[] = '<fg=gray>N/A</>';
+                }
+
+                $rows[] = $row;
+            }
+
+            if ($rows !== []) {
+                $this->io()->text("<fg=cyan;options=bold>{$categoryName}</>");
+                $this->renderTable($headers, $rows);
+            }
+        }
+
+        $this->io()->text('<fg=gray>Using hrtime(true) for nanosecond precision. Warmup iterations excluded.</>');
     }
 
     private function displayHttpResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void
