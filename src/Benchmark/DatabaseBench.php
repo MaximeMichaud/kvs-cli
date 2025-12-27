@@ -34,6 +34,22 @@ class DatabaseBench
      */
     public function run(BenchmarkResult $result): void
     {
+        // Check data volume and add warning if insufficient
+        $tableCounts = $this->getTableCounts();
+        $result->setDataVolume($tableCounts);
+
+        $minVideos = 50;
+        if ($tableCounts['videos'] < $minVideos) {
+            $result->addWarning(
+                'database',
+                sprintf(
+                    'Insufficient test data: Only %d videos found (recommended: %d+). Results may not be representative.',
+                    $tableCounts['videos'],
+                    $minVideos
+                )
+            );
+        }
+
         // Basic queries (page loads)
         $this->benchVideoListing($result);
         $this->benchVideoCount($result);
@@ -445,5 +461,45 @@ class DatabaseBench
         } catch (\PDOException $e) {
             return false;
         }
+    }
+
+    /**
+     * Get row counts from main tables to assess data volume
+     *
+     * @return array{videos: int, users: int, categories: int}
+     */
+    private function getTableCounts(): array
+    {
+        $counts = [
+            'videos' => 0,
+            'users' => 0,
+            'categories' => 0,
+        ];
+
+        $tables = [
+            'videos' => $this->tablePrefix . 'videos',
+            'users' => $this->tablePrefix . 'users',
+            'categories' => $this->tablePrefix . 'categories',
+        ];
+
+        foreach ($tables as $key => $table) {
+            if (!$this->tableExists($table)) {
+                continue;
+            }
+
+            try {
+                $stmt = $this->db->query("SELECT COUNT(*) FROM {$table}");
+                if ($stmt !== false) {
+                    $count = $stmt->fetchColumn();
+                    if (is_numeric($count)) {
+                        $counts[$key] = (int)$count;
+                    }
+                }
+            } catch (\PDOException $e) {
+                // Ignore - table might exist but be inaccessible
+            }
+        }
+
+        return $counts;
     }
 }

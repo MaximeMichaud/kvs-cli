@@ -43,6 +43,12 @@ class BenchmarkResult
     /** @var array<string, mixed> */
     private array $systemInfo = [];
 
+    /** @var array<int, array{category: string, message: string}> */
+    private array $warnings = [];
+
+    /** @var array<string, int> */
+    private array $dataVolume = [];
+
     private float $totalTime = 0.0;
 
     private string $tag = '';
@@ -138,6 +144,55 @@ class BenchmarkResult
     public function getTag(): string
     {
         return $this->tag;
+    }
+
+    /**
+     * Add a warning message
+     */
+    public function addWarning(string $category, string $message): void
+    {
+        $this->warnings[] = [
+            'category' => $category,
+            'message' => $message,
+        ];
+    }
+
+    /**
+     * Get all warnings
+     *
+     * @return array<int, array{category: string, message: string}>
+     */
+    public function getWarnings(): array
+    {
+        return $this->warnings;
+    }
+
+    /**
+     * Check if there are any warnings
+     */
+    public function hasWarnings(): bool
+    {
+        return $this->warnings !== [];
+    }
+
+    /**
+     * Set data volume information (row counts)
+     *
+     * @param array<string, int> $dataVolume
+     */
+    public function setDataVolume(array $dataVolume): void
+    {
+        $this->dataVolume = $dataVolume;
+    }
+
+    /**
+     * Get data volume information
+     *
+     * @return array<string, int>
+     */
+    public function getDataVolume(): array
+    {
+        return $this->dataVolume;
     }
 
     /**
@@ -335,6 +390,8 @@ class BenchmarkResult
             'fileio_results' => $this->fileIOResults,
             'cpu_results' => $this->cpuResults,
             'system_metrics' => $this->systemMetrics,
+            'warnings' => $this->warnings,
+            'data_volume' => $this->dataVolume,
             'total_time' => $this->totalTime,
             'score' => $this->calculateScore(),
             'rating' => $this->getRating(),
@@ -535,6 +592,32 @@ class BenchmarkResult
 
         if (isset($data['tag']) && is_string($data['tag'])) {
             $result->setTag($data['tag']);
+        }
+
+        // Parse warnings
+        if (isset($data['warnings']) && is_array($data['warnings'])) {
+            foreach ($data['warnings'] as $warning) {
+                if (is_array($warning) && isset($warning['category'], $warning['message'])) {
+                    $category = $warning['category'];
+                    $message = $warning['message'];
+                    if (is_string($category) && is_string($message)) {
+                        $result->addWarning($category, $message);
+                    }
+                }
+            }
+        }
+
+        // Parse data volume
+        if (isset($data['data_volume']) && is_array($data['data_volume'])) {
+            $dataVolume = [];
+            foreach ($data['data_volume'] as $key => $value) {
+                if (is_string($key) && is_numeric($value)) {
+                    $dataVolume[$key] = (int)$value;
+                }
+            }
+            if ($dataVolume !== []) {
+                $result->setDataVolume($dataVolume);
+            }
         }
     }
 

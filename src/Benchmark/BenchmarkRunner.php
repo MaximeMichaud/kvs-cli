@@ -108,23 +108,32 @@ class BenchmarkRunner
             $dbBench->run($result);
         }
 
-        // Cache benchmarks (Memcached)
+        // Cache benchmarks (Object Cache - Memcached/Dragonfly)
         $this->runProgress($progressCallback, 'cache', 'Testing cache performance...');
         $cacheBench = new CacheBench($this->memcachedConfig, $this->cacheIterations);
 
         if ($cacheBench->connect()) {
             $cacheVersion = $cacheBench->getCacheVersion();
-            $this->runProgress($progressCallback, 'cache', "Connected to Memcached {$cacheVersion}");
+            $backendType = $cacheBench->detectBackendType();
+
+            $backendLabel = match ($backendType) {
+                'dragonfly' => 'Dragonfly',
+                'memcached' => 'Memcached',
+                default => 'Object Cache',
+            };
+
+            $this->runProgress($progressCallback, 'cache', "Connected to {$backendLabel} {$cacheVersion}");
             $cacheBench->run($result);
 
             // Add cache info to system info
             $existingInfo = $result->getSystemInfo();
             $existingInfo['memcached_version'] = $cacheVersion;
+            $existingInfo['cache_backend'] = $backendType;
             $result->setSystemInfo($existingInfo);
 
             $cacheBench->close();
         } else {
-            $this->runProgress($progressCallback, 'cache', 'Memcached not available, skipping cache tests');
+            $this->runProgress($progressCallback, 'cache', 'Object cache not available, skipping cache tests');
         }
 
         // File I/O benchmarks

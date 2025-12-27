@@ -7,7 +7,11 @@ namespace KVS\CLI\Benchmark;
 use Memcached;
 
 /**
- * Cache benchmark for Memcached (what KVS uses natively)
+ * Object cache benchmark (Memcached protocol compatible)
+ *
+ * Supports:
+ * - Memcached (native)
+ * - Dragonfly (Memcached protocol compatible)
  *
  * Tests real KVS caching patterns:
  * - Page cache with MD5 hash keys (like KVS does)
@@ -73,6 +77,44 @@ class CacheBench
         $stats = $this->memcached->getStats();
         $server = $this->config['host'] . ':' . $this->config['port'];
         return $stats[$server]['version'] ?? 'unknown';
+    }
+
+    /**
+     * Detect cache backend type
+     *
+     * Attempts to identify if this is Memcached, Dragonfly, or other
+     * compatible server by checking version string patterns.
+     *
+     * @return string Backend type: 'memcached', 'dragonfly', or 'unknown'
+     */
+    public function detectBackendType(): string
+    {
+        if ($this->memcached === null) {
+            return 'unknown';
+        }
+
+        $version = $this->getCacheVersion();
+
+        // Dragonfly version patterns:
+        // - Contains "dragonfly" in the string
+        // - Starts with "df-"
+        // - Starts with "v" followed by version (e.g., "v1.35.1")
+        if (stripos($version, 'dragonfly') !== false || stripos($version, 'df-') !== false) {
+            return 'dragonfly';
+        }
+
+        // Dragonfly often reports versions like "v1.35.1" (with 'v' prefix)
+        if (preg_match('/^v\d+\.\d+/', $version) === 1) {
+            return 'dragonfly';
+        }
+
+        // Standard memcached versions are typically just numbers (e.g., "1.6.18")
+        // without 'v' prefix
+        if (preg_match('/^\d+\.\d+/', $version) === 1) {
+            return 'memcached';
+        }
+
+        return 'unknown';
     }
 
     /**

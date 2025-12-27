@@ -244,12 +244,17 @@ class BenchmarkCommand extends BaseCommand
         // DB results
         if ($result->hasDbResults()) {
             $this->io()->section('Database Performance');
+
+            // Display warnings before DB results
+            $this->displayWarnings($result, 'database');
+
             $this->displayDbResults($result, $baseline);
         }
 
         // Cache results
         if ($result->hasCacheResults()) {
-            $this->io()->section('Cache Performance (Memcached)');
+            $cacheBackend = $this->getCacheBackendLabel($result);
+            $this->io()->section("Cache Performance ({$cacheBackend})");
             $this->displayCacheResults($result, $baseline);
         }
 
@@ -798,5 +803,60 @@ class BenchmarkCommand extends BaseCommand
         }
 
         return $info;
+    }
+
+    /**
+     * Display warnings for a specific category
+     */
+    private function displayWarnings(BenchmarkResult $result, string $category): void
+    {
+        $warnings = $result->getWarnings();
+        foreach ($warnings as $warning) {
+            if ($warning['category'] === $category) {
+                $this->io()->warning($warning['message']);
+            }
+        }
+
+        // Also display data volume if available
+        if ($category === 'database') {
+            $dataVolume = $result->getDataVolume();
+            if ($dataVolume !== []) {
+                $volumeInfo = [];
+                foreach ($dataVolume as $table => $count) {
+                    $volumeInfo[] = sprintf('%s: %d rows', ucfirst($table), $count);
+                }
+                $this->io()->text('<fg=gray>Data Volume: ' . implode(', ', $volumeInfo) . '</>');
+                $this->io()->newLine();
+            }
+        }
+    }
+
+    /**
+     * Get cache backend label from system info
+     */
+    private function getCacheBackendLabel(BenchmarkResult $result): string
+    {
+        $info = $result->getSystemInfo();
+
+        // Check if we have cache backend type stored
+        if (isset($info['cache_backend']) && is_string($info['cache_backend'])) {
+            $backend = $info['cache_backend'];
+            if ($backend === 'dragonfly') {
+                return 'Dragonfly';
+            } elseif ($backend === 'memcached') {
+                return 'Memcached';
+            }
+        }
+
+        // Check version string for hints
+        if (isset($info['memcached_version']) && is_string($info['memcached_version'])) {
+            $version = $info['memcached_version'];
+            if (stripos($version, 'dragonfly') !== false || stripos($version, 'df-') !== false) {
+                return 'Dragonfly';
+            }
+        }
+
+        // Default to "Object Cache" (generic)
+        return 'Object Cache';
     }
 }
