@@ -84,19 +84,19 @@ kvs check
 
 | Command | Description |
 |---------|-------------|
-| [`system:status`](commands/system-status.md) | Show system status |
-| [`system:check`](commands/system-check.md) | Run health checks |
-| [`system:cache`](commands/system-cache.md) | Manage cache |
-| [`system:cron`](commands/system-cron.md) | Run cron jobs |
-| [`system:backup`](commands/system-backup.md) | Create/restore backups |
+| [`system:status`](commands/system_status.md) | Show system status |
+| [`system:check`](commands/system_check.md) | Run health checks |
+| [`system:cache`](commands/system_cache.md) | Manage cache |
+| [`system:cron`](commands/system_cron.md) | Run cron jobs |
+| [`system:backup`](commands/system_backup.md) | Create/restore backups |
 | [`maintenance`](commands/maintenance.md) | Enable/disable maintenance mode |
 
 ### Database Operations
 
 | Command | Description |
 |---------|-------------|
-| [`db:export`](commands/db-export.md) | Export database to SQL |
-| [`db:import`](commands/db-import.md) | Import database from SQL |
+| [`db:export`](commands/db_export.md) | Export database to SQL |
+| [`db:import`](commands/db_import.md) | Import database from SQL |
 
 ### Development Tools
 
@@ -105,14 +105,14 @@ kvs check
 | [`eval`](commands/eval.md) | Execute PHP code |
 | [`shell`](commands/shell.md) | Interactive PHP shell |
 | [`config`](commands/config.md) | View/edit configuration |
-| [`dev:debug`](commands/dev-debug.md) | Debug information |
-| [`dev:log`](commands/dev-log.md) | View logs |
+| [`dev:debug`](commands/dev_debug.md) | Debug information |
+| [`dev:log`](commands/dev_log.md) | View logs |
 
 ### Utility Commands
 
 | Command | Description |
 |---------|-------------|
-| [`self-update`](commands/self-update.md) | Update KVS-CLI |
+| [`self-update`](commands/self_update.md) | Update KVS-CLI |
 | [`completion`](commands/completion.md) | Generate shell completion |
 
 ## Common Options
