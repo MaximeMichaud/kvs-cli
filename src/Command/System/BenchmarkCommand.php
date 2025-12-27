@@ -578,10 +578,17 @@ class BenchmarkCommand extends BaseCommand
 
         $score = $result->calculateScore();
         $rating = $result->getRating();
+        $hasInsufficientData = $result->hasWarnings();
 
         if ($score > 0) {
-            $this->io()->text(sprintf('  <fg=cyan;options=bold>SCORE: %s pts</>', number_format($score)));
-            $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
+            if ($hasInsufficientData) {
+                $this->io()->text(sprintf('  <fg=yellow;options=bold>SCORE: %s pts*</>', number_format($score)));
+                $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
+                $this->io()->text('  <fg=yellow>* Score may be inflated due to insufficient database data</>');
+            } else {
+                $this->io()->text(sprintf('  <fg=cyan;options=bold>SCORE: %s pts</>', number_format($score)));
+                $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
+            }
 
             if ($baseline !== null) {
                 $baselineScore = $baseline->calculateScore();
