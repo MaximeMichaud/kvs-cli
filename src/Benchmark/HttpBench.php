@@ -9,19 +9,39 @@ namespace KVS\CLI\Benchmark;
  *
  * Uses curl with precise timing to measure real page response times.
  * This is NOT a stress test - it measures actual performance.
+ *
+ * Supports localhost mode to bypass CDN/proxy layers (Cloudflare, etc.)
+ * by connecting directly to 127.0.0.1 with the Host header set.
  */
 class HttpBench
 {
     private string $baseUrl;
     private int $samples;
+    private bool $useLocalhost;
+    private string $hostHeader;
+    private string $localUrl;
 
     /** @var array<string, array{url: string, name: string}> */
     private array $endpoints = [];
 
-    public function __construct(string $baseUrl, int $samples = 5)
+    public function __construct(string $baseUrl, int $samples = 5, bool $useLocalhost = false)
     {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->samples = $samples;
+        $this->useLocalhost = $useLocalhost;
+
+        // Parse URL for localhost mode
+        $parsed = parse_url($this->baseUrl);
+        if (!is_array($parsed)) {
+            $parsed = [];
+        }
+        $host = $parsed['host'] ?? 'localhost';
+        $scheme = $parsed['scheme'] ?? 'http';
+        $port = $parsed['port'] ?? ($scheme === 'https' ? 443 : 80);
+
+        $this->hostHeader = $host;
+        // Use HTTP for localhost to avoid SSL certificate issues
+        $this->localUrl = "http://127.0.0.1:{$port}";
 
         // Define KVS endpoints to test
         $this->endpoints = [
@@ -38,19 +58,28 @@ class HttpBench
      */
     public function isServerReachable(): bool
     {
-        $ch = curl_init($this->baseUrl . '/');
+        $url = $this->useLocalhost ? $this->localUrl . '/' : $this->baseUrl . '/';
+
+        $ch = curl_init($url);
         if ($ch === false) {
             return false;
         }
 
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 5,
             CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_NOBODY => true,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_FOLLOWLOCATION => true,
-        ]);
+        ];
+
+        // Add Host header for localhost mode
+        if ($this->useLocalhost) {
+            $options[CURLOPT_HTTPHEADER] = ["Host: {$this->hostHeader}"];
+        }
+
+        curl_setopt_array($ch, $options);
 
         curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -85,7 +114,8 @@ class HttpBench
      */
     private function measureEndpoint(string $path): array
     {
-        $url = $this->baseUrl . $path;
+        $baseUrl = $this->useLocalhost ? $this->localUrl : $this->baseUrl;
+        $url = $baseUrl . $path;
         $timings = [];
 
         for ($i = 0; $i < $this->samples; $i++) {
@@ -112,7 +142,7 @@ class HttpBench
             return null;
         }
 
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 30,
             CURLOPT_CONNECTTIMEOUT => 10,
@@ -122,7 +152,14 @@ class HttpBench
             // Don't download the body for timing - just measure TTFB
             CURLOPT_HEADER => true,
             CURLOPT_NOBODY => false,
-        ]);
+        ];
+
+        // Add Host header for localhost mode
+        if ($this->useLocalhost) {
+            $options[CURLOPT_HTTPHEADER] = ["Host: {$this->hostHeader}"];
+        }
+
+        curl_setopt_array($ch, $options);
 
         curl_exec($ch);
 
@@ -204,5 +241,21 @@ class HttpBench
     public function getBaseUrl(): string
     {
         return $this->baseUrl;
+    }
+
+    /**
+     * Check if localhost mode is enabled
+     */
+    public function isLocalhostMode(): bool
+    {
+        return $this->useLocalhost;
+    }
+
+    /**
+     * Get the host header being used
+     */
+    public function getHostHeader(): string
+    {
+        return $this->hostHeader;
     }
 }

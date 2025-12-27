@@ -32,6 +32,7 @@ class BenchmarkRunner
     private int $fileIterations;
     private int $cpuIterations;
     private int $httpRuns;
+    private bool $useLocalhost;
 
     /**
      * @param array{host?: string, port?: int} $memcachedConfig
@@ -46,7 +47,8 @@ class BenchmarkRunner
         int $cacheIterations = 100,
         int $fileIterations = 100,
         int $cpuIterations = 1000,
-        int $httpRuns = 3
+        int $httpRuns = 3,
+        bool $useLocalhost = false
     ) {
         $this->db = $db;
         $this->tablePrefix = $tablePrefix;
@@ -58,6 +60,7 @@ class BenchmarkRunner
         $this->fileIterations = $fileIterations;
         $this->cpuIterations = $cpuIterations;
         $this->httpRuns = $httpRuns;
+        $this->useLocalhost = $useLocalhost;
     }
 
     /**
@@ -91,10 +94,18 @@ class BenchmarkRunner
 
         // HTTP benchmarks (if URL provided)
         if ($this->baseUrl !== '') {
-            $httpBench = new HttpBench($this->baseUrl, $this->httpSamples);
+            $httpBench = new HttpBench($this->baseUrl, $this->httpSamples, $this->useLocalhost);
 
             if ($httpBench->isServerReachable()) {
                 $this->runMultipleHttpBenchmarks($result, $httpBench, $progressCallback);
+
+                // Store localhost mode info
+                if ($this->useLocalhost) {
+                    $systemInfo = $result->getSystemInfo();
+                    $systemInfo['http_localhost'] = true;
+                    $systemInfo['http_host_header'] = $httpBench->getHostHeader();
+                    $result->setSystemInfo($systemInfo);
+                }
             } else {
                 $this->runProgress($progressCallback, 'http', 'Server not reachable, skipping HTTP tests');
             }

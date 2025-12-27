@@ -109,6 +109,12 @@ class BenchmarkCommand extends BaseCommand
                 InputOption::VALUE_REQUIRED,
                 'Number of benchmark runs for HTTP tests (averaged for stable scores)',
                 '3'
+            )
+            ->addOption(
+                'localhost',
+                'l',
+                InputOption::VALUE_NONE,
+                'Test via 127.0.0.1 with Host header (bypasses CDN/Cloudflare)'
             );
     }
 
@@ -155,6 +161,8 @@ class BenchmarkCommand extends BaseCommand
         $runsOption = $input->getOption('runs');
         $httpRuns = is_numeric($runsOption) ? max(1, (int)$runsOption) : 3;
 
+        $useLocalhost = $input->getOption('localhost') === true;
+
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
 
@@ -196,7 +204,8 @@ class BenchmarkCommand extends BaseCommand
             $cacheIterations,
             $fileIterations,
             $cpuIterations,
-            $httpRuns
+            $httpRuns,
+            $useLocalhost
         );
 
         $result = $runner->run(function (string $stage, string $message): void {
@@ -249,9 +258,20 @@ class BenchmarkCommand extends BaseCommand
         // HTTP results
         if ($result->hasHttpResults()) {
             $httpRuns = $this->getHttpRunsFromResult($result);
-            $httpTitle = $httpRuns > 1
-                ? "HTTP Response Times (averaged over {$httpRuns} runs)"
-                : 'HTTP Response Times';
+            $isLocalhost = $this->isLocalhostMode($result);
+
+            $httpTitle = 'HTTP Response Times';
+            $extras = [];
+            if ($httpRuns > 1) {
+                $extras[] = "averaged over {$httpRuns} runs";
+            }
+            if ($isLocalhost) {
+                $extras[] = 'via localhost';
+            }
+            if ($extras !== []) {
+                $httpTitle .= ' (' . implode(', ', $extras) . ')';
+            }
+
             $this->io()->section($httpTitle);
             $this->displayHttpResults($result, $baseline);
         }
@@ -863,6 +883,15 @@ class BenchmarkCommand extends BaseCommand
             return $info['http_runs'];
         }
         return 1;
+    }
+
+    /**
+     * Check if localhost mode was used for HTTP tests
+     */
+    private function isLocalhostMode(BenchmarkResult $result): bool
+    {
+        $info = $result->getSystemInfo();
+        return isset($info['http_localhost']) && $info['http_localhost'] === true;
     }
 
     /**
