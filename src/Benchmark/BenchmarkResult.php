@@ -310,229 +310,212 @@ class BenchmarkResult
     }
 
     /**
-     * Calculate composite performance score from all benchmarks
+     * Baseline values for score calibration (Geekbench-style)
      *
-     * Score is balanced across all components to prevent any single
-     * benchmark from dominating. HTTP times are capped at 5ms minimum
-     * to prevent unrealistic scores from cached/static responses.
+     * These represent a "typical good server" performance.
+     * Score of 1000 = baseline performance.
+     * Score of 2000 = 2x faster than baseline.
      *
-     * Target ranges (roughly equal contribution when performing well):
-     * - HTTP: ~25% of score (capped to prevent localhost inflation)
-     * - Database: ~25% of score
-     * - Cache: ~20% of score
-     * - CPU: ~20% of score
-     * - File I/O: ~10% of score
+     * Baseline: Decent VPS (4 vCPU, 8GB RAM, SSD, PHP 8.1, MariaDB 10.6)
+     */
+    private const BASELINE = [
+        // Database baselines (queries/sec - higher = better)
+        'db' => [
+            'video_listing' => 100.0,      // 100 queries/sec = 1000 pts
+            'video_count' => 500.0,
+            'search' => 80.0,
+            'user_lookup' => 5000.0,
+            'category_summary' => 50.0,
+            'stats_aggregation' => 40.0,
+            'complex_join' => 30.0,
+            'insert' => 10000.0,
+            'update' => 10000.0,
+        ],
+        // Cache baselines (ops/sec - higher = better)
+        'cache' => [
+            'simple_set' => 30000.0,
+            'simple_get' => 40000.0,
+            'page_set' => 15000.0,
+            'page_get' => 20000.0,
+            'bulk_set' => 500.0,
+            'bulk_get' => 10000.0,
+            'kvs_set' => 30000.0,
+            'kvs_get' => 40000.0,
+        ],
+        // CPU baselines (ops/sec - higher = better)
+        'cpu' => [
+            'md5_simple' => 30000.0,
+            'md5_session' => 150000.0,
+            'md5_cache_key' => 200000.0,
+            'md5_file_1k' => 100000.0,
+            'md5_file_100k' => 5000.0,
+            'serialize_config' => 50000.0,
+            'serialize_lang' => 15000.0,
+            'json_config' => 30000.0,
+            'json_lang' => 6000.0,
+            'str_replace' => 30000.0,
+            'htmlspecialchars' => 30000.0,
+            'str_concat' => 50000.0,
+            'sprintf' => 70000.0,
+            'regex_routing' => 500000.0,
+            'regex_links' => 200000.0,
+            'regex_email' => 2000000.0,
+            'stats_calc' => 50000.0,
+            'array_sort' => 4000.0,
+            'percentile' => 10000.0,
+            'array_map' => 35000.0,
+            'array_filter' => 30000.0,
+            'array_column' => 80000.0,
+            'array_merge' => 500000.0,
+            'usort' => 3000.0,
+        ],
+        // File I/O baselines (ops/sec - higher = better)
+        'fileio' => [
+            'serialize_config' => 1000000.0,
+            'unserialize_config' => 500000.0,
+            'serialize_lang' => 40000.0,
+            'config_load' => 100000.0,
+            'read_1k' => 120000.0,
+            'read_10k' => 100000.0,
+            'read_100k' => 40000.0,
+            'write_10k' => 50000.0,
+            'write_fsync' => 45000.0,
+            'scandir' => 40000.0,
+            'glob' => 25000.0,
+            'filemtime' => 8000.0,
+            'append_nolock' => 150000.0,
+            'append_lock' => 130000.0,
+            'append_flock' => 120000.0,
+        ],
+    ];
+
+    /**
+     * Calculate composite performance score (Geekbench-style calibration)
+     *
+     * Uses baseline calibration where 1000 = reference system performance.
+     * Final score = weighted geometric mean of category scores.
+     *
+     * Categories and weights:
+     * - Database: 35% (most important for KVS)
+     * - Cache: 25%
+     * - CPU: 25%
+     * - File I/O: 15%
+     *
+     * HTTP is excluded from score - it measures network, not server performance.
      */
     public function calculateScore(): int
     {
-        $score = 0;
-
-        // HTTP score (capped minimum 5ms to prevent localhost/cache inflation)
-        $score += $this->calculateHttpScore();
-
-        // Database score
-        $score += $this->calculateDbScore();
-
-        // Cache score
-        $score += $this->calculateCacheScore();
-
-        // CPU score
-        $score += $this->calculateCpuScore();
-
-        // File I/O score
-        $score += $this->calculateFileIOScore();
-
-        return $score;
-    }
-
-    /**
-     * Calculate HTTP component score
-     * Capped at 5ms minimum to prevent unrealistic localhost/cached scores
-     */
-    private function calculateHttpScore(): int
-    {
-        if ($this->httpResults === []) {
-            return 0;
-        }
-
-        $score = 0;
+        // Category weights: DB 35%, Cache 25%, CPU 25%, File I/O 15%
         $weights = [
-            'homepage' => 3.0,
-            'videos' => 2.0,
-            'categories' => 1.5,
-            'search' => 2.0,
-            'admin' => 1.0,
+            'db' => 0.35,
+            'cache' => 0.25,
+            'cpu' => 0.25,
+            'fileio' => 0.15,
         ];
 
-        foreach ($this->httpResults as $key => $result) {
-            $weight = $weights[$key] ?? 1.0;
-            // Cap at minimum 5ms to prevent localhost/cached responses from inflating score
-            $avgMs = max(5.0, $result['avg']);
+        // Calculate weighted arithmetic mean of category scores
+        $weightedSum = 0.0;
+        $totalWeight = 0.0;
 
-            // Score: 5ms = 2000 pts * weight, 50ms = 200 pts * weight, 200ms = 50 pts * weight
-            $score += (int) ((10000 / $avgMs) * $weight);
+        foreach ($weights as $category => $weight) {
+            $score = $this->calculateCategoryScore($category);
+            if ($score > 0) {
+                $weightedSum += $score * $weight;
+                $totalWeight += $weight;
+            }
         }
 
-        return $score;
-    }
-
-    /**
-     * Calculate database component score
-     */
-    private function calculateDbScore(): int
-    {
-        if ($this->dbResults === []) {
+        if ($totalWeight === 0.0) {
             return 0;
         }
 
-        $score = 0;
-        // Weight important queries higher
-        $weights = [
-            'video_listing' => 3.0,
-            'video_count' => 1.0,
-            'search' => 2.0,
-            'user_lookup' => 1.5,
-            'category_summary' => 2.0,
-            'stats_aggregation' => 1.5,
-            'complex_join' => 2.0,
-            'insert' => 1.0,
-            'update' => 1.0,
-        ];
-
-        foreach ($this->dbResults as $key => $result) {
-            $weight = $weights[$key] ?? 1.0;
-            $avgMs = max(0.1, $result['avg_ms']); // Prevent division by zero
-
-            // Score: 0.1ms = 10000 pts * weight, 1ms = 1000 pts * weight, 10ms = 100 pts * weight
-            $score += (int) ((1000 / $avgMs) * $weight);
-        }
-
-        return $score;
+        return (int) round($weightedSum / $totalWeight);
     }
 
     /**
-     * Calculate cache component score
+     * Calculate score for a single category using geometric mean
+     *
+     * Each test score = (measured / baseline) * 1000
+     * Category score = geometric mean of all test scores
      */
-    private function calculateCacheScore(): int
+    private function calculateCategoryScore(string $category): float
     {
-        if ($this->cacheResults === []) {
-            return 0;
+        $baselines = self::BASELINE[$category] ?? [];
+        $scores = [];
+
+        switch ($category) {
+            case 'db':
+                foreach ($this->dbResults as $key => $result) {
+                    $baseline = $baselines[$key] ?? null;
+                    if ($baseline !== null && $result['queries_sec'] > 0) {
+                        $scores[] = ($result['queries_sec'] / $baseline) * 1000;
+                    }
+                }
+                break;
+
+            case 'cache':
+                foreach ($this->cacheResults as $key => $result) {
+                    $baseline = $baselines[$key] ?? null;
+                    if ($baseline !== null && $result['ops_sec'] > 0) {
+                        $scores[] = ($result['ops_sec'] / $baseline) * 1000;
+                    }
+                }
+                break;
+
+            case 'cpu':
+                foreach ($this->cpuResults as $key => $result) {
+                    $baseline = $baselines[$key] ?? null;
+                    if ($baseline !== null && $result['ops_sec'] > 0) {
+                        $scores[] = ($result['ops_sec'] / $baseline) * 1000;
+                    }
+                }
+                break;
+
+            case 'fileio':
+                foreach ($this->fileIOResults as $key => $result) {
+                    $baseline = $baselines[$key] ?? null;
+                    if ($baseline !== null && $result['ops_sec'] > 0) {
+                        $scores[] = ($result['ops_sec'] / $baseline) * 1000;
+                    }
+                }
+                break;
         }
 
-        $score = 0;
-        // Focus on KVS-relevant operations
-        $weights = [
-            'simple_set' => 1.0,
-            'simple_get' => 1.5,
-            'page_set' => 2.0,
-            'page_get' => 2.5,
-            'bulk_set' => 1.0,
-            'bulk_get' => 1.5,
-            'kvs_set' => 2.0,
-            'kvs_get' => 2.5,
-        ];
-
-        foreach ($this->cacheResults as $key => $result) {
-            $weight = $weights[$key] ?? 1.0;
-            $avgMs = max(0.01, $result['avg']); // Prevent division by zero
-
-            // Score based on ops/sec (higher = better)
-            $opsSec = $result['ops_sec'];
-            // Normalize: 50K ops/sec = 500 pts * weight
-            $score += (int) (($opsSec / 100) * $weight);
+        if ($scores === []) {
+            return 0.0;
         }
 
-        return $score;
+        // Geometric mean
+        $product = 1.0;
+        foreach ($scores as $score) {
+            $product *= $score;
+        }
+
+        return pow($product, 1 / count($scores));
     }
 
     /**
-     * Calculate CPU component score
-     */
-    private function calculateCpuScore(): int
-    {
-        if ($this->cpuResults === []) {
-            return 0;
-        }
-
-        $score = 0;
-        // Weight practical operations higher
-        $importantOps = [
-            'md5_simple', 'md5_session', 'md5_cache_key',
-            'serialize_config', 'serialize_lang',
-            'str_replace', 'htmlspecialchars',
-            'regex_routing', 'array_map', 'array_filter',
-        ];
-
-        foreach ($this->cpuResults as $key => $result) {
-            $weight = in_array($key, $importantOps, true) ? 1.5 : 1.0;
-            $opsSec = $result['ops_sec'];
-
-            // Normalize: 100K ops/sec = 100 pts * weight
-            $score += (int) (($opsSec / 1000) * $weight);
-        }
-
-        return $score;
-    }
-
-    /**
-     * Calculate File I/O component score
-     */
-    private function calculateFileIOScore(): int
-    {
-        if ($this->fileIOResults === []) {
-            return 0;
-        }
-
-        $score = 0;
-        // Weight practical operations higher
-        $weights = [
-            'config_load' => 2.0,
-            'read_1k' => 1.0,
-            'read_10k' => 1.5,
-            'write_10k' => 1.5,
-            'append_lock' => 2.0,
-        ];
-
-        foreach ($this->fileIOResults as $key => $result) {
-            $weight = $weights[$key] ?? 1.0;
-            $opsSec = $result['ops_sec'];
-
-            // Normalize: 100K ops/sec = 100 pts * weight
-            $score += (int) (($opsSec / 1000) * $weight);
-        }
-
-        return $score;
-    }
-
-    /**
-     * Get rating based on average response time
+     * Get rating based on score (baseline = 1000)
      */
     public function getRating(): string
     {
-        if ($this->httpResults === []) {
-            return 'N/A - No HTTP tests';
+        $score = $this->calculateScore();
+
+        if ($score === 0) {
+            return 'N/A - No benchmarks run';
         }
 
-        $totalAvg = 0.0;
-        $count = 0;
-        foreach ($this->httpResults as $result) {
-            $totalAvg += $result['avg'];
-            $count++;
-        }
-
-        // $count is always > 0 here since we checked httpResults !== []
-        $avgResponseTime = $totalAvg / $count;
-
-        if ($avgResponseTime <= 50) {
-            return '★★★★★ Excellent (<50ms)';
-        } elseif ($avgResponseTime <= 100) {
-            return '★★★★☆ Very Good (<100ms)';
-        } elseif ($avgResponseTime <= 200) {
-            return '★★★☆☆ Good (<200ms)';
-        } elseif ($avgResponseTime <= 500) {
-            return '★★☆☆☆ Fair (<500ms)';
+        // Rating based on score relative to baseline (1000)
+        if ($score >= 1500) {
+            return '★★★★★ Excellent (150%+ of baseline)';
+        } elseif ($score >= 1200) {
+            return '★★★★☆ Very Good (120%+ of baseline)';
+        } elseif ($score >= 900) {
+            return '★★★☆☆ Good (90%+ of baseline)';
+        } elseif ($score >= 600) {
+            return '★★☆☆☆ Fair (60%+ of baseline)';
         } else {
-            return '★☆☆☆☆ Poor (>500ms)';
+            return '★☆☆☆☆ Below baseline';
         }
     }
 
