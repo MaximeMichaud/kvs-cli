@@ -29,3 +29,4 @@ jobs:
           path: docs/
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: 'docs: sync from ${{ github.sha }}'
+          preprocess: false
