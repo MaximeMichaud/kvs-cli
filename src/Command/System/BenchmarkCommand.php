@@ -102,6 +102,13 @@ class BenchmarkCommand extends BaseCommand
                 null,
                 InputOption::VALUE_REQUIRED,
                 'Docker container name to fetch PHP-FPM config from (e.g., "kvs-php")'
+            )
+            ->addOption(
+                'runs',
+                'r',
+                InputOption::VALUE_REQUIRED,
+                'Number of benchmark runs for HTTP tests (averaged for stable scores)',
+                '3'
             );
     }
 
@@ -145,6 +152,9 @@ class BenchmarkCommand extends BaseCommand
         $phpContainerOption = $input->getOption('php-container');
         $phpContainer = is_string($phpContainerOption) ? $phpContainerOption : '';
 
+        $runsOption = $input->getOption('runs');
+        $httpRuns = is_numeric($runsOption) ? max(1, (int)$runsOption) : 3;
+
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
 
@@ -185,7 +195,8 @@ class BenchmarkCommand extends BaseCommand
             ['host' => $mcHost, 'port' => $mcPort],
             $cacheIterations,
             $fileIterations,
-            $cpuIterations
+            $cpuIterations,
+            $httpRuns
         );
 
         $result = $runner->run(function (string $stage, string $message): void {
@@ -237,7 +248,11 @@ class BenchmarkCommand extends BaseCommand
 
         // HTTP results
         if ($result->hasHttpResults()) {
-            $this->io()->section('HTTP Response Times');
+            $httpRuns = $this->getHttpRunsFromResult($result);
+            $httpTitle = $httpRuns > 1
+                ? "HTTP Response Times (averaged over {$httpRuns} runs)"
+                : 'HTTP Response Times';
+            $this->io()->section($httpTitle);
             $this->displayHttpResults($result, $baseline);
         }
 
@@ -836,6 +851,18 @@ class BenchmarkCommand extends BaseCommand
                 $this->io()->newLine();
             }
         }
+    }
+
+    /**
+     * Get number of HTTP runs from system info
+     */
+    private function getHttpRunsFromResult(BenchmarkResult $result): int
+    {
+        $info = $result->getSystemInfo();
+        if (isset($info['http_runs']) && is_int($info['http_runs'])) {
+            return $info['http_runs'];
+        }
+        return 1;
     }
 
     /**
