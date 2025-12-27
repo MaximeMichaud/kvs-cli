@@ -15,7 +15,7 @@
 * [[Video|video]]
 * [[Album|album]]
 * [[User|user]]
-* [[User_purge|user:purge]]
+* [[User purge|user:purge]]
 * [[Comment|comment]]
 * [[Category|category]]
 * [[Tag|tag]]
@@ -26,12 +26,12 @@
 
 **System Commands**
 
-* [[System_status|system:status]]
-* [[System_check|system:check]]
-* [[System_cache|system:cache]]
-* [[System_cron|system:cron]]
-* [[System_backup|system:backup]]
-* [[System_benchmark|system:benchmark]]
+* [[System status|system:status]]
+* [[System check|system:check]]
+* [[System cache|system:cache]]
+* [[System cron|system:cron]]
+* [[System backup|system:backup]]
+* [[System benchmark|system:benchmark]]
 * [[Queue|queue]]
 * [[Maintenance|maintenance]]
 
@@ -39,32 +39,32 @@
 
 **Database Commands**
 
-* [[Db_export|db:export]]
-* [[Db_import|db:import]]
+* [[Db export|db:export]]
+* [[Db import|db:import]]
 
 ***
 
 **Development Commands**
 
 * [[Eval|eval]]
-* [[Eval_file|eval-file]]
+* [[Eval file|eval-file]]
 * [[Shell|shell]]
 * [[Config|config]]
 * [[Plugin|plugin]]
-* [[Cli_info|cli:info]]
-* [[Dev_debug|dev:debug]]
-* [[Dev_log|dev:log]]
+* [[Cli info|cli:info]]
+* [[Dev debug|dev:debug]]
+* [[Dev log|dev:log]]
 
 ***
 
 **Video Commands**
 
-* [[Video_formats|video:formats]]
-* [[Video_screenshots|video:screenshots]]
+* [[Video formats|video:formats]]
+* [[Video screenshots|video:screenshots]]
 
 ***
 
 **Utility Commands**
 
-* [[Self_update|self-update]]
+* [[Self update|self-update]]
 * [[Completion|completion]]
