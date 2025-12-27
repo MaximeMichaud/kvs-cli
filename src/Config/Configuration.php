@@ -134,6 +134,66 @@ class Configuration
         if ($envDb !== false && $envDb !== '') {
             $this->dbConfig['database'] = $envDb;
         }
+
+        // Smart fallback: if hostname doesn't resolve, try alternatives
+        $this->applyHostnameFallback();
+    }
+
+    /**
+     * Apply smart hostname fallback for Docker/host networking issues.
+     * If the configured hostname doesn't resolve, try common alternatives.
+     */
+    private function applyHostnameFallback(): void
+    {
+        $host = $this->dbConfig['host'] ?? '';
+        if ($host === '' || $host === '127.0.0.1' || $host === 'localhost') {
+            return; // Already using localhost, no fallback needed
+        }
+
+        // Check if hostname resolves
+        if ($this->hostnameResolves($host)) {
+            return; // Hostname resolves, use it
+        }
+
+        // Hostname doesn't resolve - try fallbacks
+        $fallbacks = [
+            '127.0.0.1',  // Most common: Docker port exposed to host
+        ];
+
+        // If hostname looks like a Docker container name, try prefixed versions
+        if (!str_contains($host, '.') && !str_contains($host, ':')) {
+            // Try common Docker naming patterns
+            $fallbacks = array_merge([
+                'kvs-' . $host,      // e.g., mariadb -> kvs-mariadb
+                $host . '-db',       // e.g., mariadb -> mariadb-db
+            ], $fallbacks);
+        }
+
+        foreach ($fallbacks as $fallback) {
+            if ($this->hostnameResolves($fallback)) {
+                $this->dbConfig['host'] = $fallback;
+                $this->dbConfig['_fallback_used'] = '1';
+                $this->dbConfig['_original_host'] = $host;
+                return;
+            }
+        }
+
+        // No fallback worked, keep original (will fail with clear error)
+    }
+
+    /**
+     * Check if a hostname resolves to an IP address.
+     */
+    private function hostnameResolves(string $hostname): bool
+    {
+        // IP addresses always "resolve"
+        if (filter_var($hostname, FILTER_VALIDATE_IP) !== false) {
+            return true;
+        }
+
+        // Check DNS resolution
+        $resolved = gethostbyname($hostname);
+        return $resolved !== $hostname;
     }
 
     /**
