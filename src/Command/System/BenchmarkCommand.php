@@ -668,7 +668,11 @@ class BenchmarkCommand extends BaseCommand
 
     private function formatMs(float $ms): string
     {
-        if ($ms < 1) {
+        if ($ms < 0.001) {
+            return sprintf('%.4f', $ms);
+        } elseif ($ms < 0.01) {
+            return sprintf('%.3f', $ms);
+        } elseif ($ms < 1) {
             return sprintf('%.2f', $ms);
         } elseif ($ms < 100) {
             return sprintf('%.1f', $ms);
