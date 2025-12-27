@@ -317,19 +317,18 @@ class BenchmarkResult
      * Score of 2000 = 2x faster than baseline.
      *
      * Baseline: Decent VPS (4 vCPU, 8GB RAM, SSD, PHP 8.1, MariaDB 10.6)
+     *
+     * NOTE: DB score only uses synthetic operations (INSERT/UPDATE/user_lookup)
+     * that don't depend on data volume. Queries like video_listing, search, etc.
+     * are shown for info but excluded from score - they vary by data size.
      */
     private const BASELINE = [
-        // Database baselines (queries/sec - higher = better)
+        // Database baselines - ONLY synthetic operations (data-independent)
+        // video_listing, search, stats_aggregation excluded - they depend on data volume
         'db' => [
-            'video_listing' => 100.0,      // 100 queries/sec = 1000 pts
-            'video_count' => 500.0,
-            'search' => 80.0,
-            'user_lookup' => 5000.0,
-            'category_summary' => 50.0,
-            'stats_aggregation' => 40.0,
-            'complex_join' => 30.0,
-            'insert' => 10000.0,
-            'update' => 10000.0,
+            'user_lookup' => 5000.0,       // Indexed lookup - O(1)
+            'insert' => 10000.0,           // Synthetic INSERT
+            'update' => 10000.0,           // Synthetic UPDATE
         ],
         // Cache baselines (ops/sec - higher = better)
         'cache' => [

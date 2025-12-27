@@ -624,14 +624,15 @@ class BenchmarkCommand extends BaseCommand
                 $this->io()->text(sprintf('  <fg=cyan;options=bold>SCORE: %s pts</>', number_format($score)));
                 $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
             }
+            // Show baseline reference
+            $this->io()->text('  <fg=gray>Baseline: 1000 pts = VPS 4 vCPU, 8GB RAM, SSD, PHP 8.1, MariaDB 10.6</>');
 
             if ($baseline !== null) {
                 $baselineScore = $baseline->calculateScore();
                 $this->displayScoreComparison($score, $baselineScore);
             }
         } else {
-            $this->io()->text('  <fg=yellow>No HTTP tests run - cannot calculate score</>');
-            $this->io()->text('  Use --url=https://your-site.com to enable HTTP benchmarks');
+            $this->io()->text('  <fg=yellow>No benchmarks run - cannot calculate score</>');
         }
 
         $this->io()->newLine();
