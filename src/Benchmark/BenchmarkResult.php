@@ -310,10 +310,46 @@ class BenchmarkResult
     }
 
     /**
-     * Calculate performance score (lower latency = better score)
-     * Score based on HTTP response times - most relevant metric
+     * Calculate composite performance score from all benchmarks
+     *
+     * Score is balanced across all components to prevent any single
+     * benchmark from dominating. HTTP times are capped at 5ms minimum
+     * to prevent unrealistic scores from cached/static responses.
+     *
+     * Target ranges (roughly equal contribution when performing well):
+     * - HTTP: ~25% of score (capped to prevent localhost inflation)
+     * - Database: ~25% of score
+     * - Cache: ~20% of score
+     * - CPU: ~20% of score
+     * - File I/O: ~10% of score
      */
     public function calculateScore(): int
+    {
+        $score = 0;
+
+        // HTTP score (capped minimum 5ms to prevent localhost/cache inflation)
+        $score += $this->calculateHttpScore();
+
+        // Database score
+        $score += $this->calculateDbScore();
+
+        // Cache score
+        $score += $this->calculateCacheScore();
+
+        // CPU score
+        $score += $this->calculateCpuScore();
+
+        // File I/O score
+        $score += $this->calculateFileIOScore();
+
+        return $score;
+    }
+
+    /**
+     * Calculate HTTP component score
+     * Capped at 5ms minimum to prevent unrealistic localhost/cached scores
+     */
+    private function calculateHttpScore(): int
     {
         if ($this->httpResults === []) {
             return 0;
@@ -330,13 +366,139 @@ class BenchmarkResult
 
         foreach ($this->httpResults as $key => $result) {
             $weight = $weights[$key] ?? 1.0;
-            $avgMs = $result['avg'];
+            // Cap at minimum 5ms to prevent localhost/cached responses from inflating score
+            $avgMs = max(5.0, $result['avg']);
 
-            if ($avgMs > 0) {
-                // Score inversely proportional to response time
-                // 100ms = 1000 pts, 50ms = 2000 pts, 200ms = 500 pts
-                $score += (int) ((100000 / $avgMs) * $weight);
-            }
+            // Score: 5ms = 2000 pts * weight, 50ms = 200 pts * weight, 200ms = 50 pts * weight
+            $score += (int) ((10000 / $avgMs) * $weight);
+        }
+
+        return $score;
+    }
+
+    /**
+     * Calculate database component score
+     */
+    private function calculateDbScore(): int
+    {
+        if ($this->dbResults === []) {
+            return 0;
+        }
+
+        $score = 0;
+        // Weight important queries higher
+        $weights = [
+            'video_listing' => 3.0,
+            'video_count' => 1.0,
+            'search' => 2.0,
+            'user_lookup' => 1.5,
+            'category_summary' => 2.0,
+            'stats_aggregation' => 1.5,
+            'complex_join' => 2.0,
+            'insert' => 1.0,
+            'update' => 1.0,
+        ];
+
+        foreach ($this->dbResults as $key => $result) {
+            $weight = $weights[$key] ?? 1.0;
+            $avgMs = max(0.1, $result['avg_ms']); // Prevent division by zero
+
+            // Score: 0.1ms = 10000 pts * weight, 1ms = 1000 pts * weight, 10ms = 100 pts * weight
+            $score += (int) ((1000 / $avgMs) * $weight);
+        }
+
+        return $score;
+    }
+
+    /**
+     * Calculate cache component score
+     */
+    private function calculateCacheScore(): int
+    {
+        if ($this->cacheResults === []) {
+            return 0;
+        }
+
+        $score = 0;
+        // Focus on KVS-relevant operations
+        $weights = [
+            'simple_set' => 1.0,
+            'simple_get' => 1.5,
+            'page_set' => 2.0,
+            'page_get' => 2.5,
+            'bulk_set' => 1.0,
+            'bulk_get' => 1.5,
+            'kvs_set' => 2.0,
+            'kvs_get' => 2.5,
+        ];
+
+        foreach ($this->cacheResults as $key => $result) {
+            $weight = $weights[$key] ?? 1.0;
+            $avgMs = max(0.01, $result['avg']); // Prevent division by zero
+
+            // Score based on ops/sec (higher = better)
+            $opsSec = $result['ops_sec'];
+            // Normalize: 50K ops/sec = 500 pts * weight
+            $score += (int) (($opsSec / 100) * $weight);
+        }
+
+        return $score;
+    }
+
+    /**
+     * Calculate CPU component score
+     */
+    private function calculateCpuScore(): int
+    {
+        if ($this->cpuResults === []) {
+            return 0;
+        }
+
+        $score = 0;
+        // Weight practical operations higher
+        $importantOps = [
+            'md5_simple', 'md5_session', 'md5_cache_key',
+            'serialize_config', 'serialize_lang',
+            'str_replace', 'htmlspecialchars',
+            'regex_routing', 'array_map', 'array_filter',
+        ];
+
+        foreach ($this->cpuResults as $key => $result) {
+            $weight = in_array($key, $importantOps, true) ? 1.5 : 1.0;
+            $opsSec = $result['ops_sec'];
+
+            // Normalize: 100K ops/sec = 100 pts * weight
+            $score += (int) (($opsSec / 1000) * $weight);
+        }
+
+        return $score;
+    }
+
+    /**
+     * Calculate File I/O component score
+     */
+    private function calculateFileIOScore(): int
+    {
+        if ($this->fileIOResults === []) {
+            return 0;
+        }
+
+        $score = 0;
+        // Weight practical operations higher
+        $weights = [
+            'config_load' => 2.0,
+            'read_1k' => 1.0,
+            'read_10k' => 1.5,
+            'write_10k' => 1.5,
+            'append_lock' => 2.0,
+        ];
+
+        foreach ($this->fileIOResults as $key => $result) {
+            $weight = $weights[$key] ?? 1.0;
+            $opsSec = $result['ops_sec'];
+
+            // Normalize: 100K ops/sec = 100 pts * weight
+            $score += (int) (($opsSec / 1000) * $weight);
         }
 
         return $score;
