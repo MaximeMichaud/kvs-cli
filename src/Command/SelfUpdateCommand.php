@@ -212,21 +212,47 @@ HELP
     {
         $url = sprintf('%s/repos/%s/releases', Constants::GITHUB_API_URL, Constants::GITHUB_REPO);
 
+        $headers = [
+            'User-Agent: ' . \KVS\CLI\Application::NAME,
+            'Accept: application/vnd.github.v3+json',
+        ];
+
+        // Support GITHUB_TOKEN for higher rate limits
+        $githubToken = getenv('GITHUB_TOKEN');
+        if ($githubToken !== false && $githubToken !== '') {
+            $headers[] = 'Authorization: token ' . $githubToken;
+        }
+
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
-                'header' => [
-                    'User-Agent: ' . \KVS\CLI\Application::NAME,
-                    'Accept: application/vnd.github.v3+json',
-                ],
+                'header' => $headers,
                 'timeout' => 30,
+                'ignore_errors' => true, // Get response body even on HTTP errors
             ],
         ]);
 
         $response = @file_get_contents($url, false, $context);
 
         if ($response === false) {
+            $error = error_get_last();
             $io->error('Failed to fetch releases from GitHub.');
+            if ($error !== null) {
+                $io->text('Error: ' . $error['message']);
+            }
+            return null;
+        }
+
+        // Check HTTP status from response headers
+        // $http_response_header is a magic variable populated by file_get_contents()
+        // @phpstan-ignore isset.variable, function.alreadyNarrowedType, booleanAnd.alwaysTrue
+        $responseHeaders = isset($http_response_header) && is_array($http_response_header) ? $http_response_header : [];
+        $httpCode = $this->getHttpStatusCode($responseHeaders);
+        if ($httpCode !== 200) {
+            $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));
+            if ($httpCode === 403) {
+                $io->text('This may be due to rate limiting. Set GITHUB_TOKEN environment variable to increase limits.');
+            }
             return null;
         }
 
@@ -234,6 +260,15 @@ HELP
 
         if (!is_array($releases)) {
             $io->error('Invalid response from GitHub API.');
+            return null;
+        }
+
+        // Check if GitHub returned an error object instead of releases array
+        if (isset($releases['message']) && is_string($releases['message'])) {
+            $io->error('GitHub API error: ' . $releases['message']);
+            if (isset($releases['documentation_url']) && is_string($releases['documentation_url'])) {
+                $io->text('See: ' . $releases['documentation_url']);
+            }
             return null;
         }
 
@@ -376,6 +411,13 @@ HELP
 
         // Extract PHAR from ZIP
         $io->text('Extracting...');
+
+        if (!class_exists('ZipArchive')) {
+            $io->error('Extracting a ZIP file requires the ZipArchive PHP extension.');
+            @unlink($tempZip);
+            return Command::FAILURE;
+        }
+
         $tempDir = sys_get_temp_dir() . '/kvs-dev-' . uniqid();
 
         $zip = new \ZipArchive();
@@ -456,32 +498,80 @@ HELP
             Constants::GITHUB_REPO
         );
 
+        $headers = [
+            'User-Agent: ' . \KVS\CLI\Application::NAME,
+            'Accept: application/vnd.github.v3+json',
+        ];
+
+        // Support GITHUB_TOKEN for higher rate limits
+        $githubToken = getenv('GITHUB_TOKEN');
+        if ($githubToken !== false && $githubToken !== '') {
+            $headers[] = 'Authorization: token ' . $githubToken;
+        }
+
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
-                'header' => [
-                    'User-Agent: KVS-CLI',
-                    'Accept: application/vnd.github.v3+json',
-                ],
+                'header' => $headers,
                 'timeout' => 30,
+                'ignore_errors' => true,
             ],
         ]);
 
         $response = @file_get_contents($url, false, $context);
 
         if ($response === false) {
+            $error = error_get_last();
             $io->error('Failed to fetch workflow runs from GitHub.');
+            if ($error !== null) {
+                $io->text('Error: ' . $error['message']);
+            }
+            return null;
+        }
+
+        // Check HTTP status from response headers
+        // $http_response_header is a magic variable populated by file_get_contents()
+        // @phpstan-ignore isset.variable, function.alreadyNarrowedType, booleanAnd.alwaysTrue
+        $responseHeaders = isset($http_response_header) && is_array($http_response_header) ? $http_response_header : [];
+        $httpCode = $this->getHttpStatusCode($responseHeaders);
+        if ($httpCode !== 200) {
+            $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));
+            if ($httpCode === 403) {
+                $io->text('This may be due to rate limiting. Set GITHUB_TOKEN environment variable to increase limits.');
+            } elseif ($httpCode === 404) {
+                $io->text('Workflow not found. The CI workflow may not exist or may be private.');
+            }
             return null;
         }
 
         $data = json_decode($response, true);
 
-        if (!is_array($data) || !isset($data['workflow_runs'][0]['id'])) {
-            $io->error('No successful workflow runs found.');
+        if (!is_array($data)) {
+            $io->error('Invalid response from GitHub API.');
             return null;
         }
 
-        return (string) $data['workflow_runs'][0]['id'];
+        // Check if GitHub returned an error object
+        if (isset($data['message']) && is_string($data['message'])) {
+            $io->error('GitHub API error: ' . $data['message']);
+            if (isset($data['documentation_url']) && is_string($data['documentation_url'])) {
+                $io->text('See: ' . $data['documentation_url']);
+            }
+            return null;
+        }
+
+        if (!isset($data['workflow_runs']) || !is_array($data['workflow_runs']) || count($data['workflow_runs']) === 0) {
+            $io->error('No successful workflow runs found on the dev branch.');
+            return null;
+        }
+
+        $runId = $data['workflow_runs'][0]['id'] ?? null;
+        if (!is_int($runId) && !is_string($runId)) {
+            $io->error('Workflow run data is missing the run ID.');
+            return null;
+        }
+
+        return (string) $runId;
     }
 
     private function cleanupDir(string $dir): void
@@ -504,5 +594,32 @@ HELP
         }
 
         @rmdir($dir);
+    }
+
+    /**
+     * Extract HTTP status code from response headers.
+     *
+     * @param array<string> $headers Response headers from $http_response_header
+     */
+    private function getHttpStatusCode(array $headers): int
+    {
+        if (count($headers) === 0) {
+            return 0;
+        }
+
+        // First header line contains the status, e.g., "HTTP/1.1 200 OK"
+        // Handle redirects by finding the last HTTP status line
+        $statusLine = '';
+        foreach ($headers as $header) {
+            if (preg_match('#^HTTP/\d+\.\d+ \d+#', $header) === 1) {
+                $statusLine = $header;
+            }
+        }
+
+        if (preg_match('#^HTTP/\d+\.\d+ (\d+)#', $statusLine, $matches) === 1) {
+            return (int) $matches[1];
+        }
+
+        return 0;
     }
 }

@@ -354,6 +354,10 @@ class SystemBench
      */
     private function getPhpInfoFromHeaders(string $baseUrl): array
     {
+        if (!extension_loaded('curl')) {
+            return [];
+        }
+
         $ch = curl_init($baseUrl . '/');
         if ($ch === false) {
             return [];
@@ -397,6 +401,10 @@ class SystemBench
      */
     private function getPhpInfoFromAdmin(string $baseUrl): array
     {
+        if (!extension_loaded('curl')) {
+            return [];
+        }
+
         $ch = curl_init($baseUrl . '/admin/');
         if ($ch === false) {
             return [];

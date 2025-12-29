@@ -44,6 +44,19 @@ try {
             "/**\n" .
             " * KVS CLI - Professional command line interface for KVS\n" .
             " */\n\n" .
+            "// Check required extensions before autoload (polyfills may fail to parse)\n" .
+            "\$required = ['mbstring' => 'Multibyte String', 'json' => 'JSON'];\n" .
+            "\$missing = [];\n" .
+            "foreach (\$required as \$ext => \$name) {\n" .
+            "    if (!extension_loaded(\$ext)) {\n" .
+            "        \$missing[] = \$ext;\n" .
+            "    }\n" .
+            "}\n" .
+            "if (\$missing) {\n" .
+            "    fprintf(STDERR, \"Error: Required PHP extensions missing: %s\\n\", implode(', ', \$missing));\n" .
+            "    fprintf(STDERR, \"Install them and try again.\\n\");\n" .
+            "    exit(1);\n" .
+            "}\n\n" .
             "Phar::mapPhar('kvs.phar');\n\n" .
             "require_once 'phar://kvs.phar/vendor/autoload.php';\n\n" .
             "use KVS\\CLI\\Application;\n\n" .

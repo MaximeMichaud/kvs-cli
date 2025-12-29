@@ -1517,6 +1517,12 @@ class CheckCommand extends BaseCommand
             'status' => 'unknown',
         ];
 
+        if (!extension_loaded('curl')) {
+            $this->printStatus('Status', 'SKIP (curl not available)', 'comment');
+            $result['status'] = 'skip';
+            return $result;
+        }
+
         $url = 'https://cloudflare.com/cdn-cgi/trace';
         $start = microtime(true);
 
@@ -1699,7 +1705,11 @@ class CheckCommand extends BaseCommand
             }
         }
 
-        // Fetch from API
+        // Fetch from API (requires curl)
+        if (!extension_loaded('curl')) {
+            return [];
+        }
+
         $url = Constants::EOL_API_BASE . '/' . $product . '.json';
         $ch = curl_init($url);
         curl_setopt_array($ch, [

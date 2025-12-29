@@ -58,6 +58,11 @@ class HttpBench
      */
     public function isServerReachable(): bool
     {
+        // Check curl extension availability
+        if (!extension_loaded('curl')) {
+            return false;
+        }
+
         $url = $this->useLocalhost ? $this->localUrl . '/' : $this->baseUrl . '/';
 
         $ch = curl_init($url);
