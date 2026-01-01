@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Benchmark;
 
+use KVS\CLI\Service\TempFileManager;
+
 /**
  * File I/O benchmark simulating KVS patterns
  *
@@ -20,12 +22,12 @@ class FileIOBench
 
     private int $iterations;
     private string $tempDir;
-    private bool $cleanupNeeded = false;
 
     public function __construct(int $iterations = 100)
     {
         $this->iterations = $iterations;
-        $this->tempDir = sys_get_temp_dir() . '/kvs_bench_' . uniqid();
+        // TempFileManager handles automatic cleanup at shutdown
+        $this->tempDir = TempFileManager::createDirectory('kvs_bench_');
     }
 
     /**
@@ -33,30 +35,22 @@ class FileIOBench
      */
     public function run(BenchmarkResult $result): void
     {
-        // Create temp directory for tests
-        if (!$this->setupTempDir()) {
-            return;
-        }
+        // Test 1: Serialize/Unserialize (core KVS pattern)
+        $this->benchSerialize($result);
 
-        try {
-            // Test 1: Serialize/Unserialize (core KVS pattern)
-            $this->benchSerialize($result);
+        // Test 2: Small file reads (config loading)
+        $this->benchSmallReads($result);
 
-            // Test 2: Small file reads (config loading)
-            $this->benchSmallReads($result);
+        // Test 3: File writes (cache/temp files)
+        $this->benchWrites($result);
 
-            // Test 3: File writes (cache/temp files)
-            $this->benchWrites($result);
+        // Test 4: Directory listing (plugin/block scanning)
+        $this->benchDirectoryListing($result);
 
-            // Test 4: Directory listing (plugin/block scanning)
-            $this->benchDirectoryListing($result);
+        // Test 5: Lock contention (KVS stats logging pattern)
+        $this->benchLockContention($result);
 
-            // Test 5: Lock contention (KVS stats logging pattern)
-            $this->benchLockContention($result);
-        } finally {
-            // Always cleanup
-            $this->cleanup();
-        }
+        // Note: Cleanup handled by TempFileManager shutdown handler
     }
 
     /**
@@ -373,54 +367,6 @@ class FileIOBench
             'ops_sec' => $avg > 0 ? round(1000 / $avg, 2) : 0,
             'samples' => $count,
         ];
-    }
-
-    /**
-     * Setup temporary directory for tests
-     */
-    private function setupTempDir(): bool
-    {
-        if (!mkdir($this->tempDir, 0700, true)) {
-            return false;
-        }
-        $this->cleanupNeeded = true;
-        return true;
-    }
-
-    /**
-     * Clean up temporary files and directories
-     */
-    private function cleanup(): void
-    {
-        if (!$this->cleanupNeeded || !is_dir($this->tempDir)) {
-            return;
-        }
-
-        // Remove all files and subdirectories
-        $this->removeDirectory($this->tempDir);
-        $this->cleanupNeeded = false;
-    }
-
-    /**
-     * Recursively remove directory and contents
-     */
-    private function removeDirectory(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-
-        $scanned = scandir($dir);
-        $files = array_diff($scanned !== false ? $scanned : [], ['.', '..']);
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            if (is_dir($path)) {
-                $this->removeDirectory($path);
-            } else {
-                @unlink($path);
-            }
-        }
-        @rmdir($dir);
     }
 
     /**

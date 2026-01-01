@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Database;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
+use KVS\CLI\Service\TempFileManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -67,9 +68,8 @@ EOT
 
         $this->io()->info('Starting database import...');
 
-        // Detect compression format
+        // Detect compression format and decompress if needed
         $compressionFormat = $this->detectCompressionFormat($file);
-        $tempFile = null;
 
         if ($compressionFormat !== null && $compressionFormat !== '') {
             $this->io()->info("Decompressing file ($compressionFormat)...");
@@ -80,32 +80,24 @@ EOT
                 return self::FAILURE;
             }
 
-            $tempFileResult = tempnam(sys_get_temp_dir(), 'kvs_import_');
-            if ($tempFileResult === false) {
-                $this->io()->error("Failed to create temporary file");
-                return self::FAILURE;
-            }
-            $tempFile = $tempFileResult;
-            file_put_contents($tempFile, $sqlContent);
-            $file = $tempFile;
+            // Create temp file with secure permissions and automatic cleanup
+            $file = TempFileManager::createWithContent($sqlContent, 'kvs_import_', '.sql');
         }
 
         $command = [
             'mysql',
             '-h', $dbConfig['host'],
             '-u', $dbConfig['user'],
-            '-p' . $dbConfig['password'],
             '--default-character-set=' . Constants::DB_CHARSET,
             $dbConfig['database'],
         ];
 
-        $process = new Process($command);
+        $env = ['MYSQL_PWD' => $dbConfig['password']];
+        $process = new Process($command, null, $env);
         $fileContents = file_get_contents($file);
         if ($fileContents === false) {
             $this->io()->error('Failed to read file contents');
-            if ($tempFile !== null && file_exists($tempFile)) {
-                unlink($tempFile);
-            }
+            // Note: Temp file cleanup is automatic via TempFileManager
             return self::FAILURE;
         }
         $process->setInput($fileContents);
@@ -124,9 +116,7 @@ EOT
         $progressBar->finish();
         $this->io()->newLine();
 
-        if ($tempFile !== null && file_exists($tempFile)) {
-            unlink($tempFile);
-        }
+        // Note: Temp file cleanup is automatic via TempFileManager shutdown handler
 
         if (!$process->isSuccessful()) {
             $this->io()->error('Database import failed');

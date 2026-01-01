@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Service\TempFileManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -71,10 +72,9 @@ HELP
             'startupMessage' => $this->getStartupMessage(),
         ]);
 
-        // Create bootstrap file content
+        // Create bootstrap file content with secure permissions and automatic cleanup
         $bootstrap = $this->createBootstrap($input);
-        $tempBootstrap = tempnam(sys_get_temp_dir(), 'kvs_shell_');
-        file_put_contents($tempBootstrap, $bootstrap);
+        $tempBootstrap = TempFileManager::createWithContent($bootstrap, 'kvs_shell_', '.php');
 
         // Include bootstrap
         require $tempBootstrap;
@@ -104,8 +104,7 @@ HELP
         // Run the shell
         $shell->run();
 
-        // Cleanup
-        @unlink($tempBootstrap);
+        // Note: Temp file cleanup is automatic via TempFileManager shutdown handler
 
         return self::SUCCESS;
     }

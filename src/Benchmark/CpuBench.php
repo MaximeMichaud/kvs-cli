@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Benchmark;
 
+use KVS\CLI\Service\TempFileManager;
+
 /**
  * CPU-bound benchmark operations
  *
@@ -105,15 +107,11 @@ class CpuBench
      */
     private function benchMd5File(BenchmarkResult $result): void
     {
-        // Create temp files of different sizes
-        $tempDir = sys_get_temp_dir();
+        // Create temp files with automatic cleanup
         $files = [
-            'small' => $tempDir . '/bench_md5_1kb.tmp',
-            'medium' => $tempDir . '/bench_md5_100kb.tmp',
+            'small' => TempFileManager::createWithContent(str_repeat('x', 1024), 'bench_md5_', '_1kb.tmp'),
+            'medium' => TempFileManager::createWithContent(str_repeat('x', 102400), 'bench_md5_', '_100kb.tmp'),
         ];
-
-        file_put_contents($files['small'], str_repeat('x', 1024));
-        file_put_contents($files['medium'], str_repeat('x', 102400));
 
         // Benchmark file hashing
         $smallTimings = $this->runBenchmark(function () use ($files): void {
@@ -124,9 +122,7 @@ class CpuBench
             md5_file($files['medium']);
         }, min(50, $this->iterations));
 
-        // Cleanup
-        @unlink($files['small']);
-        @unlink($files['medium']);
+        // Note: Cleanup handled by TempFileManager shutdown handler
 
         $result->recordCpu('md5_file_1kb', 'MD5 File (1KB)', $this->calculateStats($smallTimings));
         $result->recordCpu('md5_file_100kb', 'MD5 File (100KB)', $this->calculateStats($mediumTimings));

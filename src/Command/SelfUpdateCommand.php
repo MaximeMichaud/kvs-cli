@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace KVS\CLI\Command;
 
 use KVS\CLI\Constants;
+use KVS\CLI\Service\TempFileManager;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -144,9 +145,9 @@ HELP
             return Command::FAILURE;
         }
 
-        // Download new version
+        // Download new version (auto-cleanup on error via TempFileManager)
         $io->text(sprintf('Downloading from %s...', $pharUrl));
-        $tempFile = sys_get_temp_dir() . '/kvs-' . uniqid() . '.phar';
+        $tempFile = TempFileManager::create('kvs-update-', '.phar');
 
         if (!$this->downloadFile($pharUrl, $tempFile, $io)) {
             return Command::FAILURE;
@@ -155,7 +156,7 @@ HELP
         // Verify the downloaded PHAR works
         $io->text('Verifying new version...');
         if (!$this->verifyPhar($tempFile, $io)) {
-            @unlink($tempFile);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
@@ -173,14 +174,14 @@ HELP
 
         if (!@chmod($tempFile, $mode)) {
             $io->error(sprintf('Cannot set permissions on %s', $tempFile));
-            @unlink($tempFile);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
         if (!@rename($tempFile, $currentPhar)) {
             $io->error(sprintf('Cannot replace %s', $currentPhar));
             $io->text('Try: sudo kvs self-update');
-            @unlink($tempFile);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
@@ -396,8 +397,8 @@ HELP
             return Command::FAILURE;
         }
 
-        // Download ZIP from nightly.link using run-specific URL
-        $tempZip = sys_get_temp_dir() . '/kvs-dev-' . uniqid() . '.zip';
+        // Download ZIP from nightly.link (auto-cleanup via TempFileManager)
+        $tempZip = TempFileManager::create('kvs-dev-', '.zip');
         $nightlyUrl = sprintf(
             'https://nightly.link/%s/actions/runs/%s/%s.zip',
             Constants::GITHUB_REPO,
@@ -414,28 +415,28 @@ HELP
 
         if (!class_exists('ZipArchive')) {
             $io->error('Extracting a ZIP file requires the ZipArchive PHP extension.');
-            @unlink($tempZip);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
-        $tempDir = sys_get_temp_dir() . '/kvs-dev-' . uniqid();
+        $tempDir = TempFileManager::createDirectory('kvs-dev-');
 
         $zip = new \ZipArchive();
         if ($zip->open($tempZip) !== true) {
             $io->error('Failed to open downloaded ZIP file.');
-            @unlink($tempZip);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
         $zip->extractTo($tempDir);
         $zip->close();
-        @unlink($tempZip);
+        // Note: tempZip cleanup handled by TempFileManager shutdown handler
 
         // Find the PHAR file in extracted contents
         $pharFile = $tempDir . '/' . Constants::PHAR_NAME;
         if (!file_exists($pharFile)) {
             $io->error('PHAR file not found in downloaded archive.');
-            $this->cleanupDir($tempDir);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
@@ -445,7 +446,7 @@ HELP
             $io->warning('Dev builds may be unstable.');
             if (!$io->confirm('Update to latest dev build?', false)) {
                 $io->text('Update cancelled.');
-                $this->cleanupDir($tempDir);
+                // Cleanup handled by TempFileManager shutdown handler
                 return Command::SUCCESS;
             }
         }
@@ -453,7 +454,7 @@ HELP
         // Verify the PHAR works
         $io->text('Verifying...');
         if (!$this->verifyPhar($pharFile, $io)) {
-            $this->cleanupDir($tempDir);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
@@ -468,18 +469,18 @@ HELP
 
         if (!@chmod($pharFile, $mode)) {
             $io->error('Cannot set permissions.');
-            $this->cleanupDir($tempDir);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
         if (!@rename($pharFile, $currentPhar)) {
             $io->error(sprintf('Cannot replace %s', $currentPhar));
             $io->text('Try: sudo kvs self-update --dev');
-            $this->cleanupDir($tempDir);
+            // Cleanup handled by TempFileManager shutdown handler
             return Command::FAILURE;
         }
 
-        $this->cleanupDir($tempDir);
+        // Note: tempDir cleanup handled by TempFileManager shutdown handler
 
         // Get new version
         $output = [];
@@ -572,28 +573,6 @@ HELP
         }
 
         return (string) $runId;
-    }
-
-    private function cleanupDir(string $dir): void
-    {
-        if (!is_dir($dir)) {
-            return;
-        }
-
-        $files = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-
-        foreach ($files as $file) {
-            if ($file->isDir()) {
-                @rmdir($file->getRealPath());
-            } else {
-                @unlink($file->getRealPath());
-            }
-        }
-
-        @rmdir($dir);
     }
 
     /**

@@ -56,6 +56,13 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // Security: Block eval in production unless explicitly allowed
+        if (!$this->isEvalAllowed()) {
+            $this->io()->error('Eval command is disabled in production environment.');
+            $this->io()->text('Set KVS_ALLOW_EVAL=true to override, or use KVS_ENV=dev');
+            return self::FAILURE;
+        }
+
         $code = $this->getStringArgument($input, 'code');
         if ($code === null) {
             $this->io()->error('Code argument is required');
@@ -302,5 +309,34 @@ if (isset($db) && $db) {
 PHP;
         // Replace default prefix placeholder with configured prefix
         return str_replace(Constants::DEFAULT_TABLE_PREFIX, $prefix, $code);
+    }
+
+    /**
+     * Check if eval command is allowed in current environment.
+     *
+     * Eval is allowed if:
+     * - KVS_ENV is 'dev', 'development', 'test', or not set (defaults to dev)
+     * - OR KVS_ALLOW_EVAL is explicitly set to 'true' or '1'
+     *
+     * This prevents accidental execution in production environments.
+     */
+    private function isEvalAllowed(): bool
+    {
+        // Explicit override takes precedence
+        $allowEval = getenv('KVS_ALLOW_EVAL');
+        if ($allowEval === 'true' || $allowEval === '1') {
+            return true;
+        }
+
+        // Check environment - default to allowing (dev mode)
+        $env = getenv('KVS_ENV');
+        if ($env === false || $env === '') {
+            // No environment set - assume dev, allow eval
+            return true;
+        }
+
+        // Allow in dev/test environments
+        $allowedEnvs = ['dev', 'development', 'test', 'testing', 'local'];
+        return in_array(strtolower($env), $allowedEnvs, true);
     }
 }
