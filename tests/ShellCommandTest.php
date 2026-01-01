@@ -55,6 +55,6 @@ class ShellCommandTest extends TestCase
         // Check that it has the right name and aliases
         $this->assertEquals('shell', $this->command->getName());
         $aliases = $this->command->getAliases();
-        $this->assertContains('sh', $aliases);
+        $this->assertContains('console', $aliases);
     }
 }
