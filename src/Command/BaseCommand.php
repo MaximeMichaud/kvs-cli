@@ -5,6 +5,7 @@ namespace KVS\CLI\Command;
 use KVS\CLI\Command\Traits\InputHelperTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
+use KVS\CLI\Docker\DockerDetector;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -17,11 +18,132 @@ abstract class BaseCommand extends Command
 
     protected Configuration $config;
     protected ?SymfonyStyle $io = null;
+    private ?DockerDetector $docker = null;
 
     public function __construct(Configuration $config)
     {
         $this->config = $config;
         parent::__construct();
+    }
+
+    /**
+     * Get Docker detector instance (lazy-loaded).
+     */
+    protected function docker(): DockerDetector
+    {
+        if ($this->docker === null) {
+            $this->docker = new DockerDetector();
+        }
+        return $this->docker;
+    }
+
+    /**
+     * Check if KVS is running in Docker mode.
+     */
+    protected function isDockerMode(): bool
+    {
+        return $this->docker()->isKvsInDocker();
+    }
+
+    /**
+     * Get PHP ini setting (automatically uses Docker if KVS runs there).
+     */
+    protected function getPhpSetting(string $name): string|false
+    {
+        if ($this->isDockerMode()) {
+            $value = $this->docker()->getPhpIni($name);
+            return $value !== null ? $value : false;
+        }
+        return ini_get($name);
+    }
+
+    /**
+     * Check if PHP extension is loaded (automatically uses Docker if KVS runs there).
+     */
+    protected function isExtensionLoaded(string $extension): bool
+    {
+        if ($this->isDockerMode()) {
+            $loaded = $this->docker()->isPhpExtensionLoaded($extension);
+            return $loaded ?? false;
+        }
+        return extension_loaded($extension);
+    }
+
+    /**
+     * Get PHP version (automatically uses Docker if KVS runs there).
+     */
+    protected function getKvsPhpVersion(): string
+    {
+        if ($this->isDockerMode()) {
+            $version = $this->docker()->getPhpVersion();
+            return $version ?? PHP_VERSION;
+        }
+        return PHP_VERSION;
+    }
+
+    /**
+     * Execute PHP code and get result (automatically uses Docker if KVS runs there).
+     */
+    protected function evalPhp(string $code): ?string
+    {
+        if ($this->isDockerMode()) {
+            return $this->docker()->execPhp($code);
+        }
+
+        ob_start();
+        try {
+            eval($code);
+            $output = ob_get_clean();
+            return $output !== false && $output !== '' ? $output : null;
+        } catch (\Throwable $e) {
+            ob_end_clean();
+            return null;
+        }
+    }
+
+    /**
+     * Get all loaded PHP extensions (automatically uses Docker if KVS runs there).
+     *
+     * @return list<string>
+     */
+    protected function getLoadedExtensions(): array
+    {
+        if ($this->isDockerMode()) {
+            $result = $this->docker()->execPhp('echo implode("\n", get_loaded_extensions());');
+            if ($result !== null) {
+                return array_values(array_filter(
+                    array_map('trim', explode("\n", $result)),
+                    static fn(string $s): bool => $s !== ''
+                ));
+            }
+            return [];
+        }
+        return get_loaded_extensions();
+    }
+
+    /**
+     * Get OPcache configuration (automatically uses Docker if KVS runs there).
+     *
+     * @return array<string, mixed>|false
+     */
+    protected function getOpcacheConfig(): array|false
+    {
+        if ($this->isDockerMode()) {
+            $result = $this->docker()->execPhp(
+                'echo function_exists("opcache_get_configuration") ? json_encode(opcache_get_configuration()) : "false";'
+            );
+            if ($result !== null && $result !== 'false') {
+                $decoded = json_decode(trim($result), true);
+                /** @var array<string, mixed>|false */
+                return is_array($decoded) ? $decoded : false;
+            }
+            return false;
+        }
+
+        if (!function_exists('opcache_get_configuration')) {
+            return false;
+        }
+        return opcache_get_configuration();
     }
 
     /**

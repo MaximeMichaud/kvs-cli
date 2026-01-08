@@ -82,6 +82,9 @@ class CheckCommand extends BaseCommand
 
         $results = [];
 
+        // Check Docker environment first
+        $results['docker'] = $this->checkDockerEnvironment($quietOk);
+
         $results['update'] = $this->checkKvsUpdate($quietOk);
         $results['php_kvs'] = $this->checkPhpKvsCompatibility($quietOk);
         $results['php_extensions'] = $this->checkPhpExtensions($quietOk);
@@ -222,6 +225,50 @@ class CheckCommand extends BaseCommand
     }
 
     /**
+     * Check Docker environment.
+     *
+     * @return array{docker_available: bool, kvs_in_docker: bool, containers: array<string, bool>, status: string}
+     */
+    private function checkDockerEnvironment(bool $quietOk): array
+    {
+        $this->printSection('Environment');
+
+        $summary = $this->docker()->getSummary();
+
+        if (!$summary['docker_available']) {
+            if (!$quietOk) {
+                $this->printStatus('Mode', 'Standalone (no Docker)', 'info');
+            }
+            return array_merge($summary, ['status' => 'standalone']);
+        }
+
+        if (!$summary['kvs_in_docker']) {
+            if (!$quietOk) {
+                $this->printStatus('Mode', 'Standalone (Docker available but no KVS containers)', 'info');
+            }
+            return array_merge($summary, ['status' => 'standalone']);
+        }
+
+        // KVS is running in Docker - show running containers
+        $running = $this->docker()->getRunningContainers();
+        $containerList = implode(', ', array_values($running));
+
+        if (!$quietOk) {
+            $this->printStatus('Mode', 'Docker', 'ok');
+            $this->printStatus('Containers', $containerList, 'ok');
+
+            // Show cache type
+            $cacheContainer = $this->docker()->getCacheContainer();
+            if ($cacheContainer !== null) {
+                $cacheType = str_contains($cacheContainer, 'dragonfly') ? 'Dragonfly' : 'Memcached';
+                $this->printStatus('Cache Backend', $cacheType, 'ok');
+            }
+        }
+
+        return array_merge($summary, ['status' => 'docker']);
+    }
+
+    /**
      * @return array{php_cli_version: string, php_web_version: string|null, kvs_version: string|null,
      *               compatible: bool|null, status: string, required_php_min?: string, required_php_max?: string}
      */
@@ -255,13 +302,12 @@ class CheckCommand extends BaseCommand
             return $result;
         }
 
-        // Try to detect web PHP version from KVS setup
-        $webPhpVersion = $this->detectWebPhpVersion();
-        $result['php_web_version'] = $webPhpVersion;
+        // Get PHP version - uses Docker automatically if KVS runs there
+        $phpVersionToCheck = $this->getKvsPhpVersion();
+        $result['php_web_version'] = $phpVersionToCheck;
 
-        // Use web version if available, otherwise CLI version
-        $phpVersionToCheck = $webPhpVersion !== null ? $webPhpVersion : PHP_VERSION;
-        $versionSource = $webPhpVersion !== null ? 'web' : 'CLI';
+        // Determine version source for display
+        $versionSource = $this->isDockerMode() ? 'Docker' : 'CLI';
 
         // Get major.minor version of KVS
         $kvsMajorMinor = implode('.', array_slice(explode('.', $kvsVersion), 0, 2));
@@ -317,55 +363,16 @@ class CheckCommand extends BaseCommand
             }
         }
 
-        // Warn if CLI and web versions differ significantly
-        if ($webPhpVersion !== null && version_compare(PHP_VERSION, $webPhpVersion, '!=')) {
+        // Warn if CLI and Docker/KVS PHP versions differ
+        if ($this->isDockerMode() && version_compare(PHP_VERSION, $phpVersionToCheck, '!=')) {
             $this->printStatus(
                 'PHP Versions',
-                "CLI: " . PHP_VERSION . ", Web: $webPhpVersion (different!)",
+                "CLI: " . PHP_VERSION . ", Docker: $phpVersionToCheck (different)",
                 'info'
             );
         }
 
         return $result;
-    }
-
-    private function detectWebPhpVersion(): ?string
-    {
-        // Method 1: Check KVS php_path config and run it
-        $setupFile = $this->config->getAdminPath() . '/include/setup.php';
-        if (file_exists($setupFile)) {
-            $content = @file_get_contents($setupFile);
-            $pattern = '/\$config\[\'php_path\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/';
-            if ($content !== false && $content !== '' && preg_match($pattern, $content, $matches) === 1) {
-                $phpPath = $matches[1];
-                if (is_executable($phpPath)) {
-                    $version = @shell_exec("$phpPath -r \"echo PHP_VERSION;\" 2>/dev/null");
-                    if ($version !== null && $version !== false && $version !== '') {
-                        return trim($version);
-                    }
-                }
-            }
-        }
-
-        // Method 2: Check common PHP-FPM paths
-        $commonPaths = [
-            '/usr/bin/php',
-            '/usr/local/bin/php',
-            '/usr/bin/php8.1',
-            '/usr/bin/php8.2',
-            '/usr/bin/php8.3',
-        ];
-
-        foreach ($commonPaths as $path) {
-            if (is_executable($path) && $path !== PHP_BINARY) {
-                $version = @shell_exec("$path -r \"echo PHP_VERSION;\" 2>/dev/null");
-                if ($version !== null && $version !== false && $version !== '') {
-                    return trim($version);
-                }
-            }
-        }
-
-        return null;
     }
 
     /**
@@ -382,8 +389,9 @@ class CheckCommand extends BaseCommand
 
         $hasError = false;
 
+        // Uses Docker automatically if KVS runs there
         foreach (self::REQUIRED_PHP_EXTENSIONS as $ext => $name) {
-            $loaded = extension_loaded($ext);
+            $loaded = $this->isExtensionLoaded($ext);
             $result['extensions'][$ext] = [
                 'name' => $name,
                 'loaded' => $loaded,
@@ -399,12 +407,12 @@ class CheckCommand extends BaseCommand
         }
 
         // Check IonCube Loader
-        $ioncubeLoaded = extension_loaded('ionCube Loader');
+        $ioncubeLoaded = $this->isExtensionLoaded('ionCube Loader');
         $result['extensions']['ioncube'] = ['name' => 'IonCube Loader', 'loaded' => $ioncubeLoaded];
 
         if (!$ioncubeLoaded) {
             // Check if it's in loaded extensions with different name
-            $loadedExtensions = get_loaded_extensions();
+            $loadedExtensions = $this->getLoadedExtensions();
             $hasIoncube = false;
             foreach ($loadedExtensions as $e) {
                 if (stripos($e, 'ioncube') !== false) {
@@ -426,7 +434,7 @@ class CheckCommand extends BaseCommand
         }
 
         // Check that exec is not in disable_functions
-        $disableFunctions = ini_get('disable_functions');
+        $disableFunctions = $this->getPhpSetting('disable_functions');
         $disableFunctionsStr = $disableFunctions !== false ? $disableFunctions : '';
         $execDisabled = stripos($disableFunctionsStr, 'exec') !== false;
         $result['exec_enabled'] = !$execDisabled;
@@ -759,7 +767,17 @@ class CheckCommand extends BaseCommand
 
     private function getMemcachedMemory(string $server, int $port): ?int
     {
-        // Method 1: Use Memcached extension
+        // In Docker mode, use centralized cache check
+        if ($this->isDockerMode()) {
+            $cacheInfo = $this->docker()->checkCache();
+            if ($cacheInfo['available']) {
+                return $cacheInfo['memory_mb'];
+            }
+            // Fallback: try via PHP container with custom server/port
+            return $this->docker()->getCacheMemoryViaPhp($server, $port);
+        }
+
+        // Non-Docker: Use Memcached extension
         if (class_exists('Memcached')) {
             try {
                 $m = new \Memcached();
@@ -770,11 +788,11 @@ class CheckCommand extends BaseCommand
                     return (int) ($stats[$key]['limit_maxbytes'] / 1024 / 1024);
                 }
             } catch (\Exception $e) {
-                // Fall through to next method
+                // Fall through to socket method
             }
         }
 
-        // Method 2: Raw socket connection
+        // Non-Docker: Raw socket connection
         $fp = @fsockopen($server, $port, $errno, $errstr, 2);
         if ($fp === false) {
             return null;
@@ -816,20 +834,22 @@ class CheckCommand extends BaseCommand
             'status' => 'unknown',
         ];
 
-        if (!function_exists('opcache_get_configuration')) {
+        // Uses Docker automatically if KVS runs there
+        $config = $this->getOpcacheConfig();
+        if ($config === false) {
             $this->printStatus('OPcache', 'Extension not loaded', 'warning');
             $this->warnings++;
             $result['status'] = 'warning';
             return $result;
         }
 
-        $config = opcache_get_configuration();
-        $directives = $config['directives'] ?? [];
+        /** @var array<string, mixed> $directives */
+        $directives = is_array($config['directives'] ?? null) ? $config['directives'] : [];
 
-        $enabled = $directives['opcache.enable'] ?? false;
+        $enabled = (bool) ($directives['opcache.enable'] ?? false);
         $result['enabled'] = $enabled;
 
-        if (!$enabled) {
+        if ($enabled === false) {
             $this->printStatus('OPcache', 'Disabled', 'warning');
             $this->warnings++;
             $result['status'] = 'warning';
@@ -839,7 +859,8 @@ class CheckCommand extends BaseCommand
         $hasWarning = false;
 
         // Memory consumption (value is in bytes from opcache config)
-        $memoryBytes = (int) ($directives['opcache.memory_consumption'] ?? 0);
+        $memoryRaw = $directives['opcache.memory_consumption'] ?? 0;
+        $memoryBytes = is_numeric($memoryRaw) ? (int) $memoryRaw : 0;
         $memoryMb = (int) ($memoryBytes / 1024 / 1024);
         $result['memory_consumption'] = $memoryMb;
         if ($memoryMb < self::OPCACHE_MIN_MB) {
@@ -855,7 +876,8 @@ class CheckCommand extends BaseCommand
         }
 
         // Interned strings buffer
-        $stringsMb = (int) ($directives['opcache.interned_strings_buffer'] ?? 0);
+        $stringsRaw = $directives['opcache.interned_strings_buffer'] ?? 0;
+        $stringsMb = is_numeric($stringsRaw) ? (int) $stringsRaw : 0;
         $result['interned_strings_buffer'] = $stringsMb;
         if ($stringsMb < self::OPCACHE_STRINGS_MIN_MB) {
             $this->printStatus(
@@ -872,7 +894,8 @@ class CheckCommand extends BaseCommand
         // JIT (PHP 8+)
         // @phpstan-ignore greaterOrEqual.alwaysTrue (forward-compatible check)
         if (PHP_MAJOR_VERSION >= 8) {
-            $jitBuffer = (int) ($directives['opcache.jit_buffer_size'] ?? 0);
+            $jitRaw = $directives['opcache.jit_buffer_size'] ?? 0;
+            $jitBuffer = is_numeric($jitRaw) ? (int) $jitRaw : 0;
             $result['jit_buffer_size'] = $jitBuffer;
             $result['jit_enabled'] = $jitBuffer > 0;
 
@@ -929,8 +952,9 @@ class CheckCommand extends BaseCommand
             ],
         ];
 
+        // Uses Docker automatically if KVS runs there
         foreach ($checks as $name => $check) {
-            $value = ini_get($name);
+            $value = $this->getPhpSetting($name);
             $bytes = $this->parseIniSize($value);
             $valueStr = $value !== false ? $value : '';
             $result['settings'][$name] = $valueStr;

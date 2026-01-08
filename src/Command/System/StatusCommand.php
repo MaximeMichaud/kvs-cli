@@ -112,11 +112,23 @@ class StatusCommand extends BaseCommand
 
         $info[] = ['Operating System', $this->getOsInfo()];
         $info[] = ['Web Server', $_SERVER['SERVER_SOFTWARE'] ?? 'CLI'];
-        $info[] = ['PHP Version', PHP_VERSION];
-        $info[] = ['PHP Memory Limit', ini_get('memory_limit')];
-        $info[] = ['Max Execution Time', ini_get('max_execution_time') . ' seconds'];
-        $info[] = ['Upload Max Filesize', ini_get('upload_max_filesize')];
-        $info[] = ['Post Max Size', ini_get('post_max_size')];
+
+        // Use Docker-aware methods for PHP info
+        $phpVersion = $this->getKvsPhpVersion();
+        $phpSource = $this->isDockerMode() ? ' (Docker)' : '';
+        $info[] = ['PHP Version', $phpVersion . $phpSource];
+
+        $memLimit = $this->getPhpSetting('memory_limit');
+        $info[] = ['PHP Memory Limit', $memLimit !== false ? $memLimit : 'N/A'];
+
+        $maxExec = $this->getPhpSetting('max_execution_time');
+        $info[] = ['Max Execution Time', ($maxExec !== false ? $maxExec : '0') . ' seconds'];
+
+        $uploadMax = $this->getPhpSetting('upload_max_filesize');
+        $info[] = ['Upload Max Filesize', $uploadMax !== false ? $uploadMax : 'N/A'];
+
+        $postMax = $this->getPhpSetting('post_max_size');
+        $info[] = ['Post Max Size', $postMax !== false ? $postMax : 'N/A'];
 
         if (function_exists('disk_free_space')) {
             $diskPath = $this->config->getKvsPath();
@@ -331,6 +343,17 @@ class StatusCommand extends BaseCommand
             'status' => 'Not responding'
         ];
 
+        // In Docker mode, use centralized cache check
+        if ($this->isDockerMode()) {
+            $cacheInfo = $this->docker()->checkCache();
+            if ($cacheInfo['available']) {
+                $result['available'] = true;
+                $result['status'] = 'Connected (' . $cacheInfo['type'] . ')';
+            }
+            return $result;
+        }
+
+        // Non-Docker mode: use local Memcached extension
         if (!class_exists('Memcached')) {
             $result['status'] = 'Extension not installed';
             return $result;
@@ -431,6 +454,13 @@ class StatusCommand extends BaseCommand
         $this->io()->section('Storage Breakdown');
 
         $contentPath = $this->config->getContentPath();
+
+        // In Docker mode, the content path is inside the container
+        if ($this->isDockerMode()) {
+            $this->showStorageBreakdownDocker($contentPath);
+            return;
+        }
+
         if ($contentPath === '' || !is_dir($contentPath)) {
             $this->io()->warning('Content directory not found: ' . ($contentPath !== '' ? $contentPath : 'not configured'));
             $this->io()->text('This is normal if content is stored on external storage servers.');
@@ -475,6 +505,67 @@ class StatusCommand extends BaseCommand
         $storage[] = ['---', '---', '---'];
         $storage[] = ['Total Content', format_bytes($totalSize), ''];
 
+        $this->renderTable(['Type', 'Size', 'Files'], $storage);
+    }
+
+    /**
+     * Show storage breakdown via Docker container.
+     */
+    private function showStorageBreakdownDocker(string $contentPath): void
+    {
+        if ($contentPath === '') {
+            $this->io()->text('Content path not configured.');
+            return;
+        }
+
+        // Check if path exists inside container
+        $checkResult = $this->docker()->exec('php', 'test -d ' . escapeshellarg($contentPath) . ' && echo "EXISTS" || echo "MISSING"');
+        if ($checkResult === null || trim($checkResult) !== 'EXISTS') {
+            $this->io()->text("Content path: $contentPath (inside container)");
+            $this->io()->text('Directory not accessible from PHP container.');
+            return;
+        }
+
+        $storage = [];
+        $totalSize = 0;
+
+        $directories = [
+            'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
+            'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
+            'Albums' => Constants::CONTENT_ALBUMS_SOURCES,
+            'Categories' => Constants::CONTENT_CATEGORIES,
+            'Models' => Constants::CONTENT_MODELS,
+            'DVDs' => Constants::CONTENT_DVDS,
+            'Avatars' => Constants::CONTENT_AVATARS,
+        ];
+
+        foreach ($directories as $label => $dir) {
+            $path = $contentPath . '/' . $dir;
+
+            // Get size via du command in container
+            $sizeResult = $this->docker()->exec('php', "du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
+            $countResult = $this->docker()->exec('php', "find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
+
+            if ($sizeResult !== null && trim($sizeResult) !== '') {
+                $size = (int) trim($sizeResult);
+                $totalSize += $size;
+                $fileCount = $countResult !== null ? (int) trim($countResult) : 0;
+
+                $storage[] = [
+                    $label,
+                    format_bytes($size),
+                    number_format($fileCount) . ' files'
+                ];
+            } else {
+                $storage[] = [$label, 'Not found', '-'];
+            }
+        }
+
+        // Add total
+        $storage[] = ['---', '---', '---'];
+        $storage[] = ['Total Content', format_bytes($totalSize), ''];
+
+        $this->io()->text("Content path: $contentPath (Docker)");
         $this->renderTable(['Type', 'Size', 'Files'], $storage);
     }
 
@@ -595,19 +686,20 @@ class StatusCommand extends BaseCommand
             }
         }
 
-        // PHP extensions
+        // PHP extensions (Docker-aware)
         $requiredExtensions = ['pdo', 'pdo_mysql', 'mysqli', 'gd', 'json', 'mbstring'];
         $missingExtensions = [];
         foreach ($requiredExtensions as $ext) {
-            if (!extension_loaded($ext)) {
+            if (!$this->isExtensionLoaded($ext)) {
                 $missingExtensions[] = $ext;
             }
         }
 
+        $extSource = $this->isDockerMode() ? ' (Docker)' : '';
         if ($missingExtensions === []) {
-            $health[] = ['✓', 'PHP extensions', 'All required extensions loaded'];
+            $health[] = ['✓', 'PHP extensions', 'All required extensions loaded' . $extSource];
         } else {
-            $health[] = ['✗', 'PHP extensions', 'Missing: ' . implode(', ', $missingExtensions)];
+            $health[] = ['✗', 'PHP extensions', 'Missing: ' . implode(', ', $missingExtensions) . $extSource];
         }
 
         $this->renderTable(['Status', 'Check', 'Result'], $health);
@@ -683,8 +775,8 @@ class StatusCommand extends BaseCommand
             }
         }
 
-        // Check PHP display_errors (should be off in production)
-        $displayErrors = ini_get('display_errors');
+        // Check PHP display_errors (should be off in production) - Docker-aware
+        $displayErrors = $this->getPhpSetting('display_errors');
         if ($displayErrors !== false && $displayErrors !== '' && $displayErrors !== 'Off' && $displayErrors !== '0') {
             $security[] = ['⚠', 'PHP display_errors', 'ENABLED (should be disabled in production)'];
         } else {
