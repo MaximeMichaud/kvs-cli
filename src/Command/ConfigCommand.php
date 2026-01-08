@@ -559,9 +559,10 @@ class ConfigCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        // Replace value
-        $pattern = "/define\('$defineKey',\s*'[^']*'\)/";
-        $replacement = "define('$defineKey','$value')";
+        $escapedDefineKey = preg_quote($defineKey, '/');
+        $escapedValue = addslashes($value);
+        $pattern = "/define\('" . $escapedDefineKey . "',\s*'[^']*'\)/";
+        $replacement = "define('" . $defineKey . "','" . $escapedValue . "')";
         $newContent = preg_replace($pattern, $replacement, $content);
 
         // Write file
@@ -593,20 +594,20 @@ class ConfigCommand extends BaseCommand
 
         $content = (string) file_get_contents($file);
 
-        // Try to find and replace
+        $escapedKey = preg_quote($key, '/');
         $patterns = [
-            "/\\\$config\['$key'\]\s*=\s*[^;]+;/",
-            "/\\\$config\[\"$key\"\]\s*=\s*[^;]+;/",
+            '/\$config\[\'' . $escapedKey . '\'\]\s*=\s*[^;]+;/',
+            '/\$config\["' . $escapedKey . '"\]\s*=\s*[^;]+;/',
         ];
 
         $found = false;
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $content) === 1) {
-                // Determine if value should be quoted
                 if (is_numeric($value) || $value === 'true' || $value === 'false' || $value === 'null') {
-                    $replacement = "\$config['$key'] = $value;";
+                    $replacement = "\$config['" . $key . "'] = " . $value . ";";
                 } else {
-                    $replacement = "\$config['$key'] = '$value';";
+                    $escapedValue = addslashes($value);
+                    $replacement = "\$config['" . $key . "'] = '" . $escapedValue . "';";
                 }
                 $content = preg_replace($pattern, $replacement, $content);
                 $found = true;

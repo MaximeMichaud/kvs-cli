@@ -203,14 +203,14 @@ class Configuration
      */
     private function extractDefineValue(string $content, string $key): ?string
     {
-        // Pattern 1: Simple string value - define('KEY', 'value')
-        $result = preg_match("/define\\(['\"]" . $key . "['\"],\\s*['\"]([^'\"]+)['\"]\\)/", $content, $matches);
+        $escapedKey = preg_quote($key, '/');
+
+        $result = preg_match("/define\\(['\"]" . $escapedKey . "['\"],\\s*['\"]([^'\"]+)['\"]\\)/", $content, $matches);
         if ($result !== false && $result === 1) {
             return $matches[1];
         }
 
-        // Pattern 2: getenv with ?: fallback - define('KEY', getenv('VAR') ?: 'default')
-        $pattern2 = "/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
+        $pattern2 = "/define\\(['\"]" . $escapedKey . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
             . "\\s*\\?:\\s*['\"]([^'\"]*)['\"]\\)/";
         if (preg_match($pattern2, $content, $matches) === 1) {
             $envVar = $matches[1];
@@ -219,8 +219,7 @@ class Configuration
             return $envValue !== false && $envValue !== '' ? $envValue : $default;
         }
 
-        // Pattern 3: getenv with ?? fallback - define('KEY', getenv('VAR') ?? 'default')
-        $pattern3 = "/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
+        $pattern3 = "/define\\(['\"]" . $escapedKey . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
             . "\\s*\\?\\?\\s*['\"]([^'\"]*)['\"]\\)/";
         if (preg_match($pattern3, $content, $matches) === 1) {
             $envVar = $matches[1];
@@ -229,8 +228,7 @@ class Configuration
             return $envValue !== false ? $envValue : $default;
         }
 
-        // Pattern 4: Just getenv without fallback - define('KEY', getenv('VAR'))
-        $result4 = preg_match("/define\\(['\"]" . $key . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)\\)/", $content, $matches);
+        $result4 = preg_match("/define\\(['\"]" . $escapedKey . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)\\)/", $content, $matches);
         if ($result4 !== false && $result4 === 1) {
             $envVar = $matches[1];
             $envValue = getenv($envVar);

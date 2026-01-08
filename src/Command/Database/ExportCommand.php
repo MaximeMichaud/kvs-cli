@@ -119,13 +119,14 @@ EOT
             '-h', $host,
             '-P', $port,
             '-u', $dbConfig['user'],
-            '-p' . $dbConfig['password'],
             '--single-transaction',
             '--routines',
             '--triggers',
             '--events',
             '--default-character-set=' . Constants::DB_CHARSET,
         ];
+
+        $env = ['MYSQL_PWD' => $dbConfig['password']];
 
         if ($this->getBoolOption($input, 'no-data')) {
             $command[] = '--no-data';
@@ -139,7 +140,7 @@ EOT
             $command[] = $dbConfig['database'];
         }
 
-        $process = new Process($command);
+        $process = new Process($command, null, $env);
         $process->setTimeout(3600);
 
         $progressBar = $this->io()->createProgressBar();
