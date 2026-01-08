@@ -126,7 +126,8 @@ EOT
             '--default-character-set=' . Constants::DB_CHARSET,
         ];
 
-        $env = ['MYSQL_PWD' => $dbConfig['password']];
+        // Merge with current env to preserve PATH, etc.
+        $env = array_merge($_ENV, getenv(), ['MYSQL_PWD' => $dbConfig['password']]);
 
         if ($this->getBoolOption($input, 'no-data')) {
             $command[] = '--no-data';

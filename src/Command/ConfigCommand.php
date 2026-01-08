@@ -560,7 +560,8 @@ class ConfigCommand extends BaseCommand
         }
 
         $escapedDefineKey = preg_quote($defineKey, '/');
-        $escapedValue = addslashes($value);
+        // Escape only \ and ' for single-quoted PHP strings
+        $escapedValue = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
         $pattern = "/define\('" . $escapedDefineKey . "',\s*'[^']*'\)/";
         $replacement = "define('" . $defineKey . "','" . $escapedValue . "')";
         $newContent = preg_replace($pattern, $replacement, $content);
@@ -606,7 +607,8 @@ class ConfigCommand extends BaseCommand
                 if (is_numeric($value) || $value === 'true' || $value === 'false' || $value === 'null') {
                     $replacement = "\$config['" . $key . "'] = " . $value . ";";
                 } else {
-                    $escapedValue = addslashes($value);
+                    // Escape only \ and ' for single-quoted PHP strings
+                    $escapedValue = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
                     $replacement = "\$config['" . $key . "'] = '" . $escapedValue . "';";
                 }
                 $content = preg_replace($pattern, $replacement, $content);

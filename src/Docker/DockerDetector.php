@@ -164,8 +164,13 @@ class DockerDetector
             );
             foreach ($mountLines as $mount) {
                 [$source] = explode(':', $mount, 2);
+                // Normalize paths with realpath for symlink support
+                $realSource = realpath($source);
+                $normalizedSource = $realSource !== false ? $realSource : $source;
+                $realKvsPath = realpath($this->kvsPath);
+                $normalizedKvsPath = $realKvsPath !== false ? $realKvsPath : $this->kvsPath;
                 // Match exact path or parent path
-                if ($source === $this->kvsPath || str_starts_with($this->kvsPath, $source . '/')) {
+                if ($normalizedSource === $normalizedKvsPath || str_starts_with($normalizedKvsPath, $normalizedSource . '/')) {
                     // Extract prefix: kvs-maximemichaud-php -> kvs-maximemichaud
                     return substr($containerName, 0, -4); // Remove '-php'
                 }
