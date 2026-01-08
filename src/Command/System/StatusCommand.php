@@ -280,13 +280,13 @@ class StatusCommand extends BaseCommand
             $services[] = ['✗', 'MySQLDump', 'Not found', 'N/A'];
         }
 
-        // Check Memcached (optional)
-        $memcachedStatus = $this->checkMemcached();
+        // Check cache (Memcached or Dragonfly)
+        $cacheStatus = $this->checkMemcached();
         $services[] = [
-            $memcachedStatus['available'] ? '✓' : '✗',
-            'Memcached',
-            $memcachedStatus['host'],
-            $memcachedStatus['status']
+            $cacheStatus['available'] ? '✓' : '✗',
+            $cacheStatus['type'],
+            $cacheStatus['host'],
+            $cacheStatus['status']
         ];
 
         $this->renderTable(['Status', 'Service', 'Path/Host', 'Version'], $services);
@@ -327,7 +327,7 @@ class StatusCommand extends BaseCommand
     }
 
     /**
-     * @return array{available: bool, host: string, status: string}
+     * @return array{available: bool, host: string, status: string, type: string}
      */
     private function checkMemcached(): array
     {
@@ -340,15 +340,19 @@ class StatusCommand extends BaseCommand
         $result = [
             'available' => false,
             'host' => "$server:$port",
-            'status' => 'Not responding'
+            'status' => 'Not responding',
+            'type' => 'Memcached'
         ];
 
         // In Docker mode, use centralized cache check
         if ($this->isDockerMode()) {
             $cacheInfo = $this->docker()->checkCache();
+            if ($cacheInfo['type'] !== null) {
+                $result['type'] = $cacheInfo['type'];
+            }
             if ($cacheInfo['available']) {
                 $result['available'] = true;
-                $result['status'] = 'Connected (' . $cacheInfo['type'] . ')';
+                $result['status'] = 'Connected';
             }
             return $result;
         }
