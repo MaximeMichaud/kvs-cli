@@ -4,7 +4,7 @@ This guide covers all methods of installing KVS-CLI.
 
 ## Requirements
 
-- **PHP 8.1 or higher** (8.2+ recommended for best performance)
+- **PHP 8.1+**
 - **KVS 6.x** installation
 - **MySQL 8.0+ or MariaDB 10.6+**
 - **Linux or macOS** (Windows users should use WSL)

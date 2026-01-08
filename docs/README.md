@@ -14,7 +14,7 @@
 
 ## Requirements
 
-- **PHP 8.1+** (8.2+ recommended)
+- **PHP 8.1+**
 - **KVS 6.x** installation
 - **MySQL/MariaDB** database access
 - **Linux/macOS** (Windows via WSL)

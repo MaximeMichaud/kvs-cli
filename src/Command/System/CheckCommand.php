@@ -34,12 +34,12 @@ class CheckCommand extends BaseCommand
     private const INTERNET_TIMEOUT = 5;
 
     // PHP version requirements per KVS version (min, max)
-    // KVS 6.3 requires PHP 8.1 ONLY (8.2 not yet supported!)
     private const KVS_PHP_REQUIREMENTS = [
+        '6.4' => ['min' => '8.1', 'max' => '8.1.99'],
         '6.3' => ['min' => '8.1', 'max' => '8.1.99'],
-        '6.2' => ['min' => '8.0', 'max' => '8.1.99'],
-        '6.1' => ['min' => '7.4', 'max' => '8.0.99'],
-        '6.0' => ['min' => '7.4', 'max' => '8.0.99'],
+        '6.2' => ['min' => '7.1', 'max' => '7.4.99'],
+        '6.1' => ['min' => '7.1', 'max' => '7.4.99'],
+        '6.0' => ['min' => '7.1', 'max' => '7.4.99'],
         '5.5' => ['min' => '7.2', 'max' => '7.4.99'],
     ];
 

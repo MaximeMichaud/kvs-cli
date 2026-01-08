@@ -5,7 +5,7 @@
 
 Command-line interface for [KVS (Kernel Video Sharing)](https://www.kernel-video-sharing.com/) CMS.
 
-Tested with KVS 6.3.2.
+Tested with KVS 6.3.2, 6.4.0.
 
 > **⚠️ Beta Notice**: This CLI has been tested with limited datasets. Read operations should work reliably, but exercise caution with any create, update, or delete operations. Always backup your data before performing write operations.
 
@@ -174,7 +174,7 @@ Priority order:
 ## Requirements
 
 - PHP 8.1+
-- KVS 6.3.2
+- KVS 6.3.2, 6.4.0
 - MySQL/MariaDB
 
 ## Development
