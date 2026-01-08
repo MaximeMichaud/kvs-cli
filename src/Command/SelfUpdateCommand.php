@@ -179,7 +179,13 @@ HELP
             return Command::FAILURE;
         }
 
-        $io->success(sprintf('Updated KVS CLI to %s.', $latestVersion));
+        // IMPORTANT: After replacing the PHAR, we cannot use Symfony Console output methods
+        // like $io->success() because PHP still has old class definitions in memory that
+        // may conflict with the new PHAR's classes, causing fatal errors.
+        // Use plain echo instead.
+        echo "\n";
+        echo " [OK] Updated KVS CLI to {$latestVersion}.\n";
+        echo "\n";
 
         return Command::SUCCESS;
     }
@@ -472,12 +478,18 @@ HELP
 
         // Note: tempDir cleanup handled by TempFileManager shutdown handler
 
-        // Get new version
+        // IMPORTANT: After replacing the PHAR, we cannot use Symfony Console output methods
+        // like $io->success() because PHP still has old class definitions in memory that
+        // may conflict with the new PHAR's classes, causing fatal errors.
+        // Use plain echo instead.
         $output = [];
         exec(sprintf('%s %s --version 2>&1', escapeshellarg(PHP_BINARY), escapeshellarg($currentPhar)), $output);
         $newVersion = trim(implode('', $output));
 
-        $io->success(sprintf('Updated to dev build: %s', $newVersion));
+        // Use echo instead of $io->success() - avoids class conflicts after PHAR replacement
+        echo "\n";
+        echo " [OK] Updated to dev build: {$newVersion}\n";
+        echo "\n";
 
         return Command::SUCCESS;
     }
