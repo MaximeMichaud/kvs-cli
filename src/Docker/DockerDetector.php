@@ -375,6 +375,15 @@ class DockerDetector
                 }
                 return $result;
             }
+
+            // Fallback: check via PHP container if redis-cli not available
+            $phpCheck = $this->checkDragonflyViaPhp('dragonfly', 6379);
+            if ($phpCheck !== null) {
+                $result['available'] = true;
+                $result['type'] = 'Dragonfly';
+                $result['memory_mb'] = $phpCheck;
+                return $result;
+            }
         }
 
         // Try Memcached container
@@ -389,9 +398,53 @@ class DockerDetector
                 }
                 return $result;
             }
+
+            // Fallback: check via PHP container if nc not available
+            $memoryMb = $this->getCacheMemoryViaPhp('memcached', 11211);
+            if ($memoryMb !== null) {
+                $result['available'] = true;
+                $result['type'] = 'Memcached';
+                $result['memory_mb'] = $memoryMb;
+                return $result;
+            }
         }
 
         return $result;
+    }
+
+    /**
+     * Check Dragonfly/Redis via PHP container (fallback when redis-cli unavailable).
+     *
+     * @return int|null Memory in MB, or null on failure
+     */
+    private function checkDragonflyViaPhp(string $server, int $port): ?int
+    {
+        $phpCode = <<<PHP
+\$fp = @fsockopen('$server', $port, \$errno, \$errstr, 2);
+if (\$fp === false) { echo 'FAIL'; exit; }
+fwrite(\$fp, "PING\\r\\n");
+\$pong = fgets(\$fp, 64);
+if (strpos(\$pong, 'PONG') === false) { fclose(\$fp); echo 'FAIL'; exit; }
+fwrite(\$fp, "INFO memory\\r\\n");
+\$response = '';
+while (!\feof(\$fp)) {
+    \$line = fgets(\$fp, 512);
+    if (\$line === false || trim(\$line) === '') break;
+    \$response .= \$line;
+}
+fclose(\$fp);
+if (preg_match('/maxmemory:(\\d+)/', \$response, \$m)) {
+    echo \$m[1] > 0 ? \$m[1] : '536870912';
+} else {
+    echo '536870912';
+}
+PHP;
+        $result = $this->execPhp($phpCode);
+        if ($result !== null && $result !== 'FAIL' && is_numeric(trim($result))) {
+            return (int) ((int) trim($result) / 1024 / 1024);
+        }
+
+        return null;
     }
 
     /**
