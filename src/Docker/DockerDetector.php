@@ -5,19 +5,32 @@ declare(strict_types=1);
 namespace KVS\CLI\Docker;
 
 /**
- * Auto-detect KVS Docker containers by convention.
+ * Auto-detect KVS Docker containers with multi-site support.
  *
  * Container naming convention (from KVS-install docker-compose.yml):
- * - kvs-php      : PHP-FPM
- * - kvs-mariadb  : MariaDB
- * - kvs-memcached: Memcached (profile: memcached)
- * - kvs-dragonfly: Dragonfly (profile: dragonfly)
- * - kvs-cron     : Cron
- * - kvs-nginx    : Nginx
+ * Single-site (legacy): kvs-php, kvs-mariadb, kvs-memcached, etc.
+ * Multi-site: {prefix}-php, {prefix}-mariadb, {prefix}-memcached, etc.
+ *   Example: kvs-maximemichaud-php, kvs-maximemichaud-mariadb, etc.
+ *
+ * Detection works by:
+ * 1. Finding PHP containers by pattern (*-php)
+ * 2. Matching against KVS path via volume mounts
+ * 3. Deriving service prefix from container name
  */
 class DockerDetector
 {
-    private const CONTAINERS = [
+    /** @var array<string, string> Service suffixes for container naming */
+    private const SERVICE_SUFFIXES = [
+        'php' => '-php',
+        'mariadb' => '-mariadb',
+        'memcached' => '-memcached',
+        'dragonfly' => '-dragonfly',
+        'cron' => '-cron',
+        'nginx' => '-nginx',
+    ];
+
+    /** Legacy container names for backwards compatibility */
+    private const LEGACY_CONTAINERS = [
         'php' => 'kvs-php',
         'mariadb' => 'kvs-mariadb',
         'memcached' => 'kvs-memcached',
@@ -27,11 +40,26 @@ class DockerDetector
     ];
 
     private ?bool $dockerAvailable = null;
+    private ?string $containerPrefix = null;
+    private ?string $kvsPath = null;
 
     /** @var array<string, bool> */
     private array $runningContainers = [];
 
+    /** @var array<string, string> service => container_name */
+    private array $containerNames = [];
+
     private bool $detected = false;
+
+    /**
+     * Set the KVS installation path for volume mount matching.
+     */
+    public function setKvsPath(string $path): self
+    {
+        $this->kvsPath = rtrim($path, '/');
+        $this->detected = false; // Reset detection
+        return $this;
+    }
 
     /**
      * Check if Docker CLI is available.
@@ -49,7 +77,7 @@ class DockerDetector
     }
 
     /**
-     * Detect running KVS containers.
+     * Detect running KVS containers with multi-site support.
      */
     public function detect(): void
     {
@@ -58,25 +86,118 @@ class DockerDetector
         }
 
         $this->detected = true;
+        $this->runningContainers = [];
+        $this->containerNames = [];
+        $this->containerPrefix = null;
 
         if (!$this->isDockerAvailable()) {
             return;
         }
 
-        // Single docker command to get all running container names
+        // Get all running container names
         $output = @shell_exec('docker ps --format "{{.Names}}" 2>/dev/null');
         if ($output === null || $output === false) {
             return;
         }
 
-        $runningNames = array_filter(
+        /** @var list<non-empty-string> $runningNames */
+        $runningNames = array_values(array_filter(
             array_map('trim', explode("\n", $output)),
             static fn(string $s): bool => $s !== ''
+        ));
+
+        // Try to find PHP container matching our KVS path
+        $prefix = $this->detectPrefixByVolume($runningNames);
+
+        if ($prefix !== null) {
+            $this->containerPrefix = $prefix;
+            $this->buildContainerNames($prefix, $runningNames);
+            return;
+        }
+
+        // Fall back to legacy detection (kvs-* containers)
+        foreach (self::LEGACY_CONTAINERS as $service => $containerName) {
+            if (in_array($containerName, $runningNames, true)) {
+                $this->runningContainers[$service] = true;
+                $this->containerNames[$service] = $containerName;
+            }
+        }
+
+        if ($this->containerNames !== []) {
+            $this->containerPrefix = 'kvs';
+        }
+    }
+
+    /**
+     * Detect container prefix by matching KVS path against volume mounts.
+     *
+     * @param list<non-empty-string> $runningNames
+     */
+    private function detectPrefixByVolume(array $runningNames): ?string
+    {
+        if ($this->kvsPath === null) {
+            return null;
+        }
+
+        // Find all containers ending with -php
+        $phpContainers = array_filter(
+            $runningNames,
+            static fn(string $name): bool => str_ends_with($name, '-php')
         );
 
-        foreach (self::CONTAINERS as $service => $containerName) {
-            $this->runningContainers[$service] = in_array($containerName, $runningNames, true);
+        foreach ($phpContainers as $containerName) {
+            // Inspect container for volume mounts
+            $inspectCmd = sprintf(
+                'docker inspect %s --format "{{range .Mounts}}{{.Source}}:{{.Destination}}{{\"\\n\"}}{{end}}" 2>/dev/null',
+                escapeshellarg($containerName)
+            );
+            $mounts = @shell_exec($inspectCmd);
+
+            if ($mounts === null || $mounts === false) {
+                continue;
+            }
+
+            // Check if any mount matches our KVS path
+            $mountLines = array_filter(
+                array_map('trim', explode("\n", $mounts)),
+                static fn(string $line): bool => $line !== ''
+            );
+            foreach ($mountLines as $mount) {
+                [$source] = explode(':', $mount, 2);
+                // Match exact path or parent path
+                if ($source === $this->kvsPath || str_starts_with($this->kvsPath, $source . '/')) {
+                    // Extract prefix: kvs-maximemichaud-php -> kvs-maximemichaud
+                    return substr($containerName, 0, -4); // Remove '-php'
+                }
+            }
         }
+
+        return null;
+    }
+
+    /**
+     * Build container names from detected prefix.
+     *
+     * @param list<non-empty-string> $runningNames
+     */
+    private function buildContainerNames(string $prefix, array $runningNames): void
+    {
+        foreach (self::SERVICE_SUFFIXES as $service => $suffix) {
+            $containerName = $prefix . $suffix;
+            if (in_array($containerName, $runningNames, true)) {
+                $this->runningContainers[$service] = true;
+                $this->containerNames[$service] = $containerName;
+            }
+        }
+    }
+
+    /**
+     * Get the detected container prefix.
+     */
+    public function getContainerPrefix(): ?string
+    {
+        $this->detect();
+        return $this->containerPrefix;
     }
 
     /**
@@ -102,7 +223,8 @@ class DockerDetector
      */
     public function getContainerName(string $service): ?string
     {
-        return self::CONTAINERS[$service] ?? null;
+        $this->detect();
+        return $this->containerNames[$service] ?? null;
     }
 
     /**
@@ -113,11 +235,11 @@ class DockerDetector
         $this->detect();
 
         if ($this->isRunning('dragonfly')) {
-            return self::CONTAINERS['dragonfly'];
+            return $this->containerNames['dragonfly'] ?? null;
         }
 
         if ($this->isRunning('memcached')) {
-            return self::CONTAINERS['memcached'];
+            return $this->containerNames['memcached'] ?? null;
         }
 
         return null;
@@ -130,7 +252,9 @@ class DockerDetector
      */
     public function exec(string $service, string $command, int $timeout = 10): ?string
     {
-        $containerName = self::CONTAINERS[$service] ?? null;
+        $this->detect();
+
+        $containerName = $this->containerNames[$service] ?? null;
         if ($containerName === null || !$this->isRunning($service)) {
             return null;
         }
@@ -198,21 +322,13 @@ class DockerDetector
     public function getRunningContainers(): array
     {
         $this->detect();
-
-        $running = [];
-        foreach (self::CONTAINERS as $service => $containerName) {
-            if ($this->runningContainers[$service] ?? false) {
-                $running[$service] = $containerName;
-            }
-        }
-
-        return $running;
+        return $this->containerNames;
     }
 
     /**
      * Get summary for display.
      *
-     * @return array{docker_available: bool, kvs_in_docker: bool, containers: array<string, bool>}
+     * @return array{docker_available: bool, kvs_in_docker: bool, prefix: string|null, containers: array<string, bool>}
      */
     public function getSummary(): array
     {
@@ -221,6 +337,7 @@ class DockerDetector
         return [
             'docker_available' => $this->isDockerAvailable(),
             'kvs_in_docker' => $this->isKvsInDocker(),
+            'prefix' => $this->containerPrefix,
             'containers' => $this->runningContainers,
         ];
     }

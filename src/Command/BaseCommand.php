@@ -28,11 +28,17 @@ abstract class BaseCommand extends Command
 
     /**
      * Get Docker detector instance (lazy-loaded).
+     * Automatically sets KVS path for multi-site detection.
      */
     protected function docker(): DockerDetector
     {
         if ($this->docker === null) {
             $this->docker = new DockerDetector();
+            // Set KVS path for multi-site volume mount detection
+            $kvsPath = $this->config->getKvsPath();
+            if ($kvsPath !== '') {
+                $this->docker->setKvsPath($kvsPath);
+            }
         }
         return $this->docker;
     }
