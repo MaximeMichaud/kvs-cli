@@ -701,12 +701,10 @@ class CheckCommand extends BaseCommand
     }
 
     /**
-     * @return array{configured: bool, connected: bool, memory_mb: int|null, status: string, server?: string}
+     * @return array{configured: bool, connected: bool, memory_mb: int|null, status: string, server?: string, type?: string}
      */
     private function checkMemcached(bool $quietOk): array
     {
-        $this->printSection('Memcached');
-
         $result = [
             'configured' => false,
             'connected' => false,
@@ -719,9 +717,21 @@ class CheckCommand extends BaseCommand
         $portValue = $this->config->get('memcache_port', 11211);
         $port = is_int($portValue) ? $portValue : 11211;
 
+        // Detect cache type (Dragonfly vs Memcached) before printing section
+        $cacheType = 'Memcached';
+        $cacheInfo = null;
+        if ($this->isDockerMode()) {
+            $cacheInfo = $this->docker()->checkCache();
+            if ($cacheInfo['type'] !== null) {
+                $cacheType = $cacheInfo['type'];
+            }
+        }
+
+        $this->printSection($cacheType);
+
         if ($server === '') {
             if ($quietOk === false) {
-                $this->printStatus('Memcached', 'Not configured', 'info');
+                $this->printStatus($cacheType, 'Not configured', 'info');
             }
             $result['status'] = 'not_configured';
             return $result;
@@ -729,9 +739,15 @@ class CheckCommand extends BaseCommand
 
         $result['configured'] = true;
         $result['server'] = "$server:$port";
+        $result['type'] = $cacheType;
 
-        // Try to connect and get stats
-        $memoryMb = $this->getMemcachedMemory($server, $port);
+        // Try to connect and get stats (reuse cacheInfo if available)
+        $memoryMb = null;
+        if ($cacheInfo !== null && $cacheInfo['available']) {
+            $memoryMb = $cacheInfo['memory_mb'];
+        } else {
+            $memoryMb = $this->getMemcachedMemory($server, $port);
+        }
 
         if ($memoryMb === null) {
             $this->printStatus("Connection ($server:$port)", 'Failed to connect', 'error');
