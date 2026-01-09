@@ -7,78 +7,6 @@ parameters:
 			path: src/Command/CompletionCommand.php
 
 		-
-			message: '#^Binary operation "/" between mixed and mixed results in an error\.$#'
-			identifier: binaryOp.invalid
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Cannot access offset ''album_viewed'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Cannot access offset ''post_date'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Cannot access offset ''rating'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Cannot access offset ''rating_amount'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Cannot access offset ''status_id'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Cannot access offset ''title'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Parameter \#1 \$datetime of function strtotime expects string, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Parameter \#1 \$num of function number_format expects float, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Parameter \#1 \$statusId of static method KVS\\CLI\\Output\\StatusFormatter\:\:album\(\) expects int, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''Title'', mixed\}, array\{''Status'', string\}, array\{''Images'', int\|string\|false\|null\}, array\{''Posted'', non\-falsy\-string\}, array\{''Views'', string\}, array\{''Rating'', non\-falsy\-string\}\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
-			message: '#^Parameter \#4 \.\.\.\$values of function sprintf expects bool\|float\|int\|string\|null, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/AlbumCommand.php
-
-		-
 			message: '#^Cannot access offset ''status_id'' on mixed\.$#'
 			identifier: offsetAccess.nonOffsetAccessible
 			count: 1
@@ -277,104 +205,14 @@ parameters:
 			path: src/Command/Content/UserCommand.php
 
 		-
-			message: '#^Binary operation "/" between mixed and mixed results in an error\.$#'
-			identifier: binaryOp.invalid
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''description'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''duration'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''favourites_count'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''file_dimensions'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''file_size'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''is_hd'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''is_private'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''post_date'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''rating'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''rating_amount'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''status_id'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''title'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Cannot access offset ''video_viewed'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
 			message: '#^Cannot cast mixed to int\.$#'
 			identifier: cast.int
-			count: 6
+			count: 5
 			path: src/Command/Content/VideoCommand.php
 
 		-
 			message: '#^Cannot cast mixed to string\.$#'
 			identifier: cast.string
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Method KVS\\CLI\\Command\\Content\\VideoCommand\:\:getFieldValue\(\) is unused\.$#'
-			identifier: method.unused
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
@@ -387,36 +225,6 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$datetime of function strtotime expects string, mixed given\.$#'
 			identifier: argument.type
-			count: 2
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Parameter \#1 \$items of method KVS\\CLI\\Output\\Formatter\:\:display\(\) expects list\<array\<string, mixed\>\>, array given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Parameter \#1 \$message of method Symfony\\Component\\Console\\Style\\SymfonyStyle\:\:text\(\) expects array\|string, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Parameter \#1 \$num of function number_format expects float, mixed given\.$#'
-			identifier: argument.type
-			count: 2
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Parameter \#1 \$seconds of method KVS\\CLI\\Command\\Content\\VideoCommand\:\:formatDuration\(\) expects int\|null, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Parameter \#1 \$statusId of static method KVS\\CLI\\Output\\StatusFormatter\:\:video\(\) expects int, mixed given\.$#'
-			identifier: argument.type
 			count: 1
 			path: src/Command/Content/VideoCommand.php
 
@@ -427,19 +235,7 @@ parameters:
 			path: src/Command/Content/VideoCommand.php
 
 		-
-			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, array\{array\{''Title'', mixed\}, array\{''Status'', string\}, array\{''HD'', ''\<fg\=gray\>No\</\>''\|''\<fg\=green\>Yes\</\>''\}, array\{''Private'', ''\<fg\=gray\>No\</\>''\|''\<fg\=yellow\>Yes\</\>''\}, array\{''Duration'', string\}, array\{''File Size'', string\}, array\{''Resolution'', mixed\}, array\{''Posted'', non\-falsy\-string\}, \.\.\.\} given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
 			message: '#^Parameter \#2 \$rows of method KVS\\CLI\\Command\\BaseCommand\:\:renderTable\(\) expects list\<list\<int\|string\|null\>\>, non\-empty\-list\<array\{''Active Videos''\|''Average Rating''\|''Total Duration''\|''Total Size''\|''Total Videos''\|''Total Views'', string\|false\}\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Command/Content/VideoCommand.php
-
-		-
-			message: '#^Parameter \#4 \.\.\.\$values of function sprintf expects bool\|float\|int\|string\|null, mixed given\.$#'
 			identifier: argument.type
 			count: 1
 			path: src/Command/Content/VideoCommand.php
@@ -457,19 +253,7 @@ parameters:
 			path: src/Command/SelfUpdateCommand.php
 
 		-
-			message: '#^Cannot access offset ''draft'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/SelfUpdateCommand.php
-
-		-
 			message: '#^Cannot access offset ''id'' on mixed\.$#'
-			identifier: offsetAccess.nonOffsetAccessible
-			count: 1
-			path: src/Command/SelfUpdateCommand.php
-
-		-
-			message: '#^Cannot access offset ''prerelease'' on mixed\.$#'
 			identifier: offsetAccess.nonOffsetAccessible
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
@@ -477,36 +261,12 @@ parameters:
 		-
 			message: '#^Cannot access offset 0 on mixed\.$#'
 			identifier: offsetAccess.nonOffsetAccessible
-			count: 2
-			path: src/Command/SelfUpdateCommand.php
-
-		-
-			message: '#^Cannot call method getRealPath\(\) on mixed\.$#'
-			identifier: method.nonObject
-			count: 2
-			path: src/Command/SelfUpdateCommand.php
-
-		-
-			message: '#^Cannot call method isDir\(\) on mixed\.$#'
-			identifier: method.nonObject
-			count: 1
-			path: src/Command/SelfUpdateCommand.php
-
-		-
-			message: '#^Cannot cast mixed to string\.$#'
-			identifier: cast.string
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
 		-
 			message: '#^Casting to bool something that''s already bool\.$#'
 			identifier: cast.useless
-			count: 1
-			path: src/Command/SelfUpdateCommand.php
-
-		-
-			message: '#^Method KVS\\CLI\\Command\\SelfUpdateCommand\:\:getGitHubReleases\(\) should return array\<array\{tag_name\: string, prerelease\: bool, assets\: array\<array\{name\: string, browser_download_url\: string\}\>\}\>\|null but returns list\<mixed\>\.$#'
-			identifier: return.type
 			count: 1
 			path: src/Command/SelfUpdateCommand.php
 
@@ -557,69 +317,3 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: src/Command/System/QueueCommand.php
-
-		-
-			message: '#^Binary operation "\." between mixed and ''/'' results in an error\.$#'
-			identifier: binaryOp.invalid
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Method KVS\\CLI\\Config\\Configuration\:\:findKvsPath\(\) should return string but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Method KVS\\CLI\\Config\\Configuration\:\:getAlbumSourcesPath\(\) should return string but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Method KVS\\CLI\\Config\\Configuration\:\:getKvsVersion\(\) should return string but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Method KVS\\CLI\\Config\\Configuration\:\:getTablePrefix\(\) should return string but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Method KVS\\CLI\\Config\\Configuration\:\:getVideoScreenshotsPath\(\) should return string but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Method KVS\\CLI\\Config\\Configuration\:\:getVideoSourcesPath\(\) should return string but returns mixed\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Parameter \#1 \$path of function dirname expects string, mixed given\.$#'
-			identifier: argument.type
-			count: 2
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Parameter \#1 \$path of method KVS\\CLI\\Config\\Configuration\:\:isKvsInstallation\(\) expects string, mixed given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Part \$path \(mixed\) of encapsed string cannot be cast to string\.$#'
-			identifier: encapsedStringPart.nonString
-			count: 1
-			path: src/Config/Configuration.php
-
-		-
-			message: '#^Property KVS\\CLI\\Config\\Configuration\:\:\$config \(array\<string, mixed\>\) does not accept array\<mixed, mixed\>\.$#'
-			identifier: assign.propertyType
-			count: 1
-			path: src/Config/Configuration.php

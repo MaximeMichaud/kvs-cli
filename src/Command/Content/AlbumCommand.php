@@ -167,6 +167,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('albums')} WHERE album_id = :id");
             $stmt->execute(['id' => $id]);
+            /** @var array{title: string, status_id: int, post_date: string, album_viewed: int, rating: int, rating_amount: int}|false $album */
             $album = $stmt->fetch();
 
             if ($album === false) {
@@ -180,15 +181,17 @@ HELP
             $stmt->execute(['id' => $id]);
             $imageCount = $stmt->fetchColumn();
 
+            $postTimestamp = strtotime($album['post_date']);
+
             $info = [
                 ['Title', $album['title']],
                 ['Status', StatusFormatter::album($album['status_id'])],
-                ['Images', $imageCount],
-                ['Posted', date('Y-m-d H:i:s', strtotime($album['post_date']))],
+                ['Images', is_int($imageCount) ? $imageCount : 0],
+                ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
                 ['Views', number_format($album['album_viewed'])],
                 [
                     'Rating',
-                    ($album['rating_amount'] ?? 0) > 0
+                    $album['rating_amount'] > 0
                         ? sprintf('%.1f/%d (%d votes)', $album['rating'] / $album['rating_amount'], Constants::RATING_SCALE, $album['rating_amount'])
                         : 'No ratings yet'
                 ],

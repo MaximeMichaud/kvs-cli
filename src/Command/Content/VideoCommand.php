@@ -136,18 +136,21 @@ HELP
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
+            /** @var list<array<string, mixed>> $videos */
             $videos = $stmt->fetchAll();
 
             // Transform data for display (field aliases and calculated values)
-            $videos = array_map(function ($video) {
+            $videos = array_map(function (array $video): array {
                 // Add field aliases
                 $video['id'] = $video['video_id'];
-                $video['status'] = StatusFormatter::video((int)$video['status_id'], false);
+                $statusId = isset($video['status_id']) && is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
+                $video['status'] = StatusFormatter::video($statusId, false);
 
                 // Calculate rating (rating / rating_amount gives 0-5 scale)
-                $ratingAmount = (int)($video['rating_amount'] ?? 0);
+                $ratingAmount = isset($video['rating_amount']) && is_numeric($video['rating_amount']) ? (int) $video['rating_amount'] : 0;
+                $rating = isset($video['rating']) && is_numeric($video['rating']) ? (float) $video['rating'] : 0.0;
                 $video['rating'] = $ratingAmount > 0
-                    ? round($video['rating'] / $ratingAmount, 1)
+                    ? round($rating / $ratingAmount, 1)
                     : 0;
 
                 return $video;
@@ -182,6 +185,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
             $stmt->execute(['id' => $id]);
+            /** @var array{title: string, status_id: int, is_hd: int, is_private: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
             $video = $stmt->fetch();
 
             if ($video === false) {
@@ -191,23 +195,27 @@ HELP
 
             $this->io()->section("Video #$id");
 
+            $postTimestamp = strtotime($video['post_date']);
+            $ratingAmount = $video['rating_amount'];
+            $rating = $video['rating'];
+
             $info = [
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
-                ['HD', (bool)$video['is_hd'] ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
-                ['Private', (bool)$video['is_private'] ? '<fg=yellow>Yes</>' : '<fg=gray>No</>'],
+                ['HD', $video['is_hd'] > 0 ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
+                ['Private', $video['is_private'] > 0 ? '<fg=yellow>Yes</>' : '<fg=gray>No</>'],
                 ['Duration', $this->formatDuration($video['duration'])],
-                ['File Size', format_bytes((int)($video['file_size'] ?? 0))],
+                ['File Size', format_bytes($video['file_size'])],
                 ['Resolution', $video['file_dimensions']],
-                ['Posted', date('Y-m-d H:i:s', strtotime($video['post_date']))],
+                ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
                 [
                     'Rating',
-                    $video['rating_amount'] > 0
+                    $ratingAmount > 0
                         ? sprintf(
                             '%.1f/%d (%d votes)',
-                            $video['rating'] / $video['rating_amount'],
+                            $rating / $ratingAmount,
                             Constants::RATING_SCALE,
-                            $video['rating_amount']
+                            $ratingAmount
                         )
                         : 'No ratings yet'
                 ],
@@ -217,7 +225,7 @@ HELP
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            if (isset($video['description']) && $video['description'] !== '') {
+            if ($video['description'] !== '') {
                 $this->io()->section('Description');
                 $this->io()->text($video['description']);
             }
@@ -434,6 +442,7 @@ HELP
      * @param bool $formatted Whether to apply formatting
      * @param bool $noTruncate Whether to disable truncation
      * @return string Formatted field value
+     * @phpstan-ignore method.unused
      */
     private function getFieldValue(array $video, string $field, bool $formatted = true, bool $noTruncate = false): string
     {

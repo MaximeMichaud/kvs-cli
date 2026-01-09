@@ -37,7 +37,7 @@ class Configuration
     private function findKvsPath(): string
     {
         // 1. Check --path parameter (highest priority)
-        if (isset($this->options['path'])) {
+        if (isset($this->options['path']) && is_string($this->options['path'])) {
             $path = $this->options['path'];
             if (!$this->isKvsInstallation($path)) {
                 throw new \Exception("The path '$path' does not contain a valid KVS installation.");
@@ -247,6 +247,7 @@ class Configuration
             ob_end_clean();
 
             if (isset($config) && is_array($config)) {
+                /** @var array<string, mixed> $config */
                 $this->config = $config;
             }
         }
@@ -264,23 +265,21 @@ class Configuration
 
     public function getContentPath(): string
     {
-        // Try configured content paths first (KVS stores them explicitly)
-        $possiblePaths = [];
-
         // Check for explicit content path in config
-        if (isset($this->config['content_path_videos_sources'])) {
+        $videosPathConfig = $this->config['content_path_videos_sources'] ?? null;
+        if (is_string($videosPathConfig)) {
             // Extract parent directory from videos sources path
-            $videosPath = $this->config['content_path_videos_sources'];
             // The content root is typically 2 levels up from videos_sources
             // e.g., /var/www/content/videos/sources -> /var/www/content
-            $contentRoot = dirname(dirname($videosPath));
+            $contentRoot = dirname(dirname($videosPathConfig));
             if (is_dir($contentRoot)) {
                 return $contentRoot;
             }
         }
 
         // Try project_path/contents/ (standard layout)
-        $projectPath = $this->config['project_path'] ?? dirname($this->kvsPath);
+        $projectPathConfig = $this->config['project_path'] ?? null;
+        $projectPath = is_string($projectPathConfig) ? $projectPathConfig : dirname($this->kvsPath);
         $standardPath = $projectPath . '/' . Constants::CONTENT_DIR;
         if (is_dir($standardPath)) {
             return $standardPath;
@@ -301,8 +300,11 @@ class Configuration
      */
     public function getVideoSourcesPath(): string
     {
-        return $this->config['content_path_videos_sources']
-            ?? $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SOURCES;
+        $path = $this->config['content_path_videos_sources'] ?? null;
+        if (is_string($path)) {
+            return $path;
+        }
+        return $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SOURCES;
     }
 
     /**
@@ -310,8 +312,11 @@ class Configuration
      */
     public function getVideoScreenshotsPath(): string
     {
-        return $this->config['content_path_videos_screenshots']
-            ?? $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SCREENSHOTS;
+        $path = $this->config['content_path_videos_screenshots'] ?? null;
+        if (is_string($path)) {
+            return $path;
+        }
+        return $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SCREENSHOTS;
     }
 
     /**
@@ -319,8 +324,11 @@ class Configuration
      */
     public function getAlbumSourcesPath(): string
     {
-        return $this->config['content_path_albums_sources']
-            ?? $this->getContentPath() . '/' . Constants::CONTENT_ALBUMS_SOURCES;
+        $path = $this->config['content_path_albums_sources'] ?? null;
+        if (is_string($path)) {
+            return $path;
+        }
+        return $this->getContentPath() . '/' . Constants::CONTENT_ALBUMS_SOURCES;
     }
 
     /**
@@ -343,11 +351,19 @@ class Configuration
 
     public function getTablePrefix(): string
     {
-        return $this->config['tables_prefix'] ?? Constants::DEFAULT_TABLE_PREFIX;
+        $prefix = $this->config['tables_prefix'] ?? null;
+        if (is_string($prefix)) {
+            return $prefix;
+        }
+        return Constants::DEFAULT_TABLE_PREFIX;
     }
 
     public function getKvsVersion(): string
     {
-        return $this->config['project_version'] ?? '';
+        $version = $this->config['project_version'] ?? null;
+        if (is_string($version)) {
+            return $version;
+        }
+        return '';
     }
 }
