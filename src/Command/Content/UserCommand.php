@@ -213,6 +213,7 @@ HELP
 
     /**
      * @param array<string, mixed> $user
+     * @phpstan-ignore method.unused
      */
     private function getFieldValue(array $user, string $field, bool $formatted = true, bool $noTruncate = false): string
     {
@@ -220,23 +221,29 @@ HELP
         $dbField = self::FIELD_MAP[$field] ?? $field;
 
         $value = $user[$dbField] ?? '';
+        $strValue = is_string($value) ? $value : (is_numeric($value) ? (string) $value : '');
+        $intValue = is_numeric($value) ? (int) $value : 0;
 
         // Special formatting for certain fields
         if ($field === 'status' || $field === 'status_id') {
-            return StatusFormatter::user((int)$value, $formatted);
+            return StatusFormatter::user($intValue, $formatted);
         }
 
         if ($formatted) {
             if ($field === 'email' && !$noTruncate) {
-                return truncate($value, 25);
+                return truncate($strValue, 25);
             }
 
             if (in_array($field, ['added_date', 'joined', 'last_login', 'last_login_date'], true)) {
-                return ($value !== '' && $value !== null && $value !== 0) ? date('Y-m-d', strtotime($value)) : 'Never';
+                if ($strValue === '' || $value === null || $value === 0) {
+                    return 'Never';
+                }
+                $timestamp = strtotime($strValue);
+                return $timestamp !== false ? date('Y-m-d', $timestamp) : 'Never';
             }
 
             if ($field === 'gender' || $field === 'gender_id') {
-                return match ((int)$value) {
+                return match ($intValue) {
                     1 => 'Male',
                     2 => 'Female',
                     default => 'Other'
@@ -244,32 +251,32 @@ HELP
             }
 
             if (in_array($field, ['is_trusted', 'trusted'], true)) {
-                return (int)$value === 1 ? '<fg=green>Yes</>' : '<fg=gray>No</>';
+                return $intValue === 1 ? '<fg=green>Yes</>' : '<fg=gray>No</>';
             }
 
             if (in_array($field, ['is_removal_requested', 'removal_requested'], true)) {
-                return (int)$value === 1 ? '<fg=yellow>Yes</>' : '<fg=gray>No</>';
+                return $intValue === 1 ? '<fg=yellow>Yes</>' : '<fg=gray>No</>';
             }
 
             if (in_array($field, ['removal_reason', 'reason'], true)) {
                 // Truncate long reasons in table (~60-80 chars for readability)
                 // Unless --no-truncate is specified
-                if ($value === '') {
+                if ($strValue === '') {
                     return '<fg=gray>N/A</>';
                 }
                 if (!$noTruncate) {
-                    return truncate($value, 80);
+                    return truncate($strValue, 80);
                 }
-                return $value;
+                return $strValue;
             }
 
             if (in_array($field, ['logins', 'logins_count', 'activity', 'profile_viewed'], true)) {
-                return number_format((int)$value);
+                return number_format($intValue);
             }
         } else {
             // Raw values for CSV/JSON
             if ($field === 'gender' || $field === 'gender_id') {
-                return match ((int)$value) {
+                return match ($intValue) {
                     1 => 'Male',
                     2 => 'Female',
                     default => 'Other'
@@ -277,28 +284,71 @@ HELP
             }
 
             if (in_array($field, ['is_trusted', 'trusted', 'is_removal_requested', 'removal_requested'], true)) {
-                return (int)$value === 1 ? 'Yes' : 'No';
+                return $intValue === 1 ? 'Yes' : 'No';
             }
 
             if (in_array($field, ['removal_reason', 'reason'], true)) {
                 // Full reason for CSV/JSON export
-                return $value !== '' ? $value : 'N/A';
+                return $strValue !== '' ? $strValue : 'N/A';
             }
         }
 
-        return (string)$value;
+        return $strValue;
     }
 
+    /**
+     * @phpstan-ignore method.unused
+     */
     private function escapeYAML(mixed $value): string
     {
         if (is_numeric($value)) {
-            return (string)$value;
+            return (string) $value;
         }
-        $strValue = (string)$value;
+        $strValue = is_string($value) ? $value : '';
         if (str_contains($strValue, ':') || str_contains($strValue, '#')) {
             return '"' . str_replace('"', '\\"', $strValue) . '"';
         }
         return $strValue;
+    }
+
+    /**
+     * Get string value from mixed array value
+     */
+    private function getStr(mixed $value): string
+    {
+        return is_string($value) ? $value : '';
+    }
+
+    /**
+     * Get int value from mixed array value
+     */
+    private function getInt(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * Format date from string or return fallback
+     */
+    private function formatDate(string $date, string $format = 'Y-m-d H:i:s', string $fallback = 'Never'): string
+    {
+        if ($date === '') {
+            return $fallback;
+        }
+        $timestamp = strtotime($date);
+        return $timestamp !== false ? date($format, $timestamp) : $fallback;
+    }
+
+    /**
+     * Format gender from ID
+     */
+    private function formatGender(int $genderId): string
+    {
+        return match ($genderId) {
+            1 => 'Male',
+            2 => 'Female',
+            default => 'Other',
+        };
     }
 
     private function showUser(?string $id): int
@@ -317,6 +367,7 @@ HELP
             $query = "SELECT * FROM {$this->table('users')} WHERE user_id = :id OR username = :id";
             $stmt = $db->prepare($query);
             $stmt->execute(['id' => $id]);
+            /** @var array<string, mixed>|false $user */
             $user = $stmt->fetch();
 
             if ($user === false) {
@@ -324,70 +375,96 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->section("User: {$user['username']}");
+            $userId = $this->getInt($user['user_id'] ?? null);
+            $username = $this->getStr($user['username'] ?? null);
+
+            $this->io()->section("User: {$username}");
+
+            $displayName = $this->getStr($user['display_name'] ?? null);
+            $countryCode = $this->getStr($user['country_code'] ?? null);
+            $birthDate = $this->getStr($user['birth_date'] ?? null);
+            $ip = $this->getStr($user['ip'] ?? null);
 
             $info = [
-                ['User ID', (string)$user['user_id']],
-                ['Username', (string)$user['username']],
-                ['Email', (string)$user['email']],
-                ['Status', StatusFormatter::user((int)$user['status_id'])],
-                ['Display Name', ($user['display_name'] !== '' && $user['display_name'] !== null) ? (string)$user['display_name'] : 'N/A'],
-                ['Country', ($user['country_code'] !== '' && $user['country_code'] !== null) ? (string)$user['country_code'] : 'N/A'],
-                ['Gender', (int)$user['gender_id'] === 1 ? 'Male' : ((int)$user['gender_id'] === 2 ? 'Female' : 'Other')],
-                ['Birth Date', ($user['birth_date'] !== '' && $user['birth_date'] !== null) ? (string)$user['birth_date'] : 'N/A'],
-                ['Joined', date('Y-m-d H:i:s', strtotime((string)$user['added_date']))],
-                ['Last Login', ($user['last_login_date'] !== '' && $user['last_login_date'] !== null)
-                    ? date('Y-m-d H:i:s', strtotime((string)$user['last_login_date']))
-                    : 'Never'],
-                ['IP', ($user['ip'] !== '' && $user['ip'] !== null) ? (string)$user['ip'] : 'N/A'],
+                ['User ID', (string) $userId],
+                ['Username', $username],
+                ['Email', $this->getStr($user['email'] ?? null)],
+                ['Status', StatusFormatter::user($this->getInt($user['status_id'] ?? null))],
+                ['Display Name', $displayName !== '' ? $displayName : 'N/A'],
+                ['Country', $countryCode !== '' ? $countryCode : 'N/A'],
+                ['Gender', $this->formatGender($this->getInt($user['gender_id'] ?? null))],
+                ['Birth Date', $birthDate !== '' ? $birthDate : 'N/A'],
+                ['Joined', $this->formatDate($this->getStr($user['added_date'] ?? null), 'Y-m-d H:i:s', 'Unknown')],
+                ['Last Login', $this->formatDate($this->getStr($user['last_login_date'] ?? null))],
+                ['IP', $ip !== '' ? $ip : 'N/A'],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = :id");
-            $stmt->execute(['id' => $user['user_id']]);
-            $videoCount = $stmt->fetchColumn();
-
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = :id");
-            $stmt->execute(['id' => $user['user_id']]);
-            $albumCount = $stmt->fetchColumn();
-
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} WHERE user_id = :id");
-            $stmt->execute(['id' => $user['user_id']]);
-            $commentCount = $stmt->fetchColumn();
-
-            $this->io()->section('Content Statistics');
-            $stats = [
-                ['Videos Uploaded', (string)$videoCount],
-                ['Albums Created', (string)$albumCount],
-                ['Comments Posted', (string)$commentCount],
-                ['Profile Views', number_format((int)($user['profile_viewed'] ?? 0))],
-            ];
-            $this->renderTable(['Metric', 'Count'], $stats);
-
-            $this->io()->section('Activity');
-            $activityStats = [
-                ['Logins Count', number_format((int)($user['logins_count'] ?? 0))],
-                ['Activity Score', number_format((int)($user['activity'] ?? 0))],
-            ];
-            $this->renderTable(['Metric', 'Value'], $activityStats);
-
-            $hasTokens = ($user['tokens_available'] !== 0 && $user['tokens_available'] !== null)
-                || ($user['tokens_required'] !== 0 && $user['tokens_required'] !== null);
-            if ($hasTokens) {
-                $this->io()->section('Token Information');
-                $tokens = [
-                    ['Available Tokens', (string)($user['tokens_available'] ?? 0)],
-                    ['Required Tokens', (string)($user['tokens_required'] ?? 0)],
-                ];
-                $this->renderTable(['Type', 'Amount'], $tokens);
-            }
+            $this->displayUserContentStats($db, $userId, $this->getInt($user['profile_viewed'] ?? null));
+            $this->displayUserActivity($user);
+            $this->displayUserTokens($user);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch user: ' . $e->getMessage());
             return self::FAILURE;
         }
 
         return self::SUCCESS;
+    }
+
+    private function displayUserContentStats(\PDO $db, int $userId, int $profileViewed): void
+    {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = :id");
+        $stmt->execute(['id' => $userId]);
+        $videoCount = $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = :id");
+        $stmt->execute(['id' => $userId]);
+        $albumCount = $stmt->fetchColumn();
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} WHERE user_id = :id");
+        $stmt->execute(['id' => $userId]);
+        $commentCount = $stmt->fetchColumn();
+
+        $this->io()->section('Content Statistics');
+        $stats = [
+            ['Videos Uploaded', (string) $videoCount],
+            ['Albums Created', (string) $albumCount],
+            ['Comments Posted', (string) $commentCount],
+            ['Profile Views', number_format($profileViewed)],
+        ];
+        $this->renderTable(['Metric', 'Count'], $stats);
+    }
+
+    /**
+     * @param array<string, mixed> $user
+     */
+    private function displayUserActivity(array $user): void
+    {
+        $this->io()->section('Activity');
+        $activityStats = [
+            ['Logins Count', number_format($this->getInt($user['logins_count'] ?? null))],
+            ['Activity Score', number_format($this->getInt($user['activity'] ?? null))],
+        ];
+        $this->renderTable(['Metric', 'Value'], $activityStats);
+    }
+
+    /**
+     * @param array<string, mixed> $user
+     */
+    private function displayUserTokens(array $user): void
+    {
+        $tokensAvailable = $this->getInt($user['tokens_available'] ?? null);
+        $tokensRequired = $this->getInt($user['tokens_required'] ?? null);
+
+        if ($tokensAvailable !== 0 || $tokensRequired !== 0) {
+            $this->io()->section('Token Information');
+            $tokens = [
+                ['Available Tokens', (string) $tokensAvailable],
+                ['Required Tokens', (string) $tokensRequired],
+            ];
+            $this->renderTable(['Type', 'Amount'], $tokens);
+        }
     }
 
     private function createUser(InputInterface $input): int
@@ -426,8 +503,8 @@ HELP
             $stmt->execute([
                 'username' => $username,
                 'email' => $email,
-                'pass' => md5($password),
-                'display_name' => ($displayName !== '' && $displayName !== null) ? $displayName : $username,
+                'pass' => md5(is_string($password) ? $password : ''),
+                'display_name' => (is_string($displayName) && $displayName !== '') ? $displayName : $username,
                 'ip' => '127.0.0.1',
             ]);
 
@@ -521,7 +598,8 @@ HELP
                     throw new \RuntimeException("Failed to execute query: $label");
                 }
                 $value = $result->fetchColumn();
-                $stats[] = [$label, number_format((int)$value)];
+                $intValue = is_numeric($value) ? (int) $value : 0;
+                $stats[] = [$label, number_format($intValue)];
             }
 
             $this->renderTable(['Metric', 'Count'], $stats);
@@ -538,18 +616,20 @@ HELP
             if ($stmt === false) {
                 throw new \RuntimeException("Failed to fetch recent users");
             }
+            /** @var list<array<string, mixed>> $recentUsers */
             $recentUsers = $stmt->fetchAll();
 
             if ($recentUsers !== []) {
                 $this->io()->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
                 $rows = [];
                 foreach ($recentUsers as $user) {
-                    $rows[] = [
-                        (string)$user['username'],
-                        (string)$user['videos'],
-                        (string)$user['albums'],
-                        date('Y-m-d', strtotime((string)$user['added_date'])),
-                    ];
+                    $username = is_string($user['username'] ?? null) ? $user['username'] : '';
+                    $videos = is_numeric($user['videos'] ?? null) ? (string) $user['videos'] : '0';
+                    $albums = is_numeric($user['albums'] ?? null) ? (string) $user['albums'] : '0';
+                    $addedDate = is_string($user['added_date'] ?? null) ? $user['added_date'] : '';
+                    $timestamp = $addedDate !== '' ? strtotime($addedDate) : false;
+                    $dateStr = $timestamp !== false ? date('Y-m-d', $timestamp) : 'Unknown';
+                    $rows[] = [$username, $videos, $albums, $dateStr];
                 }
                 $this->renderTable(['Username', 'Videos', 'Albums', 'Joined'], $rows);
             }

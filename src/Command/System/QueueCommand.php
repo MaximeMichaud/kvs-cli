@@ -203,25 +203,28 @@ HELP
             }
 
             // Transform data for display
-            $tasks = array_values(array_map(function (array $task): array {
+            /** @var list<array{task_id: int, status_id: int, type_id: int, video_id: int|null, album_id: int|null, server_id: int|null, server_name: string|null, error_code: int|null, priority: int, id: int, status: string, type: string, content_id: string, server: string, error: string}> $tasks */
+            $tasks = array_map(function (array $task): array {
+                $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
+                $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
+                $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
+                $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
+                $serverId = is_numeric($task['server_id'] ?? null) ? (int) $task['server_id'] : 0;
+                $errorCode = is_numeric($task['error_code'] ?? null) ? (int) $task['error_code'] : 0;
+                $serverName = $task['server_name'] ?? null;
+
                 $task['id'] = $task['task_id'];
-                $task['status'] = StatusFormatter::task((int)$task['status_id'], false);
-                $typeId = (int)$task['type_id'];
+                $task['status'] = StatusFormatter::task($statusId, false);
                 $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                $videoId = (int)($task['video_id'] ?? 0);
-                $albumId = (int)($task['album_id'] ?? 0);
                 $task['content_id'] = $videoId > 0
                     ? "Video #{$videoId}"
                     : ($albumId > 0 ? "Album #{$albumId}" : '-');
-                $serverName = $task['server_name'] ?? null;
-                $serverId = (int)($task['server_id'] ?? 0);
                 $task['server'] = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-');
-                $errorCode = (int)($task['error_code'] ?? 0);
                 $task['error'] = $errorCode > 0
                     ? (self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}")
                     : '';
                 return $task;
-            }, $tasks));
+            }, $tasks);
 
             // Format and display
             $format = $this->getStringOption($input, 'format') ?? 'table';
@@ -232,13 +235,13 @@ HELP
                 $rows = [];
                 foreach ($tasks as $task) {
                     $rows[] = [
-                        (int)$task['task_id'],
-                        StatusFormatter::task((int)$task['status_id']),
-                        (string)$task['type'],
-                        (string)$task['content_id'],
-                        (int)$task['priority'],
-                        (string)$task['server'],
-                        (string)$task['error'],
+                        $task['task_id'],
+                        StatusFormatter::task($task['status_id']),
+                        $task['type'],
+                        $task['content_id'],
+                        $task['priority'],
+                        $task['server'],
+                        $task['error'],
                     ];
                 }
                 $this->renderTable(['ID', 'Status', 'Type', 'Content', 'Priority', 'Server', 'Error'], $rows);
@@ -332,25 +335,26 @@ HELP
      */
     private function buildTaskInfo(array $task, bool $isHistory): array
     {
-        $statusId = (int)$task['status_id'];
-        $typeId = (int)$task['type_id'];
-        $videoId = (int)($task['video_id'] ?? 0);
-        $albumId = (int)($task['album_id'] ?? 0);
-        $serverId = (int)($task['server_id'] ?? 0);
+        $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
+        $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
+        $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
+        $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
+        $serverId = is_numeric($task['server_id'] ?? null) ? (int) $task['server_id'] : 0;
         $serverName = $task['server_name'] ?? null;
-        $errorCode = (int)($task['error_code'] ?? 0);
+        $errorCode = is_numeric($task['error_code'] ?? null) ? (int) $task['error_code'] : 0;
+        $priority = is_numeric($task['priority'] ?? null) ? (int) $task['priority'] : 0;
 
         $info = [
             ['Status', StatusFormatter::task($statusId)],
             ['Type', self::TASK_TYPES[$typeId] ?? "Type #{$typeId}"],
-            ['Priority', (string)(int)$task['priority']],
+            ['Priority', (string) $priority],
         ];
 
         if ($videoId > 0) {
-            $info[] = ['Video ID', (string)$videoId];
+            $info[] = ['Video ID', (string) $videoId];
         }
         if ($albumId > 0) {
-            $info[] = ['Album ID', (string)$albumId];
+            $info[] = ['Album ID', (string) $albumId];
         }
 
         $serverDisplay = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : 'None');
@@ -361,22 +365,24 @@ HELP
             $info[] = ['Error Code', "<fg=red>{$errorText}</>"];
         }
 
-        $message = (string)($task['message'] ?? '');
+        $message = is_string($task['message'] ?? null) ? $task['message'] : '';
         if ($message !== '') {
             $info[] = ['Message', $message];
         }
 
-        $info[] = ['Restarts', (string)(int)($task['times_restarted'] ?? 0)];
-        $info[] = ['Added', (string)($task['added_date'] ?? '')];
+        $timesRestarted = is_numeric($task['times_restarted'] ?? null) ? (int) $task['times_restarted'] : 0;
+        $addedDate = is_string($task['added_date'] ?? null) ? $task['added_date'] : '';
+        $info[] = ['Restarts', (string) $timesRestarted];
+        $info[] = ['Added', $addedDate];
 
-        $startDate = (string)($task['start_date'] ?? '');
+        $startDate = is_string($task['start_date'] ?? null) ? $task['start_date'] : '';
         if ($startDate !== '' && $startDate !== '0000-00-00 00:00:00') {
             $info[] = ['Started', $startDate];
         }
 
         if ($isHistory) {
-            $endDate = (string)($task['end_date'] ?? '');
-            $effectiveDuration = (int)($task['effective_duration'] ?? 0);
+            $endDate = is_string($task['end_date'] ?? null) ? $task['end_date'] : '';
+            $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
             if ($endDate !== '') {
                 $info[] = ['Ended', $endDate];
             }
@@ -395,16 +401,16 @@ HELP
     private function displayTaskData(array $task): void
     {
         $data = $task['data'] ?? null;
-        if ($data === null || $data === '') {
+        if ($data === null || $data === '' || !is_string($data)) {
             return;
         }
 
         $this->io()->section('Task Data');
-        $unserialized = @unserialize((string)$data);
+        $unserialized = @unserialize($data);
         if ($unserialized !== false) {
             $this->io()->text(print_r($unserialized, true));
         } else {
-            $this->io()->text((string)$data);
+            $this->io()->text($data);
         }
     }
 
@@ -414,7 +420,8 @@ HELP
      */
     private function displayTaskProgress(array $task, string $id, bool $isHistory): void
     {
-        if ($isHistory || (int)$task['status_id'] !== StatusFormatter::TASK_PROCESSING) {
+        $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
+        if ($isHistory || $statusId !== StatusFormatter::TASK_PROCESSING) {
             return;
         }
 
@@ -451,7 +458,11 @@ HELP
             if ($stmt !== false) {
                 while ($row = $stmt->fetch()) {
                     if (is_array($row)) {
-                        $statusCounts[(int)$row['status_id']] = (int)$row['count'];
+                        $statusIdVal = $row['status_id'] ?? null;
+                        $countVal = $row['count'] ?? null;
+                        if (is_numeric($statusIdVal) && is_numeric($countVal)) {
+                            $statusCounts[(int) $statusIdVal] = (int) $countVal;
+                        }
                     }
                 }
             }
@@ -483,9 +494,12 @@ HELP
                     /** @var list<list<string|int|null>> $rows */
                     $rows = [];
                     foreach ($types as $type) {
-                        $typeId = (int)$type['type_id'];
+                        $typeIdVal = $type['type_id'] ?? null;
+                        $countVal = $type['count'] ?? null;
+                        $typeId = is_numeric($typeIdVal) ? (int) $typeIdVal : 0;
+                        $count = is_numeric($countVal) ? (int) $countVal : 0;
                         $typeName = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                        $rows[] = [$typeId, $typeName, number_format((int)$type['count'])];
+                        $rows[] = [$typeId, $typeName, number_format($count)];
                     }
                     $this->renderTable(['ID', 'Type', 'Count'], $rows);
                 }
@@ -508,9 +522,12 @@ HELP
                     /** @var list<list<string|int|null>> $rows */
                     $rows = [];
                     foreach ($errors as $error) {
-                        $errorCode = (int)$error['error_code'];
+                        $errorCodeVal = $error['error_code'] ?? null;
+                        $countVal = $error['count'] ?? null;
+                        $errorCode = is_numeric($errorCodeVal) ? (int) $errorCodeVal : 0;
+                        $count = is_numeric($countVal) ? (int) $countVal : 0;
                         $errorName = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
-                        $rows[] = [$errorCode, $errorName, number_format((int)$error['count'])];
+                        $rows[] = [$errorCode, $errorName, number_format($count)];
                     }
                     $this->renderTable(['Code', 'Error', 'Count'], $rows);
                 }
@@ -530,13 +547,21 @@ HELP
             if ($stmt !== false) {
                 /** @var array<string, mixed>|false $history */
                 $history = $stmt->fetch();
-                if (is_array($history) && (int)($history['total'] ?? 0) > 0) {
+                $totalVal = $history['total'] ?? null;
+                $total = is_numeric($totalVal) ? (int) $totalVal : 0;
+                if (is_array($history) && $total > 0) {
+                    $completedVal = $history['completed'] ?? null;
+                    $deletedVal = $history['deleted'] ?? null;
+                    $avgDurationVal = $history['avg_duration'] ?? null;
+                    $completed = is_numeric($completedVal) ? (int) $completedVal : 0;
+                    $deleted = is_numeric($deletedVal) ? (int) $deletedVal : 0;
+                    $avgDuration = is_numeric($avgDurationVal) ? (int) $avgDurationVal : 0;
                     $this->io()->section('Last 24 Hours');
                     /** @var list<list<string|int|null>> $rows */
                     $rows = [
-                        ['Completed', number_format((int)($history['completed'] ?? 0))],
-                        ['Deleted', number_format((int)($history['deleted'] ?? 0))],
-                        ['Avg Duration', $this->formatDuration((int)($history['avg_duration'] ?? 0))],
+                        ['Completed', number_format($completed)],
+                        ['Deleted', number_format($deleted)],
+                        ['Avg Duration', $this->formatDuration($avgDuration)],
                     ];
                     $this->renderTable(['Metric', 'Value'], $rows);
                 }
@@ -600,20 +625,23 @@ HELP
             }
 
             // Transform for display
-            $tasks = array_values(array_map(function (array $task): array {
+            /** @var list<array{task_id: int, status_id: int, type_id: int, video_id: int|null, album_id: int|null, effective_duration: int|null, end_date: string|null, id: int, status: string, type: string, content_id: string, duration: string}> $tasks */
+            $tasks = array_map(function (array $task): array {
+                $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
+                $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
+                $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
+                $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
+                $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
+
                 $task['id'] = $task['task_id'];
-                $statusId = (int)$task['status_id'];
                 $task['status'] = $statusId === 3 ? 'Completed' : 'Deleted';
-                $typeId = (int)$task['type_id'];
                 $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                $videoId = (int)($task['video_id'] ?? 0);
-                $albumId = (int)($task['album_id'] ?? 0);
                 $task['content_id'] = $videoId > 0
                     ? "Video #{$videoId}"
                     : ($albumId > 0 ? "Album #{$albumId}" : '-');
-                $task['duration'] = $this->formatDuration((int)($task['effective_duration'] ?? 0));
+                $task['duration'] = $this->formatDuration($effectiveDuration);
                 return $task;
-            }, $tasks));
+            }, $tasks);
 
             $format = $this->getStringOption($input, 'format') ?? 'table';
 
@@ -622,16 +650,17 @@ HELP
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];
                 foreach ($tasks as $task) {
-                    $statusId = (int)$task['status_id'];
-                    $statusColor = $statusId === 3 ? 'green' : 'yellow';
-                    $endDate = (string)($task['end_date'] ?? '');
+                    $statusColor = $task['status_id'] === 3 ? 'green' : 'yellow';
+                    $endDate = $task['end_date'] ?? '';
+                    $timestamp = $endDate !== '' ? strtotime($endDate) : false;
+                    $endDateStr = $timestamp !== false ? date('Y-m-d H:i', $timestamp) : '-';
                     $rows[] = [
-                        (int)$task['task_id'],
+                        $task['task_id'],
                         "<fg={$statusColor}>{$task['status']}</>",
-                        (string)$task['type'],
-                        (string)$task['content_id'],
-                        (string)$task['duration'],
-                        $endDate !== '' ? date('Y-m-d H:i', strtotime($endDate)) : '-',
+                        $task['type'],
+                        $task['content_id'],
+                        $task['duration'],
+                        $endDateStr,
                     ];
                 }
                 $this->renderTable(['ID', 'Status', 'Type', 'Content', 'Duration', 'Ended'], $rows);

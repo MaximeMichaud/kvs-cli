@@ -351,6 +351,7 @@ HELP
         }
 
         try {
+            /** @var list<list<string>> $stats */
             $stats = [];
 
             $queries = [
@@ -364,21 +365,22 @@ HELP
 
             foreach ($queries as $label => $query) {
                 $result = $db->query($query);
-                $value = $result !== false ? $result->fetchColumn() : null;
+                $rawValue = $result !== false ? $result->fetchColumn() : null;
 
+                $displayValue = '0';
                 if ($label === 'Total Duration') {
-                    $value = $this->formatDuration((int)($value ?? 0));
+                    $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
+                    $displayValue = $this->formatDuration($intVal);
                 } elseif ($label === 'Average Rating') {
-                    $value = ($value !== null && $value !== false) ? sprintf('%.1f/%d', $value, Constants::RATING_SCALE) : 'N/A';
+                    $displayValue = is_numeric($rawValue) ? sprintf('%.1f/%d', (float) $rawValue, Constants::RATING_SCALE) : 'N/A';
                 } elseif ($label === 'Total Size') {
-                    $value = format_bytes((int)($value ?? 0));
-                } elseif (is_numeric($value)) {
-                    $value = number_format((int)$value);
-                } else {
-                    $value = $value ?? '0';
+                    $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
+                    $displayValue = format_bytes($intVal);
+                } elseif (is_numeric($rawValue)) {
+                    $displayValue = number_format((int) $rawValue);
                 }
 
-                $stats[] = [$label, $value];
+                $stats[] = [$label, $displayValue];
             }
 
             $this->renderTable(['Metric', 'Value'], $stats);
@@ -471,63 +473,72 @@ HELP
         ];
 
         $dbField = $fieldMap[$field] ?? $field;
-        $value = $video[$dbField] ?? '';
+        $rawValue = $video[$dbField] ?? null;
 
         // Handle empty values
-        if ($value === '' || $value === null || $value === false) {
+        if ($rawValue === '' || $rawValue === null || $rawValue === false) {
             return $formatted ? '<fg=gray>N/A</>' : 'N/A';
         }
 
+        // Convert to proper types
+        $strValue = is_string($rawValue) ? $rawValue : (is_numeric($rawValue) ? (string) $rawValue : '');
+        $intValue = is_numeric($rawValue) ? (int) $rawValue : 0;
+
         // Format status
         if ($field === 'status' || $field === 'status_id') {
-            return StatusFormatter::video((int)$value, $formatted);
+            return StatusFormatter::video($intValue, $formatted);
         }
 
         // Format dates
         if (in_array($field, ['date', 'post_date'], true)) {
-            return $formatted ? date('Y-m-d', strtotime($value)) : $value;
+            if (!$formatted) {
+                return $strValue;
+            }
+            $timestamp = strtotime($strValue);
+            return $timestamp !== false ? date('Y-m-d', $timestamp) : 'N/A';
         }
 
         // Format numbers
-        if ($field === 'views' && is_numeric($value)) {
-            return $formatted ? number_format((int)$value) : (string)$value;
+        if ($field === 'views' && is_numeric($rawValue)) {
+            return $formatted ? number_format($intValue) : $strValue;
         }
 
         // Format rating
-        if ($field === 'rating' && is_numeric($value)) {
-            $ratingAmount = (int)($video['rating_amount'] ?? 0);
-            return $ratingAmount > 0 ? sprintf('%.1f', $value / $ratingAmount) : '0.0';
+        if ($field === 'rating' && is_numeric($rawValue)) {
+            $ratingAmountVal = $video['rating_amount'] ?? 0;
+            $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
+            return $ratingAmount > 0 ? sprintf('%.1f', (float) $rawValue / $ratingAmount) : '0.0';
         }
 
         // Format duration
-        if ($field === 'duration' && is_numeric($value)) {
-            return $this->formatDuration((int)$value);
+        if ($field === 'duration' && is_numeric($rawValue)) {
+            return $this->formatDuration($intValue);
         }
 
         // Format filesize
-        if (in_array($field, ['filesize', 'file_size'], true) && is_numeric($value)) {
-            return format_bytes((int)$value);
+        if (in_array($field, ['filesize', 'file_size'], true) && is_numeric($rawValue)) {
+            return format_bytes($intValue);
         }
 
         // Format boolean fields (is_hd, is_private)
         if (in_array($field, ['is_hd', 'hd', 'is_private', 'private'], true)) {
             if ($formatted) {
-                return (int)$value !== 0 ? '<fg=green>Yes</>' : '<fg=gray>No</>';
+                return $intValue !== 0 ? '<fg=green>Yes</>' : '<fg=gray>No</>';
             }
-            return (int)$value !== 0 ? 'Yes' : 'No';
+            return $intValue !== 0 ? 'Yes' : 'No';
         }
 
         // Format favourites count
         if (in_array($field, ['favourites', 'favourites_count', 'favorites'], true)) {
-            return $formatted ? number_format((int)$value) : (string)$value;
+            return $formatted ? number_format($intValue) : $strValue;
         }
 
         // Truncate title (50 chars unless --no-truncate)
         if ($field === 'title' && !$noTruncate) {
-            return truncate($value, Constants::DEFAULT_TRUNCATE_LENGTH);
+            return truncate($strValue, Constants::DEFAULT_TRUNCATE_LENGTH);
         }
 
-        return $value;
+        return $strValue;
     }
 
 

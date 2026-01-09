@@ -64,7 +64,11 @@ HELP
             return Command::FAILURE;
         }
 
-        $currentPhar = (string) realpath($_SERVER['argv'][0]);
+        $argv = $_SERVER['argv'] ?? [];
+        $argvZero = is_array($argv) && isset($argv[0]) ? $argv[0] : null;
+        $argvPath = is_string($argvZero) ? $argvZero : '';
+        $realPhar = realpath($argvPath);
+        $currentPhar = $realPhar !== false ? $realPhar : $argvPath;
         $currentVersion = $this->getCurrentVersion();
 
         // Check permissions
@@ -82,7 +86,9 @@ HELP
         $io->text(sprintf('Current version: <info>%s</info>', $currentVersion));
 
         // Handle --dev option (download from nightly.link)
-        if ((bool) $input->getOption('dev')) {
+        /** @var bool $devOption */
+        $devOption = $input->getOption('dev');
+        if ($devOption) {
             return $this->updateFromDev($io, $input, $currentPhar);
         }
 
@@ -123,15 +129,18 @@ HELP
         }
 
         // Check only mode
-        if ($input->getOption('check') !== null && $input->getOption('check') !== false) {
+        /** @var bool $checkOption */
+        $checkOption = $input->getOption('check');
+        if ($checkOption) {
             $io->newLine();
             $io->text('Run <info>kvs self-update</info> to install the update.');
             return Command::SUCCESS;
         }
 
         // Confirm update
+        /** @var bool $yesOption */
         $yesOption = $input->getOption('yes');
-        if ($yesOption === null || $yesOption === false) {
+        if (!$yesOption) {
             if (!$io->confirm(sprintf('Update to version %s?', $latestVersion), true)) {
                 $io->text('Update cancelled.');
                 return Command::SUCCESS;
@@ -300,7 +309,7 @@ HELP
     private function findPharAsset(array $assets): ?string
     {
         foreach ($assets as $asset) {
-            if (array_key_exists('name', $asset) && $asset['name'] === Constants::PHAR_NAME) {
+            if ($asset['name'] === Constants::PHAR_NAME) {
                 return $asset['browser_download_url'];
             }
         }
@@ -441,8 +450,9 @@ HELP
         }
 
         // Confirm update
-        $yesOption = $input->getOption('yes');
-        if ($yesOption === null || $yesOption === false) {
+        /** @var bool $yesOptDev */
+        $yesOptDev = $input->getOption('yes');
+        if (!$yesOptDev) {
             $io->warning('Dev builds may be unstable.');
             if (!$io->confirm('Update to latest dev build?', false)) {
                 $io->text('Update cancelled.');
@@ -568,7 +578,13 @@ HELP
             return null;
         }
 
-        $runId = $data['workflow_runs'][0]['id'] ?? null;
+        $firstRun = $data['workflow_runs'][0] ?? null;
+        if (!is_array($firstRun)) {
+            $io->error('Invalid workflow run data structure.');
+            return null;
+        }
+
+        $runId = $firstRun['id'] ?? null;
         if (!is_int($runId) && !is_string($runId)) {
             $io->error('Workflow run data is missing the run ID.');
             return null;

@@ -55,6 +55,7 @@ trait ToggleStatusTrait
             $sql = "SELECT {$nameColumn}, status_id FROM {$tableName} WHERE {$idColumn} = :id";
             $stmt = $db->prepare($sql);
             $stmt->execute(['id' => $id]);
+            /** @var array<string, mixed>|false $entity */
             $entity = $stmt->fetch();
 
             if ($entity === false) {
@@ -63,7 +64,8 @@ trait ToggleStatusTrait
             }
 
             // Check if already at target status
-            if ($entity['status_id'] === $status) {
+            $currentStatusId = is_numeric($entity['status_id'] ?? null) ? (int) $entity['status_id'] : 0;
+            if ($currentStatusId === $status) {
                 $currentStatus = $status !== 0 ? 'active' : 'inactive';
                 $this->io()->info("{$entityName} is already {$currentStatus}");
                 return self::SUCCESS;
@@ -76,7 +78,8 @@ trait ToggleStatusTrait
 
             // Success message
             $newStatus = $status !== 0 ? 'enabled' : 'disabled';
-            $entityDisplayName = $entity[$nameColumn];
+            $nameValue = $entity[$nameColumn] ?? null;
+            $entityDisplayName = is_string($nameValue) ? $nameValue : $id;
             $this->io()->success("{$entityName} '{$entityDisplayName}' {$newStatus} successfully!");
         } catch (\Exception $e) {
             $this->io()->error("Failed to update {$entityName} status: " . $e->getMessage());
