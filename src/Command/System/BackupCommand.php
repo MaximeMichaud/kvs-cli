@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -109,7 +110,7 @@ class BackupCommand extends BaseCommand
         ];
 
         $process = new Process($command);
-        $process->setTimeout(3600);
+        $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
 
         $this->io()->info('Creating database backup...');
 
@@ -169,7 +170,7 @@ class BackupCommand extends BaseCommand
         }
 
         $process = new Process($command);
-        $process->setTimeout(7200);
+        $process->setTimeout(Constants::FILE_BACKUP_TIMEOUT);
 
         $this->io()->info('Creating files backup...');
 

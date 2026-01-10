@@ -142,7 +142,7 @@ EOT
         }
 
         $process = new Process($command, null, $env);
-        $process->setTimeout(3600);
+        $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
 
         $progressBar = $this->io()->createProgressBar();
         $progressBar->start();

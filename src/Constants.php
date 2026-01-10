@@ -105,6 +105,22 @@ final class Constants
     public const DEFAULT_MEMCACHE_PORT = 11211;
 
     // ========================================
+    // PROCESS TIMEOUTS (in seconds)
+    // ========================================
+
+    /** Timeout for database operations (1 hour) */
+    public const DB_PROCESS_TIMEOUT = 3600;
+
+    /** Timeout for file backup operations (2 hours) */
+    public const FILE_BACKUP_TIMEOUT = 7200;
+
+    /** Timeout for HTTP requests (30 seconds) */
+    public const HTTP_REQUEST_TIMEOUT = 30;
+
+    /** Timeout for file downloads (5 minutes) */
+    public const DOWNLOAD_TIMEOUT = 300;
+
+    // ========================================
     // TIME INTERVALS (for SQL queries)
     // ========================================
 

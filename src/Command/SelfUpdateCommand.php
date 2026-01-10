@@ -237,7 +237,7 @@ HELP
             'http' => [
                 'method' => 'GET',
                 'header' => $headers,
-                'timeout' => 30,
+                'timeout' => Constants::HTTP_REQUEST_TIMEOUT,
                 'ignore_errors' => true, // Get response body even on HTTP errors
             ],
         ]);
@@ -326,7 +326,7 @@ HELP
                     'User-Agent: ' . \KVS\CLI\Application::NAME,
                     'Accept: application/octet-stream',
                 ],
-                'timeout' => 300,
+                'timeout' => Constants::DOWNLOAD_TIMEOUT,
                 'follow_location' => true,
             ],
         ]);
@@ -527,7 +527,7 @@ HELP
             'http' => [
                 'method' => 'GET',
                 'header' => $headers,
-                'timeout' => 30,
+                'timeout' => Constants::HTTP_REQUEST_TIMEOUT,
                 'ignore_errors' => true,
             ],
         ]);
