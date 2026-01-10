@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace KVS\CLI\Tests;
 
 use KVS\CLI\Service\TempFileManager;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Tests for TempFileManager service
- */
+#[CoversClass(TempFileManager::class)]
 class TempFileManagerTest extends TestCase
 {
     protected function setUp(): void

@@ -71,11 +71,19 @@ class TestHelper
      * with valid database configuration.
      *
      * @param string $dir Directory where to create admin/include/setup_db.php
+     * @param array{host?: string, user?: string, password?: string, database?: string} $overrides Optional config overrides
      * @return void
      */
-    public static function createMockDbConfig(string $dir): void
+    public static function createMockDbConfig(string $dir, array $overrides = []): void
     {
-        $config = self::getDbConfig();
+        $defaults = self::getDbConfig();
+
+        $config = [
+            'host' => $overrides['host'] ?? $defaults['host'],
+            'user' => $overrides['user'] ?? $defaults['user'],
+            'pass' => $overrides['password'] ?? $defaults['pass'],
+            'database' => $overrides['database'] ?? $defaults['database'],
+        ];
 
         $includeDir = $dir . '/admin/include';
         if (!is_dir($includeDir)) {
