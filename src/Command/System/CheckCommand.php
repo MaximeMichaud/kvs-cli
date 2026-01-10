@@ -1036,7 +1036,7 @@ class CheckCommand extends BaseCommand
         try {
             $stmt = $db->query("
                 SELECT process_name, process_data, status_id
-                FROM ktvs_admin_processes
+                FROM {$this->table('admin_processes')}
                 WHERE process_name IN ('cron', 'cron_optimize', 'cron_conversion', 'cron_check_db')
             ");
             if ($stmt === false) {
