@@ -350,8 +350,8 @@ HELP
                 SELECT
                     COUNT(*) as total_comments,
                     COUNT(DISTINCT user_id) as unique_users,
-                    SUM(CASE WHEN object_type_id = 1 THEN 1 ELSE 0 END) as video_comments,
-                    SUM(CASE WHEN object_type_id = 2 THEN 1 ELSE 0 END) as album_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_VIDEO . " THEN 1 ELSE 0 END) as video_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_ALBUM . " THEN 1 ELSE 0 END) as album_comments,
                     MIN(added_date) as first_comment,
                     MAX(added_date) as last_comment
                 FROM {$this->table('comments')}
