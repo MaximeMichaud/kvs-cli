@@ -1,10 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace KVS\CLI\Tests;
 
 use KVS\CLI\Docker\DockerDetector;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
+#[CoversClass(DockerDetector::class)]
 class DockerDetectorTest extends TestCase
 {
     public function testSetKvsPathReturnsSelf(): void
