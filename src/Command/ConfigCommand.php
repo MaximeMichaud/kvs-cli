@@ -254,17 +254,7 @@ class ConfigCommand extends BaseCommand
         $rows = [];
         foreach ($keys as $configKey => $label) {
             if (isset($configs[$configKey])) {
-                $value = $configs[$configKey];
-
-                // Handle arrays
-                if (is_array($value)) {
-                    $encoded = json_encode($value);
-                    $value = $encoded !== false ? $encoded : '';
-                } elseif (is_scalar($value)) {
-                    $value = (string) $value;
-                } else {
-                    $value = '';
-                }
+                $value = $this->convertToString($configs[$configKey]) ?? '';
 
                 // Truncate long values
                 if (strlen($value) > Constants::CONFIG_TRUNCATE_LENGTH) {
@@ -467,15 +457,7 @@ class ConfigCommand extends BaseCommand
             // Try main config first (most common)
             $mainConfigs = $this->getMainConfigs();
             if (isset($mainConfigs[$key])) {
-                $value = $mainConfigs[$key];
-                if (is_array($value)) {
-                    $encoded = json_encode($value);
-                    return $encoded !== false ? $encoded : null;
-                }
-                if (is_scalar($value)) {
-                    return (string) $value;
-                }
-                return null;
+                return $this->convertToString($mainConfigs[$key], true);
             }
 
             // Try database config
@@ -488,14 +470,7 @@ class ConfigCommand extends BaseCommand
             $keyLower = strtolower($key);
             foreach ($mainConfigs as $configKey => $value) {
                 if (strtolower($configKey) === $keyLower) {
-                    if (is_array($value)) {
-                        $encoded = json_encode($value);
-                        return $encoded !== false ? $encoded : null;
-                    }
-                    if (is_scalar($value)) {
-                        return (string) $value;
-                    }
-                    return null;
+                    return $this->convertToString($value, true);
                 }
             }
 
@@ -516,27 +491,12 @@ class ConfigCommand extends BaseCommand
                 $configKeyLower = strtolower($configKey);
                 foreach ($configs as $k => $v) {
                     if (strtolower($k) === $configKeyLower) {
-                        if (is_array($v)) {
-                            $encoded = json_encode($v);
-                            return $encoded !== false ? $encoded : null;
-                        }
-                        if (is_scalar($v)) {
-                            return (string) $v;
-                        }
-                        return null;
+                        return $this->convertToString($v, true);
                     }
                 }
                 return null;
             }
-            $value = $configs[$configKey];
-            if (is_array($value)) {
-                $encoded = json_encode($value);
-                return $encoded !== false ? $encoded : null;
-            }
-            if (is_scalar($value)) {
-                return (string) $value;
-            }
-            return null;
+            return $this->convertToString($configs[$configKey], true);
         }
 
         return null;
@@ -703,6 +663,26 @@ class ConfigCommand extends BaseCommand
 
         // Return first 5 matches
         return array_slice(array_unique($matches), 0, 5);
+    }
+
+    /**
+     * Convert a mixed value to string representation
+     *
+     * @param bool $nullOnFailure If true, returns null when conversion fails; otherwise returns ''
+     */
+    private function convertToString(mixed $value, bool $nullOnFailure = false): ?string
+    {
+        if (is_array($value)) {
+            $encoded = json_encode($value);
+            if ($encoded !== false) {
+                return $encoded;
+            }
+            return $nullOnFailure ? null : '';
+        }
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+        return $nullOnFailure ? null : '';
     }
 
     private function showHelp(): int
