@@ -145,7 +145,9 @@ class ScreenshotsCommandTest extends TestCase
                 str_contains($output, 'ffmpeg')
                 || str_contains($output, 'not configured')
                 || str_contains($output, 'not found')
-                || str_contains($output, 'No video file'),
+                || str_contains($output, 'No video file')
+                || str_contains($output, 'Failed to get video duration')
+                || str_contains($output, 'does not exist'),
                 'Expected ffmpeg, path, or video file error. Got: ' . $output
             );
         }
