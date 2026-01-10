@@ -541,7 +541,7 @@ HELP
                     SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
                     AVG(effective_duration) as avg_duration
                 FROM {$this->table('background_tasks_history')}
-                WHERE end_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                WHERE end_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_HOURS . " HOUR)
             ");
 
             if ($stmt !== false) {
