@@ -180,6 +180,12 @@ final class Constants
     /** PHAR filename */
     public const PHAR_NAME = 'kvs.phar';
 
+    /** GitHub Actions artifact name for nightly builds */
+    public const GITHUB_ARTIFACT_NAME = 'kvs-cli-phar';
+
+    /** Nightly.link URL template for downloading artifacts */
+    public const NIGHTLY_LINK_URL = 'https://nightly.link/%s/actions/runs/%s/%s.zip';
+
     /** Default MySQL port */
     public const DEFAULT_MYSQL_PORT = 3306;
 

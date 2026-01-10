@@ -359,7 +359,7 @@ HELP
 
             $stmt = $db->prepare("
                 INSERT INTO {$this->table('users')} (username, email, pass, display_name, status_id, added_date, ip)
-                VALUES (:username, :email, :pass, :display_name, 2, NOW(), :ip)
+                VALUES (:username, :email, :pass, :display_name, " . StatusFormatter::USER_ACTIVE . ", NOW(), :ip)
             ");
 
             $stmt->execute([

@@ -409,10 +409,10 @@ HELP
         // Download ZIP from nightly.link (auto-cleanup via TempFileManager)
         $tempZip = TempFileManager::create('kvs-dev-', '.zip');
         $nightlyUrl = sprintf(
-            'https://nightly.link/%s/actions/runs/%s/%s.zip',
+            Constants::NIGHTLY_LINK_URL,
             Constants::GITHUB_REPO,
             $runId,
-            'kvs-cli-phar'
+            Constants::GITHUB_ARTIFACT_NAME
         );
 
         if (!$this->downloadFile($nightlyUrl, $tempZip, $io)) {
