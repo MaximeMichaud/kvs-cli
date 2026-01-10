@@ -153,9 +153,9 @@ class HttpBench
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'KVS-CLI-Benchmark/1.0',
-            // Don't download the body for timing - just measure TTFB
+            CURLOPT_USERAGENT => 'kvs-cli/' . (defined('KVS_CLI_VERSION') ? KVS_CLI_VERSION : '1.0'),
             CURLOPT_HEADER => true,
+            // CURLOPT_NOBODY must be false to measure full response time including body transfer
             CURLOPT_NOBODY => false,
         ];
 

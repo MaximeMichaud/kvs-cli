@@ -104,7 +104,7 @@ class CheckCommand extends BaseCommand
                     'errors' => $this->errors,
                     'warnings' => $this->warnings,
                 ],
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            ], Constants::JSON_FLAGS);
             if ($json !== false) {
                 $output->writeln($json);
             }

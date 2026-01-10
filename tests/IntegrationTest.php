@@ -6,6 +6,10 @@ use PHPUnit\Framework\TestCase;
 use KVS\CLI\Application;
 use Symfony\Component\Console\Tester\ApplicationTester;
 
+/**
+ * @group integration
+ * @group slow
+ */
 class IntegrationTest extends TestCase
 {
     private string $tempDir;
