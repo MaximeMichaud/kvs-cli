@@ -217,4 +217,28 @@ PHP;
         }
         rmdir($dir);
     }
+
+    /**
+     * Get the table prefix for KVS tables
+     *
+     * Reads from KVS_TEST_TABLE_PREFIX environment variable,
+     * defaults to 'ktvs_' which is the standard KVS prefix.
+     *
+     * @return string Table prefix (e.g., 'ktvs_')
+     */
+    public static function getTablePrefix(): string
+    {
+        return getenv('KVS_TEST_TABLE_PREFIX') ?: 'ktvs_';
+    }
+
+    /**
+     * Get prefixed table name
+     *
+     * @param string $table Base table name (without prefix)
+     * @return string Full table name with prefix
+     */
+    public static function table(string $table): string
+    {
+        return self::getTablePrefix() . $table;
+    }
 }

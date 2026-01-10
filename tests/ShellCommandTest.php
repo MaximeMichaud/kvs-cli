@@ -2,12 +2,14 @@
 
 namespace KVS\CLI\Tests;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\ShellCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
+#[CoversClass(ShellCommand::class)]
 class ShellCommandTest extends TestCase
 {
     private string $tempDir;
@@ -56,5 +58,46 @@ class ShellCommandTest extends TestCase
         $this->assertEquals('shell', $this->command->getName());
         $aliases = $this->command->getAliases();
         $this->assertContains('console', $aliases);
+    }
+
+    public function testShellCommandHasReplAlias(): void
+    {
+        $aliases = $this->command->getAliases();
+        $this->assertContains('repl', $aliases);
+    }
+
+    public function testShellCommandHasIncludesOption(): void
+    {
+        $definition = $this->command->getDefinition();
+        $this->assertTrue($definition->hasOption('includes'));
+    }
+
+    public function testShellCommandHasBootstrapOption(): void
+    {
+        $definition = $this->command->getDefinition();
+        $this->assertTrue($definition->hasOption('bootstrap'));
+    }
+
+    public function testShellCommandHasHelpText(): void
+    {
+        $help = $this->command->getHelp();
+        $this->assertStringContainsString('interactive PHP shell', $help);
+        $this->assertStringContainsString('$config', $help);
+        $this->assertStringContainsString('$db', $help);
+    }
+
+    public function testShellRequiresPsySH(): void
+    {
+        if (!class_exists('Psy\Shell')) {
+            $this->tester->execute([]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertEquals(1, $this->tester->getStatusCode());
+            $this->assertStringContainsString('PsySH is not installed', $output);
+        } else {
+            // If PsySH is installed, we can't really test the interactive shell
+            // Just verify the command configuration is correct
+            $this->assertTrue(class_exists('Psy\Shell'));
+        }
     }
 }

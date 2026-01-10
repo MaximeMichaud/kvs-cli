@@ -2,12 +2,14 @@
 
 namespace KVS\CLI\Tests;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\QueueCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
+#[CoversClass(QueueCommand::class)]
 class QueueCommandTest extends TestCase
 {
     private Configuration $config;
@@ -41,9 +43,10 @@ class QueueCommandTest extends TestCase
 
         // Ensure background_tasks table exists
         try {
-            $this->db->query("SELECT 1 FROM ktvs_background_tasks LIMIT 1");
+            $table = TestHelper::table('background_tasks');
+            $this->db->query("SELECT 1 FROM {$table} LIMIT 1");
         } catch (\PDOException $e) {
-            $this->markTestSkipped('ktvs_background_tasks table does not exist');
+            $this->markTestSkipped('background_tasks table does not exist');
         }
     }
 
@@ -134,9 +137,10 @@ class QueueCommandTest extends TestCase
     {
         // Ensure history table exists
         try {
-            $this->db->query("SELECT 1 FROM ktvs_background_tasks_history LIMIT 1");
+            $table = TestHelper::table('background_tasks_history');
+            $this->db->query("SELECT 1 FROM {$table} LIMIT 1");
         } catch (\PDOException $e) {
-            $this->markTestSkipped('ktvs_background_tasks_history table does not exist');
+            $this->markTestSkipped('background_tasks_history table does not exist');
         }
 
         $this->tester->execute([
@@ -179,12 +183,14 @@ class QueueCommandTest extends TestCase
     public function testQueueShowWithTask(): void
     {
         // Get a task ID if any exist
-        $stmt = $this->db->query("SELECT task_id FROM ktvs_background_tasks LIMIT 1");
+        $table = TestHelper::table('background_tasks');
+        $stmt = $this->db->query("SELECT task_id FROM {$table} LIMIT 1");
         $taskId = $stmt->fetchColumn();
 
         if (!$taskId) {
             // Try history table
-            $stmt = $this->db->query("SELECT task_id FROM ktvs_background_tasks_history LIMIT 1");
+            $historyTable = TestHelper::table('background_tasks_history');
+            $stmt = $this->db->query("SELECT task_id FROM {$historyTable} LIMIT 1");
             $taskId = $stmt->fetchColumn();
         }
 
@@ -254,9 +260,10 @@ class QueueCommandTest extends TestCase
     public function testQueueHistoryWithStatusFilter(): void
     {
         try {
-            $this->db->query("SELECT 1 FROM ktvs_background_tasks_history LIMIT 1");
+            $table = TestHelper::table('background_tasks_history');
+            $this->db->query("SELECT 1 FROM {$table} LIMIT 1");
         } catch (\PDOException $e) {
-            $this->markTestSkipped('ktvs_background_tasks_history table does not exist');
+            $this->markTestSkipped('background_tasks_history table does not exist');
         }
 
         $this->tester->execute([
