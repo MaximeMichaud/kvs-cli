@@ -27,6 +27,11 @@
             "KVS\\CLI\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "KVS\\CLI\\Tests\\": "tests/"
+        }
+    },
     "bin": [
         "bin/kvs"
     ],
