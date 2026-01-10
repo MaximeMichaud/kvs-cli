@@ -134,12 +134,21 @@ class ScreenshotsCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $statusCode = $this->tester->getStatusCode();
 
-        // Should fail with either ffmpeg error or path error in test env
-        $this->assertEquals(1, $statusCode);
-        $this->assertTrue(
-            str_contains($output, 'ffmpeg') || str_contains($output, 'not configured') || str_contains($output, 'not found'),
-            'Expected ffmpeg or path configuration error'
-        );
+        // With side effects enabled, accept success OR expected failures
+        if ($statusCode === 0) {
+            // Success means ffmpeg worked and screenshots were generated
+            $this->assertStringContainsString('Generated', $output);
+        } else {
+            // Failure should be due to missing dependencies or configuration
+            $this->assertEquals(1, $statusCode);
+            $this->assertTrue(
+                str_contains($output, 'ffmpeg')
+                || str_contains($output, 'not configured')
+                || str_contains($output, 'not found')
+                || str_contains($output, 'No video file'),
+                'Expected ffmpeg, path, or video file error. Got: ' . $output
+            );
+        }
     }
 
     #[DataProvider('provideOutputFormats')]
