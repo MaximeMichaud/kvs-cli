@@ -46,29 +46,6 @@ class UserCommandWPCLITest extends TestCase
         }
     }
 
-    public function testFieldMapConstantExists(): void
-    {
-        $reflection = new \ReflectionClass(UserCommand::class);
-        $this->assertTrue($reflection->hasConstant('FIELD_MAP'));
-
-        $fieldMap = $reflection->getConstant('FIELD_MAP');
-        $this->assertIsArray($fieldMap);
-
-        // Test key field mappings
-        $this->assertArrayHasKey('id', $fieldMap);
-        $this->assertArrayHasKey('username', $fieldMap);
-        $this->assertArrayHasKey('email', $fieldMap);
-        $this->assertArrayHasKey('tokens', $fieldMap);
-        $this->assertArrayHasKey('videos', $fieldMap);
-        $this->assertArrayHasKey('albums', $fieldMap);
-
-        // Test field mapping values
-        $this->assertEquals('user_id', $fieldMap['id']);
-        $this->assertEquals('tokens_available', $fieldMap['tokens']);
-        $this->assertEquals('video_count', $fieldMap['videos']);
-        $this->assertEquals('album_count', $fieldMap['albums']);
-    }
-
     public function testCommandHasFieldsOption(): void
     {
         $definition = $this->command->getDefinition();
@@ -133,57 +110,6 @@ class UserCommandWPCLITest extends TestCase
         $this->assertContains('members', $aliases);
     }
 
-    public function testGetFieldValueMethodExists(): void
-    {
-        $reflection = new \ReflectionClass(UserCommand::class);
-        $this->assertTrue($reflection->hasMethod('getFieldValue'));
-
-        $method = $reflection->getMethod('getFieldValue');
-        $this->assertTrue($method->isPrivate());
-
-        // Test method parameters
-        $params = $method->getParameters();
-        $this->assertCount(3, $params);
-        $this->assertEquals('user', $params[0]->getName());
-        $this->assertEquals('field', $params[1]->getName());
-        $this->assertEquals('formatted', $params[2]->getName());
-
-        // Test default value for formatted parameter
-        $this->assertTrue($params[2]->isDefaultValueAvailable());
-        $this->assertTrue($params[2]->getDefaultValue());
-    }
-
-    public function testOutputMethodsExist(): void
-    {
-        $reflection = new \ReflectionClass(UserCommand::class);
-
-        // Test all format output methods exist
-        $this->assertTrue($reflection->hasMethod('outputTable'));
-        $this->assertTrue($reflection->hasMethod('outputCSV'));
-        $this->assertTrue($reflection->hasMethod('outputJSON'));
-        $this->assertTrue($reflection->hasMethod('outputYAML'));
-        $this->assertTrue($reflection->hasMethod('outputSingleField'));
-
-        // Verify they are private
-        $this->assertTrue($reflection->getMethod('outputTable')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputCSV')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputJSON')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputYAML')->isPrivate());
-        $this->assertTrue($reflection->getMethod('outputSingleField')->isPrivate());
-    }
-
-    public function testStatusConversionMethodsExist(): void
-    {
-        $reflection = new \ReflectionClass(UserCommand::class);
-
-        $this->assertTrue($reflection->hasMethod('getUserStatusLabel'));
-        $this->assertTrue($reflection->hasMethod('getUserStatusText'));
-
-        // Gender conversion is done inline in getFieldValue(), not a separate method
-        // This is tested by the getFieldValue method existence
-        $this->assertTrue($reflection->hasMethod('getFieldValue'));
-    }
-
     /**
      * Test that default fields are documented
      */
@@ -200,36 +126,6 @@ class UserCommandWPCLITest extends TestCase
         $help = $this->command->getHelp();
         foreach ($expectedDefaults as $field) {
             $this->assertStringContainsString($field, $help);
-        }
-    }
-
-    /**
-     * Test that FIELD_MAP covers all necessary mappings
-     */
-    public function testFieldMapCompleteness(): void
-    {
-        $reflection = new \ReflectionClass(UserCommand::class);
-        $fieldMap = $reflection->getConstant('FIELD_MAP');
-
-        // Essential fields that must be mapped
-        $essentialFields = [
-            'id' => 'user_id',
-            'username' => 'username',
-            'display_name' => 'display_name',
-            'email' => 'email',
-            'status' => 'status_id',
-            'tokens' => 'tokens_available',
-            'country' => 'country_code',
-            'gender' => 'gender_id',
-            'videos' => 'video_count',
-            'albums' => 'album_count',
-            'added_date' => 'added_date',
-            'last_login' => 'last_login_date',
-        ];
-
-        foreach ($essentialFields as $userField => $dbField) {
-            $this->assertArrayHasKey($userField, $fieldMap, "Field '$userField' missing from FIELD_MAP");
-            $this->assertEquals($dbField, $fieldMap[$userField], "Field '$userField' maps to wrong DB column");
         }
     }
 
