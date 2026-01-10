@@ -70,7 +70,7 @@ class FormatsCommandTest extends TestCase
     public function testListFormatsWithExistingVideo(): void
     {
         // Get a video ID that exists
-        $table = TestHelper::table('videos');
+        $table = $this->config->getTablePrefix() . 'videos';
         $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
         $videoId = $stmt->fetchColumn();
 
@@ -112,7 +112,7 @@ class FormatsCommandTest extends TestCase
     {
         // Check if formats_videos table exists
         try {
-            $table = TestHelper::table('formats_videos');
+            $table = $this->config->getTablePrefix() . 'formats_videos';
             $stmt = $this->db->query("SHOW TABLES LIKE '{$table}'");
             $hasTable = $stmt->fetch() !== false;
         } catch (\PDOException $e) {
@@ -130,7 +130,7 @@ class FormatsCommandTest extends TestCase
     public function testListFormatsOutputFormats(string $format): void
     {
         // Get a video ID that exists
-        $table = TestHelper::table('videos');
+        $table = $this->config->getTablePrefix() . 'videos';
         $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
         $videoId = $stmt->fetchColumn();
 

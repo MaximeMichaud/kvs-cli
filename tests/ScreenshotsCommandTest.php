@@ -70,7 +70,7 @@ class ScreenshotsCommandTest extends TestCase
     public function testListScreenshotsWithExistingVideo(): void
     {
         // Get a video ID that exists
-        $table = TestHelper::table('videos');
+        $table = $this->config->getTablePrefix() . 'videos';
         $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
         $videoId = $stmt->fetchColumn();
 
@@ -106,10 +106,19 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('Video ID is required', $output);
     }
 
+    /**
+     * @group integration
+     * @group slow
+     */
     public function testGenerateScreenshotsChecksFfmpeg(): void
     {
+        // Skip unless explicitly allowed - this test can write to filesystem
+        if (!getenv('KVS_TEST_ALLOW_SIDE_EFFECTS')) {
+            $this->markTestSkipped('Skipped: set KVS_TEST_ALLOW_SIDE_EFFECTS=1 to run');
+        }
+
         // Get a video ID that exists
-        $table = TestHelper::table('videos');
+        $table = $this->config->getTablePrefix() . 'videos';
         $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
         $videoId = $stmt->fetchColumn();
 
@@ -122,19 +131,22 @@ class ScreenshotsCommandTest extends TestCase
             'video_id' => $videoId
         ]);
 
-        // Will fail if ffmpeg not installed or if paths not configured
         $output = $this->tester->getDisplay();
         $statusCode = $this->tester->getStatusCode();
 
-        // Either ffmpeg error or path error is expected in test env
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        // Should fail with either ffmpeg error or path error in test env
+        $this->assertEquals(1, $statusCode);
+        $this->assertTrue(
+            str_contains($output, 'ffmpeg') || str_contains($output, 'not configured') || str_contains($output, 'not found'),
+            'Expected ffmpeg or path configuration error'
+        );
     }
 
     #[DataProvider('provideOutputFormats')]
     public function testListScreenshotsOutputFormats(string $format): void
     {
         // Get a video ID that exists
-        $table = TestHelper::table('videos');
+        $table = $this->config->getTablePrefix() . 'videos';
         $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
         $videoId = $stmt->fetchColumn();
 

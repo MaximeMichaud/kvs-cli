@@ -43,7 +43,7 @@ class QueueCommandTest extends TestCase
 
         // Ensure background_tasks table exists
         try {
-            $table = TestHelper::table('background_tasks');
+            $table = $this->config->getTablePrefix() . 'background_tasks';
             $this->db->query("SELECT 1 FROM {$table} LIMIT 1");
         } catch (\PDOException $e) {
             $this->markTestSkipped('background_tasks table does not exist');
@@ -137,7 +137,7 @@ class QueueCommandTest extends TestCase
     {
         // Ensure history table exists
         try {
-            $table = TestHelper::table('background_tasks_history');
+            $table = $this->config->getTablePrefix() . 'background_tasks_history';
             $this->db->query("SELECT 1 FROM {$table} LIMIT 1");
         } catch (\PDOException $e) {
             $this->markTestSkipped('background_tasks_history table does not exist');
@@ -183,14 +183,13 @@ class QueueCommandTest extends TestCase
     public function testQueueShowWithTask(): void
     {
         // Get a task ID if any exist
-        $table = TestHelper::table('background_tasks');
-        $stmt = $this->db->query("SELECT task_id FROM {$table} LIMIT 1");
+        $prefix = $this->config->getTablePrefix();
+        $stmt = $this->db->query("SELECT task_id FROM {$prefix}background_tasks LIMIT 1");
         $taskId = $stmt->fetchColumn();
 
         if (!$taskId) {
             // Try history table
-            $historyTable = TestHelper::table('background_tasks_history');
-            $stmt = $this->db->query("SELECT task_id FROM {$historyTable} LIMIT 1");
+            $stmt = $this->db->query("SELECT task_id FROM {$prefix}background_tasks_history LIMIT 1");
             $taskId = $stmt->fetchColumn();
         }
 
@@ -260,7 +259,7 @@ class QueueCommandTest extends TestCase
     public function testQueueHistoryWithStatusFilter(): void
     {
         try {
-            $table = TestHelper::table('background_tasks_history');
+            $table = $this->config->getTablePrefix() . 'background_tasks_history';
             $this->db->query("SELECT 1 FROM {$table} LIMIT 1");
         } catch (\PDOException $e) {
             $this->markTestSkipped('background_tasks_history table does not exist');

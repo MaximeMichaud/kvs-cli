@@ -68,7 +68,7 @@ class CommentCommandTest extends TestCase
     public function testListCommentsApproved(): void
     {
         // Check if is_approved column exists
-        $table = TestHelper::table('comments');
+        $table = $this->config->getTablePrefix() . 'comments';
         $stmt = $this->db->query("SHOW COLUMNS FROM {$table} LIKE 'is_approved'");
         if ($stmt->rowCount() === 0) {
             $this->markTestSkipped('is_approved column does not exist in this KVS version');
@@ -85,7 +85,7 @@ class CommentCommandTest extends TestCase
     public function testListCommentsPending(): void
     {
         // Check if is_approved column exists
-        $table = TestHelper::table('comments');
+        $table = $this->config->getTablePrefix() . 'comments';
         $stmt = $this->db->query("SHOW COLUMNS FROM {$table} LIKE 'is_approved'");
         if ($stmt->rowCount() === 0) {
             $this->markTestSkipped('is_approved column does not exist in this KVS version');
@@ -112,7 +112,7 @@ class CommentCommandTest extends TestCase
     public function testListCommentsFilterByVideo(): void
     {
         // Get a video ID that has comments
-        $table = TestHelper::table('comments');
+        $table = $this->config->getTablePrefix() . 'comments';
         $stmt = $this->db->query("SELECT object_id FROM {$table} WHERE object_type_id = 1 LIMIT 1");
         $videoId = $stmt->fetchColumn();
 
@@ -131,7 +131,7 @@ class CommentCommandTest extends TestCase
     public function testListCommentsFilterByUser(): void
     {
         // Get a user ID that has comments
-        $table = TestHelper::table('comments');
+        $table = $this->config->getTablePrefix() . 'comments';
         $stmt = $this->db->query("SELECT user_id FROM {$table} WHERE user_id IS NOT NULL LIMIT 1");
         $userId = $stmt->fetchColumn();
 
@@ -182,7 +182,7 @@ class CommentCommandTest extends TestCase
     public function testShowComment(): void
     {
         // Get a comment ID
-        $table = TestHelper::table('comments');
+        $table = $this->config->getTablePrefix() . 'comments';
         $stmt = $this->db->query("SELECT comment_id FROM {$table} LIMIT 1");
         $commentId = $stmt->fetchColumn();
 

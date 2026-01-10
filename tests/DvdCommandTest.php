@@ -116,7 +116,7 @@ class DvdCommandTest extends TestCase
     public function testShowDvd(): void
     {
         // Get a DVD ID
-        $table = TestHelper::table('dvds');
+        $table = $this->config->getTablePrefix() . 'dvds';
         $stmt = $this->db->query("SELECT dvd_id FROM {$table} LIMIT 1");
         $dvdId = $stmt->fetchColumn();
 

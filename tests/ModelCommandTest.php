@@ -37,10 +37,9 @@ class ModelCommandTest extends TestCase
         try {
             $this->db = TestHelper::getPDO();
             // Check if required tables exist
-            $modelsTable = TestHelper::table('models');
-            $modelsAlbumsTable = TestHelper::table('models_albums');
-            $this->db->query("SELECT 1 FROM {$modelsTable} LIMIT 1");
-            $this->db->query("SELECT 1 FROM {$modelsAlbumsTable} LIMIT 1");
+            $prefix = $this->config->getTablePrefix();
+            $this->db->query("SELECT 1 FROM {$prefix}models LIMIT 1");
+            $this->db->query("SELECT 1 FROM {$prefix}models_albums LIMIT 1");
         } catch (\PDOException $e) {
             $this->markTestSkipped('Cannot connect to test database or required tables missing: ' . $e->getMessage());
         }
@@ -111,7 +110,7 @@ class ModelCommandTest extends TestCase
     public function testShowModel(): void
     {
         // Get a model ID
-        $table = TestHelper::table('models');
+        $table = $this->config->getTablePrefix() . 'models';
         $stmt = $this->db->query("SELECT model_id FROM {$table} LIMIT 1");
         $modelId = $stmt->fetchColumn();
 
