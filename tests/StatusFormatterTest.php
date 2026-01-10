@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Tests;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Output\StatusFormatter;
 
@@ -9,6 +10,7 @@ use KVS\CLI\Output\StatusFormatter;
  * Unit tests for StatusFormatter class
  * Tests all status code mappings for videos, users, albums, categories, and tags
  */
+#[CoversClass(StatusFormatter::class)]
 class StatusFormatterTest extends TestCase
 {
     /**
@@ -223,5 +225,95 @@ class StatusFormatterTest extends TestCase
 
         $this->assertEquals('int', $params[0]->getType()->getName());
         $this->assertEquals('bool', $params[1]->getType()->getName());
+    }
+
+    /**
+     * Test model status formatting
+     */
+    public function testModelStatus(): void
+    {
+        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::model(0));
+        $this->assertEquals('<fg=green>Active</>', StatusFormatter::model(1));
+        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::model(999));
+
+        // Without color
+        $this->assertEquals('Disabled', StatusFormatter::model(0, false));
+        $this->assertEquals('Active', StatusFormatter::model(1, false));
+    }
+
+    /**
+     * Test DVD status formatting
+     */
+    public function testDvdStatus(): void
+    {
+        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::dvd(0));
+        $this->assertEquals('<fg=green>Active</>', StatusFormatter::dvd(1));
+        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::dvd(999));
+
+        // Without color
+        $this->assertEquals('Disabled', StatusFormatter::dvd(0, false));
+        $this->assertEquals('Active', StatusFormatter::dvd(1, false));
+    }
+
+    /**
+     * Test video format status formatting
+     */
+    public function testVideoFormatStatus(): void
+    {
+        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::videoFormat(0));
+        $this->assertEquals('<fg=green>Active</>', StatusFormatter::videoFormat(1));
+        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::videoFormat(2));
+        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::videoFormat(999));
+
+        // Without color
+        $this->assertEquals('Disabled', StatusFormatter::videoFormat(0, false));
+        $this->assertEquals('Active', StatusFormatter::videoFormat(1, false));
+        $this->assertEquals('Processing', StatusFormatter::videoFormat(2, false));
+    }
+
+    /**
+     * Test task status formatting
+     */
+    public function testTaskStatus(): void
+    {
+        $this->assertEquals('<fg=yellow>Pending</>', StatusFormatter::task(0));
+        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::task(1));
+        $this->assertEquals('<fg=red>Failed</>', StatusFormatter::task(2));
+        $this->assertEquals('<fg=green>Completed</>', StatusFormatter::task(3));
+        $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::task(4));
+        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::task(999));
+
+        // Without color
+        $this->assertEquals('Pending', StatusFormatter::task(0, false));
+        $this->assertEquals('Processing', StatusFormatter::task(1, false));
+        $this->assertEquals('Failed', StatusFormatter::task(2, false));
+        $this->assertEquals('Completed', StatusFormatter::task(3, false));
+        $this->assertEquals('Deleted', StatusFormatter::task(4, false));
+    }
+
+    /**
+     * Test status constants are defined correctly
+     */
+    public function testStatusConstants(): void
+    {
+        // Video constants
+        $this->assertEquals(0, StatusFormatter::VIDEO_DISABLED);
+        $this->assertEquals(1, StatusFormatter::VIDEO_ACTIVE);
+        $this->assertEquals(2, StatusFormatter::VIDEO_ERROR);
+
+        // User constants
+        $this->assertEquals(0, StatusFormatter::USER_DISABLED);
+        $this->assertEquals(1, StatusFormatter::USER_NOT_CONFIRMED);
+        $this->assertEquals(2, StatusFormatter::USER_ACTIVE);
+        $this->assertEquals(3, StatusFormatter::USER_PREMIUM);
+        $this->assertEquals(4, StatusFormatter::USER_VIP);
+        $this->assertEquals(6, StatusFormatter::USER_WEBMASTER);
+
+        // Task constants
+        $this->assertEquals(0, StatusFormatter::TASK_PENDING);
+        $this->assertEquals(1, StatusFormatter::TASK_PROCESSING);
+        $this->assertEquals(2, StatusFormatter::TASK_FAILED);
+        $this->assertEquals(3, StatusFormatter::TASK_COMPLETED);
+        $this->assertEquals(4, StatusFormatter::TASK_DELETED);
     }
 }
