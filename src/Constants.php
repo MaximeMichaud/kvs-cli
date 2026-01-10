@@ -19,6 +19,15 @@ final class Constants
     /** Default character limit for truncating text in tables */
     public const DEFAULT_TRUNCATE_LENGTH = 50;
 
+    /** Character limit for config section values (longer for readability) */
+    public const CONFIG_TRUNCATE_LENGTH = 80;
+
+    /** Character limit for comment text display */
+    public const COMMENT_TRUNCATE_LENGTH = 100;
+
+    /** Character limit for CPU model names in benchmark output */
+    public const CPU_MODEL_TRUNCATE_LENGTH = 40;
+
     /** Symfony Table style used throughout the app */
     public const TABLE_STYLE = 'box';
 

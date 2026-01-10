@@ -589,8 +589,8 @@ class BenchmarkCommand extends BaseCommand
             $model = is_string($metrics['cpu_model']) ? $metrics['cpu_model'] : 'Unknown';
             $cores = is_int($metrics['cpu_cores']) ? $metrics['cpu_cores'] : 1;
             // Truncate long CPU names
-            if (strlen($model) > 40) {
-                $model = substr($model, 0, 37) . '...';
+            if (strlen($model) > Constants::CPU_MODEL_TRUNCATE_LENGTH) {
+                $model = substr($model, 0, Constants::CPU_MODEL_TRUNCATE_LENGTH - 3) . '...';
             }
             $rows[] = ['CPU', sprintf('%s (%d cores)', $model, $cores)];
         }

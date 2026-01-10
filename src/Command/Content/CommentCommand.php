@@ -315,7 +315,7 @@ HELP
                     ['ID', (string) $comment['comment_id']],
                     ['User', $username],
                     ['Type', (string) $comment['object_type']],
-                    ['Comment', truncate($commentText, 100)],
+                    ['Comment', truncate($commentText, Constants::COMMENT_TRUNCATE_LENGTH)],
                 ]
             );
 

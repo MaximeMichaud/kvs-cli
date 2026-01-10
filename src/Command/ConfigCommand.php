@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -266,8 +267,8 @@ class ConfigCommand extends BaseCommand
                 }
 
                 // Truncate long values
-                if (strlen($value) > 80) {
-                    $value = truncate($value, 80);
+                if (strlen($value) > Constants::CONFIG_TRUNCATE_LENGTH) {
+                    $value = truncate($value, Constants::CONFIG_TRUNCATE_LENGTH);
                 }
 
                 // Check for protected values
@@ -302,11 +303,11 @@ class ConfigCommand extends BaseCommand
             $url = $data['url'] ?? '';
 
             // Truncate long values
-            if (strlen($path) > 50) {
-                $path = truncate($path, 50);
+            if (strlen($path) > Constants::DEFAULT_TRUNCATE_LENGTH) {
+                $path = truncate($path, Constants::DEFAULT_TRUNCATE_LENGTH);
             }
-            if (strlen($url) > 50) {
-                $url = truncate($url, 50);
+            if (strlen($url) > Constants::DEFAULT_TRUNCATE_LENGTH) {
+                $url = truncate($url, Constants::DEFAULT_TRUNCATE_LENGTH);
             }
 
             $rows[] = [$label, $path, $url];

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Dev;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -193,7 +194,7 @@ class DebugCommand extends BaseCommand
         $rows = [];
         foreach ($envVars as $key => $value) {
             if (is_string($value) && $value !== '') {
-                $rows[] = [$key, truncate($value, 60)];
+                $rows[] = [$key, truncate($value, Constants::CONFIG_TRUNCATE_LENGTH)];
             }
         }
 
