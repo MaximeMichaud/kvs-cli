@@ -6,6 +6,7 @@ use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
+use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -142,7 +143,7 @@ HELP
             foreach ($categories as $cat) {
                 $prefix = isset($cat['parent_id']) ? '  └─ ' : '';
                 $count = " ({$cat['video_count']} videos)";
-                $status = (int) $cat['status_id'] === 1 ? '' : ' <fg=yellow>[Inactive]</>';
+                $status = (int) $cat['status_id'] === StatusFormatter::CATEGORY_ACTIVE ? '' : ' <fg=yellow>[Inactive]</>';
                 $this->io()->text($prefix . $cat['title'] . $count . $status);
             }
         } catch (\Exception $e) {
@@ -196,7 +197,7 @@ HELP
                 ['ID', (string) $category['category_id']],
                 ['Title', $categoryTitle],
                 ['Parent ID', $parentIdStr],
-                ['Status', (int) $category['status_id'] === 1 ? 'Active' : 'Inactive'],
+                ['Status', StatusFormatter::category((int) $category['status_id'])],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
                 ['Added', $addedDateStr],

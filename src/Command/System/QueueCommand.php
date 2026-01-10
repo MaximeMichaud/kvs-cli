@@ -509,7 +509,7 @@ HELP
             $stmt = $db->query("
                 SELECT error_code, COUNT(*) as count
                 FROM {$this->table('background_tasks')}
-                WHERE status_id = 2 AND error_code > 0
+                WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND error_code > 0
                 GROUP BY error_code
                 ORDER BY count DESC
             ");
@@ -537,8 +537,8 @@ HELP
             $stmt = $db->query("
                 SELECT
                     COUNT(*) as total,
-                    SUM(CASE WHEN status_id = 3 THEN 1 ELSE 0 END) as completed,
-                    SUM(CASE WHEN status_id = 4 THEN 1 ELSE 0 END) as deleted,
+                    SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
+                    SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
                     AVG(effective_duration) as avg_duration
                 FROM {$this->table('background_tasks_history')}
                 WHERE end_date >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
@@ -634,7 +634,7 @@ HELP
                 $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
 
                 $task['id'] = $task['task_id'];
-                $task['status'] = $statusId === 3 ? 'Completed' : 'Deleted';
+                $task['status'] = $statusId === StatusFormatter::TASK_COMPLETED ? 'Completed' : 'Deleted';
                 $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
                 $task['content_id'] = $videoId > 0
                     ? "Video #{$videoId}"
@@ -650,7 +650,7 @@ HELP
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];
                 foreach ($tasks as $task) {
-                    $statusColor = $task['status_id'] === 3 ? 'green' : 'yellow';
+                    $statusColor = $task['status_id'] === StatusFormatter::TASK_COMPLETED ? 'green' : 'yellow';
                     $endDate = $task['end_date'] ?? '';
                     $timestamp = $endDate !== '' ? strtotime($endDate) : false;
                     $endDateStr = $timestamp !== false ? date('Y-m-d H:i', $timestamp) : '-';

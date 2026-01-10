@@ -51,6 +51,7 @@ class StatusFormatter
     public const TASK_PROCESSING = 1;
     public const TASK_FAILED = 2;
     public const TASK_COMPLETED = 3;
+    public const TASK_DELETED = 4;
 
     /**
      * Get formatted status label for videos
@@ -208,6 +209,7 @@ class StatusFormatter
             self::TASK_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
             self::TASK_FAILED => ['text' => 'Failed', 'color' => 'red'],
             self::TASK_COMPLETED => ['text' => 'Completed', 'color' => 'green'],
+            self::TASK_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
         ];
 
         return self::format($statusId, $labels, $withColor);
