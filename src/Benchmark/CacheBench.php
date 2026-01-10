@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Benchmark;
 
+use KVS\CLI\Constants;
 use Memcached;
 
 /**
@@ -34,7 +35,7 @@ class CacheBench
         $this->iterations = $iterations;
         $this->config = [
             'host' => $config['host'] ?? '127.0.0.1',
-            'port' => $config['port'] ?? 11211,
+            'port' => $config['port'] ?? Constants::DEFAULT_MEMCACHE_PORT,
         ];
     }
 

@@ -477,20 +477,20 @@ HELP
             ];
             $this->renderTable(['Status', 'Count'], $rows);
 
-            // Type breakdown (top 10)
+            // Type breakdown (top N)
             $stmt = $db->query("
                 SELECT type_id, COUNT(*) as count
                 FROM {$this->table('background_tasks')}
                 GROUP BY type_id
                 ORDER BY count DESC
-                LIMIT 10
+                LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
 
             if ($stmt !== false) {
                 /** @var list<array<string, mixed>> $types */
                 $types = $stmt->fetchAll();
                 if ($types !== []) {
-                    $this->io()->section('Tasks by Type (Top 10)');
+                    $this->io()->section('Tasks by Type (Top ' . Constants::TOP_QUERY_LIMIT . ')');
                     /** @var list<list<string|int|null>> $rows */
                     $rows = [];
                     foreach ($types as $type) {

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -23,7 +24,7 @@ class ModelCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Model ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
-            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', 20)
+            ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
@@ -115,7 +116,7 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $stmt->bindValue('limit', $this->getIntOptionOrDefault($input, 'limit', 20), \PDO::PARAM_INT);
+            $stmt->bindValue('limit', $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT), \PDO::PARAM_INT);
             $stmt->execute();
 
             $models = $stmt->fetchAll();

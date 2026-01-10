@@ -507,7 +507,8 @@ HELP
     private function getLatestWorkflowRunId(SymfonyStyle $io): ?string
     {
         $url = sprintf(
-            'https://api.github.com/repos/%s/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=1',
+            '%s/repos/%s/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=1',
+            Constants::GITHUB_API_URL,
             Constants::GITHUB_REPO
         );
 

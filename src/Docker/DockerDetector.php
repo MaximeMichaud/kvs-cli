@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Docker;
 
+use KVS\CLI\Constants;
+
 /**
  * Auto-detect KVS Docker containers with multi-site support.
  *
@@ -388,7 +390,7 @@ class DockerDetector
 
         // Try Memcached container
         if ($this->isRunning('memcached')) {
-            $statsResult = $this->exec('memcached', "sh -c 'echo stats | nc localhost 11211' 2>/dev/null");
+            $statsResult = $this->exec('memcached', "sh -c 'echo stats | nc localhost " . Constants::DEFAULT_MEMCACHE_PORT . "' 2>/dev/null");
             if ($statsResult !== null && str_contains($statsResult, 'STAT')) {
                 $result['available'] = true;
                 $result['type'] = 'Memcached';
@@ -400,7 +402,7 @@ class DockerDetector
             }
 
             // Fallback: check via PHP container if nc not available
-            $memoryMb = $this->getCacheMemoryViaPhp('memcached', 11211);
+            $memoryMb = $this->getCacheMemoryViaPhp('memcached', Constants::DEFAULT_MEMCACHE_PORT);
             if ($memoryMb !== null) {
                 $result['available'] = true;
                 $result['type'] = 'Memcached';

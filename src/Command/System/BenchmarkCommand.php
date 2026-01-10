@@ -7,6 +7,7 @@ namespace KVS\CLI\Command\System;
 use KVS\CLI\Benchmark\BenchmarkResult;
 use KVS\CLI\Benchmark\BenchmarkRunner;
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -77,7 +78,7 @@ class BenchmarkCommand extends BaseCommand
                 null,
                 InputOption::VALUE_REQUIRED,
                 'Memcached server port',
-                '11211'
+                (string) Constants::DEFAULT_MEMCACHE_PORT
             )
             ->addOption(
                 'tag',
@@ -150,7 +151,7 @@ class BenchmarkCommand extends BaseCommand
         $mcHost = $mcHostOption;
 
         $mcPortOption = $input->getOption('memcached-port');
-        $mcPort = is_numeric($mcPortOption) ? (int)$mcPortOption : 11211;
+        $mcPort = is_numeric($mcPortOption) ? (int)$mcPortOption : Constants::DEFAULT_MEMCACHE_PORT;
 
         $tagOption = $input->getOption('tag');
         $tag = is_string($tagOption) ? $tagOption : '';
