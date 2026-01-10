@@ -65,9 +65,6 @@ final class Constants
     // RATING SYSTEM
     // ========================================
 
-    /** KVS stores ratings as 0-100, divide by this to get 0-5 scale */
-    public const RATING_DIVISOR = 20;
-
     /** Maximum rating value (for display as X/5) */
     public const RATING_SCALE = 5;
 
@@ -145,9 +142,6 @@ final class Constants
     /** User avatars directory */
     public const CONTENT_AVATARS = 'avatars';
 
-    /** Posts/content sources directory */
-    public const CONTENT_POSTS = 'posts';
-
     // ========================================
     // GITHUB / RELEASES
     // ========================================
@@ -157,9 +151,6 @@ final class Constants
 
     /** GitHub API base URL */
     public const GITHUB_API_URL = 'https://api.github.com';
-
-    /** Nightly build URL template (%s = repo) */
-    public const NIGHTLY_URL = 'https://nightly.link/%s/workflows/ci/dev/kvs-cli-phar.zip';
 
     /** PHAR filename */
     public const PHAR_NAME = 'kvs.phar';

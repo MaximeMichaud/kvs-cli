@@ -118,37 +118,6 @@ class CacheBench
     }
 
     /**
-     * Get server stats
-     *
-     * @return array<string, mixed>
-     */
-    public function getServerStats(): array
-    {
-        if ($this->memcached === null) {
-            return [];
-        }
-
-        $stats = $this->memcached->getStats();
-        $server = $this->config['host'] . ':' . $this->config['port'];
-
-        if (!isset($stats[$server])) {
-            return [];
-        }
-
-        $s = $stats[$server];
-        return [
-            'version' => $s['version'] ?? 'unknown',
-            'uptime' => isset($s['uptime']) ? (int)$s['uptime'] : 0,
-            'curr_items' => isset($s['curr_items']) ? (int)$s['curr_items'] : 0,
-            'total_items' => isset($s['total_items']) ? (int)$s['total_items'] : 0,
-            'bytes' => isset($s['bytes']) ? (int)$s['bytes'] : 0,
-            'limit_maxbytes' => isset($s['limit_maxbytes']) ? (int)$s['limit_maxbytes'] : 0,
-            'get_hits' => isset($s['get_hits']) ? (int)$s['get_hits'] : 0,
-            'get_misses' => isset($s['get_misses']) ? (int)$s['get_misses'] : 0,
-        ];
-    }
-
-    /**
      * Check if connected
      */
     public function isConnected(): bool

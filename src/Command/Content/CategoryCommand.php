@@ -12,8 +12,6 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-use function KVS\CLI\Utils\truncate;
-
 #[AsCommand(
     name: 'content:category',
     description: 'Manage KVS categories',

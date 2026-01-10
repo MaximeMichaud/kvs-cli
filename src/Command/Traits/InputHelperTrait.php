@@ -35,49 +35,6 @@ trait InputHelperTrait
     }
 
     /**
-     * Get argument as string with default
-     */
-    protected function getStringArgumentOrDefault(InputInterface $input, string $name, string $default): string
-    {
-        return $this->getStringArgument($input, $name) ?? $default;
-    }
-
-    /**
-     * Get argument as integer (null if not provided or not numeric)
-     */
-    protected function getIntArgument(InputInterface $input, string $name): ?int
-    {
-        $value = $this->getStringArgument($input, $name);
-        if ($value === null || !is_numeric($value)) {
-            return null;
-        }
-        return (int) $value;
-    }
-
-    /**
-     * Get argument as array of strings
-     *
-     * @return list<string>
-     */
-    protected function getArrayArgument(InputInterface $input, string $name): array
-    {
-        $value = $input->getArgument($name);
-        if ($value === null) {
-            return [];
-        }
-        if (is_array($value)) {
-            return array_values(array_filter($value, 'is_string'));
-        }
-        if (is_string($value)) {
-            return [$value];
-        }
-        if (is_scalar($value)) {
-            return [(string) $value];
-        }
-        return [];
-    }
-
-    /**
      * Get option as string (null if not provided)
      */
     protected function getStringOption(InputInterface $input, string $name): ?string

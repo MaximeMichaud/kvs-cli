@@ -11,7 +11,6 @@ namespace KVS\CLI\Benchmark;
  * - High-precision timing using hrtime(true) (nanoseconds)
  * - Statistical calculations (mean, min, max, percentiles, std dev)
  * - Warmup iterations to eliminate cold-start bias
- * - Memory tracking
  *
  * Best practices implemented:
  * - https://dev.to/blamsa0mine/php-84-performance-optimization-a-practical-repeatable-guide-1jp4
@@ -73,36 +72,6 @@ trait BenchmarkHelper
         }
 
         return $timings;
-    }
-
-    /**
-     * Run benchmark with memory tracking
-     *
-     * @return array{timings: array<int, float>, memory_peak: int, memory_avg: int}
-     */
-    protected function runBenchmarkWithMemory(callable $operation, int $iterations): array
-    {
-        $this->warmup($operation);
-
-        $timings = [];
-        $memoryReadings = [];
-
-        for ($i = 0; $i < $iterations; $i++) {
-            $memBefore = memory_get_usage(true);
-            $start = $this->startTimer();
-            $operation();
-            $timings[] = $this->stopTimer($start);
-            $memoryReadings[] = memory_get_usage(true) - $memBefore;
-        }
-
-        $memoryPeak = $memoryReadings !== [] ? max($memoryReadings) : 0;
-        $memoryAvg = $memoryReadings !== [] ? (int) (array_sum($memoryReadings) / count($memoryReadings)) : 0;
-
-        return [
-            'timings' => $timings,
-            'memory_peak' => $memoryPeak,
-            'memory_avg' => $memoryAvg,
-        ];
     }
 
     /**
@@ -176,46 +145,5 @@ trait BenchmarkHelper
         $index = max(0, min($count - 1, $index));
 
         return $sorted[$index];
-    }
-
-    /**
-     * Format bytes to human-readable string
-     */
-    protected function formatBytes(int $bytes): string
-    {
-        $units = ['B', 'KB', 'MB', 'GB'];
-        $i = 0;
-        $size = (float) $bytes;
-
-        while ($size >= 1024 && $i < count($units) - 1) {
-            $size /= 1024;
-            $i++;
-        }
-
-        return round($size, 2) . ' ' . $units[$i];
-    }
-
-    /**
-     * Get current memory usage stats
-     *
-     * @return array{current: int, peak: int, current_real: int, peak_real: int}
-     */
-    protected function getMemoryStats(): array
-    {
-        return [
-            'current' => memory_get_usage(false),
-            'peak' => memory_get_peak_usage(false),
-            'current_real' => memory_get_usage(true),
-            'peak_real' => memory_get_peak_usage(true),
-        ];
-    }
-
-    /**
-     * Force garbage collection and reset memory peak
-     */
-    protected function resetMemory(): void
-    {
-        gc_collect_cycles();
-        gc_mem_caches();
     }
 }

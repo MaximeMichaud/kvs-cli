@@ -12,9 +12,6 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-use function KVS\CLI\Utils\truncate;
-use function KVS\CLI\Utils\pick_fields;
-
 #[AsCommand(
     name: 'content:album',
     description: 'Manage KVS photo albums',
