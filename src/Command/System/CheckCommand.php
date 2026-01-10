@@ -1723,7 +1723,7 @@ class CheckCommand extends BaseCommand
      */
     private function fetchEolData(string $product): array
     {
-        $cacheDir = '/tmp/kvs-cli-eol-cache';
+        $cacheDir = Constants::EOL_CACHE_DIR;
         $cacheFile = "$cacheDir/$product.json";
 
         // Check cache
@@ -1756,7 +1756,7 @@ class CheckCommand extends BaseCommand
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'kvs-cli/1.0',
+            CURLOPT_USERAGENT => 'kvs-cli/' . (defined('KVS_CLI_VERSION') ? KVS_CLI_VERSION : '1.0'),
         ]);
 
         $response = curl_exec($ch);

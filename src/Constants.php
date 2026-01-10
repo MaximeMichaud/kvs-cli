@@ -193,6 +193,9 @@ final class Constants
     /** Cache TTL for EOL data in seconds (24 hours) */
     public const EOL_CACHE_TTL = 86400;
 
+    /** Cache directory for EOL data */
+    public const EOL_CACHE_DIR = '/tmp/kvs-cli-eol-cache';
+
     /** Months before EOL to show warning */
     public const EOL_WARNING_MONTHS = 6;
 }
