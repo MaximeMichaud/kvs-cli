@@ -219,7 +219,7 @@ HELP
             $ratingAmount = is_numeric($model['rating_amount'] ?? 0) ? (int) $model['rating_amount'] : 0;
             if ($ratingAmount > 0) {
                 $rating = is_numeric($model['rating']) ? (float) $model['rating'] : 0;
-                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', $rating / $ratingAmount, $ratingAmount)];
+                $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', $rating / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
             }
 
             // Rank

@@ -213,7 +213,7 @@ HELP
             // Rating
             $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
             if ($ratingAmount > 0) {
-                $info[] = ['Rating', sprintf('%.1f/5 (%d votes)', (float) $dvd['rating'] / $ratingAmount, $ratingAmount)];
+                $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', (float) $dvd['rating'] / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
             }
 
             // Subscribers
