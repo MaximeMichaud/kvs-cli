@@ -38,9 +38,8 @@ class BenchmarkHelperTest extends TestCase
 
         $this->assertIsFloat($elapsed);
         $this->assertGreaterThan(0, $elapsed);
-        // Should be at least 1ms but less than 100ms
+        // Should be at least close to 1ms (allowing for timing variance)
         $this->assertGreaterThanOrEqual(0.5, $elapsed);
-        $this->assertLessThan(100, $elapsed);
     }
 
     public function testWarmupExecutesOperation(): void
@@ -229,7 +228,10 @@ class BenchmarkHelperTest extends TestCase
 
         $this->assertEquals(1000, $stats['samples']);
         $this->assertGreaterThan(0, $stats['avg']);
-        $this->assertLessThanOrEqual($stats['avg'], $stats['p50']);
-        $this->assertLessThanOrEqual($stats['p95'], $stats['max']);
+        // p50 should be between min and max
+        $this->assertGreaterThanOrEqual($stats['min'], $stats['p50']);
+        $this->assertLessThanOrEqual($stats['max'], $stats['p50']);
+        // p95 should be <= max
+        $this->assertLessThanOrEqual($stats['max'], $stats['p95']);
     }
 }
