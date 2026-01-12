@@ -1,11 +1,11 @@
 # PHPStan configuration for KVS CLI
-# Target: Level 8 (gradually moving to 9)
+# Level 10 - Maximum strictness (PHPStan 2.x)
 # https://phpstan.org/config-reference
 
 parameters:
     # Analysis level (0-10, with 10 being strictest in PHPStan 2.x)
-    # Level 9: strict mixed types, dead code detection
-    level: 9
+    # Level 10: strictest mixed type checking
+    level: 10
 
     # Parallel processing for faster analysis
     parallel:
@@ -32,6 +32,8 @@ parameters:
         consoleApplicationLoader: phpstan-console.php
 
 includes:
+    # Baseline for existing errors (165 errors at level 10)
+    - phpstan-baseline.neon
     # Include Symfony extensions when available
     - vendor/phpstan/phpstan-symfony/extension.neon
     - vendor/phpstan/phpstan-strict-rules/rules.neon
@@ -41,5 +43,5 @@ includes:
 # Level 6 -> Add strict types, fix mixed types (done)
 # Level 7 -> Remove implicit mixed (done)
 # Level 8 -> Production-ready strict mode (done)
-# Level 9 -> Strict mixed types + dead code (done - current, 419 in baseline)
-# Level 10 -> Maximum strictness (PHPStan 2.x)
+# Level 9 -> Strict mixed types + dead code (done)
+# Level 10 -> Maximum strictness (done - current)
