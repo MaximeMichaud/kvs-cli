@@ -1589,7 +1589,6 @@ class CheckCommand extends BaseCommand
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $latency = round((microtime(true) - $start) * 1000);
         $error = curl_error($ch);
-        curl_close($ch);
 
         $result['http_code'] = $httpCode;
         $result['latency_ms'] = $latency;
@@ -1771,7 +1770,6 @@ class CheckCommand extends BaseCommand
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         if (!is_string($response) || $httpCode !== 200) {
             return [];

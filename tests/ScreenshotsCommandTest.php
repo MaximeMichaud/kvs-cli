@@ -4,6 +4,7 @@ namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Video\ScreenshotsCommand;
 use KVS\CLI\Config\Configuration;
@@ -106,10 +107,8 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('Video ID is required', $output);
     }
 
-    /**
-     * @group integration
-     * @group slow
-     */
+    #[Group('integration')]
+    #[Group('slow')]
     public function testGenerateScreenshotsChecksFfmpeg(): void
     {
         // Skip unless explicitly allowed - this test can write to filesystem

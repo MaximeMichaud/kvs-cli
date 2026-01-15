@@ -256,9 +256,7 @@ HELP
         }
 
         // Check HTTP status from response headers
-        // $http_response_header is a magic variable populated by file_get_contents()
-        // @phpstan-ignore isset.variable, function.alreadyNarrowedType, booleanAnd.alwaysTrue
-        $responseHeaders = isset($http_response_header) && is_array($http_response_header) ? $http_response_header : [];
+        $responseHeaders = http_get_last_response_headers() ?? [];
         $httpCode = $this->getHttpStatusCode($responseHeaders);
         if ($httpCode !== 200) {
             $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));
@@ -559,9 +557,7 @@ HELP
         }
 
         // Check HTTP status from response headers
-        // $http_response_header is a magic variable populated by file_get_contents()
-        // @phpstan-ignore isset.variable, function.alreadyNarrowedType, booleanAnd.alwaysTrue
-        $responseHeaders = isset($http_response_header) && is_array($http_response_header) ? $http_response_header : [];
+        $responseHeaders = http_get_last_response_headers() ?? [];
         $httpCode = $this->getHttpStatusCode($responseHeaders);
         if ($httpCode !== 200) {
             $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));

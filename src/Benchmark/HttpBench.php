@@ -88,7 +88,6 @@ class HttpBench
 
         curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         return $httpCode > 0 && $httpCode < 500;
     }
@@ -153,7 +152,7 @@ class HttpBench
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'kvs-cli/' . (defined('KVS_CLI_VERSION') ? KVS_CLI_VERSION : '1.0'),
+            CURLOPT_USERAGENT => 'kvs-cli/' . (defined('KVS_CLI_VERSION') && is_string(KVS_CLI_VERSION) ? KVS_CLI_VERSION : '1.0'),
             CURLOPT_HEADER => true,
             // CURLOPT_NOBODY must be false to measure full response time including body transfer
             CURLOPT_NOBODY => false,
@@ -170,13 +169,11 @@ class HttpBench
 
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         if ($httpCode === 0 || $httpCode >= 500) {
-            curl_close($ch);
             return null;
         }
 
         // Get total time in milliseconds
         $totalTime = curl_getinfo($ch, CURLINFO_TOTAL_TIME);
-        curl_close($ch);
 
         return $totalTime * 1000;
     }

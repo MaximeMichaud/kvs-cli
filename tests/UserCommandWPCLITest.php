@@ -117,7 +117,6 @@ class UserCommandWPCLITest extends TestCase
     {
         $reflection = new \ReflectionClass(UserCommand::class);
         $method = $reflection->getMethod('listUsers');
-        $method->setAccessible(true);
 
         // Expected default fields
         $expectedDefaults = ['id', 'username', 'display_name', 'email', 'status', 'added_date'];

@@ -114,7 +114,6 @@ class ImportCommandTest extends TestCase
 
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         $format = $method->invoke($this->command, $this->tempDir . '/imports/test.sql.gz');
         $this->assertEquals('gzip', $format);
@@ -124,7 +123,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         $format = $method->invoke($this->command, 'backup.sql.zstd');
         $this->assertEquals('zstd', $format);
@@ -137,7 +135,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         $format = $method->invoke($this->command, 'backup.sql.xz');
         $this->assertEquals('xz', $format);
@@ -147,7 +144,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         $format = $method->invoke($this->command, 'backup.sql.bz2');
         $this->assertEquals('bzip2', $format);
@@ -160,7 +156,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         $format = $method->invoke($this->command, 'backup.sql');
         $this->assertNull($format);
@@ -175,7 +170,6 @@ class ImportCommandTest extends TestCase
 
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('decompressFile');
-        $method->setAccessible(true);
 
         $result = $method->invoke($this->command, $this->tempDir . '/imports/test.sql.gz', 'gzip');
         $this->assertEquals($sql, $result);
@@ -191,14 +185,12 @@ class ImportCommandTest extends TestCase
         // Test detection
         $reflection = new \ReflectionClass($this->command);
         $detectMethod = $reflection->getMethod('detectCompressionFormat');
-        $detectMethod->setAccessible(true);
 
         $format = $detectMethod->invoke($this->command, $this->tempDir . '/imports/test.sql.gz');
         $this->assertEquals('gzip', $format);
 
         // Test decompression
         $decompressMethod = $reflection->getMethod('decompressFile');
-        $decompressMethod->setAccessible(true);
 
         $result = $decompressMethod->invoke($this->command, $this->tempDir . '/imports/test.sql.gz', 'gzip');
         $this->assertEquals($sql, $result);
@@ -208,7 +200,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         $formats = [
             'backup.sql.gz' => 'gzip',
@@ -237,7 +228,6 @@ class ImportCommandTest extends TestCase
         // Direct execute() testing requires full DB setup
         $reflection = new \ReflectionClass($this->command);
         $detectMethod = $reflection->getMethod('detectCompressionFormat');
-        $detectMethod->setAccessible(true);
 
         // Verify compressed file would be detected
         $this->assertEquals('gzip', $detectMethod->invoke($this->command, 'test.sql.gz'));
@@ -251,7 +241,6 @@ class ImportCommandTest extends TestCase
         // Test decompression failure handling
         $reflection = new \ReflectionClass($this->command);
         $decompressMethod = $reflection->getMethod('decompressFile');
-        $decompressMethod->setAccessible(true);
 
         // Test with invalid format
         $result = $decompressMethod->invoke($this->command, 'dummy.file', 'invalid');
@@ -262,7 +251,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('detectCompressionFormat');
-        $method->setAccessible(true);
 
         // Test multiple extensions
         $this->assertEquals('gzip', $method->invoke($this->command, 'backup.tar.gz'));
@@ -279,7 +267,6 @@ class ImportCommandTest extends TestCase
     {
         $reflection = new \ReflectionClass($this->command);
         $method = $reflection->getMethod('decompressFile');
-        $method->setAccessible(true);
 
         $testData = "SELECT * FROM test;";
 

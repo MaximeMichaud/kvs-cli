@@ -295,7 +295,7 @@ class Formatter
         }
 
         // Header row
-        fputcsv($handle, $fields);
+        fputcsv($handle, $fields, ',', '"', '\\');
 
         // Data rows
         foreach ($items as $item) {
@@ -310,7 +310,7 @@ class Formatter
                     $row[] = ''; // fallback for non-scalar values
                 }
             }
-            fputcsv($handle, $row);
+            fputcsv($handle, $row, ',', '"', '\\');
         }
 
         fclose($handle);
