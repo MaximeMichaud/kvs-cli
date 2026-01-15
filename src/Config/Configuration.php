@@ -152,8 +152,8 @@ class Configuration
             return; // Already using localhost, no fallback needed
         }
 
-        // Check if hostname resolves
-        if ($this->hostnameResolves($host)) {
+        // Check if hostname resolves (without port)
+        if ($this->hostnameResolves($hostWithoutPort)) {
             return; // Hostname resolves, use it
         }
 

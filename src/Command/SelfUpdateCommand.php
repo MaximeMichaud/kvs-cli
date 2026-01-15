@@ -255,8 +255,14 @@ HELP
             return null;
         }
 
-        // Check HTTP status from response headers
-        $responseHeaders = http_get_last_response_headers() ?? [];
+        // Check HTTP status from response headers (PHP 8.4+ has http_get_last_response_headers)
+        if (function_exists('http_get_last_response_headers')) {
+            // @phpstan-ignore function.notFound
+            $responseHeaders = http_get_last_response_headers() ?? [];
+        } else {
+            // @phpstan-ignore nullCoalesce.variable
+            $responseHeaders = $http_response_header ?? [];
+        }
         $httpCode = $this->getHttpStatusCode($responseHeaders);
         if ($httpCode !== 200) {
             $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));
@@ -556,8 +562,14 @@ HELP
             return null;
         }
 
-        // Check HTTP status from response headers
-        $responseHeaders = http_get_last_response_headers() ?? [];
+        // Check HTTP status from response headers (PHP 8.4+ has http_get_last_response_headers)
+        if (function_exists('http_get_last_response_headers')) {
+            // @phpstan-ignore function.notFound
+            $responseHeaders = http_get_last_response_headers() ?? [];
+        } else {
+            // @phpstan-ignore nullCoalesce.variable
+            $responseHeaders = $http_response_header ?? [];
+        }
         $httpCode = $this->getHttpStatusCode($responseHeaders);
         if ($httpCode !== 200) {
             $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));

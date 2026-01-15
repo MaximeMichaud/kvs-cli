@@ -205,8 +205,8 @@ abstract class BaseCommand extends Command
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
-        // Validate required configuration keys
-        $requiredKeys = ['host', 'database', 'user', 'password'];
+        // Validate required configuration keys (password can be empty)
+        $requiredKeys = ['host', 'database', 'user'];
         foreach ($requiredKeys as $key) {
             if (!isset($dbConfig[$key]) || $dbConfig[$key] === '') {
                 if (!$quiet) {
@@ -214,6 +214,13 @@ abstract class BaseCommand extends Command
                 }
                 return null;
             }
+        }
+        // Password must exist but can be empty string
+        if (!array_key_exists('password', $dbConfig)) {
+            if (!$quiet) {
+                $this->io()->error('Database configuration missing: password');
+            }
+            return null;
         }
 
         // Try original host first, then fallback to localhost/127.0.0.1 for Docker scenarios
