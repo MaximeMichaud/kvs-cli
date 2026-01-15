@@ -140,57 +140,92 @@ class ToggleStatusTraitTest extends TestCase
 
     /**
      * Test: Entity not found returns FAILURE
-     *
-     * Note: Requires real database connection to test.
-     * This test demonstrates the expected behavior.
      */
     public function testEntityNotFoundReturnsFailure(): void
     {
-        // This test requires a real database connection
-        // We'll mark it as incomplete for unit testing
-        $this->markTestIncomplete(
-            'This test requires a real database connection. ' .
-            'Run integration tests with Docker container.'
+        // Try to toggle a non-existent tag
+        $result = $this->command->testToggleStatus(
+            entityName: 'Tag',
+            tableName: TestHelper::table('tags'),
+            idColumn: 'tag_id',
+            nameColumn: 'tag',
+            id: '999999',
+            status: 1,
+            commandName: 'content:tag'
         );
+
+        $this->assertEquals(Command::FAILURE, $result);
+        $this->assertStringContainsString('not found', $this->output->fetch());
     }
 
     /**
      * Test: Entity already at target status returns SUCCESS with info message
-     *
-     * Note: Requires real database connection to test.
      */
     public function testEntityAlreadyAtTargetStatus(): void
     {
-        $this->markTestIncomplete(
-            'This test requires a real database connection. ' .
-            'Run integration tests with Docker container.'
+        // Tag ID 1 (HD) is already active (status_id=1)
+        $result = $this->command->testToggleStatus(
+            entityName: 'Tag',
+            tableName: TestHelper::table('tags'),
+            idColumn: 'tag_id',
+            nameColumn: 'tag',
+            id: '1',
+            status: 1,
+            commandName: 'content:tag'
         );
+
+        $this->assertEquals(Command::SUCCESS, $result);
+        $this->assertStringContainsString('already', $this->output->fetch());
     }
 
     /**
      * Test: Successful status toggle returns SUCCESS
-     *
-     * Note: Requires real database connection to test.
      */
     public function testSuccessfulStatusToggle(): void
     {
-        $this->markTestIncomplete(
-            'This test requires a real database connection. ' .
-            'Run integration tests with Docker container.'
+        // Disable tag ID 1 (HD) which is currently active
+        $result = $this->command->testToggleStatus(
+            entityName: 'Tag',
+            tableName: TestHelper::table('tags'),
+            idColumn: 'tag_id',
+            nameColumn: 'tag',
+            id: '1',
+            status: 0,
+            commandName: 'content:tag'
+        );
+
+        $this->assertEquals(Command::SUCCESS, $result);
+        $output = $this->output->fetch();
+        $this->assertStringContainsString('disabled', $output);
+
+        // Re-enable to restore original state
+        $this->command->testToggleStatus(
+            entityName: 'Tag',
+            tableName: TestHelper::table('tags'),
+            idColumn: 'tag_id',
+            nameColumn: 'tag',
+            id: '1',
+            status: 1,
+            commandName: 'content:tag'
         );
     }
 
     /**
-     * Test: Database exception during update returns FAILURE
-     *
-     * Note: Requires real database connection to test.
+     * Test: Invalid table name returns FAILURE
      */
-    public function testDatabaseExceptionReturnsFailure(): void
+    public function testInvalidTableReturnsFailure(): void
     {
-        $this->markTestIncomplete(
-            'This test requires a real database connection. ' .
-            'Run integration tests with Docker container.'
+        $result = $this->command->testToggleStatus(
+            entityName: 'Tag',
+            tableName: 'nonexistent_table',
+            idColumn: 'tag_id',
+            nameColumn: 'tag',
+            id: '1',
+            status: 1,
+            commandName: 'content:tag'
         );
+
+        $this->assertEquals(Command::FAILURE, $result);
     }
 
     /**

@@ -132,10 +132,10 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(0, $exitCode);
-        $this->assertStringContainsString('ID', $output);
+        $this->assertStringContainsString('Category id', $output);
         $this->assertStringContainsString('Title', $output);
-        $this->assertStringContainsString('Videos', $output);
-        $this->assertStringContainsString('Albums', $output);
+        $this->assertStringContainsString('Video count', $output);
+        $this->assertStringContainsString('Album count', $output);
         $this->assertStringContainsString('Status', $output);
     }
 
@@ -358,7 +358,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->tester->execute(['action' => 'list']);
         $output = $this->tester->getDisplay();
 
-        $requiredColumns = ['ID', 'Title', 'Videos', 'Albums', 'Status'];
+        $requiredColumns = ['Category id', 'Title', 'Video count', 'Album count', 'Status'];
 
         foreach ($requiredColumns as $column) {
             $this->assertStringContainsString(

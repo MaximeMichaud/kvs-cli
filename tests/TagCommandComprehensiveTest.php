@@ -135,7 +135,7 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(0, $exitCode);
-        $this->assertStringContainsString('ID', $output);
+        $this->assertStringContainsString('Tag id', $output);
         $this->assertStringContainsString('Tag', $output);
     }
 
@@ -405,11 +405,11 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         // Verify table format
-        $this->assertStringContainsString('ID', $output);
+        $this->assertStringContainsString('Tag id', $output);
         $this->assertStringContainsString('Tag', $output);
-        $this->assertStringContainsString('Videos', $output);
-        $this->assertStringContainsString('Albums', $output);
-        $this->assertStringContainsString('Total', $output);
+        $this->assertStringContainsString('Video count', $output);
+        $this->assertStringContainsString('Album count', $output);
+        $this->assertStringContainsString('Total usage', $output);
         $this->assertStringContainsString('Status', $output);
     }
 

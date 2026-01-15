@@ -235,14 +235,11 @@ class QueueCommandTest extends TestCase
 
     public function testQueueDefaultAction(): void
     {
-        // No action specified should default to 'list'
+        // No action specified should show help
         $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
-        $this->assertTrue(
-            str_contains($output, 'Background Tasks Queue')
-            || str_contains($output, 'Queue is empty')
-        );
+        $this->assertStringContainsString('Available actions', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 

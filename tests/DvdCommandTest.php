@@ -131,7 +131,8 @@ class DvdCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('DVD #' . $dvdId, $output);
+        $this->assertStringContainsString('DVD:', $output);
+        $this->assertStringContainsString('DVD ID', $output);
     }
 
     public function testShowDvdNotFound(): void

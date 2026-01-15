@@ -44,7 +44,7 @@ class MaintenanceCommandTest extends TestCase
 
     public function testMaintenanceStatus(): void
     {
-        $this->tester->execute(['mode' => 'status']);
+        $this->tester->execute(['action' => 'status']);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Maintenance mode is DISABLED', $output);
@@ -53,7 +53,7 @@ class MaintenanceCommandTest extends TestCase
 
     public function testMaintenanceEnable(): void
     {
-        $this->tester->execute(['mode' => 'on']);
+        $this->tester->execute(['action' => 'on']);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Maintenance mode enabled', $output);
@@ -70,10 +70,10 @@ class MaintenanceCommandTest extends TestCase
     public function testMaintenanceDisable(): void
     {
         // First enable
-        $this->tester->execute(['mode' => 'on']);
+        $this->tester->execute(['action' => 'on']);
 
         // Then disable
-        $this->tester->execute(['mode' => 'off']);
+        $this->tester->execute(['action' => 'off']);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Maintenance mode disabled', $output);
@@ -86,10 +86,10 @@ class MaintenanceCommandTest extends TestCase
 
     public function testInvalidMode(): void
     {
-        $this->tester->execute(['mode' => 'invalid']);
+        $this->tester->execute(['action' => 'invalid']);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Invalid mode', $output);
+        $this->assertStringContainsString('Invalid action', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 }

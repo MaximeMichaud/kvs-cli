@@ -125,7 +125,8 @@ class ModelCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Model #' . $modelId, $output);
+        $this->assertStringContainsString('Model:', $output);
+        $this->assertStringContainsString('Model ID', $output);
     }
 
     public function testShowModelNotFound(): void
