@@ -94,7 +94,14 @@ class StatusCommand extends BaseCommand
 
             $totalSize = 0;
             foreach ($tables as $table) {
-                $totalSize += (int)($table['Data_length'] ?? 0) + (int)($table['Index_length'] ?? 0);
+                if (!is_array($table)) {
+                    continue;
+                }
+                $dataLength = $table['Data_length'] ?? 0;
+                $indexLength = $table['Index_length'] ?? 0;
+                $dataLengthInt = is_numeric($dataLength) ? (int) $dataLength : 0;
+                $indexLengthInt = is_numeric($indexLength) ? (int) $indexLength : 0;
+                $totalSize += $dataLengthInt + $indexLengthInt;
             }
             $info[] = ['Database Size', format_bytes($totalSize)];
         } catch (\Exception $e) {
@@ -211,12 +218,15 @@ class StatusCommand extends BaseCommand
             $osRelease = parse_ini_file('/etc/os-release');
 
             if ($osRelease !== false && $osRelease !== []) {
-                $name = $osRelease['NAME'] ?? $osRelease['ID'] ?? 'Linux';
-                $version = $osRelease['VERSION_ID'] ?? $osRelease['VERSION'] ?? '';
+                $nameVal = $osRelease['NAME'] ?? $osRelease['ID'] ?? 'Linux';
+                $name = is_scalar($nameVal) ? (string) $nameVal : 'Linux';
+                $versionVal = $osRelease['VERSION_ID'] ?? $osRelease['VERSION'] ?? '';
+                $version = is_scalar($versionVal) ? (string) $versionVal : '';
 
                 // For rolling releases like Arch/CachyOS that might not have VERSION_ID
                 if ($version === '' && isset($osRelease['BUILD_ID'])) {
-                    $version = $osRelease['BUILD_ID'];
+                    $buildVal = $osRelease['BUILD_ID'];
+                    $version = is_scalar($buildVal) ? (string) $buildVal : '';
                 }
 
                 // Get kernel version for additional context

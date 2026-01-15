@@ -289,7 +289,7 @@ class SystemBench
             $status = opcache_get_status();
             $info['opcache'] = $status !== false;
 
-            if ($status !== false && isset($status['jit']['enabled'])) {
+            if ($status !== false && isset($status['jit']) && is_array($status['jit']) && isset($status['jit']['enabled'])) {
                 $info['jit'] = $status['jit']['enabled'] === true;
             } else {
                 $info['jit'] = false;
@@ -303,7 +303,8 @@ class SystemBench
         if (PHP_OS_FAMILY === 'Linux' && file_exists('/etc/os-release')) {
             $osRelease = parse_ini_file('/etc/os-release');
             if ($osRelease !== false && isset($osRelease['PRETTY_NAME'])) {
-                $info['os_name'] = (string)$osRelease['PRETTY_NAME'];
+                $prettyName = $osRelease['PRETTY_NAME'];
+                $info['os_name'] = is_scalar($prettyName) ? (string) $prettyName : 'Unknown';
             }
         }
 

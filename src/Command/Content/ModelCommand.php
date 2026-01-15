@@ -119,26 +119,31 @@ HELP
             $stmt->bindValue('limit', $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT), \PDO::PARAM_INT);
             $stmt->execute();
 
-            $models = $stmt->fetchAll();
+            /** @var list<array<string, mixed>> $models */
+            $models = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Transform models for display (field aliases)
-            $transformedModels = array_values(array_map(function (array $model): array {
+            $transformedModels = array_map(function (array $model): array {
                 // Calculate rating
-                $ratingAmount = (int)($model['rating_amount'] ?? 0);
-                $calculatedRating = $ratingAmount > 0
-                    ? round((float) $model['rating'] / $ratingAmount, 1)
-                    : 0;
+                $ratingAmountVal = $model['rating_amount'] ?? 0;
+                $ratingVal = $model['rating'] ?? 0;
+                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
+                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
+                $calculatedRating = $ratingAmount > 0 ? round($rating / $ratingAmount, 1) : 0;
+
+                $statusIdVal = $model['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
                 return [
-                    'model_id' => $model['model_id'],
-                    'id' => $model['model_id'],
-                    'title' => $model['title'],
-                    'status_id' => $model['status_id'],
-                    'status' => StatusFormatter::model((int)$model['status_id'], false),
-                    'video_count' => $model['video_count'],
-                    'videos' => $model['video_count'],
-                    'album_count' => $model['album_count'],
-                    'albums' => $model['album_count'],
+                    'model_id' => $model['model_id'] ?? 0,
+                    'id' => $model['model_id'] ?? 0,
+                    'title' => $model['title'] ?? '',
+                    'status_id' => $statusId,
+                    'status' => StatusFormatter::model($statusId, false),
+                    'video_count' => $model['video_count'] ?? 0,
+                    'videos' => $model['video_count'] ?? 0,
+                    'album_count' => $model['album_count'] ?? 0,
+                    'albums' => $model['album_count'] ?? 0,
                     'model_viewed' => $model['model_viewed'] ?? 0,
                     'views' => $model['model_viewed'] ?? 0,
                     'country_name' => $model['country_name'] ?? '',
@@ -151,7 +156,7 @@ HELP
                     'rank' => $model['rank'] ?? '',
                     'rating' => $calculatedRating,
                 ];
-            }, $models));
+            }, $models);
 
             // Default fields
             $defaultFields = ['model_id', 'title', 'status_id', 'video_count'];
@@ -199,68 +204,53 @@ HELP
 
             // Display model details
             $titleValue = $model['title'] ?? '';
-            $modelTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
+            $modelTitle = is_scalar($titleValue) ? (string) $titleValue : '';
             $this->io()->title("Model: $modelTitle");
 
-            $videoCount = is_numeric($model['video_count']) ? (int) $model['video_count'] : 0;
-            $albumCount = is_numeric($model['album_count']) ? (int) $model['album_count'] : 0;
-            $modelViewed = is_numeric($model['model_viewed'] ?? 0) ? (int) $model['model_viewed'] : 0;
+            $videoCountVal = $model['video_count'] ?? 0;
+            $albumCountVal = $model['album_count'] ?? 0;
+            $modelViewedVal = $model['model_viewed'] ?? 0;
+            $modelIdVal = $model['model_id'] ?? 0;
+            $statusIdVal = $model['status_id'] ?? 0;
+
+            $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
+            $albumCount = is_numeric($albumCountVal) ? (int) $albumCountVal : 0;
+            $modelViewed = is_numeric($modelViewedVal) ? (int) $modelViewedVal : 0;
+            $modelIdStr = is_scalar($modelIdVal) ? (string) $modelIdVal : '0';
+            $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
             $info = [
-                ['Model ID', (string) $model['model_id']],
+                ['Model ID', $modelIdStr],
                 ['Name', $modelTitle],
-                ['Status', StatusFormatter::model((int)$model['status_id'])],
+                ['Status', StatusFormatter::model($statusId)],
                 ['Videos', number_format($videoCount)],
                 ['Albums', number_format($albumCount)],
                 ['Views', number_format($modelViewed)],
             ];
 
             // Rating
-            $ratingAmount = is_numeric($model['rating_amount'] ?? 0) ? (int) $model['rating_amount'] : 0;
+            $ratingAmountVal = $model['rating_amount'] ?? 0;
+            $ratingVal = $model['rating'] ?? 0;
+            $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
             if ($ratingAmount > 0) {
-                $rating = is_numeric($model['rating']) ? (float) $model['rating'] : 0;
+                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
                 $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', $rating / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
             }
 
             // Rank
             $rank = $model['rank'] ?? null;
-            if ($rank && is_numeric($rank) && (int) $rank !== 0) {
+            if ($rank !== null && is_numeric($rank) && (int) $rank !== 0) {
                 $info[] = ['Rank', '#' . number_format((int) $rank)];
             }
 
-            // Country
-            $countryName = $model['country_name'] ?? null;
-            if (is_string($countryName) && $countryName !== '') {
-                $info[] = ['Country', $countryName];
-            }
-
-            // Personal info
-            $birthDate = $model['birth_date'] ?? null;
-            if ($birthDate !== null && $birthDate !== '') {
-                $age = $model['age'] ?? null;
-                $ageStr = ($age !== null && $age !== '') ? " (age $age)" : '';
-                $info[] = ['Birth Date', (string) $birthDate . $ageStr];
-            }
-
-            $measurements = $model['measurements'] ?? null;
-            if ($measurements !== null && $measurements !== '') {
-                $info[] = ['Measurements', (string) $measurements];
-            }
-
-            $height = $model['height'] ?? null;
-            if ($height !== null && $height !== '') {
-                $info[] = ['Height', (string) $height];
-            }
-
-            $weight = $model['weight'] ?? null;
-            if ($weight !== null && $weight !== '') {
-                $info[] = ['Weight', (string) $weight];
-            }
-
-            $description = $model['description'] ?? null;
-            if ($description !== null && $description !== '') {
-                $info[] = ['Description', (string) $description];
-            }
+            // Optional fields
+            $this->addOptionalField($info, 'Country', $model['country_name'] ?? null);
+            /** @var array<string, mixed> $model */
+            $this->addBirthDateField($info, $model);
+            $this->addOptionalField($info, 'Measurements', $model['measurements'] ?? null);
+            $this->addOptionalField($info, 'Height', $model['height'] ?? null);
+            $this->addOptionalField($info, 'Weight', $model['weight'] ?? null);
+            $this->addOptionalField($info, 'Description', $model['description'] ?? null);
 
             $this->renderTable(['Field', 'Value'], $info);
 
@@ -319,5 +309,32 @@ HELP
             $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array{0: string, 1: string}> $info
+     */
+    private function addOptionalField(array &$info, string $label, mixed $value): void
+    {
+        if ($value === null || $value === '') {
+            return;
+        }
+        $info[] = [$label, is_scalar($value) ? (string) $value : ''];
+    }
+
+    /**
+     * @param list<array{0: string, 1: string}> $info
+     * @param array<string, mixed> $model
+     */
+    private function addBirthDateField(array &$info, array $model): void
+    {
+        $birthDate = $model['birth_date'] ?? null;
+        if ($birthDate === null || $birthDate === '') {
+            return;
+        }
+        $age = $model['age'] ?? null;
+        $ageStr = is_scalar($age) ? (string) $age : '';
+        $ageDisplay = $ageStr !== '' ? " (age $ageStr)" : '';
+        $info[] = ['Birth Date', (is_scalar($birthDate) ? (string) $birthDate : '') . $ageDisplay];
     }
 }

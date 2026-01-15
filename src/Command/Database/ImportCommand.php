@@ -107,7 +107,7 @@ EOT
         $progressBar->start();
 
         $process->run(function ($type, $buffer) use ($progressBar) {
-            if ($type === Process::ERR && trim($buffer) !== '') {
+            if ($type === Process::ERR && is_string($buffer) && trim($buffer) !== '') {
                 $this->io()->warning($buffer);
             }
             $progressBar->advance();

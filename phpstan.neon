@@ -32,8 +32,6 @@ parameters:
         consoleApplicationLoader: phpstan-console.php
 
 includes:
-    # Baseline for existing errors (165 errors at level 10)
-    - phpstan-baseline.neon
     # Include Symfony extensions when available
     - vendor/phpstan/phpstan-symfony/extension.neon
     - vendor/phpstan/phpstan-strict-rules/rules.neon

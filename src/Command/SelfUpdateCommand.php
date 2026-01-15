@@ -208,7 +208,9 @@ HELP
     {
         // Try to get version from Application
         if (defined('KVS_CLI_VERSION')) {
-            return KVS_CLI_VERSION;
+            /** @var string $version */
+            $version = KVS_CLI_VERSION;
+            return $version;
         }
 
         // Fallback
@@ -283,20 +285,33 @@ HELP
         }
 
         // Filter releases
+        /** @var array<array{tag_name: string, prerelease: bool, assets: array<array{name: string, browser_download_url: string}>}> $filtered */
         $filtered = [];
         foreach ($releases as $release) {
+            if (!is_array($release)) {
+                continue;
+            }
             // Skip drafts
-            $isDraft = isset($release['draft']) ? $release['draft'] : false;
-            if ($isDraft === true) {
+            $isDraft = isset($release['draft']) && $release['draft'] === true;
+            if ($isDraft) {
                 continue;
             }
 
             // Skip prereleases unless requested
-            $isPrerelease = isset($release['prerelease']) ? $release['prerelease'] : false;
-            if (!$includePrerelease && $isPrerelease === true) {
+            $isPrerelease = isset($release['prerelease']) && $release['prerelease'] === true;
+            if (!$includePrerelease && $isPrerelease) {
                 continue;
             }
 
+            // Validate required fields exist
+            if (!isset($release['tag_name']) || !is_string($release['tag_name'])) {
+                continue;
+            }
+            if (!isset($release['assets']) || !is_array($release['assets'])) {
+                continue;
+            }
+
+            /** @var array{tag_name: string, prerelease: bool, assets: array<array{name: string, browser_download_url: string}>} $release */
             $filtered[] = $release;
         }
 

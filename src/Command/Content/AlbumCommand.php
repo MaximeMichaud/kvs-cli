@@ -108,28 +108,35 @@ HELP
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
-            $albums = $stmt->fetchAll();
+            /** @var list<array<string, mixed>> $albums */
+            $albums = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Transform albums for display (field aliases and calculated values)
-            $transformedAlbums = array_map(function ($album) {
+            $transformedAlbums = array_map(function (array $album): array {
                 // Calculate rating (rating / rating_amount gives 0-5 scale)
-                $ratingAmount = (int)($album['rating_amount'] ?? 0);
+                $ratingAmountVal = $album['rating_amount'] ?? 0;
+                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
+                $ratingVal = $album['rating'] ?? 0;
+                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
                 $calculatedRating = $ratingAmount > 0
-                    ? round($album['rating'] / $ratingAmount, 1)
+                    ? round($rating / $ratingAmount, 1)
                     : 0;
 
+                $statusIdVal = $album['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+
                 return [
-                    'album_id' => $album['album_id'],
-                    'id' => $album['album_id'],  // Alias
-                    'title' => $album['title'],
-                    'image_count' => $album['image_count'],
-                    'images' => $album['image_count'],  // Alias
-                    'status_id' => $album['status_id'],
-                    'status' => StatusFormatter::album((int)$album['status_id'], false),  // Alias
-                    'username' => $album['username'],
-                    'post_date' => $album['post_date'],
-                    'album_viewed' => $album['album_viewed'],
-                    'views' => $album['album_viewed'],  // Alias
+                    'album_id' => $album['album_id'] ?? 0,
+                    'id' => $album['album_id'] ?? 0,  // Alias
+                    'title' => $album['title'] ?? '',
+                    'image_count' => $album['image_count'] ?? 0,
+                    'images' => $album['image_count'] ?? 0,  // Alias
+                    'status_id' => $statusId,
+                    'status' => StatusFormatter::album($statusId, false),  // Alias
+                    'username' => $album['username'] ?? '',
+                    'post_date' => $album['post_date'] ?? '',
+                    'album_viewed' => $album['album_viewed'] ?? 0,
+                    'views' => $album['album_viewed'] ?? 0,  // Alias
                     'rating' => $calculatedRating,
                 ];
             }, $albums);
@@ -139,7 +146,6 @@ HELP
                 $input->getOptions(),
                 ['album_id', 'title', 'image_count', 'status_id', 'username', 'post_date']
             );
-            /** @var list<array<string, mixed>> $transformedAlbums */
             $formatter->display($transformedAlbums, $this->io());
 
             return self::SUCCESS;

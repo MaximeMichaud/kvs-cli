@@ -137,15 +137,39 @@ HELP
         // Display users
         $this->io()->title($confirm ? 'Users to Delete' : 'Users Matching Criteria (Dry-Run)');
 
+        /** @var list<list<string>> $rows */
         $rows = [];
         foreach ($users as $user) {
+            if (!is_array($user)) {
+                continue;
+            }
             $lastLogin = $user['last_login_date'] ?? null;
+            $lastLoginStr = 'Never';
+            if (is_string($lastLogin) && $lastLogin !== '') {
+                $timestamp = strtotime($lastLogin);
+                if ($timestamp !== false) {
+                    $lastLoginStr = date('Y-m-d', $timestamp);
+                }
+            }
+
+            $userIdVal = $user['user_id'] ?? '';
+            $usernameVal = $user['username'] ?? '';
+            $emailVal = $user['email'] ?? '';
+            $addedDateVal = $user['added_date'] ?? '';
+            $addedDateStr = 'Unknown';
+            if (is_string($addedDateVal) && $addedDateVal !== '') {
+                $timestamp = strtotime($addedDateVal);
+                if ($timestamp !== false) {
+                    $addedDateStr = date('Y-m-d', $timestamp);
+                }
+            }
+
             $rows[] = [
-                $user['user_id'],
-                $user['username'],
-                $user['email'],
-                $lastLogin !== null ? date('Y-m-d', strtotime($lastLogin)) : 'Never',
-                date('Y-m-d', strtotime($user['added_date'])),
+                is_scalar($userIdVal) ? (string) $userIdVal : '',
+                is_scalar($usernameVal) ? (string) $usernameVal : '',
+                is_scalar($emailVal) ? (string) $emailVal : '',
+                $lastLoginStr,
+                $addedDateStr,
             ];
         }
 

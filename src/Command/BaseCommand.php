@@ -149,7 +149,12 @@ abstract class BaseCommand extends Command
         if (!function_exists('opcache_get_configuration')) {
             return false;
         }
-        return opcache_get_configuration();
+        $config = opcache_get_configuration();
+        if ($config === false) {
+            return false;
+        }
+        /** @var array<string, mixed> $config */
+        return $config;
     }
 
     /**

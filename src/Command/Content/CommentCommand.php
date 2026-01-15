@@ -164,19 +164,20 @@ HELP
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
-            $comments = $stmt->fetchAll();
+            /** @var list<array<string, mixed>> $comments */
+            $comments = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Transform comments to use standardized field names
-            $transformedComments = array_values(array_map(function (array $comment): array {
+            $transformedComments = array_map(function (array $comment): array {
                 return [
-                    'comment_id' => $comment['comment_id'],
-                    'username' => $comment['username'],
-                    'object_type' => $comment['object_type'],
-                    'object_title' => $comment['object_title'],
-                    'comment' => $comment['comment'],
-                    'added_date' => $comment['added_date'],
+                    'comment_id' => $comment['comment_id'] ?? 0,
+                    'username' => $comment['username'] ?? '',
+                    'object_type' => $comment['object_type'] ?? '',
+                    'object_title' => $comment['object_title'] ?? '',
+                    'comment' => $comment['comment'] ?? '',
+                    'added_date' => $comment['added_date'] ?? '',
                 ];
-            }, $comments));
+            }, $comments);
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
@@ -238,21 +239,31 @@ HELP
                 ? '<fg=green>Approved</>'
                 : '<fg=yellow>Pending</>';
 
+            // Safe type extraction
+            $commentIdVal = $comment['comment_id'] ?? 0;
+            $usernameVal = $comment['username'] ?? 'Guest';
+            $emailVal = $comment['email'] ?? 'N/A';
+            $objectTypeVal = $comment['object_type'] ?? '';
+            $objectIdVal = $comment['object_id'] ?? 0;
+            $objectTitleVal = $comment['object_title'] ?? 'N/A';
+            $addedDateVal = $comment['added_date'] ?? '';
+            $commentTextVal = $comment['comment'] ?? '';
+
             $info = [
-                ['ID', (string) $comment['comment_id']],
-                ['User', (string) ($comment['username'] ?? 'Guest')],
-                ['User Email', (string) ($comment['email'] ?? 'N/A')],
+                ['ID', is_scalar($commentIdVal) ? (string) $commentIdVal : '0'],
+                ['User', is_scalar($usernameVal) ? (string) $usernameVal : 'Guest'],
+                ['User Email', is_scalar($emailVal) ? (string) $emailVal : 'N/A'],
                 ['Status', $approvalStatus],
-                ['Content Type', (string) $comment['object_type']],
-                ['Content ID', (string) $comment['object_id']],
-                ['Content Title', (string) ($comment['object_title'] ?? 'N/A')],
-                ['Posted', (string) $comment['added_date']],
+                ['Content Type', is_scalar($objectTypeVal) ? (string) $objectTypeVal : ''],
+                ['Content ID', is_scalar($objectIdVal) ? (string) $objectIdVal : '0'],
+                ['Content Title', is_scalar($objectTitleVal) ? (string) $objectTitleVal : 'N/A'],
+                ['Posted', is_scalar($addedDateVal) ? (string) $addedDateVal : ''],
             ];
 
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->io()->section('Comment Text');
-            $this->io()->text((string) $comment['comment']);
+            $this->io()->text(is_scalar($commentTextVal) ? (string) $commentTextVal : '');
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch comment: ' . $e->getMessage());
             return self::FAILURE;
@@ -308,13 +319,16 @@ HELP
                 $commentText = is_string($commentTextRaw) ? $commentTextRaw : (is_scalar($commentTextRaw) ? (string) $commentTextRaw : '');
             }
 
+            $commentIdVal = $comment['comment_id'] ?? 0;
+            $objectTypeVal = $comment['object_type'] ?? '';
+
             $this->io()->section("Comment to Delete");
             $this->renderTable(
                 ['Property', 'Value'],
                 [
-                    ['ID', (string) $comment['comment_id']],
+                    ['ID', is_scalar($commentIdVal) ? (string) $commentIdVal : '0'],
                     ['User', $username],
-                    ['Type', (string) $comment['object_type']],
+                    ['Type', is_scalar($objectTypeVal) ? (string) $objectTypeVal : ''],
                     ['Comment', truncate($commentText, Constants::COMMENT_TRUNCATE_LENGTH)],
                 ]
             );
@@ -410,7 +424,9 @@ HELP
             $albumComments = is_numeric($overall['album_comments']) ? (int) $overall['album_comments'] : 0;
             $recentComments = is_numeric($recentStats['recent_comments']) ? (int) $recentStats['recent_comments'] : 0;
             $firstComment = $overall['first_comment'] ?? null;
-            $firstCommentStr = $firstComment ? (string) $firstComment : 'N/A';
+            $firstCommentStr = is_scalar($firstComment) ? (string) $firstComment : 'N/A';
+            $lastComment = $overall['last_comment'] ?? null;
+            $lastCommentStr = is_scalar($lastComment) ? (string) $lastComment : 'N/A';
 
             $this->renderTable(
                 ['Metric', 'Value'],
@@ -420,18 +436,24 @@ HELP
                     ['Video Comments', number_format($videoComments)],
                     ['Album Comments', number_format($albumComments)],
                     ['Comments (Last 7 Days)', number_format($recentComments)],
-                    ['First Comment', $firstCommentStr],
-                    ['Latest Comment', isset($overall['last_comment']) ? (string) $overall['last_comment'] : 'N/A'],
+                    ['First Comment', $firstCommentStr !== '' ? $firstCommentStr : 'N/A'],
+                    ['Latest Comment', $lastCommentStr !== '' ? $lastCommentStr : 'N/A'],
                 ]
             );
 
             if ($topCommenters !== []) {
                 $this->io()->section('Top 10 Commenters');
+                /** @var list<list<string>> $rows */
                 $rows = [];
                 foreach ($topCommenters as $commenter) {
+                    if (!is_array($commenter)) {
+                        continue;
+                    }
+                    $commenterUsername = $commenter['username'] ?? 'Unknown';
+                    $commenterCount = $commenter['comment_count'] ?? 0;
                     $rows[] = [
-                        $commenter['username'] ?? 'Unknown',
-                        number_format($commenter['comment_count']),
+                        is_scalar($commenterUsername) ? (string) $commenterUsername : 'Unknown',
+                        is_numeric($commenterCount) ? number_format((float) $commenterCount) : '0',
                     ];
                 }
                 $this->renderTable(['User', 'Comments'], $rows);

@@ -135,19 +135,24 @@ HELP
             }
             $stmt->execute();
 
-            $tags = $stmt->fetchAll();
+            /** @var list<array<string, mixed>> $tags */
+            $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Add total_usage field to each tag
-            $transformedTags = array_values(array_map(function (array $tag): array {
+            $transformedTags = array_map(function (array $tag): array {
+                $videoCountVal = $tag['video_count'] ?? 0;
+                $albumCountVal = $tag['album_count'] ?? 0;
+                $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
+                $albumCount = is_numeric($albumCountVal) ? (int) $albumCountVal : 0;
                 return [
-                    'tag_id' => $tag['tag_id'],
-                    'tag' => $tag['tag'],
-                    'video_count' => $tag['video_count'],
-                    'album_count' => $tag['album_count'],
-                    'total_usage' => (int) $tag['video_count'] + (int) $tag['album_count'],
-                    'status_id' => $tag['status_id'],
+                    'tag_id' => $tag['tag_id'] ?? 0,
+                    'tag' => $tag['tag'] ?? '',
+                    'video_count' => $videoCount,
+                    'album_count' => $albumCount,
+                    'total_usage' => $videoCount + $albumCount,
+                    'status_id' => $tag['status_id'] ?? 0,
                 ];
-            }, $tags));
+            }, $tags);
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
@@ -316,13 +321,20 @@ HELP
                 return self::FAILURE;
             }
 
+            /** @var array<string, mixed>|null $sourceTag */
             $sourceTag = null;
+            /** @var array<string, mixed>|null $targetTag */
             $targetTag = null;
             foreach ($tags as $tag) {
-                if ($tag['tag_id'] === $sourceId) {
+                if (!is_array($tag)) {
+                    continue;
+                }
+                $tagIdVal = $tag['tag_id'] ?? null;
+                $tagIdStr = is_scalar($tagIdVal) ? (string) $tagIdVal : '';
+                if ($tagIdStr === $sourceId) {
                     $sourceTag = $tag;
                 }
-                if ($tag['tag_id'] === $targetId) {
+                if ($tagIdStr === $targetId) {
                     $targetTag = $tag;
                 }
             }
@@ -332,8 +344,10 @@ HELP
                 return self::FAILURE;
             }
 
-            $sourceTagName = (string) $sourceTag['tag'];
-            $targetTagName = (string) $targetTag['tag'];
+            $sourceTagVal = $sourceTag['tag'] ?? '';
+            $targetTagVal = $targetTag['tag'] ?? '';
+            $sourceTagName = is_scalar($sourceTagVal) ? (string) $sourceTagVal : '';
+            $targetTagName = is_scalar($targetTagVal) ? (string) $targetTagVal : '';
 
             $this->io()->section('Merge Operation');
             $this->io()->text("Source: $sourceTagName (ID: $sourceId)");
@@ -463,13 +477,22 @@ HELP
 
             if ($topTags !== []) {
                 $this->io()->section('Top 10 Most Used Tags');
+                /** @var list<list<int|string>> $rows */
                 $rows = [];
                 foreach ($topTags as $tag) {
-                    $total = $tag['video_count'] + $tag['album_count'];
+                    if (!is_array($tag)) {
+                        continue;
+                    }
+                    $tagName = $tag['tag'] ?? '';
+                    $videoCountVal = $tag['video_count'] ?? 0;
+                    $albumCountVal = $tag['album_count'] ?? 0;
+                    $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
+                    $albumCount = is_numeric($albumCountVal) ? (int) $albumCountVal : 0;
+                    $total = $videoCount + $albumCount;
                     $rows[] = [
-                        $tag['tag'],
-                        $tag['video_count'],
-                        $tag['album_count'],
+                        is_scalar($tagName) ? (string) $tagName : '',
+                        $videoCount,
+                        $albumCount,
                         $total,
                     ];
                 }

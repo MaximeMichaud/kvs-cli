@@ -77,7 +77,11 @@ class CacheBench
 
         $stats = $this->memcached->getStats();
         $server = $this->config['host'] . ':' . $this->config['port'];
-        return $stats[$server]['version'] ?? 'unknown';
+        if (!isset($stats[$server]) || !is_array($stats[$server])) {
+            return 'unknown';
+        }
+        $version = $stats[$server]['version'] ?? 'unknown';
+        return is_string($version) ? $version : 'unknown';
     }
 
     /**
@@ -403,7 +407,11 @@ class CacheBench
             return [];
         }
         $result = $this->memcached->getMulti($keys);
-        return is_array($result) ? $result : [];
+        if (!is_array($result)) {
+            return [];
+        }
+        /** @var array<string, mixed> $result */
+        return $result;
     }
 
     /**

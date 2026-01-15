@@ -111,22 +111,27 @@ HELP
             $stmt->bindValue('limit', $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT), \PDO::PARAM_INT);
             $stmt->execute();
 
-            $dvds = $stmt->fetchAll();
+            /** @var list<array<string, mixed>> $dvds */
+            $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Transform DVDs for display (field aliases)
-            $transformedDvds = array_values(array_map(function (array $dvd): array {
+            $transformedDvds = array_map(function (array $dvd): array {
                 // Calculate rating
-                $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
-                $calculatedRating = $ratingAmount > 0
-                    ? round((float) $dvd['rating'] / $ratingAmount, 1)
-                    : 0;
+                $ratingAmountVal = $dvd['rating_amount'] ?? 0;
+                $ratingVal = $dvd['rating'] ?? 0;
+                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
+                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
+                $calculatedRating = $ratingAmount > 0 ? round($rating / $ratingAmount, 1) : 0;
+
+                $statusIdVal = $dvd['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
                 return [
-                    'dvd_id' => $dvd['dvd_id'],
-                    'id' => $dvd['dvd_id'],
-                    'title' => $dvd['title'],
-                    'status_id' => $dvd['status_id'],
-                    'status' => StatusFormatter::dvd((int)$dvd['status_id'], false),
+                    'dvd_id' => $dvd['dvd_id'] ?? 0,
+                    'id' => $dvd['dvd_id'] ?? 0,
+                    'title' => $dvd['title'] ?? '',
+                    'status_id' => $statusId,
+                    'status' => StatusFormatter::dvd($statusId, false),
                     'total_videos' => $dvd['total_videos'] ?? 0,
                     'videos' => $dvd['total_videos'] ?? 0,
                     'total_videos_duration' => $dvd['total_videos_duration'] ?? 0,
@@ -138,7 +143,7 @@ HELP
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
                     'rating' => $calculatedRating,
                 ];
-            }, $dvds));
+            }, $dvds);
 
             // Default fields
             $defaultFields = ['dvd_id', 'title', 'status_id', 'total_videos'];
@@ -182,22 +187,29 @@ HELP
 
             // Display DVD details
             $titleValue = $dvd['title'] ?? '';
-            $dvdTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
+            $dvdTitle = is_scalar($titleValue) ? (string) $titleValue : '';
             $this->io()->title("DVD: $dvdTitle");
 
-            $totalVideos = is_numeric($dvd['total_videos'] ?? 0) ? (int) $dvd['total_videos'] : 0;
-            $dvdViewed = is_numeric($dvd['dvd_viewed'] ?? 0) ? (int) $dvd['dvd_viewed'] : 0;
+            $totalVideosVal = $dvd['total_videos'] ?? 0;
+            $dvdViewedVal = $dvd['dvd_viewed'] ?? 0;
+            $dvdIdVal = $dvd['dvd_id'] ?? 0;
+            $statusIdVal = $dvd['status_id'] ?? 0;
+            $totalVideos = is_numeric($totalVideosVal) ? (int) $totalVideosVal : 0;
+            $dvdViewed = is_numeric($dvdViewedVal) ? (int) $dvdViewedVal : 0;
+            $dvdIdStr = is_scalar($dvdIdVal) ? (string) $dvdIdVal : '0';
+            $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
             $info = [
-                ['DVD ID', (string) $dvd['dvd_id']],
+                ['DVD ID', $dvdIdStr],
                 ['Title', $dvdTitle],
-                ['Status', StatusFormatter::dvd((int)$dvd['status_id'])],
+                ['Status', StatusFormatter::dvd($statusId)],
                 ['Videos', number_format($totalVideos)],
                 ['Views', number_format($dvdViewed)],
             ];
 
             // Duration
-            $duration = (int)($dvd['total_videos_duration'] ?? 0);
+            $durationVal = $dvd['total_videos_duration'] ?? 0;
+            $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
             if ($duration > 0) {
                 $hours = floor($duration / 3600);
                 $minutes = floor(($duration % 3600) / 60);
@@ -207,24 +219,28 @@ HELP
             // Release year
             $releaseYear = $dvd['release_year'] ?? null;
             if ($releaseYear !== null && $releaseYear !== '') {
-                $info[] = ['Release Year', (string) $releaseYear];
+                $info[] = ['Release Year', is_scalar($releaseYear) ? (string) $releaseYear : ''];
             }
 
             // Rating
-            $ratingAmount = (int)($dvd['rating_amount'] ?? 0);
+            $ratingAmountVal = $dvd['rating_amount'] ?? 0;
+            $ratingVal = $dvd['rating'] ?? 0;
+            $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
+            $ratingFloat = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
             if ($ratingAmount > 0) {
-                $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', (float) $dvd['rating'] / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
+                $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', $ratingFloat / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
             }
 
             // Subscribers
-            $subscribersCount = $dvd['subscribers_count'] ?? null;
-            if ($subscribersCount !== null && (int) $subscribersCount > 0) {
-                $info[] = ['Subscribers', number_format((int) $subscribersCount)];
+            $subscribersCountVal = $dvd['subscribers_count'] ?? null;
+            $subscribersCount = is_numeric($subscribersCountVal) ? (int) $subscribersCountVal : 0;
+            if ($subscribersCount > 0) {
+                $info[] = ['Subscribers', number_format($subscribersCount)];
             }
 
             $description = $dvd['description'] ?? null;
             if ($description !== null && $description !== '') {
-                $info[] = ['Description', (string) $description];
+                $info[] = ['Description', is_scalar($description) ? (string) $description : ''];
             }
 
             $this->renderTable(['Field', 'Value'], $info);

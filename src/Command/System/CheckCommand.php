@@ -798,8 +798,11 @@ class CheckCommand extends BaseCommand
                 $m->addServer($server, $port);
                 $stats = $m->getStats();
                 $key = "$server:$port";
-                if (isset($stats[$key]['limit_maxbytes'])) {
-                    return (int) ($stats[$key]['limit_maxbytes'] / 1024 / 1024);
+                if (isset($stats[$key]) && is_array($stats[$key]) && isset($stats[$key]['limit_maxbytes'])) {
+                    $limitMaxbytes = $stats[$key]['limit_maxbytes'];
+                    if (is_numeric($limitMaxbytes)) {
+                        return (int) ((float) $limitMaxbytes / 1024 / 1024);
+                    }
                 }
             } catch (\Exception $e) {
                 // Fall through to socket method
@@ -1042,11 +1045,16 @@ class CheckCommand extends BaseCommand
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to query admin_processes table');
             }
+            /** @var list<array<string, mixed>> $rows */
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+            /** @var array<string, array<string, mixed>> $foundProcesses */
             $foundProcesses = [];
             foreach ($rows as $row) {
-                $foundProcesses[$row['process_name']] = $row;
+                $processName = $row['process_name'] ?? null;
+                if (is_string($processName)) {
+                    $foundProcesses[$processName] = $row;
+                }
             }
 
             foreach ($cronProcesses as $name => $config) {
@@ -1073,12 +1081,14 @@ class CheckCommand extends BaseCommand
                     continue;
                 }
 
-                $processData = $foundProcesses[$name]['process_data'];
-                $statusId = (int) $foundProcesses[$name]['status_id'];
+                $processDataVal = $foundProcesses[$name]['process_data'] ?? null;
+                $processData = is_string($processDataVal) ? $processDataVal : null;
+                $statusIdVal = $foundProcesses[$name]['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
                 // Parse last run time from process_data (usually JSON or serialized)
                 $lastRun = null;
-                if ($processData) {
+                if ($processData !== null && $processData !== '') {
                     // Try JSON first
                     $data = @json_decode($processData, true);
                     if (is_array($data) && isset($data['last_run']) && is_int($data['last_run'])) {
@@ -1756,7 +1766,7 @@ class CheckCommand extends BaseCommand
             CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'kvs-cli/' . (defined('KVS_CLI_VERSION') ? KVS_CLI_VERSION : '1.0'),
+            CURLOPT_USERAGENT => 'kvs-cli/' . $this->getCliVersion(),
         ]);
 
         $response = curl_exec($ch);
@@ -1894,5 +1904,15 @@ class CheckCommand extends BaseCommand
         }
 
         return $result;
+    }
+
+    private function getCliVersion(): string
+    {
+        if (defined('KVS_CLI_VERSION')) {
+            /** @var string $version */
+            $version = KVS_CLI_VERSION;
+            return $version;
+        }
+        return '1.0';
     }
 }

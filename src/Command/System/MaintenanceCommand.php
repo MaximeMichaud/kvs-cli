@@ -136,7 +136,11 @@ EOT
                 return [];
             }
             $result = unserialize($content);
-            return is_array($result) ? $result : [];
+            if (!is_array($result)) {
+                return [];
+            }
+            /** @var array<string, mixed> $result */
+            return $result;
         }
 
         return [];

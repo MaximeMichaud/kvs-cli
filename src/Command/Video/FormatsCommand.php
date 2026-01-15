@@ -282,9 +282,11 @@ HELP
             $result = $stmt->fetchAll();
 
             // PHPStan knows fetchAll returns array, but we need to ensure it's a list
+            /** @var list<array<string, mixed>> $formats */
             $formats = [];
             foreach ($result as $row) {
                 if (is_array($row)) {
+                    /** @var array<string, mixed> $row */
                     $formats[] = $row;
                 }
             }

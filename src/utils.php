@@ -152,11 +152,13 @@ function pick_fields(array|object $item, array $fields): array
  */
 function group_by(array $items, string $field): array
 {
+    /** @var array<string, list<array<string, mixed>|object>> $result */
     $result = [];
 
     foreach ($items as $item) {
         /** @phpstan-ignore-next-line Variable property access is intentional */
-        $key = is_array($item) ? ($item[$field] ?? 'null') : ($item->$field ?? 'null');
+        $keyVal = is_array($item) ? ($item[$field] ?? 'null') : ($item->$field ?? 'null');
+        $key = is_scalar($keyVal) ? (string) $keyVal : 'null';
         $result[$key][] = $item;
     }
 

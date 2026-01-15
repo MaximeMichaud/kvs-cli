@@ -766,7 +766,7 @@ class BenchmarkResult
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param array<array-key, mixed> $data
      */
     private static function getFloat(array $data, string $key): float
     {
@@ -774,7 +774,7 @@ class BenchmarkResult
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param array<array-key, mixed> $data
      */
     private static function getInt(array $data, string $key): int
     {

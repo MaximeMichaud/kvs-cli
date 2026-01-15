@@ -102,6 +102,7 @@ HELP
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
+            /** @var list<array<string, mixed>> $categories */
             $categories = array_values($stmt->fetchAll(\PDO::FETCH_ASSOC));
 
             // Format and display output using centralized Formatter
@@ -136,15 +137,21 @@ HELP
                 $this->io()->error('Failed to execute query');
                 return self::FAILURE;
             }
-            $categories = $stmt->fetchAll();
+            /** @var list<array<string, mixed>> $categories */
+            $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             $this->io()->section('Category Tree');
 
             foreach ($categories as $cat) {
                 $prefix = isset($cat['parent_id']) ? '  └─ ' : '';
-                $count = " ({$cat['video_count']} videos)";
-                $status = (int) $cat['status_id'] === StatusFormatter::CATEGORY_ACTIVE ? '' : ' <fg=yellow>[Inactive]</>';
-                $this->io()->text($prefix . $cat['title'] . $count . $status);
+                $videoCountVal = $cat['video_count'] ?? 0;
+                $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
+                $count = " ({$videoCount} videos)";
+                $statusIdVal = $cat['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $status = $statusId === StatusFormatter::CATEGORY_ACTIVE ? '' : ' <fg=yellow>[Inactive]</>';
+                $title = isset($cat['title']) && is_string($cat['title']) ? $cat['title'] : '';
+                $this->io()->text($prefix . $title . $count . $status);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch categories: ' . $e->getMessage());
@@ -169,9 +176,10 @@ HELP
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
+            /** @var array<string, mixed>|false $category */
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!is_array($category)) {
+            if ($category === false) {
                 $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
@@ -182,22 +190,28 @@ HELP
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
-            $videoCount = $stmt->fetchColumn();
+            $videoCountRaw = $stmt->fetchColumn();
+            $videoCount = is_numeric($videoCountRaw) ? (int) $videoCountRaw : 0;
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
-            $albumCount = $stmt->fetchColumn();
+            $albumCountRaw = $stmt->fetchColumn();
+            $albumCount = is_numeric($albumCountRaw) ? (int) $albumCountRaw : 0;
 
             $parentId = $category['parent_id'] ?? null;
-            $parentIdStr = ($parentId !== null && $parentId !== '' && $parentId !== false) ? (string) $parentId : 'None (Root)';
+            $hasParent = $parentId !== null && $parentId !== '' && $parentId !== false && is_scalar($parentId);
+            $parentIdStr = $hasParent ? (string) $parentId : 'None (Root)';
             $addedDate = $category['added_date'] ?? null;
             $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
 
+            $categoryId = $category['category_id'] ?? 0;
+            $statusId = isset($category['status_id']) && is_numeric($category['status_id']) ? (int) $category['status_id'] : 0;
+
             $info = [
-                ['ID', (string) $category['category_id']],
+                ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
                 ['Title', $categoryTitle],
                 ['Parent ID', $parentIdStr],
-                ['Status', StatusFormatter::category((int) $category['status_id'])],
+                ['Status', StatusFormatter::category($statusId)],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
                 ['Added', $addedDateStr],
@@ -206,7 +220,7 @@ HELP
             $this->renderTable(['Property', 'Value'], $info);
 
             $description = $category['description'] ?? null;
-            if ($description !== null && $description !== '') {
+            if ($description !== null && $description !== '' && is_scalar($description)) {
                 $this->io()->section('Description');
                 $this->io()->text((string) $description);
             }

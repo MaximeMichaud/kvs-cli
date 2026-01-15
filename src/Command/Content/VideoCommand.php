@@ -398,10 +398,17 @@ HELP
                 $this->io()->section('Top 10 Most Viewed Videos');
                 $rows = [];
                 foreach ($topVideos as $i => $video) {
+                    if (!is_array($video)) {
+                        continue;
+                    }
+                    $titleVal = $video['title'] ?? '';
+                    $title = is_string($titleVal) ? $titleVal : (is_scalar($titleVal) ? (string) $titleVal : '');
+                    $viewsVal = $video['views'] ?? 0;
+                    $views = is_numeric($viewsVal) ? (float) $viewsVal : 0.0;
                     $rows[] = [
                         $i + 1,
-                        substr($video['title'], 0, Constants::DEFAULT_TRUNCATE_LENGTH),
-                        number_format($video['views']),
+                        substr($title, 0, Constants::DEFAULT_TRUNCATE_LENGTH),
+                        number_format($views),
                     ];
                 }
                 $this->renderTable(['#', 'Title', 'Views'], $rows);
