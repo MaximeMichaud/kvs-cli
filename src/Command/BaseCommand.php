@@ -205,11 +205,15 @@ abstract class BaseCommand extends Command
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if ($dbConfig === []) {
-            if (!$quiet) {
-                $this->io()->error('Database configuration not found');
+        // Validate required configuration keys
+        $requiredKeys = ['host', 'database', 'user', 'password'];
+        foreach ($requiredKeys as $key) {
+            if (!isset($dbConfig[$key]) || $dbConfig[$key] === '') {
+                if (!$quiet) {
+                    $this->io()->error("Database configuration missing: $key");
+                }
+                return null;
             }
-            return null;
         }
 
         // Try original host first, then fallback to localhost/127.0.0.1 for Docker scenarios
@@ -225,9 +229,17 @@ abstract class BaseCommand extends Command
         $lastError = null;
         foreach ($hostsToTry as $host) {
             try {
+                // Parse host:port format if present
+                $port = 3306;
+                if (str_contains($host, ':')) {
+                    [$host, $portStr] = explode(':', $host, 2);
+                    $port = (int) $portStr;
+                }
+
                 $dsn = sprintf(
-                    'mysql:host=%s;dbname=%s;charset=' . Constants::DB_CHARSET,
+                    'mysql:host=%s;port=%d;dbname=%s;charset=' . Constants::DB_CHARSET,
                     $host,
+                    $port,
                     $dbConfig['database']
                 );
 

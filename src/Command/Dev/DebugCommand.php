@@ -92,9 +92,13 @@ class DebugCommand extends BaseCommand
 
         $dbConfig = $this->config->getDatabaseConfig();
 
-        if ($dbConfig === []) {
-            $this->io()->error('Database configuration not found');
-            return self::FAILURE;
+        // Validate required configuration keys
+        $requiredKeys = ['host', 'database', 'user'];
+        foreach ($requiredKeys as $key) {
+            if (!isset($dbConfig[$key]) || $dbConfig[$key] === '') {
+                $this->io()->error("Database configuration missing: $key");
+                return self::FAILURE;
+            }
         }
 
         $this->io()->info('Configuration:');

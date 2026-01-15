@@ -277,7 +277,8 @@ $config["memcache_server"] = "127.0.0.1";
 
         // Should contain database config
         $this->assertArrayHasKey('db.host', $json);
-        $this->assertEquals('127.0.0.1', $json['db.host']);
+        // Host may include port (e.g., 127.0.0.1:3308)
+        $this->assertStringStartsWith('127.0.0.1', $json['db.host']);
     }
 
     public function testConfigGetMainProjectVersion(): void

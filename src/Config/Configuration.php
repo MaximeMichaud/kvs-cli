@@ -146,7 +146,9 @@ class Configuration
     private function applyHostnameFallback(): void
     {
         $host = $this->dbConfig['host'] ?? '';
-        if ($host === '' || $host === '127.0.0.1' || $host === 'localhost') {
+        // Extract host without port for comparison
+        $hostWithoutPort = str_contains($host, ':') ? explode(':', $host, 2)[0] : $host;
+        if ($host === '' || $hostWithoutPort === '127.0.0.1' || $hostWithoutPort === 'localhost') {
             return; // Already using localhost, no fallback needed
         }
 

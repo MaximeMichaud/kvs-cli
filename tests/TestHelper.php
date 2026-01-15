@@ -78,8 +78,14 @@ class TestHelper
     {
         $defaults = self::getDbConfig();
 
+        $host = $overrides['host'] ?? $defaults['host'];
+        $port = $overrides['port'] ?? $defaults['port'];
+
+        // Include port in host string if not default
+        $hostWithPort = ($port !== 3306) ? "{$host}:{$port}" : $host;
+
         $config = [
-            'host' => $overrides['host'] ?? $defaults['host'],
+            'host' => $hostWithPort,
             'user' => $overrides['user'] ?? $defaults['user'],
             'pass' => $overrides['password'] ?? $defaults['pass'],
             'database' => $overrides['database'] ?? $defaults['database'],
