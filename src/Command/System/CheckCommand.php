@@ -179,11 +179,8 @@ class CheckCommand extends BaseCommand
             return $result;
         }
 
-        // Compare versions
-        $currentInt = (int) str_replace('.', '', $currentVersion);
-        $latestInt = (int) str_replace('.', '', $latestVersion);
-
-        if ($latestInt > $currentInt) {
+        // Compare versions using version_compare for proper semantic versioning
+        if (version_compare($latestVersion, $currentVersion, '>')) {
             $result['update_available'] = true;
             $this->printStatus('Current Version', $currentVersion, 'warning');
             $this->printStatus(

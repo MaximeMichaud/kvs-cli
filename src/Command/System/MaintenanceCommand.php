@@ -122,7 +122,12 @@ EOT
             return false;
         }
         $settings = unserialize($content);
-        return is_array($settings) && isset($settings['DISABLE_WEBSITE']) && $settings['DISABLE_WEBSITE'] !== '';
+        // DISABLE_WEBSITE = 1 means maintenance ON, 0 means OFF
+        if (!is_array($settings) || !isset($settings['DISABLE_WEBSITE'])) {
+            return false;
+        }
+        $value = $settings['DISABLE_WEBSITE'];
+        return (is_int($value) || is_string($value)) && (int) $value === 1;
     }
 
     /**

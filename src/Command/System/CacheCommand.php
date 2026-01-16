@@ -104,8 +104,12 @@ class CacheCommand extends BaseCommand
             ];
 
             foreach ($tables as $table) {
-                $db->exec("TRUNCATE TABLE IF EXISTS $table");
-                $this->io()->info("Cleared database cache table: $table");
+                // Check if table exists first (TRUNCATE doesn't support IF EXISTS)
+                $result = $db->query("SHOW TABLES LIKE '$table'");
+                if ($result !== false && $result->rowCount() > 0) {
+                    $db->exec("TRUNCATE TABLE $table");
+                    $this->io()->info("Cleared database cache table: $table");
+                }
             }
         } catch (\Exception $e) {
             $this->io()->warning('Could not clear database cache: ' . $e->getMessage());

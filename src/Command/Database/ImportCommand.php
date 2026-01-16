@@ -84,9 +84,17 @@ EOT
             $file = TempFileManager::createWithContent($sqlContent, 'kvs_import_', '.sql');
         }
 
+        // Parse host and port (host may be in "host:port" format)
+        $host = $dbConfig['host'];
+        $port = (string) Constants::DEFAULT_MYSQL_PORT;
+        if (str_contains($host, ':')) {
+            [$host, $port] = explode(':', $host, 2);
+        }
+
         $command = [
             'mysql',
-            '-h', $dbConfig['host'],
+            '-h', $host,
+            '-P', $port,
             '-u', $dbConfig['user'],
             '--default-character-set=' . Constants::DB_CHARSET,
             $dbConfig['database'],

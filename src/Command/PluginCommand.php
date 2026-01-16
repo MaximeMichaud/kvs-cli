@@ -500,11 +500,7 @@ HELP
             return true; // Can't check, assume compatible
         }
 
-        // Convert versions to comparable integers (6.3.0 -> 630)
-        $required = (int) str_replace('.', '', $requiredVersion);
-        $current = (int) str_replace('.', '', $kvsVersion);
-
-        return $current >= $required;
+        return version_compare($kvsVersion, $requiredVersion, '>=');
     }
 
     private function checkPluginEnabled(string $id, string $phpFile): bool
