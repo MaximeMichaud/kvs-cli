@@ -92,8 +92,9 @@ class BenchmarkCommand extends BaseCommand
             ->addOption(
                 'export',
                 'e',
-                InputOption::VALUE_REQUIRED,
-                'Export results to JSON file'
+                InputOption::VALUE_OPTIONAL,
+                'Export results to JSON file (auto-generates filename if none specified)',
+                false
             )
             ->addOption(
                 'compare',
@@ -1026,14 +1027,22 @@ class BenchmarkCommand extends BaseCommand
         $this->io()->newLine();
         $this->displayExperimentResults($experiment, $stackScore, $detection);
 
-        // Step 6: Export JSON
-        $filename = $experiment->getFilename();
-        $json = json_encode($experiment->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        // Step 6: Export JSON only if --export is specified
+        // VALUE_OPTIONAL: false (default), null (--export), string (--export=file.json)
+        $exportOpt = $input->getOption('export');
+        if ($exportOpt !== false) {
+            // Use custom filename if provided, otherwise auto-generate
+            $filename = (is_string($exportOpt) && $exportOpt !== '')
+                ? $exportOpt
+                : $experiment->getFilename();
 
-        if (file_put_contents($filename, $json) !== false) {
-            $this->io()->success("Results exported to: {$filename}");
-        } else {
-            $this->io()->warning("Failed to export results to: {$filename}");
+            $json = json_encode($experiment->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+
+            if (file_put_contents($filename, $json) !== false) {
+                $this->io()->success("Results exported to: {$filename}");
+            } else {
+                $this->io()->warning("Failed to export results to: {$filename}");
+            }
         }
 
         return self::SUCCESS;
