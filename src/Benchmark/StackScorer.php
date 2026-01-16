@@ -14,7 +14,9 @@ use KVS\CLI\Constants;
  */
 class StackScorer
 {
-    private const SCORE_ACTIVE = 100;      // Active support
+    private const SCORE_LATEST = 100;      // Latest active version
+    private const SCORE_ACTIVE = 100;      // Active support (for compatibility)
+    private const SCORE_OUTDATED = 80;     // Active but not latest
     private const SCORE_SECURITY = 70;     // Security fixes only
     private const SCORE_EOL_SOON = 40;     // EOL within 6 months
     private const SCORE_EOL = 0;           // End of life
@@ -65,6 +67,9 @@ class StackScorer
     /**
      * Score PHP version
      *
+     * KVS 6.x only supports PHP 8.1, so we consider 8.1 as "optimal for KVS"
+     * even though it may be EOL from PHP's perspective.
+     *
      * @return array{version: string, status: string, score: int, eol_date: ?string}
      */
     private function scorePhp(): array
@@ -72,7 +77,40 @@ class StackScorer
         $version = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
         $eolData = $this->fetchEolData('php');
 
+        // KVS 6.x only supports PHP 8.1 - this is the best users can do
+        // Don't penalize users for using the only supported version
+        if ($version === '8.1') {
+            return [
+                'version' => $version,
+                'status' => 'kvs_optimal',
+                'score' => self::SCORE_ACTIVE,
+                'eol_date' => $this->getEolDateForVersion($eolData, $version),
+            ];
+        }
+
         return $this->scoreVersion('php', $version, $eolData);
+    }
+
+    /**
+     * Get EOL date for a specific version from EOL data
+     *
+     * @param list<array<string, mixed>> $eolData
+     */
+    private function getEolDateForVersion(array $eolData, string $version): ?string
+    {
+        foreach ($eolData as $entry) {
+            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
+                continue;
+            }
+            $cycle = (string) $entry['cycle'];
+            if ($cycle === $version || str_starts_with($version, $cycle . '.')) {
+                $eol = $entry['eol'] ?? null;
+                if (is_string($eol)) {
+                    return $eol;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -273,33 +311,15 @@ class StackScorer
             return $result;
         }
 
-        // Find matching cycle
-        $matchedEntry = null;
-        foreach ($eolData as $entry) {
-            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
-                continue;
-            }
-            $cycle = (string) $entry['cycle'];
+        $now = new \DateTime();
 
-            // Try exact match first, then prefix match
-            if ($cycle === $version || str_starts_with($version, $cycle . '.')) {
-                $matchedEntry = $entry;
-                break;
-            }
-        }
+        // Find matching cycle for current version
+        $matchedEntry = $this->findMatchingEntry($version, $eolData);
 
         // Try matching just major version for some products
         if ($matchedEntry === null && str_contains($version, '.')) {
             $majorVersion = explode('.', $version)[0];
-            foreach ($eolData as $entry) {
-                if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
-                    continue;
-                }
-                if ((string) $entry['cycle'] === $majorVersion) {
-                    $matchedEntry = $entry;
-                    break;
-                }
-            }
+            $matchedEntry = $this->findMatchingEntry($majorVersion, $eolData);
         }
 
         if ($matchedEntry === null) {
@@ -308,11 +328,10 @@ class StackScorer
             return $result;
         }
 
-        $now = new \DateTime();
         $eol = $matchedEntry['eol'] ?? null;
         $support = $matchedEntry['support'] ?? null;
 
-        // Check EOL status
+        // Check EOL status first
         if ($eol === true || $eol === 'true') {
             $result['status'] = 'eol';
             $result['score'] = self::SCORE_EOL;
@@ -357,9 +376,77 @@ class StackScorer
             }
         }
 
-        $result['status'] = 'active';
-        $result['score'] = self::SCORE_ACTIVE;
+        // Version is active - now check if it's the latest
+        $latestActive = $this->findLatestActiveVersion($eolData, $now);
+        $cycleVal = $matchedEntry['cycle'] ?? '';
+        $matchedCycle = is_scalar($cycleVal) ? (string) $cycleVal : '';
+
+        if ($latestActive !== null && $matchedCycle !== $latestActive) {
+            $result['status'] = 'outdated';
+            $result['score'] = self::SCORE_OUTDATED;
+            return $result;
+        }
+
+        $result['status'] = 'latest';
+        $result['score'] = self::SCORE_LATEST;
         return $result;
+    }
+
+    /**
+     * Find matching entry for a version in EOL data
+     *
+     * @param list<array<string, mixed>> $eolData
+     * @return array<string, mixed>|null
+     */
+    private function findMatchingEntry(string $version, array $eolData): ?array
+    {
+        foreach ($eolData as $entry) {
+            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
+                continue;
+            }
+            $cycle = (string) $entry['cycle'];
+            if ($cycle === $version || str_starts_with($version, $cycle . '.')) {
+                return $entry;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Find the latest active version from EOL data
+     *
+     * @param list<array<string, mixed>> $eolData
+     */
+    private function findLatestActiveVersion(array $eolData, \DateTime $now): ?string
+    {
+        foreach ($eolData as $entry) {
+            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
+                continue;
+            }
+
+            $eol = $entry['eol'] ?? null;
+
+            // Skip if already EOL
+            if ($eol === true || $eol === 'true') {
+                continue;
+            }
+
+            if (is_string($eol)) {
+                try {
+                    $eolDate = new \DateTime($eol);
+                    if ($now > $eolDate) {
+                        continue;
+                    }
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+
+            // First active version found = latest
+            return (string) $entry['cycle'];
+        }
+
+        return null;
     }
 
     /**
@@ -460,6 +547,9 @@ class StackScorer
     {
         return match ($status) {
             'active', 'current' => '<fg=green>Active</>',
+            'latest' => '<fg=green>Latest</>',
+            'kvs_optimal' => '<fg=green>KVS Optimal</>',
+            'outdated' => '<fg=yellow>Outdated</>',
             'security' => '<fg=yellow>Security Only</>',
             'eol_soon' => '<fg=yellow>EOL Soon</>',
             'eol' => '<fg=red>End of Life</>',

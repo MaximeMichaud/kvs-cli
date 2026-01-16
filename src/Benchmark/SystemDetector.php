@@ -408,12 +408,77 @@ class SystemDetector
             'confidence' => 'low',
         ];
 
-        // Method 1: Check DMI/SMBIOS (most reliable)
+        // Method 1: Check /proc/cpuinfo for hypervisor flag FIRST
+        // This is the most reliable indicator of virtualization
+        $hasHypervisorFlag = false;
+        if (file_exists('/proc/cpuinfo')) {
+            $cpuinfo = file_get_contents('/proc/cpuinfo');
+            if ($cpuinfo !== false && str_contains($cpuinfo, 'hypervisor')) {
+                $hasHypervisorFlag = true;
+                $result['is_virtual'] = true;
+                $result['confidence'] = 'high';
+
+                // Try to identify technology from cpuinfo
+                if (str_contains(strtolower($cpuinfo), 'kvm')) {
+                    $result['technology'] = 'KVM';
+                }
+            }
+        }
+
+        // Method 2: Check /sys/hypervisor/type
+        if (file_exists('/sys/hypervisor/type')) {
+            $type = file_get_contents('/sys/hypervisor/type');
+            if ($type !== false && trim($type) !== '') {
+                $result['is_virtual'] = true;
+                $result['technology'] = trim($type);
+                $result['confidence'] = 'high';
+                return $result;
+            }
+        }
+
+        // Method 3: Check device tree (for ARM/cloud instances)
+        if (file_exists('/sys/firmware/devicetree/base/hypervisor/compatible')) {
+            $result['is_virtual'] = true;
+            $result['confidence'] = 'high';
+            return $result;
+        }
+
+        // If no hypervisor flag, it's likely bare metal - don't trust DMI alone
+        // DMI can show provider name (Hetzner, OVH) for dedicated servers too
+        if (!$hasHypervisorFlag) {
+            $result['confidence'] = 'high';
+            return $result;
+        }
+
+        // Method 4: Check DMI/SMBIOS to identify VM technology (only if hypervisor detected)
         $dmiChecks = [
             '/sys/class/dmi/id/product_name',
             '/sys/class/dmi/id/sys_vendor',
             '/sys/class/dmi/id/board_vendor',
             '/sys/class/dmi/id/bios_vendor',
+        ];
+
+        // VM-specific indicators (not just provider names)
+        $vmIndicators = [
+            'kvm' => 'KVM',
+            'qemu' => 'QEMU/KVM',
+            'vmware' => 'VMware',
+            'virtualbox' => 'VirtualBox',
+            'xen' => 'Xen',
+            'microsoft corporation' => 'Hyper-V',
+            'bochs' => 'Bochs',
+            'parallels' => 'Parallels',
+            'openstack' => 'OpenStack',
+        ];
+
+        // Cloud provider indicators (require hypervisor flag to be a VM)
+        $cloudVmIndicators = [
+            'amazon ec2' => 'AWS EC2',
+            'google compute' => 'Google Cloud',
+            'digitalocean' => 'DigitalOcean',
+            'hetzner cloud' => 'Hetzner Cloud',
+            'linode' => 'Linode',
+            'vultr' => 'Vultr',
         ];
 
         foreach ($dmiChecks as $file) {
@@ -426,64 +491,21 @@ class SystemDetector
             }
             $content = strtolower(trim($content));
 
-            $vmIndicators = [
-                'kvm' => 'KVM',
-                'qemu' => 'QEMU/KVM',
-                'vmware' => 'VMware',
-                'virtualbox' => 'VirtualBox',
-                'xen' => 'Xen',
-                'microsoft' => 'Hyper-V',
-                'amazon ec2' => 'AWS EC2',
-                'google' => 'Google Cloud',
-                'digitalocean' => 'DigitalOcean',
-                'hetzner' => 'Hetzner Cloud',
-                'linode' => 'Linode',
-                'vultr' => 'Vultr',
-                'ovh' => 'OVH',
-                'openstack' => 'OpenStack',
-                'bochs' => 'Bochs',
-                'parallels' => 'Parallels',
-            ];
-
+            // Check VM-specific indicators first
             foreach ($vmIndicators as $indicator => $name) {
                 if (str_contains($content, $indicator)) {
-                    $result['is_virtual'] = true;
                     $result['technology'] = $name;
-                    $result['confidence'] = 'high';
                     return $result;
                 }
             }
-        }
 
-        // Method 2: Check /proc/cpuinfo for hypervisor flag
-        if (file_exists('/proc/cpuinfo')) {
-            $cpuinfo = file_get_contents('/proc/cpuinfo');
-            if ($cpuinfo !== false && str_contains($cpuinfo, 'hypervisor')) {
-                $result['is_virtual'] = true;
-                $result['confidence'] = 'medium';
-
-                // Try to identify from cpuinfo
-                if (str_contains(strtolower($cpuinfo), 'kvm')) {
-                    $result['technology'] = 'KVM';
-                    $result['confidence'] = 'high';
+            // Check cloud VM indicators
+            foreach ($cloudVmIndicators as $indicator => $name) {
+                if (str_contains($content, $indicator)) {
+                    $result['technology'] = $name;
+                    return $result;
                 }
             }
-        }
-
-        // Method 3: Check for virt-what style detection
-        if (file_exists('/sys/hypervisor/type')) {
-            $type = file_get_contents('/sys/hypervisor/type');
-            if ($type !== false) {
-                $result['is_virtual'] = true;
-                $result['technology'] = trim($type);
-                $result['confidence'] = 'high';
-            }
-        }
-
-        // Method 4: Check device tree (for ARM/cloud instances)
-        if (file_exists('/sys/firmware/devicetree/base/hypervisor/compatible')) {
-            $result['is_virtual'] = true;
-            $result['confidence'] = 'high';
         }
 
         return $result;
@@ -515,6 +537,11 @@ class SystemDetector
             $result['type'] = 'nvme';
             $result['confidence'] = 'high';
             return $result;
+        }
+
+        // MD RAID detection - check underlying devices
+        if (str_starts_with($rootDevice, 'md')) {
+            return $this->detectMdRaidStorage($rootDevice);
         }
 
         // Check if we're on a known cloud provider that uses SSDs
@@ -563,6 +590,108 @@ class SystemDetector
             // Could be SSD or HDD, can't determine without rotational flag
             $result['type'] = 'unknown';
             $result['confidence'] = 'low';
+        }
+
+        return $result;
+    }
+
+    /**
+     * Detect storage type for MD RAID arrays
+     *
+     * @return array{type: string, device: string, confidence: string}
+     */
+    private function detectMdRaidStorage(string $mdDevice): array
+    {
+        $result = [
+            'type' => 'unknown',
+            'device' => $mdDevice,
+            'confidence' => 'low',
+        ];
+
+        // Get the base md device name (e.g., md3 from md3p1)
+        $baseMd = $mdDevice;
+        if (preg_match('/^(md\d+)/', $mdDevice, $m) === 1) {
+            $baseMd = $m[1];
+        }
+
+        // Find underlying devices via /sys/block/mdX/slaves/
+        $slavesPath = "/sys/block/{$baseMd}/slaves";
+        if (!is_dir($slavesPath)) {
+            // Try alternative path for md devices
+            $slavesPath = "/sys/block/{$baseMd}/md";
+            if (!is_dir($slavesPath)) {
+                return $result;
+            }
+        }
+
+        $underlyingDevices = [];
+
+        // Check slaves directory
+        if (is_dir("/sys/block/{$baseMd}/slaves")) {
+            $slaves = @scandir("/sys/block/{$baseMd}/slaves");
+            if ($slaves !== false) {
+                foreach ($slaves as $slave) {
+                    if ($slave === '.' || $slave === '..') {
+                        continue;
+                    }
+                    $underlyingDevices[] = $slave;
+                }
+            }
+        }
+
+        // If no slaves found, try reading from md directory (dev-* entries)
+        if (count($underlyingDevices) === 0 && is_dir("/sys/block/{$baseMd}/md")) {
+            $mdDir = @scandir("/sys/block/{$baseMd}/md");
+            if ($mdDir !== false) {
+                foreach ($mdDir as $entry) {
+                    if (str_starts_with($entry, 'dev-')) {
+                        // dev-sda1 -> sda1
+                        $underlyingDevices[] = substr($entry, 4);
+                    }
+                }
+            }
+        }
+
+        if (count($underlyingDevices) === 0) {
+            return $result;
+        }
+
+        // Check rotational status of underlying devices
+        $allSsd = true;
+        $anyKnown = false;
+
+        foreach ($underlyingDevices as $device) {
+            // Strip partition number to get base device (e.g., sda1 -> sda, nvme0n1p1 -> nvme0n1)
+            $baseDevice = $device;
+            if (preg_match('/^(nvme\d+n\d+)/', $device, $m) === 1) {
+                $baseDevice = $m[1];
+            } elseif (preg_match('/^([a-z]+)/', $device, $m) === 1) {
+                $baseDevice = $m[1];
+            }
+
+            // NVMe devices are always SSD
+            if (str_starts_with($baseDevice, 'nvme')) {
+                $anyKnown = true;
+                continue; // SSD, allSsd stays true
+            }
+
+            // Check rotational flag
+            $rotationalFile = "/sys/block/{$baseDevice}/queue/rotational";
+            if (file_exists($rotationalFile)) {
+                $rotational = file_get_contents($rotationalFile);
+                if ($rotational !== false) {
+                    $anyKnown = true;
+                    if (trim($rotational) === '1') {
+                        $allSsd = false;
+                    }
+                }
+            }
+        }
+
+        if ($anyKnown) {
+            $result['type'] = $allSsd ? 'ssd' : 'hdd';
+            $result['confidence'] = 'high';
+            $result['device'] = $mdDevice . ' (RAID)';
         }
 
         return $result;
