@@ -13,9 +13,8 @@ namespace KVS\CLI\Benchmark;
 class ConfigScorer
 {
     // KVS recommended thresholds (from KVS-install)
-    public const UPLOAD_MIN_MB = 2048;           // upload_max_filesize & post_max_size
-    public const MEMORY_LIMIT_MIN_MB = 256;      // Acceptable minimum
-    public const MEMORY_LIMIT_GOOD_MB = 512;     // KVS recommended
+    public const UPLOAD_MIN_MB = 1024;           // upload_max_filesize & post_max_size (1G+)
+    public const MEMORY_LIMIT_MIN_MB = 256;      // Minimum (256M - 2048M optimal)
     public const MAX_EXECUTION_TIME_MIN = 300;   // 5 minutes
     public const MAX_INPUT_VARS_MIN = 10000;
 
@@ -75,7 +74,7 @@ class ConfigScorer
     private function scorePhpSettings(array $settings): array
     {
         $score = 0;
-        $max = 5;
+        $max = 4;
         $issues = [];
         $recommendations = [];
 
@@ -99,18 +98,14 @@ class ConfigScorer
             $recommendations[] = 'post_max_size = ' . self::UPLOAD_MIN_MB . 'M';
         }
 
-        // memory_limit (1 point for min, +1 for good)
+        // memory_limit (1 point) - 256M minimum, up to 2048M optimal
         $memoryBytes = $this->parseSize($settings['memory_limit'] ?? '128M');
-        if ($memoryBytes === -1 || $memoryBytes >= self::MEMORY_LIMIT_GOOD_MB * 1024 * 1024) {
-            $score += 2;
-        } elseif ($memoryBytes >= self::MEMORY_LIMIT_MIN_MB * 1024 * 1024) {
+        if ($memoryBytes === -1 || $memoryBytes >= self::MEMORY_LIMIT_MIN_MB * 1024 * 1024) {
             $score++;
-            $current = $this->formatBytes($memoryBytes);
-            $recommendations[] = "memory_limit = " . self::MEMORY_LIMIT_GOOD_MB . "M (current: {$current})";
         } else {
             $current = $this->formatBytes($memoryBytes);
             $issues[] = "memory_limit = {$current} (need " . self::MEMORY_LIMIT_MIN_MB . 'M+)';
-            $recommendations[] = 'memory_limit = ' . self::MEMORY_LIMIT_GOOD_MB . 'M';
+            $recommendations[] = 'memory_limit = ' . self::MEMORY_LIMIT_MIN_MB . 'M';
         }
 
         // max_execution_time (1 point)
