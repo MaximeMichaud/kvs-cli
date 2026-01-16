@@ -152,6 +152,7 @@ class HttpBench
             CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_FOLLOWLOCATION => true,
+            // @phpstan-ignore function.alreadyNarrowedType
             CURLOPT_USERAGENT => 'kvs-cli/' . (defined('KVS_CLI_VERSION') && is_string(KVS_CLI_VERSION) ? KVS_CLI_VERSION : '1.0'),
             CURLOPT_HEADER => true,
             // CURLOPT_NOBODY must be false to measure full response time including body transfer

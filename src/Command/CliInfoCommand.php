@@ -102,7 +102,8 @@ HELP
         // KVS CLI paths
         $info['kvs_cli_root'] = $this->getCliRoot();
         $info['kvs_cli_phar_path'] = $this->getPharPath();
-        $info['kvs_cli_version'] = defined('KVS_CLI_VERSION') ? KVS_CLI_VERSION : 'unknown';
+        // @phpstan-ignore function.alreadyNarrowedType
+        $info['kvs_cli_version'] = defined('KVS_CLI_VERSION') && is_string(KVS_CLI_VERSION) ? KVS_CLI_VERSION : 'unknown';
 
         // KVS installation info (if detected)
         $kvsPath = $this->detectKvsPath();
@@ -208,7 +209,8 @@ HELP
         }
 
         // Otherwise, return the KVS_CLI_ROOT constant
-        if (defined('KVS_CLI_ROOT')) {
+        // @phpstan-ignore function.alreadyNarrowedType
+        if (defined('KVS_CLI_ROOT') && is_string(KVS_CLI_ROOT)) {
             return KVS_CLI_ROOT;
         }
 

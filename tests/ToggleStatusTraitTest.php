@@ -16,10 +16,13 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * Tests all scenarios:
  * - Missing ID parameter
  * - Database connection failure
- * - Entity not found
- * - Entity already at target status
- * - Successful status toggle
+ * - Entity not found (requires DB, skipped if unavailable)
+ * - Entity already at target status (requires DB, skipped if unavailable)
+ * - Successful status toggle (requires DB, skipped if unavailable)
  * - Database exception during update
+ *
+ * Note: Some tests require a real database connection and are skipped if DB is unavailable.
+ *       In the future, these could be refactored to use database mocking (PDO mock or similar).
  */
 class ToggleStatusTraitTest extends TestCase
 {
@@ -143,6 +146,10 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testEntityNotFoundReturnsFailure(): void
     {
+        if (!$this->isDatabaseAvailable()) {
+            $this->markTestSkipped('Database connection not available');
+        }
+
         // Try to toggle a non-existent tag
         $result = $this->command->testToggleStatus(
             entityName: 'Tag',
@@ -163,6 +170,10 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testEntityAlreadyAtTargetStatus(): void
     {
+        if (!$this->isDatabaseAvailable()) {
+            $this->markTestSkipped('Database connection not available');
+        }
+
         // Tag ID 1 (HD) is already active (status_id=1)
         $result = $this->command->testToggleStatus(
             entityName: 'Tag',
@@ -183,6 +194,10 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testSuccessfulStatusToggle(): void
     {
+        if (!$this->isDatabaseAvailable()) {
+            $this->markTestSkipped('Database connection not available');
+        }
+
         // Disable tag ID 1 (HD) which is currently active
         $result = $this->command->testToggleStatus(
             entityName: 'Tag',
@@ -343,6 +358,36 @@ class ToggleStatusTraitTest extends TestCase
         $this->command->testToggleStatus('CustomEntity', 'ktvs_custom', 'custom_id', 'name', null, 1, 'content:custom');
         $output3 = $this->output->fetch();
         $this->assertStringContainsString('CustomEntity ID is required', $output3);
+    }
+
+    /**
+     * Check if database connection is available
+     *
+     * @return bool
+     */
+    private function isDatabaseAvailable(): bool
+    {
+        try {
+            $dbConfig = TestHelper::getDbConfig();
+            $dsn = sprintf(
+                'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+                $dbConfig['host'],
+                $dbConfig['port'],
+                $dbConfig['database']
+            );
+            $pdo = new \PDO(
+                $dsn,
+                $dbConfig['user'],
+                $dbConfig['password'] ?? '',
+                [
+                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                    \PDO::ATTR_TIMEOUT => 2,
+                ]
+            );
+            return true;
+        } catch (\PDOException $e) {
+            return false;
+        }
     }
 }
 

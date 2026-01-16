@@ -56,7 +56,15 @@ if (!defined('KVS_CLI_ROOT')) {
 }
 
 // Read version from VERSION file (like WP-CLI)
-define('KVS_CLI_VERSION', trim((string) file_get_contents(KVS_CLI_ROOT . '/VERSION')));
+// @phpstan-ignore function.alreadyNarrowedType
+if (!is_string(KVS_CLI_ROOT)) {
+    throw new \RuntimeException('KVS_CLI_ROOT constant is not a string');
+}
+$versionContent = file_get_contents(KVS_CLI_ROOT . '/VERSION');
+if ($versionContent === false) {
+    throw new \RuntimeException('Unable to read VERSION file');
+}
+define('KVS_CLI_VERSION', trim($versionContent));
 
 class Application extends BaseApplication
 {
@@ -78,7 +86,9 @@ class Application extends BaseApplication
 
     public function __construct()
     {
-        parent::__construct(self::NAME, self::VERSION);
+        /** @var string $version */
+        $version = self::VERSION;
+        parent::__construct(self::NAME, $version);
 
         // Load utility functions
         require_once __DIR__ . '/utils.php';
