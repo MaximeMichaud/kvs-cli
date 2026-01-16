@@ -6,6 +6,7 @@ namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Benchmark\BenchmarkResult;
 use KVS\CLI\Benchmark\BenchmarkRunner;
+use KVS\CLI\Benchmark\ConfigScorer;
 use KVS\CLI\Benchmark\ExperimentResult;
 use KVS\CLI\Benchmark\StackScorer;
 use KVS\CLI\Benchmark\SystemDetector;
@@ -1019,13 +1020,20 @@ class BenchmarkCommand extends BaseCommand
         $stackScorer = new StackScorer($db);
         $stackScore = $stackScorer->calculate();
 
-        // Step 4: Create experiment result with ID
+        // Step 4: Calculate Config Score (configuration quality)
+        $this->io()->text('<comment>Checking configuration settings...</comment>');
+
+        $configData = $this->collectConfigData($db);
+        $configScorer = new ConfigScorer();
+        $configScore = $configScorer->calculate($configData);
+
+        // Step 5: Create experiment result with ID
         $experiment = new ExperimentResult($result);
         $experiment->setSystemDetection($detection);
 
-        // Step 5: Display results
+        // Step 6: Display results
         $this->io()->newLine();
-        $this->displayExperimentResults($experiment, $stackScore, $detection);
+        $this->displayExperimentResults($experiment, $stackScore, $configScore, $detection);
 
         // Step 6: Export JSON only if --export is specified
         // VALUE_OPTIONAL: false (default), null (--export), string (--export=file.json)
@@ -1138,13 +1146,18 @@ class BenchmarkCommand extends BaseCommand
     }
 
     /**
-     * Display experiment results with Stack Score and Efficiency Score
+     * Display experiment results with Stack Score, Config Score and Efficiency Score
      *
-     * @param array{total: int, php: array<string, mixed>, database: array<string, mixed>, os: array<string, mixed>, rating: string} $stackScore
+     * @param array<string, mixed> $stackScore
+     * @param array<string, mixed> $configScore
      * @param array<string, mixed> $detection
      */
-    private function displayExperimentResults(ExperimentResult $experiment, array $stackScore, array $detection): void
-    {
+    private function displayExperimentResults(
+        ExperimentResult $experiment,
+        array $stackScore,
+        array $configScore,
+        array $detection
+    ): void {
         $result = $experiment->getBenchmarkResult();
         $rawScore = $result->calculateScore();
 
@@ -1163,11 +1176,21 @@ class BenchmarkCommand extends BaseCommand
 
         // Display each section
         $stackColor = $this->displayStackScoreSection($stackScore);
+        $configColor = $this->displayConfigScoreSection($configScore);
         $this->displayPerformanceSection($rawScore, $cpuCores, $efficiencyPerCore, $efficiencyScore, $result);
         $this->displaySystemSummarySection($detection, $result);
 
         // Final summary
-        $this->displayFinalSummaryBox($stackScore['total'], $stackColor, $efficiencyScore, $experiment->getId());
+        $stackTotal = (int) ($stackScore['total'] ?? 0);
+        $configTotal = (int) ($configScore['total'] ?? 0);
+        $this->displayFinalSummaryBoxWithConfig(
+            $stackTotal,
+            $stackColor,
+            $configTotal,
+            $configColor,
+            $efficiencyScore,
+            $experiment->getId()
+        );
     }
 
     /**
@@ -1370,10 +1393,16 @@ class BenchmarkCommand extends BaseCommand
     }
 
     /**
-     * Display final summary box
+     * Display final summary box with config score
      */
-    private function displayFinalSummaryBox(int $stackTotal, string $stackColor, int $efficiencyScore, string $id): void
-    {
+    private function displayFinalSummaryBoxWithConfig(
+        int $stackTotal,
+        string $stackColor,
+        int $configTotal,
+        string $configColor,
+        int $efficiencyScore,
+        string $id
+    ): void {
         $separator = str_repeat('━', 65);
         $this->io()->newLine();
         $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
@@ -1385,6 +1414,12 @@ class BenchmarkCommand extends BaseCommand
             $stackColor,
             $stackTotal,
             $this->getStackMiniRating($stackTotal)
+        ));
+        $this->io()->writeln(sprintf(
+            '  <fg=white>Config Score:</>      <fg=%s;options=bold>%3d/100</>  %s',
+            $configColor,
+            $configTotal,
+            $this->getStackMiniRating($configTotal)
         ));
         $effPts = str_pad(number_format($efficiencyScore) . ' pts', 7);
         $this->io()->writeln(sprintf(
@@ -1399,7 +1434,288 @@ class BenchmarkCommand extends BaseCommand
         $this->io()->newLine();
 
         $this->io()->text('<fg=gray>Stack Score: 100 = All software actively maintained</>');
-        $this->io()->text('<fg=gray>Efficiency Score: 1000 pts = Baseline efficiency (250 pts/core on 4-core VPS)</>');
+        $this->io()->text('<fg=gray>Config Score: 100 = All settings optimized for KVS</>');
+        $this->io()->text('<fg=gray>Efficiency Score: 1000 pts = Baseline (250 pts/core on 4-core VPS)</>');
+    }
+
+    /**
+     * Display config score section
+     *
+     * @param array<string, mixed> $configScore
+     * @return string Color for config score
+     */
+    private function displayConfigScoreSection(array $configScore): string
+    {
+        $this->io()->writeln('<fg=white;options=bold>CONFIG SCORE</> <fg=gray>(KVS Optimization)</>');
+        $this->io()->newLine();
+
+        /** @var array<string, mixed> $phpSettings */
+        $phpSettings = is_array($configScore['php_settings'] ?? null) ? $configScore['php_settings'] : [];
+        /** @var array<string, mixed> $opcache */
+        $opcache = is_array($configScore['opcache'] ?? null) ? $configScore['opcache'] : [];
+        /** @var array<string, mixed> $cache */
+        $cache = is_array($configScore['cache'] ?? null) ? $configScore['cache'] : [];
+        /** @var array<string, mixed> $database */
+        $database = is_array($configScore['database'] ?? null) ? $configScore['database'] : [];
+
+        $configRows = [
+            [
+                'PHP Settings',
+                ConfigScorer::getScoreLabel((int) ($phpSettings['score'] ?? 0), (int) ($phpSettings['max'] ?? 1)),
+                $this->formatConfigIssues($phpSettings),
+            ],
+            [
+                'OPcache',
+                ConfigScorer::getScoreLabel((int) ($opcache['score'] ?? 0), (int) ($opcache['max'] ?? 1)),
+                $this->formatConfigIssues($opcache),
+            ],
+            [
+                'Cache Memory',
+                ConfigScorer::getScoreLabel((int) ($cache['score'] ?? 0), (int) ($cache['max'] ?? 1)),
+                $this->formatConfigIssues($cache),
+            ],
+            [
+                'Database',
+                ConfigScorer::getScoreLabel((int) ($database['score'] ?? 0), (int) ($database['max'] ?? 1)),
+                $this->formatConfigIssues($database),
+            ],
+        ];
+
+        $this->renderTable(['Component', 'Score', 'Status'], $configRows);
+
+        $configTotal = (int) ($configScore['total'] ?? 0);
+        $configColor = $configTotal >= 70 ? 'green' : ($configTotal >= 40 ? 'yellow' : 'red');
+        $rating = (string) ($configScore['rating'] ?? '');
+
+        $this->io()->writeln(sprintf(
+            '  <fg=white;options=bold>Config Score:</> <fg=%s;options=bold>%d/100</> %s',
+            $configColor,
+            $configTotal,
+            $rating
+        ));
+
+        // Display recommendations if any
+        $recommendations = $this->collectConfigRecommendations($configScore);
+        if ($recommendations !== []) {
+            $this->io()->newLine();
+            $this->io()->text('<fg=cyan;options=bold>Recommendations:</>');
+            foreach (array_slice($recommendations, 0, 5) as $recommendation) {
+                $this->io()->text(sprintf('  → %s', $recommendation));
+            }
+        }
+
+        $this->io()->newLine();
+
+        return $configColor;
+    }
+
+    /**
+     * Format config issues for display
+     *
+     * @param array<string, mixed> $section
+     */
+    private function formatConfigIssues(array $section): string
+    {
+        $score = (int) ($section['score'] ?? 0);
+        $max = (int) ($section['max'] ?? 1);
+
+        if ($score === $max) {
+            return '<fg=green>OK</>';
+        }
+
+        /** @var list<string> $issues */
+        $issues = is_array($section['issues'] ?? null) ? $section['issues'] : [];
+        if (count($issues) > 0) {
+            $firstIssue = $issues[0];
+            if (strlen($firstIssue) > 40) {
+                $firstIssue = substr($firstIssue, 0, 37) . '...';
+            }
+            return '<fg=yellow>' . $firstIssue . '</>';
+        }
+
+        return '<fg=yellow>Needs optimization</>';
+    }
+
+    /**
+     * Collect recommendations from all config sections
+     *
+     * @param array<string, mixed> $configScore
+     * @return list<string>
+     */
+    private function collectConfigRecommendations(array $configScore): array
+    {
+        $recommendations = [];
+
+        foreach (['php_settings', 'opcache', 'cache', 'database'] as $section) {
+            if (isset($configScore[$section]) && is_array($configScore[$section])) {
+                $recs = $configScore[$section]['recommendations'] ?? [];
+                if (is_array($recs)) {
+                    foreach ($recs as $rec) {
+                        if (is_string($rec) && $rec !== '') {
+                            $recommendations[] = $rec;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $recommendations;
+    }
+
+    /**
+     * Collect config data for scoring
+     *
+     * @return array{
+     *     php_settings: array<string, string|int>,
+     *     opcache?: array{enabled: bool, memory_mb: int, strings_mb: int, jit_enabled: bool},
+     *     cache?: array{connected: bool, memory_mb: int|null, type: string},
+     *     database?: array{innodb_buffer_mb: int}
+     * }
+     */
+    private function collectConfigData(?\PDO $db): array
+    {
+        // PHP settings
+        $uploadMax = $this->getPhpSetting('upload_max_filesize');
+        $postMax = $this->getPhpSetting('post_max_size');
+        $memoryLimit = $this->getPhpSetting('memory_limit');
+        $maxExec = $this->getPhpSetting('max_execution_time');
+        $phpSettings = [
+            'upload_max_filesize' => $uploadMax !== false ? $uploadMax : '2M',
+            'post_max_size' => $postMax !== false ? $postMax : '8M',
+            'memory_limit' => $memoryLimit !== false ? $memoryLimit : '128M',
+            'max_execution_time' => (int) ($maxExec !== false ? $maxExec : 30),
+        ];
+
+        // OPcache
+        $opcache = null;
+        $opcacheConfig = $this->getOpcacheConfig();
+        if ($opcacheConfig !== false) {
+            /** @var array<string, mixed> $directives */
+            $directives = is_array($opcacheConfig['directives'] ?? null) ? $opcacheConfig['directives'] : [];
+            $memoryRaw = $directives['opcache.memory_consumption'] ?? 0;
+            $memoryBytes = is_numeric($memoryRaw) ? (int) $memoryRaw : 0;
+            $stringsRaw = $directives['opcache.interned_strings_buffer'] ?? 0;
+            $stringsMb = is_numeric($stringsRaw) ? (int) $stringsRaw : 0;
+            $jitRaw = $directives['opcache.jit_buffer_size'] ?? 0;
+            $jitBuffer = is_numeric($jitRaw) ? (int) $jitRaw : 0;
+
+            $opcache = [
+                'enabled' => (bool) ($directives['opcache.enable'] ?? false),
+                'memory_mb' => (int) ($memoryBytes / 1024 / 1024),
+                'strings_mb' => $stringsMb,
+                'jit_enabled' => $jitBuffer > 0,
+            ];
+        }
+
+        // Cache (Memcached/Dragonfly)
+        $cache = null;
+        $serverValue = $this->config->get('memcache_server', '127.0.0.1');
+        $server = is_string($serverValue) ? $serverValue : '127.0.0.1';
+        $portValue = $this->config->get('memcache_port', Constants::DEFAULT_MEMCACHE_PORT);
+        $port = is_int($portValue) ? $portValue : Constants::DEFAULT_MEMCACHE_PORT;
+
+        if ($server !== '') {
+            $cacheType = 'Memcached';
+            $memoryMb = null;
+
+            // Try Docker cache check first
+            if ($this->isDockerMode()) {
+                $cacheInfo = $this->docker()->checkCache();
+                if ($cacheInfo['available']) {
+                    $memoryMb = $cacheInfo['memory_mb'];
+                    if ($cacheInfo['type'] !== null) {
+                        $cacheType = $cacheInfo['type'];
+                    }
+                }
+            } else {
+                // Try direct connection
+                $memoryMb = $this->getMemcachedMemory($server, $port);
+            }
+
+            $cache = [
+                'connected' => $memoryMb !== null,
+                'memory_mb' => $memoryMb,
+                'type' => $cacheType,
+            ];
+        }
+
+        // Database (InnoDB buffer pool)
+        $database = null;
+        if ($db !== null) {
+            try {
+                $stmt = $db->query("SHOW VARIABLES LIKE 'innodb_buffer_pool_size'");
+                if ($stmt !== false) {
+                    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                    if (is_array($row) && isset($row['Value']) && is_numeric($row['Value'])) {
+                        $bytes = (int) $row['Value'];
+                        $database = ['innodb_buffer_mb' => (int) ($bytes / 1024 / 1024)];
+                    }
+                }
+            } catch (\Exception $e) {
+                // Ignore errors
+            }
+        }
+
+        $result = ['php_settings' => $phpSettings];
+        if ($opcache !== null) {
+            $result['opcache'] = $opcache;
+        }
+        if ($cache !== null) {
+            $result['cache'] = $cache;
+        }
+        if ($database !== null) {
+            $result['database'] = $database;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get memcached memory (simplified version for benchmark)
+     */
+    private function getMemcachedMemory(string $server, int $port): ?int
+    {
+        if (class_exists('Memcached')) {
+            try {
+                $m = new \Memcached();
+                $m->addServer($server, $port);
+                $stats = $m->getStats();
+                $key = "$server:$port";
+                if (isset($stats[$key]) && is_array($stats[$key]) && isset($stats[$key]['limit_maxbytes'])) {
+                    $limitMaxbytes = $stats[$key]['limit_maxbytes'];
+                    if (is_numeric($limitMaxbytes)) {
+                        return (int) ((float) $limitMaxbytes / 1024 / 1024);
+                    }
+                }
+            } catch (\Exception $e) {
+                // Fall through
+            }
+        }
+
+        // Try raw socket
+        $fp = @fsockopen($server, $port, $errno, $errstr, 2);
+        if ($fp === false) {
+            return null;
+        }
+
+        fwrite($fp, "stats\r\n");
+        $response = '';
+        while (!feof($fp)) {
+            $line = fgets($fp, 256);
+            if ($line !== false) {
+                $response .= $line;
+                if (trim($line) === 'END') {
+                    break;
+                }
+            }
+        }
+        fclose($fp);
+
+        if (preg_match('/STAT limit_maxbytes (\d+)/', $response, $matches) === 1) {
+            return (int) ((int) $matches[1] / 1024 / 1024);
+        }
+
+        return null;
     }
 
     /**
