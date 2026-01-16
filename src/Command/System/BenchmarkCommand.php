@@ -1023,7 +1023,7 @@ class BenchmarkCommand extends BaseCommand
         // Step 4: Calculate Config Score (configuration quality)
         $this->io()->text('<comment>Checking configuration settings...</comment>');
 
-        $configData = $this->collectConfigData($db);
+        $configData = $this->collectConfigData();
         $configScorer = new ConfigScorer();
         $configScore = $configScorer->calculate($configData);
 
@@ -1455,8 +1455,6 @@ class BenchmarkCommand extends BaseCommand
         $opcache = is_array($configScore['opcache'] ?? null) ? $configScore['opcache'] : [];
         /** @var array<string, mixed> $cache */
         $cache = is_array($configScore['cache'] ?? null) ? $configScore['cache'] : [];
-        /** @var array<string, mixed> $database */
-        $database = is_array($configScore['database'] ?? null) ? $configScore['database'] : [];
 
         $configRows = [
             [
@@ -1473,11 +1471,6 @@ class BenchmarkCommand extends BaseCommand
                 'Cache Memory',
                 ConfigScorer::getScoreLabel((int) ($cache['score'] ?? 0), (int) ($cache['max'] ?? 1)),
                 $this->formatConfigIssues($cache),
-            ],
-            [
-                'Database',
-                ConfigScorer::getScoreLabel((int) ($database['score'] ?? 0), (int) ($database['max'] ?? 1)),
-                $this->formatConfigIssues($database),
             ],
         ];
 
@@ -1546,7 +1539,7 @@ class BenchmarkCommand extends BaseCommand
     {
         $recommendations = [];
 
-        foreach (['php_settings', 'opcache', 'cache', 'database'] as $section) {
+        foreach (['php_settings', 'opcache', 'cache'] as $section) {
             if (isset($configScore[$section]) && is_array($configScore[$section])) {
                 $recs = $configScore[$section]['recommendations'] ?? [];
                 if (is_array($recs)) {
@@ -1567,12 +1560,11 @@ class BenchmarkCommand extends BaseCommand
      *
      * @return array{
      *     php_settings: array<string, string|int>,
-     *     opcache?: array{enabled: bool, memory_mb: int, strings_mb: int, jit_enabled: bool},
-     *     cache?: array{connected: bool, memory_mb: int|null, type: string},
-     *     database?: array{innodb_buffer_mb: int}
+     *     opcache?: array{enabled: bool, memory_mb: int, strings_mb: int},
+     *     cache?: array{connected: bool, memory_mb: int|null, type: string}
      * }
      */
-    private function collectConfigData(?\PDO $db): array
+    private function collectConfigData(): array
     {
         // PHP settings
         $uploadMax = $this->getPhpSetting('upload_max_filesize');
@@ -1596,14 +1588,11 @@ class BenchmarkCommand extends BaseCommand
             $memoryBytes = is_numeric($memoryRaw) ? (int) $memoryRaw : 0;
             $stringsRaw = $directives['opcache.interned_strings_buffer'] ?? 0;
             $stringsMb = is_numeric($stringsRaw) ? (int) $stringsRaw : 0;
-            $jitRaw = $directives['opcache.jit_buffer_size'] ?? 0;
-            $jitBuffer = is_numeric($jitRaw) ? (int) $jitRaw : 0;
 
             $opcache = [
                 'enabled' => (bool) ($directives['opcache.enable'] ?? false),
                 'memory_mb' => (int) ($memoryBytes / 1024 / 1024),
                 'strings_mb' => $stringsMb,
-                'jit_enabled' => $jitBuffer > 0,
             ];
         }
 
@@ -1639,32 +1628,12 @@ class BenchmarkCommand extends BaseCommand
             ];
         }
 
-        // Database (InnoDB buffer pool)
-        $database = null;
-        if ($db !== null) {
-            try {
-                $stmt = $db->query("SHOW VARIABLES LIKE 'innodb_buffer_pool_size'");
-                if ($stmt !== false) {
-                    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-                    if (is_array($row) && isset($row['Value']) && is_numeric($row['Value'])) {
-                        $bytes = (int) $row['Value'];
-                        $database = ['innodb_buffer_mb' => (int) ($bytes / 1024 / 1024)];
-                    }
-                }
-            } catch (\Exception $e) {
-                // Ignore errors
-            }
-        }
-
         $result = ['php_settings' => $phpSettings];
         if ($opcache !== null) {
             $result['opcache'] = $opcache;
         }
         if ($cache !== null) {
             $result['cache'] = $cache;
-        }
-        if ($database !== null) {
-            $result['database'] = $database;
         }
 
         return $result;

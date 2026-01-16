@@ -7,43 +7,42 @@ namespace KVS\CLI\Benchmark;
 /**
  * Config Score calculator for KVS installations
  *
- * Checks PHP settings, OPcache, cache memory, and database config
- * against recommended values for KVS. Uses same thresholds as system:check.
+ * Checks PHP settings, OPcache, and cache memory against
+ * KVS recommended values from KVS-install repository.
  */
 class ConfigScorer
 {
-    // Same thresholds as CheckCommand
-    public const MEMCACHE_MIN_MB = 256;
-    public const OPCACHE_MIN_MB = 128;
-    public const OPCACHE_STRINGS_MIN_MB = 8;
-    public const UPLOAD_MIN_MB = 512;
-    public const MEMORY_LIMIT_MIN_MB = 128;
-    public const MEMORY_LIMIT_GOOD_MB = 256;
-    public const MAX_EXECUTION_TIME_MIN = 300;
+    // KVS recommended thresholds (from KVS-install)
+    public const UPLOAD_MIN_MB = 2048;           // upload_max_filesize & post_max_size
+    public const MEMORY_LIMIT_MIN_MB = 256;      // Acceptable minimum
+    public const MEMORY_LIMIT_GOOD_MB = 512;     // KVS recommended
+    public const MAX_EXECUTION_TIME_MIN = 300;   // 5 minutes
     public const MAX_INPUT_VARS_MIN = 10000;
-    public const INNODB_BUFFER_MIN_MB = 512;
 
-    // Score weights (total = 100)
-    private const WEIGHT_PHP_SETTINGS = 25;
-    private const WEIGHT_OPCACHE = 25;
-    private const WEIGHT_CACHE = 25;
-    private const WEIGHT_DATABASE = 25;
+    public const OPCACHE_MIN_MB = 256;           // opcache.memory_consumption
+    public const OPCACHE_STRINGS_MIN_MB = 16;    // opcache.interned_strings_buffer
+
+    public const MEMCACHE_MIN_MB = 256;          // Bare metal minimum
+    public const MEMCACHE_GOOD_MB = 512;         // Recommended
+
+    // Score weights (total = 100) - No database since KVS uses MyISAM
+    private const WEIGHT_PHP_SETTINGS = 40;
+    private const WEIGHT_OPCACHE = 30;
+    private const WEIGHT_CACHE = 30;
 
     /**
      * Calculate config score from check results
      *
      * @param array{
      *     php_settings?: array<string, string|int>,
-     *     opcache?: array{enabled: bool, memory_mb: int, strings_mb: int, jit_enabled: bool},
-     *     cache?: array{connected: bool, memory_mb: int|null, type: string},
-     *     database?: array{innodb_buffer_mb: int|null}
+     *     opcache?: array{enabled: bool, memory_mb: int, strings_mb: int},
+     *     cache?: array{connected: bool, memory_mb: int|null, type: string}
      * } $checks
      * @return array{
      *     total: int,
      *     php_settings: array{score: int, max: int, issues: list<string>, recommendations: list<string>},
      *     opcache: array{score: int, max: int, issues: list<string>, recommendations: list<string>},
      *     cache: array{score: int, max: int, issues: list<string>, recommendations: list<string>},
-     *     database: array{score: int, max: int, issues: list<string>, recommendations: list<string>},
      *     rating: string
      * }
      */
@@ -52,14 +51,12 @@ class ConfigScorer
         $phpResult = $this->scorePhpSettings($checks['php_settings'] ?? []);
         $opcacheResult = $this->scoreOpcache($checks['opcache'] ?? null);
         $cacheResult = $this->scoreCache($checks['cache'] ?? null);
-        $dbResult = $this->scoreDatabase($checks['database'] ?? null);
 
         // Calculate weighted total
         $total = (int) (
             ($phpResult['score'] / $phpResult['max']) * self::WEIGHT_PHP_SETTINGS +
             ($opcacheResult['score'] / $opcacheResult['max']) * self::WEIGHT_OPCACHE +
-            ($cacheResult['score'] / $cacheResult['max']) * self::WEIGHT_CACHE +
-            ($dbResult['score'] / $dbResult['max']) * self::WEIGHT_DATABASE
+            ($cacheResult['score'] / $cacheResult['max']) * self::WEIGHT_CACHE
         );
 
         return [
@@ -67,7 +64,6 @@ class ConfigScorer
             'php_settings' => $phpResult,
             'opcache' => $opcacheResult,
             'cache' => $cacheResult,
-            'database' => $dbResult,
             'rating' => $this->getRating($total),
         ];
     }
@@ -88,7 +84,8 @@ class ConfigScorer
         if ($uploadBytes >= self::UPLOAD_MIN_MB * 1024 * 1024) {
             $score++;
         } else {
-            $issues[] = 'upload_max_filesize < ' . self::UPLOAD_MIN_MB . 'M';
+            $current = $this->formatBytes($uploadBytes);
+            $issues[] = "upload_max_filesize = {$current} (need " . self::UPLOAD_MIN_MB . 'M)';
             $recommendations[] = 'upload_max_filesize = ' . self::UPLOAD_MIN_MB . 'M';
         }
 
@@ -97,7 +94,8 @@ class ConfigScorer
         if ($postBytes >= self::UPLOAD_MIN_MB * 1024 * 1024) {
             $score++;
         } else {
-            $issues[] = 'post_max_size < ' . self::UPLOAD_MIN_MB . 'M';
+            $current = $this->formatBytes($postBytes);
+            $issues[] = "post_max_size = {$current} (need " . self::UPLOAD_MIN_MB . 'M)';
             $recommendations[] = 'post_max_size = ' . self::UPLOAD_MIN_MB . 'M';
         }
 
@@ -107,9 +105,11 @@ class ConfigScorer
             $score += 2;
         } elseif ($memoryBytes >= self::MEMORY_LIMIT_MIN_MB * 1024 * 1024) {
             $score++;
-            $recommendations[] = 'memory_limit = ' . self::MEMORY_LIMIT_GOOD_MB . 'M (currently ' . $this->formatBytes($memoryBytes) . ')';
+            $current = $this->formatBytes($memoryBytes);
+            $recommendations[] = "memory_limit = " . self::MEMORY_LIMIT_GOOD_MB . "M (current: {$current})";
         } else {
-            $issues[] = 'memory_limit < ' . self::MEMORY_LIMIT_MIN_MB . 'M';
+            $current = $this->formatBytes($memoryBytes);
+            $issues[] = "memory_limit = {$current} (need " . self::MEMORY_LIMIT_MIN_MB . 'M+)';
             $recommendations[] = 'memory_limit = ' . self::MEMORY_LIMIT_GOOD_MB . 'M';
         }
 
@@ -118,7 +118,7 @@ class ConfigScorer
         if ($maxExec === 0 || $maxExec >= self::MAX_EXECUTION_TIME_MIN) {
             $score++;
         } else {
-            $issues[] = 'max_execution_time < ' . self::MAX_EXECUTION_TIME_MIN;
+            $issues[] = "max_execution_time = {$maxExec}s (need " . self::MAX_EXECUTION_TIME_MIN . 's)';
             $recommendations[] = 'max_execution_time = ' . self::MAX_EXECUTION_TIME_MIN;
         }
 
@@ -131,13 +131,13 @@ class ConfigScorer
     }
 
     /**
-     * @param array{enabled: bool, memory_mb: int, strings_mb: int, jit_enabled: bool}|null $opcache
+     * @param array{enabled: bool, memory_mb: int, strings_mb: int}|null $opcache
      * @return array{score: int, max: int, issues: list<string>, recommendations: list<string>}
      */
     private function scoreOpcache(?array $opcache): array
     {
         $score = 0;
-        $max = 4;
+        $max = 3;
         $issues = [];
         $recommendations = [];
 
@@ -158,27 +158,20 @@ class ConfigScorer
             $recommendations[] = 'opcache.enable = 1';
         }
 
-        // Memory (1 point)
+        // Memory >= 256MB (1 point)
         if ($opcache['memory_mb'] >= self::OPCACHE_MIN_MB) {
             $score++;
         } else {
-            $issues[] = 'opcache.memory_consumption < ' . self::OPCACHE_MIN_MB . 'M';
+            $issues[] = "opcache.memory_consumption = {$opcache['memory_mb']}M (need " . self::OPCACHE_MIN_MB . 'M)';
             $recommendations[] = 'opcache.memory_consumption = ' . self::OPCACHE_MIN_MB;
         }
 
-        // Interned strings (1 point)
+        // Interned strings >= 16MB (1 point)
         if ($opcache['strings_mb'] >= self::OPCACHE_STRINGS_MIN_MB) {
             $score++;
         } else {
-            $issues[] = 'opcache.interned_strings_buffer < ' . self::OPCACHE_STRINGS_MIN_MB . 'M';
+            $issues[] = "opcache.interned_strings_buffer = {$opcache['strings_mb']}M (need " . self::OPCACHE_STRINGS_MIN_MB . 'M)';
             $recommendations[] = 'opcache.interned_strings_buffer = ' . self::OPCACHE_STRINGS_MIN_MB;
-        }
-
-        // JIT (1 point for PHP 8+)
-        if ($opcache['jit_enabled']) {
-            $score++;
-        } else {
-            $recommendations[] = 'opcache.jit_buffer_size = 64M (optional)';
         }
 
         return [
@@ -196,7 +189,7 @@ class ConfigScorer
     private function scoreCache(?array $cache): array
     {
         $score = 0;
-        $max = 2;
+        $max = 3;
         $issues = [];
         $recommendations = [];
 
@@ -212,52 +205,22 @@ class ConfigScorer
         // Connected (1 point)
         $score++;
 
-        // Memory >= 256MB (1 point)
         $memoryMb = $cache['memory_mb'];
+        $cacheType = $cache['type'];
+
+        // Memory >= 256MB (1 point)
         if ($memoryMb !== null && $memoryMb >= self::MEMCACHE_MIN_MB) {
             $score++;
+            // Memory >= 512MB (1 point bonus)
+            if ($memoryMb >= self::MEMCACHE_GOOD_MB) {
+                $score++;
+            } else {
+                $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_GOOD_MB . " (current: {$memoryMb}MB)";
+            }
         } else {
             $currentMb = $memoryMb ?? 0;
-            $cacheType = $cache['type'];
-            $issues[] = "{$cacheType} memory < " . self::MEMCACHE_MIN_MB . "MB (current: {$currentMb}MB)";
-            $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_MIN_MB;
-        }
-
-        return [
-            'score' => $score,
-            'max' => $max,
-            'issues' => $issues,
-            'recommendations' => $recommendations,
-        ];
-    }
-
-    /**
-     * @param array{innodb_buffer_mb: int|null}|null $database
-     * @return array{score: int, max: int, issues: list<string>, recommendations: list<string>}
-     */
-    private function scoreDatabase(?array $database): array
-    {
-        $score = 0;
-        $max = 1;
-        $issues = [];
-        $recommendations = [];
-
-        if ($database === null || $database['innodb_buffer_mb'] === null) {
-            return [
-                'score' => 0,
-                'max' => $max,
-                'issues' => ['Database not available'],
-                'recommendations' => [],
-            ];
-        }
-
-        // innodb_buffer_pool_size >= 512MB (1 point)
-        if ($database['innodb_buffer_mb'] >= self::INNODB_BUFFER_MIN_MB) {
-            $score++;
-        } else {
-            $current = $database['innodb_buffer_mb'];
-            $issues[] = "innodb_buffer_pool_size < " . self::INNODB_BUFFER_MIN_MB . "MB (current: {$current}MB)";
-            $recommendations[] = "innodb_buffer_pool_size = " . self::INNODB_BUFFER_MIN_MB . "M";
+            $issues[] = "{$cacheType} memory = {$currentMb}MB (need " . self::MEMCACHE_MIN_MB . 'MB+)';
+            $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_GOOD_MB;
         }
 
         return [
