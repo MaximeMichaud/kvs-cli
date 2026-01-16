@@ -15,7 +15,6 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 use function KVS\CLI\Utils\format_bytes;
 
@@ -126,12 +125,6 @@ class BenchmarkCommand extends BaseCommand
                 'x',
                 InputOption::VALUE_NONE,
                 'Run in experiment mode: detect system info, generate shareable ID'
-            )
-            ->addOption(
-                'no-confirm',
-                null,
-                InputOption::VALUE_NONE,
-                'Skip confirmation prompts in experiment mode (trust auto-detection)'
             );
     }
 
@@ -180,14 +173,13 @@ class BenchmarkCommand extends BaseCommand
 
         $useLocalhost = $input->getOption('localhost') === true;
         $experimentMode = $input->getOption('experiment') === true;
-        $noConfirm = $input->getOption('no-confirm') === true;
 
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
 
         // Experiment mode: run with system detection and shareable ID
         if ($experimentMode) {
-            return $this->runExperiment($input, $output, $noConfirm);
+            return $this->runExperiment($input, $output);
         }
 
         // Load baseline for comparison if provided
@@ -955,7 +947,7 @@ class BenchmarkCommand extends BaseCommand
     /**
      * Run benchmark in experiment mode with system detection and shareable ID
      */
-    private function runExperiment(InputInterface $input, OutputInterface $output, bool $noConfirm): int
+    private function runExperiment(InputInterface $input, OutputInterface $output): int
     {
         $this->io()->title('KVS Benchmark Experiment');
 
@@ -969,20 +961,7 @@ class BenchmarkCommand extends BaseCommand
         // Display detected values
         $this->displayDetectedSystem($detection);
 
-        // Step 2: Confirm detected values (unless --no-confirm)
-        $confirmations = [];
-        if (!$noConfirm) {
-            $confirmations = $this->confirmDetectedValues($input, $output, $detection);
-        } else {
-            // Auto-confirm all
-            $confirmations = [
-                'device_type' => true,
-                'storage_type' => true,
-                'cpu_vendor' => true,
-            ];
-        }
-
-        // Step 3: Run benchmark with standardized settings
+        // Step 2: Run benchmark with standardized settings
         $this->io()->section('Running Benchmark');
         $this->io()->text('<comment>Running standardized benchmark...</comment>');
         $this->io()->newLine();
@@ -1032,19 +1011,18 @@ class BenchmarkCommand extends BaseCommand
             $this->io()->text("<comment>{$message}</comment>");
         });
 
-        // Step 4: Calculate Stack Score (software freshness)
+        // Step 3: Calculate Stack Score (software freshness)
         $this->io()->section('Stack Analysis');
         $this->io()->text('<comment>Checking software versions against EOL data...</comment>');
 
         $stackScorer = new StackScorer($db);
         $stackScore = $stackScorer->calculate();
 
-        // Step 5: Create experiment result with ID
+        // Step 4: Create experiment result with ID
         $experiment = new ExperimentResult($result);
         $experiment->setSystemDetection($detection);
-        $experiment->setConfirmations($confirmations);
 
-        // Step 6: Display results
+        // Step 5: Display results
         $this->io()->newLine();
         $this->displayExperimentResults($experiment, $stackScore, $detection);
 
@@ -1110,7 +1088,6 @@ class BenchmarkCommand extends BaseCommand
             $deviceInfo = $detection['device_type'];
             $type = (string) ($deviceInfo['type'] ?? 'unknown');
             $tech = isset($deviceInfo['technology']) ? (string) $deviceInfo['technology'] : null;
-            $confidence = (string) ($deviceInfo['confidence'] ?? 'low');
 
             $typeLabel = match ($type) {
                 'vm' => '<fg=yellow>Virtual Machine (VPS)</>',
@@ -1124,7 +1101,6 @@ class BenchmarkCommand extends BaseCommand
             }
 
             $rows[] = ['Device Type', $typeLabel];
-            $rows[] = ['Detection Confidence', ucfirst($confidence)];
         }
 
         // Storage
@@ -1150,93 +1126,6 @@ class BenchmarkCommand extends BaseCommand
         }
 
         $this->renderTable(['Parameter', 'Detected Value'], $rows);
-    }
-
-    /**
-     * Ask user to confirm detected values
-     *
-     * @param array<string, mixed> $detection
-     * @return array<string, bool>
-     */
-    private function confirmDetectedValues(InputInterface $input, OutputInterface $output, array $detection): array
-    {
-        $confirmations = [];
-        $helper = $this->getHelper('question');
-
-        $this->io()->newLine();
-        $this->io()->text('<info>Please confirm the detected values:</info>');
-        $this->io()->newLine();
-
-        // Confirm device type
-        if (isset($detection['device_type']) && is_array($detection['device_type'])) {
-            $deviceInfo = $detection['device_type'];
-            $type = (string) ($deviceInfo['type'] ?? 'unknown');
-            $tech = isset($deviceInfo['technology']) ? (string) $deviceInfo['technology'] : null;
-
-            $typeStr = match ($type) {
-                'vm' => 'a VPS/Virtual Machine',
-                'container' => 'a Container',
-                'bare_metal' => 'Bare Metal (dedicated)',
-                default => $type,
-            };
-
-            if ($tech !== null && $tech !== '') {
-                $typeStr .= " ({$tech})";
-            }
-
-            $question = new ConfirmationQuestion(
-                "  Is this {$typeStr}? [<fg=green>Y</>/n] ",
-                true
-            );
-            $confirmations['device_type'] = (bool) $helper->ask($input, $output, $question);
-        }
-
-        // Confirm storage type
-        if (isset($detection['storage']) && is_array($detection['storage'])) {
-            $storageInfo = $detection['storage'];
-            $type = (string) ($storageInfo['type'] ?? 'unknown');
-
-            if ($type !== 'unknown') {
-                $typeStr = match ($type) {
-                    'nvme' => 'NVMe SSD',
-                    'ssd' => 'SSD',
-                    'hdd' => 'HDD (spinning disk)',
-                    'virtio' => 'VirtIO virtual disk',
-                    'xen' => 'Xen virtual disk',
-                    default => strtoupper($type),
-                };
-
-                $question = new ConfirmationQuestion(
-                    "  Is the storage {$typeStr}? [<fg=green>Y</>/n] ",
-                    true
-                );
-                $confirmations['storage_type'] = (bool) $helper->ask($input, $output, $question);
-            }
-        }
-
-        // Confirm CPU vendor/generation
-        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
-            $cpu = $detection['cpu'];
-            $vendor = (string) ($cpu['vendor'] ?? 'Unknown');
-            $gen = isset($cpu['generation']) ? (string) $cpu['generation'] : null;
-
-            if ($vendor !== 'Unknown') {
-                $cpuStr = $vendor;
-                if ($gen !== null && $gen !== 'Unknown' && !str_contains($gen, 'Unknown')) {
-                    $cpuStr .= " {$gen}";
-                }
-
-                $question = new ConfirmationQuestion(
-                    "  Is the CPU {$cpuStr}? [<fg=green>Y</>/n] ",
-                    true
-                );
-                $confirmations['cpu_vendor'] = (bool) $helper->ask($input, $output, $question);
-            }
-        }
-
-        $this->io()->newLine();
-
-        return $confirmations;
     }
 
     /**
@@ -1267,14 +1156,6 @@ class BenchmarkCommand extends BaseCommand
         $stackColor = $this->displayStackScoreSection($stackScore);
         $this->displayPerformanceSection($rawScore, $cpuCores, $efficiencyPerCore, $efficiencyScore, $result);
         $this->displaySystemSummarySection($detection, $result);
-
-        // Confirmation status
-        if ($experiment->isFullyConfirmed()) {
-            $this->io()->text('<fg=green>✓ All detected values confirmed</>');
-        } else {
-            $this->io()->text('<fg=yellow>⚠ Some detected values not confirmed</>');
-        }
-        $this->io()->newLine();
 
         // Final summary
         $this->displayFinalSummaryBox($stackScore['total'], $stackColor, $efficiencyScore, $experiment->getId());
