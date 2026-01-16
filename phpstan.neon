@@ -27,6 +27,15 @@ parameters:
     # Report unmatched ignored errors
     reportUnmatchedIgnoredErrors: false
 
+    # Ignored errors - safe casts from dynamic arrays (database results, detection data)
+    ignoreErrors:
+        # PDO fetch returns array<string, mixed>, casting to scalar types is safe
+        - message: '#Cannot cast mixed to (int|float|string)\.#'
+          paths:
+              - src/Command/System/StatsCommand.php
+              - src/Command/System/BenchmarkCommand.php
+              - src/Benchmark/ExperimentResult.php
+
     # Symfony Console type inference
     symfony:
         consoleApplicationLoader: phpstan-console.php

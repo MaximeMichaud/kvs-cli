@@ -6,12 +6,15 @@ namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Benchmark\BenchmarkResult;
 use KVS\CLI\Benchmark\BenchmarkRunner;
+use KVS\CLI\Benchmark\ExperimentResult;
+use KVS\CLI\Benchmark\SystemDetector;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 use function KVS\CLI\Utils\format_bytes;
 
@@ -116,6 +119,18 @@ class BenchmarkCommand extends BaseCommand
                 'l',
                 InputOption::VALUE_NONE,
                 'Test via 127.0.0.1 with Host header (bypasses CDN/Cloudflare)'
+            )
+            ->addOption(
+                'experiment',
+                'x',
+                InputOption::VALUE_NONE,
+                'Run in experiment mode: detect system info, generate shareable ID'
+            )
+            ->addOption(
+                'no-confirm',
+                null,
+                InputOption::VALUE_NONE,
+                'Skip confirmation prompts in experiment mode (trust auto-detection)'
             );
     }
 
@@ -163,9 +178,16 @@ class BenchmarkCommand extends BaseCommand
         $httpRuns = is_numeric($runsOption) ? max(1, (int)$runsOption) : 3;
 
         $useLocalhost = $input->getOption('localhost') === true;
+        $experimentMode = $input->getOption('experiment') === true;
+        $noConfirm = $input->getOption('no-confirm') === true;
 
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
+
+        // Experiment mode: run with system detection and shareable ID
+        if ($experimentMode) {
+            return $this->runExperiment($input, $output, $noConfirm);
+        }
 
         // Load baseline for comparison if provided
         $baseline = null;
@@ -927,5 +949,336 @@ class BenchmarkCommand extends BaseCommand
 
         // Default to "Object Cache" (generic)
         return 'Object Cache';
+    }
+
+    /**
+     * Run benchmark in experiment mode with system detection and shareable ID
+     */
+    private function runExperiment(InputInterface $input, OutputInterface $output, bool $noConfirm): int
+    {
+        $this->io()->title('KVS Benchmark Experiment');
+
+        // Step 1: Detect system information
+        $this->io()->section('System Detection');
+        $this->io()->text('<comment>Detecting system configuration...</comment>');
+
+        $detector = new SystemDetector();
+        $detection = $detector->detect();
+
+        // Display detected values
+        $this->displayDetectedSystem($detection);
+
+        // Step 2: Confirm detected values (unless --no-confirm)
+        $confirmations = [];
+        if (!$noConfirm) {
+            $confirmations = $this->confirmDetectedValues($input, $output, $detection);
+        } else {
+            // Auto-confirm all
+            $confirmations = [
+                'device_type' => true,
+                'storage_type' => true,
+                'cpu_vendor' => true,
+            ];
+        }
+
+        // Step 3: Run benchmark with standardized settings
+        $this->io()->section('Running Benchmark');
+        $this->io()->text('<comment>Running standardized benchmark...</comment>');
+        $this->io()->newLine();
+
+        // Get options
+        $baseUrl = $input->getOption('url');
+        $baseUrl = is_string($baseUrl) ? $baseUrl : '';
+
+        if ($baseUrl === '') {
+            $projectUrl = $this->config->get('project_url');
+            if (is_string($projectUrl) && $projectUrl !== '') {
+                $baseUrl = $projectUrl;
+            }
+        }
+
+        /** @var string $mcHost */
+        $mcHost = $input->getOption('memcached-host');
+
+        $mcPortOption = $input->getOption('memcached-port');
+        $mcPort = is_numeric($mcPortOption) ? (int)$mcPortOption : Constants::DEFAULT_MEMCACHE_PORT;
+
+        // Standardized settings for fair comparison
+        $samples = 5;
+        $dbIterations = 10;
+        $cacheIterations = 100;
+        $fileIterations = 100;
+        $cpuIterations = 1000;
+        $httpRuns = 3;
+
+        $db = $this->getDatabaseConnection(true);
+
+        $runner = new BenchmarkRunner(
+            $db,
+            $this->config->getTablePrefix(),
+            $baseUrl,
+            $samples,
+            $dbIterations,
+            ['host' => $mcHost, 'port' => $mcPort],
+            $cacheIterations,
+            $fileIterations,
+            $cpuIterations,
+            $httpRuns,
+            false // Don't use localhost mode in experiment
+        );
+
+        $result = $runner->run(function (string $stage, string $message): void {
+            $this->io()->text("<comment>{$message}</comment>");
+        });
+
+        // Step 4: Create experiment result with ID
+        $experiment = new ExperimentResult($result);
+        $experiment->setSystemDetection($detection);
+        $experiment->setConfirmations($confirmations);
+
+        // Step 5: Display results
+        $this->io()->newLine();
+        $this->displayExperimentResults($experiment);
+
+        // Step 6: Export JSON
+        $filename = $experiment->getFilename();
+        $json = json_encode($experiment->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+
+        if (file_put_contents($filename, $json) !== false) {
+            $this->io()->success("Results exported to: {$filename}");
+        } else {
+            $this->io()->warning("Failed to export results to: {$filename}");
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Display detected system information
+     *
+     * @param array<string, mixed> $detection
+     */
+    private function displayDetectedSystem(array $detection): void
+    {
+        $rows = [];
+
+        // CPU info
+        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
+            $cpu = $detection['cpu'];
+            $cpuStr = (string) ($cpu['vendor'] ?? 'Unknown');
+            $cpuModel = (string) ($cpu['model'] ?? 'Unknown');
+            if ($cpuModel !== 'Unknown') {
+                // Truncate long model names
+                if (strlen($cpuModel) > 50) {
+                    $cpuModel = substr($cpuModel, 0, 47) . '...';
+                }
+                $cpuStr = $cpuModel;
+            }
+            $rows[] = ['CPU Model', $cpuStr];
+
+            $cpuGen = (string) ($cpu['generation'] ?? 'Unknown');
+            if ($cpuGen !== 'Unknown') {
+                $rows[] = ['CPU Generation', "<fg=cyan>{$cpuGen}</>"];
+            }
+
+            $cores = (int) ($cpu['cores'] ?? 1);
+            $threads = (int) ($cpu['threads'] ?? 1);
+            $rows[] = ['CPU Cores/Threads', "{$cores} cores / {$threads} threads"];
+        }
+
+        // Architecture
+        if (isset($detection['architecture']) && is_array($detection['architecture'])) {
+            $arch = $detection['architecture'];
+            $archStr = (string) ($arch['name'] ?? 'Unknown');
+            $archBits = isset($arch['bits']) ? (int) $arch['bits'] : null;
+            if ($archBits !== null) {
+                $archStr .= " ({$archBits}-bit)";
+            }
+            $rows[] = ['Architecture', $archStr];
+        }
+
+        // Device type
+        if (isset($detection['device_type']) && is_array($detection['device_type'])) {
+            $deviceInfo = $detection['device_type'];
+            $type = (string) ($deviceInfo['type'] ?? 'unknown');
+            $tech = isset($deviceInfo['technology']) ? (string) $deviceInfo['technology'] : null;
+            $confidence = (string) ($deviceInfo['confidence'] ?? 'low');
+
+            $typeLabel = match ($type) {
+                'vm' => '<fg=yellow>Virtual Machine (VPS)</>',
+                'container' => '<fg=blue>Container</>',
+                'bare_metal' => '<fg=green>Bare Metal</>',
+                default => ucfirst($type),
+            };
+
+            if ($tech !== null && $tech !== '') {
+                $typeLabel .= " <fg=gray>({$tech})</>";
+            }
+
+            $rows[] = ['Device Type', $typeLabel];
+            $rows[] = ['Detection Confidence', ucfirst($confidence)];
+        }
+
+        // Storage
+        if (isset($detection['storage']) && is_array($detection['storage'])) {
+            $storageInfo = $detection['storage'];
+            $type = (string) ($storageInfo['type'] ?? 'unknown');
+            $storageDevice = isset($storageInfo['device']) ? (string) $storageInfo['device'] : null;
+
+            $storageLabel = match ($type) {
+                'nvme' => '<fg=green>NVMe SSD</>',
+                'ssd' => '<fg=green>SSD</>',
+                'hdd' => '<fg=yellow>HDD</>',
+                'virtio' => '<fg=cyan>VirtIO (Virtual)</>',
+                'xen' => '<fg=cyan>Xen (Virtual)</>',
+                default => strtoupper($type),
+            };
+
+            if ($storageDevice !== null && $storageDevice !== '') {
+                $storageLabel .= " <fg=gray>({$storageDevice})</>";
+            }
+
+            $rows[] = ['Storage Type', $storageLabel];
+        }
+
+        $this->renderTable(['Parameter', 'Detected Value'], $rows);
+    }
+
+    /**
+     * Ask user to confirm detected values
+     *
+     * @param array<string, mixed> $detection
+     * @return array<string, bool>
+     */
+    private function confirmDetectedValues(InputInterface $input, OutputInterface $output, array $detection): array
+    {
+        $confirmations = [];
+        $helper = $this->getHelper('question');
+
+        $this->io()->newLine();
+        $this->io()->text('<info>Please confirm the detected values:</info>');
+        $this->io()->newLine();
+
+        // Confirm device type
+        if (isset($detection['device_type']) && is_array($detection['device_type'])) {
+            $deviceInfo = $detection['device_type'];
+            $type = (string) ($deviceInfo['type'] ?? 'unknown');
+            $tech = isset($deviceInfo['technology']) ? (string) $deviceInfo['technology'] : null;
+
+            $typeStr = match ($type) {
+                'vm' => 'a VPS/Virtual Machine',
+                'container' => 'a Container',
+                'bare_metal' => 'Bare Metal (dedicated)',
+                default => $type,
+            };
+
+            if ($tech !== null && $tech !== '') {
+                $typeStr .= " ({$tech})";
+            }
+
+            $question = new ConfirmationQuestion(
+                "  Is this {$typeStr}? [<fg=green>Y</>/n] ",
+                true
+            );
+            $confirmations['device_type'] = (bool) $helper->ask($input, $output, $question);
+        }
+
+        // Confirm storage type
+        if (isset($detection['storage']) && is_array($detection['storage'])) {
+            $storageInfo = $detection['storage'];
+            $type = (string) ($storageInfo['type'] ?? 'unknown');
+
+            if ($type !== 'unknown') {
+                $typeStr = match ($type) {
+                    'nvme' => 'NVMe SSD',
+                    'ssd' => 'SSD',
+                    'hdd' => 'HDD (spinning disk)',
+                    'virtio' => 'VirtIO virtual disk',
+                    'xen' => 'Xen virtual disk',
+                    default => strtoupper($type),
+                };
+
+                $question = new ConfirmationQuestion(
+                    "  Is the storage {$typeStr}? [<fg=green>Y</>/n] ",
+                    true
+                );
+                $confirmations['storage_type'] = (bool) $helper->ask($input, $output, $question);
+            }
+        }
+
+        // Confirm CPU vendor/generation
+        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
+            $cpu = $detection['cpu'];
+            $vendor = (string) ($cpu['vendor'] ?? 'Unknown');
+            $gen = isset($cpu['generation']) ? (string) $cpu['generation'] : null;
+
+            if ($vendor !== 'Unknown') {
+                $cpuStr = $vendor;
+                if ($gen !== null && $gen !== 'Unknown' && !str_contains($gen, 'Unknown')) {
+                    $cpuStr .= " {$gen}";
+                }
+
+                $question = new ConfirmationQuestion(
+                    "  Is the CPU {$cpuStr}? [<fg=green>Y</>/n] ",
+                    true
+                );
+                $confirmations['cpu_vendor'] = (bool) $helper->ask($input, $output, $question);
+            }
+        }
+
+        $this->io()->newLine();
+
+        return $confirmations;
+    }
+
+    /**
+     * Display experiment results with ID
+     */
+    private function displayExperimentResults(ExperimentResult $experiment): void
+    {
+        $this->io()->section('Experiment Results');
+
+        $score = $experiment->getBenchmarkResult()->calculateScore();
+        $rating = $experiment->getBenchmarkResult()->getRating();
+
+        // Summary box
+        $this->io()->writeln('<fg=cyan>==========================================</>');
+        $this->io()->writeln('<fg=cyan>  KVS BENCHMARK EXPERIMENT</>');
+        $this->io()->writeln('<fg=cyan>==========================================</>');
+        $this->io()->newLine();
+
+        // Score
+        $this->io()->writeln(sprintf('  <fg=white;options=bold>Score:</> <fg=cyan;options=bold>%s pts</>', number_format($score)));
+        $this->io()->writeln(sprintf('  <fg=white>Rating:</> %s', $rating));
+        $this->io()->newLine();
+
+        // System summary
+        $summary = $experiment->getSummary();
+        if ($summary !== '') {
+            $this->io()->writeln(sprintf('  <fg=white>System:</> %s', $summary));
+            $this->io()->newLine();
+        }
+
+        // Confirmation status
+        if ($experiment->isFullyConfirmed()) {
+            $this->io()->writeln('  <fg=green>✓ All values confirmed</>');
+        } else {
+            $confirmations = $experiment->getConfirmations();
+            $unconfirmed = array_filter($confirmations, fn($v) => !$v);
+            if ($unconfirmed !== []) {
+                $this->io()->writeln('  <fg=yellow>⚠ Some values not confirmed</>');
+            }
+        }
+        $this->io()->newLine();
+
+        // Benchmark ID
+        $this->io()->writeln(sprintf('  <fg=white;options=bold>Benchmark ID:</> <fg=green>%s</>', $experiment->getId()));
+        $this->io()->newLine();
+
+        $this->io()->writeln('<fg=cyan>==========================================</>');
+        $this->io()->newLine();
+
+        // Baseline reference
+        $this->io()->text('<fg=gray>Baseline: 1000 pts = VPS 4 vCPU, 8GB RAM, SSD, PHP 8.1, MariaDB 10.6</>');
     }
 }
