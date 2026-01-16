@@ -12,6 +12,7 @@ use KVS\CLI\Benchmark\StackScorer;
 use KVS\CLI\Benchmark\SystemDetector;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
+use KVS\CLI\Util\FpmConfigReader;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -1558,6 +1559,8 @@ class BenchmarkCommand extends BaseCommand
     /**
      * Collect config data for scoring
      *
+     * Uses FpmConfigReader to get real PHP-FPM settings (not CLI values).
+     *
      * @return array{
      *     php_settings: array<string, string|int>,
      *     opcache?: array{enabled: bool, memory_mb: int, strings_mb: int},
@@ -1566,33 +1569,27 @@ class BenchmarkCommand extends BaseCommand
      */
     private function collectConfigData(): array
     {
-        // PHP settings
-        $uploadMax = $this->getPhpSetting('upload_max_filesize');
-        $postMax = $this->getPhpSetting('post_max_size');
-        $memoryLimit = $this->getPhpSetting('memory_limit');
-        $maxExec = $this->getPhpSetting('max_execution_time');
+        // Use FpmConfigReader to get real PHP-FPM settings
+        $docker = $this->isDockerMode() ? $this->docker() : null;
+        $fpmReader = new FpmConfigReader($this->config, $docker);
+        $fpmConfig = $fpmReader->getConfig();
+
+        // Map FpmConfigReader response to ConfigScorer format
         $phpSettings = [
-            'upload_max_filesize' => $uploadMax !== false ? $uploadMax : '2M',
-            'post_max_size' => $postMax !== false ? $postMax : '8M',
-            'memory_limit' => $memoryLimit !== false ? $memoryLimit : '128M',
-            'max_execution_time' => (int) ($maxExec !== false ? $maxExec : 30),
+            'upload_max_filesize' => $fpmConfig['upload_max_filesize'],
+            'post_max_size' => $fpmConfig['post_max_size'],
+            'memory_limit' => $fpmConfig['memory_limit'],
+            'max_execution_time' => $fpmConfig['max_execution_time'],
         ];
 
-        // OPcache
+        // OPcache from FPM config
         $opcache = null;
-        $opcacheConfig = $this->getOpcacheConfig();
-        if ($opcacheConfig !== false) {
-            /** @var array<string, mixed> $directives */
-            $directives = is_array($opcacheConfig['directives'] ?? null) ? $opcacheConfig['directives'] : [];
-            $memoryRaw = $directives['opcache.memory_consumption'] ?? 0;
-            $memoryBytes = is_numeric($memoryRaw) ? (int) $memoryRaw : 0;
-            $stringsRaw = $directives['opcache.interned_strings_buffer'] ?? 0;
-            $stringsMb = is_numeric($stringsRaw) ? (int) $stringsRaw : 0;
-
+        if (isset($fpmConfig['opcache'])) {
+            $oc = $fpmConfig['opcache'];
             $opcache = [
-                'enabled' => (bool) ($directives['opcache.enable'] ?? false),
-                'memory_mb' => (int) ($memoryBytes / 1024 / 1024),
-                'strings_mb' => $stringsMb,
+                'enabled' => $oc['enable'],
+                'memory_mb' => $oc['memory_consumption'],
+                'strings_mb' => $oc['interned_strings_buffer'],
             ];
         }
 
