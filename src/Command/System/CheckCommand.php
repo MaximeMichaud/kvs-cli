@@ -33,10 +33,13 @@ class CheckCommand extends BaseCommand
     private const INTERNET_TIMEOUT = 5;
 
     // PHP version requirements per KVS version (min, max)
+    // Note: 6.2.1 introduced PHP 8.1 support, 6.2.0 was PHP 7.x only
     private const KVS_PHP_REQUIREMENTS = [
-        '6.4' => ['min' => '8.1', 'max' => '8.1.99'],
-        '6.3' => ['min' => '8.1', 'max' => '8.1.99'],
-        '6.2' => ['min' => '7.1', 'max' => '7.4.99'],
+        '6.4' => ['min' => '8.1', 'max' => '8.4.99'],
+        '6.3' => ['min' => '8.1', 'max' => '8.4.99'],
+        '6.2.1' => ['min' => '8.1', 'max' => '8.4.99'],  // 6.2.1+ supports PHP 8.1
+        '6.2.0' => ['min' => '7.1', 'max' => '7.4.99'],  // 6.2.0 was PHP 7.x only
+        '6.2' => ['min' => '7.1', 'max' => '7.4.99'],    // fallback for 6.2.x if patch unknown
         '6.1' => ['min' => '7.1', 'max' => '7.4.99'],
         '6.0' => ['min' => '7.1', 'max' => '7.4.99'],
         '5.5' => ['min' => '7.2', 'max' => '7.4.99'],
@@ -308,9 +311,27 @@ class CheckCommand extends BaseCommand
         // Determine version source for display
         $versionSource = $this->isDockerMode() ? 'Docker' : 'CLI';
 
-        // Get major.minor version of KVS
-        $kvsMajorMinor = implode('.', array_slice(explode('.', $kvsVersion), 0, 2));
-        $phpRequirements = self::KVS_PHP_REQUIREMENTS[$kvsMajorMinor] ?? null;
+        // Get PHP requirements for KVS version
+        // Try full version first (e.g., 6.2.1), then major.minor.patch for >= comparison, then major.minor
+        $kvsParts = explode('.', $kvsVersion);
+        $kvsMajorMinor = implode('.', array_slice($kvsParts, 0, 2));
+        $kvsMajorMinorPatch = implode('.', array_slice($kvsParts, 0, 3));
+
+        $phpRequirements = null;
+
+        // First try exact version match (e.g., 6.2.1)
+        if (isset(self::KVS_PHP_REQUIREMENTS[$kvsMajorMinorPatch])) {
+            $phpRequirements = self::KVS_PHP_REQUIREMENTS[$kvsMajorMinorPatch];
+        } elseif (
+            // Check if version >= a specific patch (e.g., 6.2.5 >= 6.2.1)
+            isset(self::KVS_PHP_REQUIREMENTS[$kvsMajorMinor . '.1'])
+            && version_compare($kvsVersion, $kvsMajorMinor . '.1', '>=')
+        ) {
+            $phpRequirements = self::KVS_PHP_REQUIREMENTS[$kvsMajorMinor . '.1'];
+        } elseif (isset(self::KVS_PHP_REQUIREMENTS[$kvsMajorMinor])) {
+            // Fall back to major.minor
+            $phpRequirements = self::KVS_PHP_REQUIREMENTS[$kvsMajorMinor];
+        }
 
         if ($phpRequirements === null) {
             $this->printStatus("KVS $kvsVersion", "Unknown PHP requirement", 'warning');
