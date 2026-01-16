@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
+use KVS\CLI\Util\FpmConfigReader;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -969,11 +970,24 @@ class CheckCommand extends BaseCommand
             ],
         ];
 
-        // Uses Docker automatically if KVS runs there
+        // Use FpmConfigReader to get real PHP-FPM settings (not CLI)
+        $docker = $this->isDockerMode() ? $this->docker() : null;
+        $fpmReader = new FpmConfigReader($this->config, $docker);
+        $fpmConfig = $fpmReader->getConfig();
+
+        // Map FPM config to setting values
+        $fpmValues = [
+            'upload_max_filesize' => $fpmConfig['upload_max_filesize'],
+            'post_max_size' => $fpmConfig['post_max_size'],
+            'memory_limit' => $fpmConfig['memory_limit'],
+            'max_input_vars' => (string) $fpmConfig['max_input_vars'],
+            'max_execution_time' => (string) $fpmConfig['max_execution_time'],
+        ];
+
         foreach ($checks as $name => $check) {
-            $value = $this->getPhpSetting($name);
+            $value = $fpmValues[$name];
             $bytes = $this->parseIniSize($value);
-            $valueStr = $value !== false ? $value : '';
+            $valueStr = $value;
             $result['settings'][$name] = $valueStr;
 
             // Handle unlimited values (-1 or 0 for certain settings)

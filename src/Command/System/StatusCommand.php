@@ -5,6 +5,7 @@ namespace KVS\CLI\Command\System;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\StatusFormatter;
+use KVS\CLI\Util\FpmConfigReader;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -120,22 +121,23 @@ class StatusCommand extends BaseCommand
         $info[] = ['Operating System', $this->getOsInfo()];
         $info[] = ['Web Server', $_SERVER['SERVER_SOFTWARE'] ?? 'CLI'];
 
-        // Use Docker-aware methods for PHP info
+        // Use FpmConfigReader to get real PHP-FPM settings (not CLI)
+        $docker = $this->isDockerMode() ? $this->docker() : null;
+        $fpmReader = new FpmConfigReader($this->config, $docker);
+        $fpmConfig = $fpmReader->getConfig();
+
         $phpVersion = $this->getKvsPhpVersion();
-        $phpSource = $this->isDockerMode() ? ' (Docker)' : '';
-        $info[] = ['PHP Version', $phpVersion . $phpSource];
+        $sourceLabel = match ($fpmConfig['source']) {
+            'fpm-docker' => ' (FPM via Docker)',
+            'fpm' => ' (FPM)',
+            default => ' (CLI)',
+        };
+        $info[] = ['PHP Version', $phpVersion . $sourceLabel];
 
-        $memLimit = $this->getPhpSetting('memory_limit');
-        $info[] = ['PHP Memory Limit', $memLimit !== false ? $memLimit : 'N/A'];
-
-        $maxExec = $this->getPhpSetting('max_execution_time');
-        $info[] = ['Max Execution Time', ($maxExec !== false ? $maxExec : '0') . ' seconds'];
-
-        $uploadMax = $this->getPhpSetting('upload_max_filesize');
-        $info[] = ['Upload Max Filesize', $uploadMax !== false ? $uploadMax : 'N/A'];
-
-        $postMax = $this->getPhpSetting('post_max_size');
-        $info[] = ['Post Max Size', $postMax !== false ? $postMax : 'N/A'];
+        $info[] = ['PHP Memory Limit', $fpmConfig['memory_limit']];
+        $info[] = ['Max Execution Time', $fpmConfig['max_execution_time'] . ' seconds'];
+        $info[] = ['Upload Max Filesize', $fpmConfig['upload_max_filesize']];
+        $info[] = ['Post Max Size', $fpmConfig['post_max_size']];
 
         if (function_exists('disk_free_space')) {
             $diskPath = $this->config->getKvsPath();
