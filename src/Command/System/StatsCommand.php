@@ -45,6 +45,24 @@ class StatsCommand extends BaseCommand
                 'Show category statistics'
             )
             ->addOption(
+                'tags',
+                null,
+                InputOption::VALUE_NONE,
+                'Show tag statistics'
+            )
+            ->addOption(
+                'models',
+                null,
+                InputOption::VALUE_NONE,
+                'Show model/performer statistics'
+            )
+            ->addOption(
+                'dvds',
+                null,
+                InputOption::VALUE_NONE,
+                'Show DVD/channel statistics'
+            )
+            ->addOption(
                 'top',
                 't',
                 InputOption::VALUE_REQUIRED,
@@ -75,6 +93,9 @@ class StatsCommand extends BaseCommand
         $showAlbums = $input->getOption('albums') === true;
         $showUsers = $input->getOption('users') === true;
         $showCategories = $input->getOption('categories') === true;
+        $showTags = $input->getOption('tags') === true;
+        $showModels = $input->getOption('models') === true;
+        $showDvds = $input->getOption('dvds') === true;
 
         $topOption = $input->getOption('top');
         $top = is_numeric($topOption) ? (int) $topOption : 10;
@@ -83,7 +104,8 @@ class StatsCommand extends BaseCommand
         $period = $input->getOption('period');
 
         // If no specific section requested, show overview
-        $showOverview = !$showVideos && !$showAlbums && !$showUsers && !$showCategories;
+        $showOverview = !$showVideos && !$showAlbums && !$showUsers && !$showCategories
+            && !$showTags && !$showModels && !$showDvds;
 
         if ($showOverview) {
             $this->showOverview($db, $period);
@@ -106,6 +128,18 @@ class StatsCommand extends BaseCommand
 
         if ($showCategories) {
             $this->showCategoryStats($db, $top);
+        }
+
+        if ($showTags) {
+            $this->showTagStats($db, $top);
+        }
+
+        if ($showModels) {
+            $this->showModelStats($db, $top);
+        }
+
+        if ($showDvds) {
+            $this->showDvdStats($db, $top);
         }
 
         return self::SUCCESS;
@@ -177,8 +211,8 @@ class StatsCommand extends BaseCommand
         $todayStart = strtotime('today');
         $weekStart = strtotime('-7 days');
 
-        // Videos today
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}videos WHERE post_date >= ? ");
+        // Videos today (use added_date - post_date can be 0 for non-scheduled videos)
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}videos WHERE added_date >= ?");
         $stmt->execute([$todayStart]);
         $todayVideos = 0;
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -187,7 +221,7 @@ class StatsCommand extends BaseCommand
         }
 
         // Videos this week
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}videos WHERE post_date >= ? ");
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}videos WHERE added_date >= ?");
         $stmt->execute([$weekStart]);
         $weekVideos = 0;
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -360,12 +394,13 @@ class StatsCommand extends BaseCommand
 
         $rows = [];
 
-        // New videos per day
+        // New videos per day (use added_date which is always set, post_date can be 0)
         $stmt = $db->prepare("SELECT
-            DATE(FROM_UNIXTIME(post_date)) as date,
+            DATE(FROM_UNIXTIME(added_date)) as date,
             COUNT(*) as count
             FROM {$prefix}videos
-            WHERE post_date >= ?             GROUP BY DATE(FROM_UNIXTIME(post_date))
+            WHERE added_date >= ?
+            GROUP BY DATE(FROM_UNIXTIME(added_date))
             ORDER BY date DESC
             LIMIT 7");
         $stmt->execute([$weekStart]);
@@ -378,7 +413,9 @@ class StatsCommand extends BaseCommand
                 }
                 $date = (string) ($day['date'] ?? '');
                 $count = (int) ($day['count'] ?? 0);
-                $rows[] = [$date, "+{$count} videos", ''];
+                if ($date !== '' && $count > 0) {
+                    $rows[] = [$date, "+{$count} videos", ''];
+                }
             }
         }
 
@@ -389,7 +426,7 @@ class StatsCommand extends BaseCommand
         $weekUsers = is_array($row) ? (int) ($row['count'] ?? 0) : 0;
 
         // New comments this week
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}comments WHERE added_date >= ? ");
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}comments WHERE added_date >= ?");
         $stmt->execute([$weekStart]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         $weekComments = is_array($row) ? (int) ($row['count'] ?? 0) : 0;
@@ -691,6 +728,300 @@ class StatsCommand extends BaseCommand
         }
 
         $this->renderTable(['#', 'Category', 'Videos', 'Today', 'Albums'], $rows);
+    }
+
+    /**
+     * Show tag statistics
+     */
+    private function showTagStats(\PDO $db, int $limit): void
+    {
+        $this->io()->section('Tag Statistics');
+
+        $prefix = $this->config->getTablePrefix();
+
+        // Summary
+        $stmt = $db->query("SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active
+            FROM {$prefix}tags");
+
+        if ($stmt !== false) {
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                $this->io()->text(sprintf(
+                    'Total tags: <info>%s</info> (Active: <fg=green>%s</>)',
+                    $this->formatNumber((int) ($row['total'] ?? 0)),
+                    $this->formatNumber((int) ($row['active'] ?? 0))
+                ));
+                $this->io()->newLine();
+            }
+        }
+
+        // Top tags by video count
+        $this->io()->text('<info>Top Tags (by video count):</info>');
+
+        $stmt = $db->prepare("SELECT
+            tag_id, tag, total_videos
+            FROM {$prefix}tags
+            WHERE status_id = 1
+            ORDER BY total_videos DESC
+            LIMIT {$limit}");
+        $stmt->execute();
+        $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if ($tags === []) {
+            $this->io()->text('<fg=gray>No tags found</>');
+            return;
+        }
+
+        $rows = [];
+        $rank = 1;
+        foreach ($tags as $tag) {
+            if (!is_array($tag)) {
+                continue;
+            }
+            $rows[] = [
+                $rank,
+                (string) ($tag['tag'] ?? 'Unknown'),
+                $this->formatNumber((int) ($tag['total_videos'] ?? 0)),
+            ];
+            $rank++;
+        }
+
+        $this->renderTable(['#', 'Tag', 'Videos'], $rows);
+    }
+
+    /**
+     * Show model/performer statistics
+     */
+    private function showModelStats(\PDO $db, int $limit): void
+    {
+        $this->io()->section('Model/Performer Statistics');
+
+        $prefix = $this->config->getTablePrefix();
+
+        // Summary
+        $stmt = $db->query("SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active,
+            SUM(model_viewed) as total_views,
+            SUM(rating_amount) as total_ratings
+            FROM {$prefix}models WHERE 1=1");
+
+        if ($stmt !== false) {
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                $rows = [
+                    ['Total Models', $this->formatNumber((int) ($row['total'] ?? 0))],
+                    ['Active', '<fg=green>' . $this->formatNumber((int) ($row['active'] ?? 0)) . '</>'],
+                    ['Total Profile Views', $this->formatNumber((int) ($row['total_views'] ?? 0))],
+                    ['Total Ratings', $this->formatNumber((int) ($row['total_ratings'] ?? 0))],
+                ];
+                $this->renderTable(['Metric', 'Value'], $rows);
+            }
+        }
+
+        // Top models by video count
+        $this->io()->text('');
+        $this->io()->text('<info>Top Models (by content):</info>');
+
+        $stmt = $db->prepare("SELECT
+            model_id, title, total_videos, total_albums, model_viewed, rating, rating_amount
+            FROM {$prefix}models
+            WHERE status_id = 1
+            ORDER BY total_videos DESC
+            LIMIT {$limit}");
+        $stmt->execute();
+        $models = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if ($models === []) {
+            $this->io()->text('<fg=gray>No models found</>');
+            return;
+        }
+
+        $rows = [];
+        $rank = 1;
+        foreach ($models as $model) {
+            if (!is_array($model)) {
+                continue;
+            }
+
+            $title = (string) ($model['title'] ?? 'Unknown');
+            if (mb_strlen($title) > 30) {
+                $title = mb_substr($title, 0, 27) . '...';
+            }
+
+            $rating = (float) ($model['rating'] ?? 0);
+            $ratingCount = (int) ($model['rating_amount'] ?? 0);
+            $ratingStr = $ratingCount > 0 ? sprintf('%.1f (%d)', $rating, $ratingCount) : '-';
+
+            $rows[] = [
+                $rank,
+                $title,
+                (int) ($model['total_videos'] ?? 0),
+                (int) ($model['total_albums'] ?? 0),
+                $this->formatNumber((int) ($model['model_viewed'] ?? 0)),
+                $ratingStr,
+            ];
+            $rank++;
+        }
+
+        $this->renderTable(['#', 'Model', 'Videos', 'Albums', 'Views', 'Rating'], $rows);
+
+        // Top models by views
+        $this->io()->text('');
+        $this->io()->text('<info>Top Models (by profile views):</info>');
+
+        $stmt = $db->prepare("SELECT
+            model_id, title, model_viewed, total_videos
+            FROM {$prefix}models
+            WHERE status_id = 1 AND model_viewed > 0
+            ORDER BY model_viewed DESC
+            LIMIT {$limit}");
+        $stmt->execute();
+        $models = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if ($models !== []) {
+            $rows = [];
+            $rank = 1;
+            foreach ($models as $model) {
+                if (!is_array($model)) {
+                    continue;
+                }
+
+                $title = (string) ($model['title'] ?? 'Unknown');
+                if (mb_strlen($title) > 35) {
+                    $title = mb_substr($title, 0, 32) . '...';
+                }
+
+                $rows[] = [
+                    $rank,
+                    $title,
+                    $this->formatNumber((int) ($model['model_viewed'] ?? 0)),
+                    (int) ($model['total_videos'] ?? 0) . ' videos',
+                ];
+                $rank++;
+            }
+
+            $this->renderTable(['#', 'Model', 'Profile Views', 'Content'], $rows);
+        }
+    }
+
+    /**
+     * Show DVD/channel statistics
+     */
+    private function showDvdStats(\PDO $db, int $limit): void
+    {
+        $this->io()->section('DVD/Channel Statistics');
+
+        $prefix = $this->config->getTablePrefix();
+
+        // Summary
+        $stmt = $db->query("SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active,
+            SUM(dvd_viewed) as total_views,
+            SUM(rating_amount) as total_ratings,
+            SUM(total_videos) as total_videos
+            FROM {$prefix}dvds WHERE 1=1");
+
+        if ($stmt !== false) {
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (is_array($row)) {
+                $rows = [
+                    ['Total DVDs/Channels', $this->formatNumber((int) ($row['total'] ?? 0))],
+                    ['Active', '<fg=green>' . $this->formatNumber((int) ($row['active'] ?? 0)) . '</>'],
+                    ['Total Videos in DVDs', $this->formatNumber((int) ($row['total_videos'] ?? 0))],
+                    ['Total Views', $this->formatNumber((int) ($row['total_views'] ?? 0))],
+                    ['Total Ratings', $this->formatNumber((int) ($row['total_ratings'] ?? 0))],
+                ];
+                $this->renderTable(['Metric', 'Value'], $rows);
+            }
+        }
+
+        // Top DVDs by video count
+        $this->io()->text('');
+        $this->io()->text('<info>Top DVDs/Channels (by content):</info>');
+
+        $stmt = $db->prepare("SELECT
+            dvd_id, title, total_videos, dvd_viewed, rating, rating_amount
+            FROM {$prefix}dvds
+            WHERE status_id = 1
+            ORDER BY total_videos DESC
+            LIMIT {$limit}");
+        $stmt->execute();
+        $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if ($dvds === []) {
+            $this->io()->text('<fg=gray>No DVDs/channels found</>');
+            return;
+        }
+
+        $rows = [];
+        $rank = 1;
+        foreach ($dvds as $dvd) {
+            if (!is_array($dvd)) {
+                continue;
+            }
+
+            $title = (string) ($dvd['title'] ?? 'Unknown');
+            if (mb_strlen($title) > 35) {
+                $title = mb_substr($title, 0, 32) . '...';
+            }
+
+            $rating = (float) ($dvd['rating'] ?? 0);
+            $ratingCount = (int) ($dvd['rating_amount'] ?? 0);
+            $ratingStr = $ratingCount > 0 ? sprintf('%.1f (%d)', $rating, $ratingCount) : '-';
+
+            $rows[] = [
+                $rank,
+                $title,
+                (int) ($dvd['total_videos'] ?? 0),
+                $this->formatNumber((int) ($dvd['dvd_viewed'] ?? 0)),
+                $ratingStr,
+            ];
+            $rank++;
+        }
+
+        $this->renderTable(['#', 'DVD/Channel', 'Videos', 'Views', 'Rating'], $rows);
+
+        // Top DVDs by views
+        $this->io()->text('');
+        $this->io()->text('<info>Top DVDs/Channels (by views):</info>');
+
+        $stmt = $db->prepare("SELECT
+            dvd_id, title, dvd_viewed, total_videos
+            FROM {$prefix}dvds
+            WHERE status_id = 1 AND dvd_viewed > 0
+            ORDER BY dvd_viewed DESC
+            LIMIT {$limit}");
+        $stmt->execute();
+        $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if ($dvds !== []) {
+            $rows = [];
+            $rank = 1;
+            foreach ($dvds as $dvd) {
+                if (!is_array($dvd)) {
+                    continue;
+                }
+
+                $title = (string) ($dvd['title'] ?? 'Unknown');
+                if (mb_strlen($title) > 35) {
+                    $title = mb_substr($title, 0, 32) . '...';
+                }
+
+                $rows[] = [
+                    $rank,
+                    $title,
+                    $this->formatNumber((int) ($dvd['dvd_viewed'] ?? 0)),
+                    (int) ($dvd['total_videos'] ?? 0) . ' videos',
+                ];
+                $rank++;
+            }
+
+            $this->renderTable(['#', 'DVD/Channel', 'Views', 'Content'], $rows);
+        }
     }
 
     /**
