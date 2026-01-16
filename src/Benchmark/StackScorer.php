@@ -36,10 +36,11 @@ class StackScorer
      *
      * @return array{
      *     total: int,
-     *     php: array{version: string, status: string, score: int, eol_date: ?string},
-     *     database: array{version: string, type: string, status: string, score: int, eol_date: ?string},
-     *     os: array{version: string, name: string, status: string, score: int, eol_date: ?string},
-     *     rating: string
+     *     php: array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
+     *     database: array{version: string, type: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
+     *     os: array{version: string, name: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
+     *     rating: string,
+     *     recommendations: list<string>
      * }
      */
     public function calculate(): array
@@ -55,12 +56,25 @@ class StackScorer
             ($osScore['score'] * 0.2)
         );
 
+        // Collect recommendations
+        $recommendations = [];
+        if ($phpScore['recommendation'] !== null) {
+            $recommendations[] = $phpScore['recommendation'];
+        }
+        if ($dbScore['recommendation'] !== null) {
+            $recommendations[] = $dbScore['recommendation'];
+        }
+        if ($osScore['recommendation'] !== null) {
+            $recommendations[] = $osScore['recommendation'];
+        }
+
         return [
             'total' => $totalScore,
             'php' => $phpScore,
             'database' => $dbScore,
             'os' => $osScore,
             'rating' => $this->getRating($totalScore),
+            'recommendations' => $recommendations,
         ];
     }
 
@@ -70,7 +84,7 @@ class StackScorer
      * KVS 6.x only supports PHP 8.1, so we consider 8.1 as "optimal for KVS"
      * even though it may be EOL from PHP's perspective.
      *
-     * @return array{version: string, status: string, score: int, eol_date: ?string}
+     * @return array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string}
      */
     private function scorePhp(): array
     {
@@ -85,10 +99,14 @@ class StackScorer
                 'status' => 'kvs_optimal',
                 'score' => self::SCORE_ACTIVE,
                 'eol_date' => $this->getEolDateForVersion($eolData, $version),
+                'recommendation' => null, // No upgrade possible for KVS
             ];
         }
 
-        return $this->scoreVersion('php', $version, $eolData);
+        $scored = $this->scoreVersion('php', $version, $eolData);
+        $scored['recommendation'] = null; // PHP upgrades depend on KVS support
+
+        return $scored;
     }
 
     /**
@@ -116,7 +134,7 @@ class StackScorer
     /**
      * Score database version
      *
-     * @return array{version: string, type: string, status: string, score: int, eol_date: ?string}
+     * @return array{version: string, type: string, status: string, score: int, eol_date: ?string, recommendation: ?string}
      */
     private function scoreDatabase(): array
     {
@@ -130,6 +148,7 @@ class StackScorer
                 'status' => 'unknown',
                 'score' => 50, // Neutral score if can't detect
                 'eol_date' => null,
+                'recommendation' => null,
             ];
         }
 
@@ -137,12 +156,23 @@ class StackScorer
         $eolData = $this->fetchEolData($product);
         $scored = $this->scoreVersion($product, $dbInfo['version'], $eolData);
 
+        // Generate recommendation if not on latest LTS
+        $recommendation = null;
+        if ($scored['status'] !== 'latest') {
+            $latestLts = $this->findLatestLts($eolData);
+            if ($latestLts !== null && $latestLts !== $dbInfo['version']) {
+                $productName = $dbInfo['type'] === 'mariadb' ? 'MariaDB' : 'MySQL';
+                $recommendation = "Latest LTS: {$productName} {$latestLts}";
+            }
+        }
+
         return [
             'version' => $dbInfo['full_version'],
             'type' => $dbInfo['type'],
             'status' => $scored['status'],
             'score' => $scored['score'],
             'eol_date' => $scored['eol_date'],
+            'recommendation' => $recommendation,
         ];
     }
 
@@ -214,7 +244,7 @@ class StackScorer
     /**
      * Score OS version
      *
-     * @return array{version: string, name: string, status: string, score: int, eol_date: ?string}
+     * @return array{version: string, name: string, status: string, score: int, eol_date: ?string, recommendation: ?string}
      */
     private function scoreOs(): array
     {
@@ -227,11 +257,22 @@ class StackScorer
                 'status' => 'unknown',
                 'score' => 50,
                 'eol_date' => null,
+                'recommendation' => null,
             ];
         }
 
         $eolData = $this->fetchEolData($osInfo['product']);
         $scored = $this->scoreVersion($osInfo['product'], $osInfo['version'], $eolData);
+
+        // Generate recommendation if not on latest
+        $recommendation = null;
+        if ($scored['status'] !== 'latest') {
+            $latestVersion = $this->findLatestStable($eolData);
+            if ($latestVersion !== null && $latestVersion !== $osInfo['version']) {
+                $osName = $this->getOsDisplayName($osInfo['product']);
+                $recommendation = "Latest stable: {$osName} {$latestVersion}";
+            }
+        }
 
         return [
             'version' => $osInfo['version'],
@@ -239,6 +280,7 @@ class StackScorer
             'status' => $scored['status'],
             'score' => $scored['score'],
             'eol_date' => $scored['eol_date'],
+            'recommendation' => $recommendation,
         ];
     }
 
@@ -296,7 +338,7 @@ class StackScorer
      * Score a specific version against EOL data
      *
      * @param list<array<string, mixed>> $eolData
-     * @return array{version: string, status: string, score: int, eol_date: ?string}
+     * @return array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string}
      */
     private function scoreVersion(string $product, string $version, array $eolData): array
     {
@@ -305,6 +347,7 @@ class StackScorer
             'status' => 'unknown',
             'score' => 50,
             'eol_date' => null,
+            'recommendation' => null,
         ];
 
         if ($eolData === []) {
@@ -447,6 +490,106 @@ class StackScorer
         }
 
         return null;
+    }
+
+    /**
+     * Find the latest LTS version from EOL data
+     *
+     * @param list<array<string, mixed>> $eolData
+     */
+    private function findLatestLts(array $eolData): ?string
+    {
+        $now = new \DateTime();
+
+        foreach ($eolData as $entry) {
+            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
+                continue;
+            }
+
+            // Check if it's an LTS version
+            $isLts = isset($entry['lts']) && ($entry['lts'] === true || $entry['lts'] === 'true');
+            if (!$isLts) {
+                continue;
+            }
+
+            // Check if not EOL
+            $eol = $entry['eol'] ?? null;
+            if ($eol === true || $eol === 'true') {
+                continue;
+            }
+
+            if (is_string($eol)) {
+                try {
+                    $eolDate = new \DateTime($eol);
+                    if ($now > $eolDate) {
+                        continue;
+                    }
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+
+            // First active LTS version found = latest LTS
+            return (string) $entry['cycle'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Find the latest stable version from EOL data (for OS)
+     *
+     * @param list<array<string, mixed>> $eolData
+     */
+    private function findLatestStable(array $eolData): ?string
+    {
+        $now = new \DateTime();
+
+        foreach ($eolData as $entry) {
+            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
+                continue;
+            }
+
+            // Check if not EOL
+            $eol = $entry['eol'] ?? null;
+            if ($eol === true || $eol === 'true') {
+                continue;
+            }
+
+            if (is_string($eol)) {
+                try {
+                    $eolDate = new \DateTime($eol);
+                    if ($now > $eolDate) {
+                        continue;
+                    }
+                } catch (\Exception $e) {
+                    continue;
+                }
+            }
+
+            // First active version found = latest stable
+            return (string) $entry['cycle'];
+        }
+
+        return null;
+    }
+
+    /**
+     * Get display name for OS product
+     */
+    private function getOsDisplayName(string $product): string
+    {
+        return match ($product) {
+            'ubuntu' => 'Ubuntu',
+            'debian' => 'Debian',
+            'centos' => 'CentOS',
+            'rhel' => 'RHEL',
+            'fedora' => 'Fedora',
+            'rocky-linux' => 'Rocky Linux',
+            'almalinux' => 'AlmaLinux',
+            'alpine' => 'Alpine',
+            default => ucfirst($product),
+        };
     }
 
     /**

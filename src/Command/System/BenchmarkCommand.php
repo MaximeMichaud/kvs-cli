@@ -1164,7 +1164,7 @@ class BenchmarkCommand extends BaseCommand
     /**
      * Display stack score section
      *
-     * @param array{total: int, php: array<string, mixed>, database: array<string, mixed>, os: array<string, mixed>, rating: string} $stackScore
+     * @param array<string, mixed> $stackScore
      * @return string Color for stack score
      */
     private function displayStackScoreSection(array $stackScore): string
@@ -1172,23 +1172,30 @@ class BenchmarkCommand extends BaseCommand
         $this->io()->writeln('<fg=white;options=bold>STACK SCORE</> <fg=gray>(Software Freshness)</>');
         $this->io()->newLine();
 
-        // Extract values with proper types
-        $phpVersion = (string) ($stackScore['php']['version'] ?? 'Unknown');
-        $phpStatus = (string) ($stackScore['php']['status'] ?? 'unknown');
-        $phpScoreVal = (int) ($stackScore['php']['score'] ?? 0);
-        $phpEol = (string) ($stackScore['php']['eol_date'] ?? '-');
+        // Extract values with proper types - ensure arrays
+        /** @var array<string, mixed> $php */
+        $php = is_array($stackScore['php'] ?? null) ? $stackScore['php'] : [];
+        /** @var array<string, mixed> $db */
+        $db = is_array($stackScore['database'] ?? null) ? $stackScore['database'] : [];
+        /** @var array<string, mixed> $os */
+        $os = is_array($stackScore['os'] ?? null) ? $stackScore['os'] : [];
 
-        $dbVersion = (string) ($stackScore['database']['version'] ?? 'Unknown');
-        $dbType = (string) ($stackScore['database']['type'] ?? 'unknown');
-        $dbStatus = (string) ($stackScore['database']['status'] ?? 'unknown');
-        $dbScoreVal = (int) ($stackScore['database']['score'] ?? 0);
-        $dbEol = (string) ($stackScore['database']['eol_date'] ?? '-');
+        $phpVersion = (string) ($php['version'] ?? 'Unknown');
+        $phpStatus = (string) ($php['status'] ?? 'unknown');
+        $phpScoreVal = (int) ($php['score'] ?? 0);
+        $phpEol = (string) ($php['eol_date'] ?? '-');
 
-        $osVersion = (string) ($stackScore['os']['version'] ?? 'Unknown');
-        $osName = (string) ($stackScore['os']['name'] ?? 'Unknown');
-        $osStatus = (string) ($stackScore['os']['status'] ?? 'unknown');
-        $osScoreVal = (int) ($stackScore['os']['score'] ?? 0);
-        $osEol = (string) ($stackScore['os']['eol_date'] ?? '-');
+        $dbVersion = (string) ($db['version'] ?? 'Unknown');
+        $dbType = (string) ($db['type'] ?? 'unknown');
+        $dbStatus = (string) ($db['status'] ?? 'unknown');
+        $dbScoreVal = (int) ($db['score'] ?? 0);
+        $dbEol = (string) ($db['eol_date'] ?? '-');
+
+        $osVersion = (string) ($os['version'] ?? 'Unknown');
+        $osName = (string) ($os['name'] ?? 'Unknown');
+        $osStatus = (string) ($os['status'] ?? 'unknown');
+        $osScoreVal = (int) ($os['score'] ?? 0);
+        $osEol = (string) ($os['eol_date'] ?? '-');
 
         $stackRows = [
             ['PHP', $phpVersion, StackScorer::getStatusLabel($phpStatus), $this->formatStackScore($phpScoreVal), $phpEol],
@@ -1198,14 +1205,28 @@ class BenchmarkCommand extends BaseCommand
 
         $this->renderTable(['Component', 'Version', 'Status', 'Score', 'EOL Date'], $stackRows);
 
-        $stackTotal = $stackScore['total'];
+        $stackTotal = (int) ($stackScore['total'] ?? 0);
+        $rating = (string) ($stackScore['rating'] ?? '');
         $stackColor = $stackTotal >= 70 ? 'green' : ($stackTotal >= 40 ? 'yellow' : 'red');
         $this->io()->writeln(sprintf(
             '  <fg=white;options=bold>Stack Score:</> <fg=%s;options=bold>%d/100</> %s',
             $stackColor,
             $stackTotal,
-            $stackScore['rating']
+            $rating
         ));
+
+        // Display recommendations if any
+        $recs = $stackScore['recommendations'] ?? [];
+        /** @var list<string> $recommendations */
+        $recommendations = is_array($recs) ? $recs : [];
+        if ($recommendations !== []) {
+            $this->io()->newLine();
+            $this->io()->text('<fg=cyan;options=bold>Recommendations:</>');
+            foreach ($recommendations as $recommendation) {
+                $this->io()->text(sprintf('  → %s', $recommendation));
+            }
+        }
+
         $this->io()->newLine();
 
         return $stackColor;
