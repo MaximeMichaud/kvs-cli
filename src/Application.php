@@ -19,6 +19,7 @@ use KVS\CLI\Command\System\CronCommand;
 use KVS\CLI\Command\System\BackupCommand;
 use KVS\CLI\Command\System\QueueCommand;
 use KVS\CLI\Command\System\StatusCommand;
+use KVS\CLI\Command\System\StatsCommand;
 use KVS\CLI\Command\System\MaintenanceCommand;
 use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Command\Content\UserCommand;
@@ -307,6 +308,7 @@ class Application extends BaseApplication
             new BackupCommand($config),
             new QueueCommand($config),
             new StatusCommand($config),
+            new StatsCommand($config),
             new MaintenanceCommand($config),
 
             new VideoCommand($config),
