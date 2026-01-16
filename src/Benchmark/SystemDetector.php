@@ -510,14 +510,38 @@ class SystemDetector
 
         $result['device'] = $rootDevice;
 
-        // NVMe detection (device name)
+        // NVMe detection (device name) - always SSD
         if (str_starts_with($rootDevice, 'nvme')) {
             $result['type'] = 'nvme';
             $result['confidence'] = 'high';
             return $result;
         }
 
-        // Check rotational flag for SSD vs HDD
+        // Check if we're on a known cloud provider that uses SSDs
+        $cloudProvider = $this->detectCloudProvider();
+
+        // Virtual disks (vd*, xvd*) - check cloud provider first
+        if (str_starts_with($rootDevice, 'vd') || str_starts_with($rootDevice, 'xvd')) {
+            // Most cloud providers use SSD storage for VPS
+            $ssdProviders = [
+                'Vultr', 'DigitalOcean', 'Linode', 'AWS EC2', 'Google Cloud',
+                'Hetzner Cloud', 'OVH', 'Scaleway', 'UpCloud', 'IONOS',
+            ];
+
+            if ($cloudProvider !== null && in_array($cloudProvider, $ssdProviders, true)) {
+                $result['type'] = 'ssd';
+                $result['confidence'] = 'high';
+                return $result;
+            }
+
+            // Unknown provider with virtual disk - assume SSD (most common now)
+            // but with medium confidence
+            $result['type'] = 'ssd';
+            $result['confidence'] = 'medium';
+            return $result;
+        }
+
+        // Physical disk - check rotational flag
         $baseDev = preg_replace('/\d+$/', '', $rootDevice);
         if ($baseDev === null) {
             $baseDev = $rootDevice;
@@ -534,22 +558,60 @@ class SystemDetector
             }
         }
 
-        // Fallback: check device naming convention
+        // Fallback for sd* devices
         if (str_starts_with($rootDevice, 'sd')) {
             // Could be SSD or HDD, can't determine without rotational flag
-            $result['type'] = 'sata';
-            $result['confidence'] = 'medium';
-        } elseif (str_starts_with($rootDevice, 'vd')) {
-            // Virtual disk (virtio)
-            $result['type'] = 'virtio';
-            $result['confidence'] = 'high';
-        } elseif (str_starts_with($rootDevice, 'xvd')) {
-            // Xen virtual disk
-            $result['type'] = 'xen';
-            $result['confidence'] = 'high';
+            $result['type'] = 'unknown';
+            $result['confidence'] = 'low';
         }
 
         return $result;
+    }
+
+    /**
+     * Detect cloud provider from DMI/virtualization info
+     */
+    private function detectCloudProvider(): ?string
+    {
+        $dmiFiles = [
+            '/sys/class/dmi/id/product_name',
+            '/sys/class/dmi/id/sys_vendor',
+            '/sys/class/dmi/id/board_vendor',
+            '/sys/class/dmi/id/bios_vendor',
+        ];
+
+        $providers = [
+            'vultr' => 'Vultr',
+            'digitalocean' => 'DigitalOcean',
+            'linode' => 'Linode',
+            'amazon' => 'AWS EC2',
+            'amazon ec2' => 'AWS EC2',
+            'google' => 'Google Cloud',
+            'hetzner' => 'Hetzner Cloud',
+            'ovh' => 'OVH',
+            'scaleway' => 'Scaleway',
+            'upcloud' => 'UpCloud',
+            'ionos' => 'IONOS',
+        ];
+
+        foreach ($dmiFiles as $file) {
+            if (!file_exists($file)) {
+                continue;
+            }
+            $content = file_get_contents($file);
+            if ($content === false) {
+                continue;
+            }
+            $content = strtolower(trim($content));
+
+            foreach ($providers as $indicator => $name) {
+                if (str_contains($content, $indicator)) {
+                    return $name;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
