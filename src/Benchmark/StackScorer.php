@@ -420,9 +420,30 @@ class StackScorer
         }
 
         // Version is active - now check if it's the latest
-        $latestActive = $this->findLatestActiveVersion($eolData, $now);
         $cycleVal = $matchedEntry['cycle'] ?? '';
         $matchedCycle = is_scalar($cycleVal) ? (string) $cycleVal : '';
+
+        // Check if current version is LTS
+        $isCurrentLts = isset($matchedEntry['lts']) &&
+            ($matchedEntry['lts'] === true || $matchedEntry['lts'] === 'true');
+
+        // For LTS versions, compare against latest LTS (not latest rolling release)
+        if ($isCurrentLts) {
+            $latestLts = $this->findLatestLts($eolData);
+            if ($latestLts !== null && $matchedCycle === $latestLts) {
+                $result['status'] = 'lts_current';
+                $result['score'] = self::SCORE_LATEST;
+                return $result;
+            }
+            if ($latestLts !== null && $matchedCycle !== $latestLts) {
+                $result['status'] = 'outdated';
+                $result['score'] = self::SCORE_OUTDATED;
+                return $result;
+            }
+        }
+
+        // For non-LTS versions, compare against latest active version
+        $latestActive = $this->findLatestActiveVersion($eolData, $now);
 
         if ($latestActive !== null && $matchedCycle !== $latestActive) {
             $result['status'] = 'outdated';
@@ -691,6 +712,7 @@ class StackScorer
         return match ($status) {
             'active', 'current' => '<fg=green>Active</>',
             'latest' => '<fg=green>Latest</>',
+            'lts_current' => '<fg=green>LTS Current</>',
             'kvs_optimal' => '<fg=green>KVS Optimal</>',
             'outdated' => '<fg=yellow>Outdated</>',
             'security' => '<fg=yellow>Security Only</>',
