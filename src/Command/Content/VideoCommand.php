@@ -341,10 +341,10 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->info("Update functionality would be implemented here for video #$id");
-        $this->io()->note('This would allow updating title, status, categories, etc.');
+        $this->io()->error('Update functionality is not yet implemented');
+        $this->io()->note('Use the KVS admin panel to update videos for now.');
 
-        return self::SUCCESS;
+        return self::FAILURE;
     }
 
     private function showStats(): int
