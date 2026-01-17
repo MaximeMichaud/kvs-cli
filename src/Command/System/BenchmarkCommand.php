@@ -643,8 +643,6 @@ class BenchmarkCommand extends BaseCommand
                 $this->io()->text(sprintf('  <fg=cyan;options=bold>SCORE: %s pts</>', number_format($score)));
                 $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
             }
-            // Show baseline reference
-            $this->io()->text('  <fg=gray>Baseline: 1000 pts = VPS 4 vCPU, 8GB RAM, SSD, PHP 8.1, MariaDB 10.6</>');
 
             if ($baseline !== null) {
                 $baselineScore = $baseline->calculateScore();
@@ -1168,9 +1166,9 @@ class BenchmarkCommand extends BaseCommand
             $cpuCores = max(1, (int) ($detection['cpu']['cores'] ?? 1));
         }
 
-        // Calculate efficiency score (pts per vCPU, normalized to baseline of 4 vCPU)
+        // Calculate efficiency score (pts per vCPU)
         $efficiencyPerCore = $rawScore / $cpuCores;
-        $baselineEfficiency = 250.0; // 1000 pts / 4 cores
+        $baselineEfficiency = 250.0;
         $efficiencyScore = (int) round(($efficiencyPerCore / $baselineEfficiency) * 1000);
 
         $this->io()->section('Benchmark Results');
@@ -1712,7 +1710,6 @@ class BenchmarkCommand extends BaseCommand
      */
     private function getEfficiencyContext(float $efficiency): string
     {
-        // 250 pts/core is baseline
         if ($efficiency >= 400) {
             return '<fg=green>Very efficient</>';
         } elseif ($efficiency >= 250) {
