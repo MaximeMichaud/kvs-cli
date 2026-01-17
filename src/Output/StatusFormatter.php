@@ -63,9 +63,9 @@ class StatusFormatter
     public static function video(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            0 => ['text' => 'Disabled', 'color' => 'yellow'],
-            1 => ['text' => 'Active', 'color' => 'green'],
-            2 => ['text' => 'Error', 'color' => 'red'],
+            self::VIDEO_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::VIDEO_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+            self::VIDEO_ERROR => ['text' => 'Error', 'color' => 'red'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -81,8 +81,8 @@ class StatusFormatter
     public static function album(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            0 => ['text' => 'Disabled', 'color' => 'yellow'],
-            1 => ['text' => 'Active', 'color' => 'green'],
+            self::ALBUM_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::ALBUM_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -98,12 +98,12 @@ class StatusFormatter
     public static function user(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            0 => ['text' => 'Disabled', 'color' => 'red'],
-            1 => ['text' => 'Not Confirmed', 'color' => 'yellow'],
-            2 => ['text' => 'Active', 'color' => 'green'],
-            3 => ['text' => 'Premium', 'color' => 'cyan'],
-            4 => ['text' => 'VIP', 'color' => 'magenta'],
-            6 => ['text' => 'Webmaster', 'color' => 'blue'],
+            self::USER_DISABLED => ['text' => 'Disabled', 'color' => 'red'],
+            self::USER_NOT_CONFIRMED => ['text' => 'Not Confirmed', 'color' => 'yellow'],
+            self::USER_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+            self::USER_PREMIUM => ['text' => 'Premium', 'color' => 'cyan'],
+            self::USER_VIP => ['text' => 'VIP', 'color' => 'magenta'],
+            self::USER_WEBMASTER => ['text' => 'Webmaster', 'color' => 'blue'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -119,8 +119,8 @@ class StatusFormatter
     public static function category(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            0 => ['text' => 'Inactive', 'color' => 'yellow'],
-            1 => ['text' => 'Active', 'color' => 'green'],
+            self::CATEGORY_INACTIVE => ['text' => 'Inactive', 'color' => 'yellow'],
+            self::CATEGORY_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -136,8 +136,8 @@ class StatusFormatter
     public static function tag(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            0 => ['text' => 'Inactive', 'color' => 'yellow'],
-            1 => ['text' => 'Active', 'color' => 'green'],
+            self::TAG_INACTIVE => ['text' => 'Inactive', 'color' => 'yellow'],
+            self::TAG_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);

@@ -95,7 +95,10 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = ['active' => 1, 'disabled' => 0];
+            $statusMap = [
+                'active' => StatusFormatter::MODEL_ACTIVE,
+                'disabled' => StatusFormatter::MODEL_DISABLED,
+            ];
             if (isset($statusMap[$status])) {
                 $query .= " AND m.status_id = :status";
                 $params['status'] = $statusMap[$status];

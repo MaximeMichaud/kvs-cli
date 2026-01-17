@@ -87,7 +87,10 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = ['active' => 1, 'disabled' => 0];
+            $statusMap = [
+                'active' => StatusFormatter::DVD_ACTIVE,
+                'disabled' => StatusFormatter::DVD_DISABLED,
+            ];
             if (isset($statusMap[$status])) {
                 $query .= " AND d.status_id = :status";
                 $params['status'] = $statusMap[$status];

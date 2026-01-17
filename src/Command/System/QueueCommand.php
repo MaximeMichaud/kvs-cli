@@ -152,7 +152,11 @@ HELP
 
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = ['pending' => 0, 'processing' => 1, 'failed' => 2];
+            $statusMap = [
+                'pending' => StatusFormatter::TASK_PENDING,
+                'processing' => StatusFormatter::TASK_PROCESSING,
+                'failed' => StatusFormatter::TASK_FAILED,
+            ];
             if (isset($statusMap[$status])) {
                 $query .= " AND bt.status_id = :status";
                 $params['status'] = $statusMap[$status];
@@ -586,7 +590,10 @@ HELP
 
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = ['completed' => 3, 'deleted' => 4];
+            $statusMap = [
+                'completed' => StatusFormatter::TASK_COMPLETED,
+                'deleted' => StatusFormatter::TASK_DELETED,
+            ];
             if (isset($statusMap[$status])) {
                 $query .= " AND status_id = :status";
                 $params['status'] = $statusMap[$status];

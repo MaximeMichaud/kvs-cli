@@ -263,7 +263,7 @@ HELP
             // Prepare data
             $description = $this->getStringOption($input, 'description') ?? '';
             $parentId = $this->getStringOption($input, 'parent');
-            $statusId = 1; // Active by default
+            $statusId = StatusFormatter::CATEGORY_ACTIVE;
 
             // Validate parent category if provided
             if ($parentId !== null) {
@@ -449,7 +449,7 @@ HELP
             // Status
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? 1 : 0;
+                $statusId = ($status === 'active') ? StatusFormatter::CATEGORY_ACTIVE : StatusFormatter::CATEGORY_INACTIVE;
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }

@@ -97,7 +97,7 @@ HELP
             // Status filter
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? 1 : 0;
+                $statusId = ($status === 'active') ? StatusFormatter::TAG_ACTIVE : StatusFormatter::TAG_INACTIVE;
                 $conditions[] = 't.status_id = :status';
                 $params['status'] = $statusId;
             }
@@ -551,7 +551,7 @@ HELP
             // Status
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? 1 : 0;
+                $statusId = ($status === 'active') ? StatusFormatter::TAG_ACTIVE : StatusFormatter::TAG_INACTIVE;
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }
@@ -570,7 +570,7 @@ HELP
             $tagStr = is_string($tagValue) ? $tagValue : (is_scalar($tagValue) ? (string) $tagValue : '');
             $newName = $params['tag'] ?? $tagStr;
             $currentStatusId = $params['status_id'] ?? (is_numeric($tag['status_id']) ? (int) $tag['status_id'] : 0);
-            $statusLabel = $currentStatusId !== 0 ? 'Active' : 'Inactive';
+            $statusLabel = $currentStatusId !== StatusFormatter::TAG_INACTIVE ? 'Active' : 'Inactive';
 
             $this->io()->success("Tag updated successfully!");
             $this->renderTable(

@@ -113,9 +113,9 @@ HELP
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = [
-                'active' => 2,
-                'disabled' => 0,
-                'premium' => 3,
+                'active' => StatusFormatter::USER_ACTIVE,
+                'disabled' => StatusFormatter::USER_DISABLED,
+                'premium' => StatusFormatter::USER_PREMIUM,
             ];
             if (isset($statusMap[$status])) {
                 $query .= " AND u.status_id = :status";

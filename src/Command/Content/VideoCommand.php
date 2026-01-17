@@ -99,7 +99,11 @@ HELP
 
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = ['active' => 1, 'disabled' => 0, 'error' => 2];
+            $statusMap = [
+                'active' => StatusFormatter::VIDEO_ACTIVE,
+                'disabled' => StatusFormatter::VIDEO_DISABLED,
+                'error' => StatusFormatter::VIDEO_ERROR,
+            ];
             if (isset($statusMap[$status])) {
                 $query .= " AND v.status_id = :status";
                 $params['status'] = $statusMap[$status];
