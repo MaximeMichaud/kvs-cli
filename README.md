@@ -192,7 +192,7 @@ pre-commit install
 This project uses [pre-commit](https://pre-commit.com/) to run checks before each commit:
 
 - **PHPCS** - Code style (PSR-12)
-- **PHPStan** - Static analysis
+- **PHPStan** - Static analysis (level 10)
 - **PHPUnit** - Tests
 
 To run all checks manually:

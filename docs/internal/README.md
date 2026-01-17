@@ -93,7 +93,7 @@ composer install
 composer check
 
 # Individual checks
-composer phpcs      # Code style
-composer phpstan    # Static analysis
+composer phpcs      # Code style (PSR-12)
+composer phpstan    # Static analysis (level 10)
 composer test       # Tests
 ```
