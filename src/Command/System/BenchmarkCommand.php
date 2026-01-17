@@ -1436,7 +1436,6 @@ class BenchmarkCommand extends BaseCommand
 
         $this->io()->text('<fg=gray>Stack Score: 100 = All software actively maintained</>');
         $this->io()->text('<fg=gray>Config Score: 100 = All settings optimized for KVS</>');
-        $this->io()->text('<fg=gray>Efficiency Score: 1000 pts = Baseline (250 pts/core on 4-core VPS)</>');
     }
 
     /**
