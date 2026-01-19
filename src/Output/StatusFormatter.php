@@ -41,6 +41,10 @@ class StatusFormatter
     public const DVD_DISABLED = 0;
     public const DVD_ACTIVE = 1;
 
+    // Playlist status constants
+    public const PLAYLIST_DISABLED = 0;
+    public const PLAYLIST_ACTIVE = 1;
+
     // Video format status constants
     public const FORMAT_DISABLED = 0;
     public const FORMAT_ACTIVE = 1;
@@ -172,6 +176,23 @@ class StatusFormatter
         $labels = [
             self::DVD_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
             self::DVD_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for playlists
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function playlist(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::PLAYLIST_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::PLAYLIST_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);
