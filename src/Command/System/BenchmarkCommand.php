@@ -122,12 +122,6 @@ class BenchmarkCommand extends BaseCommand
                 'l',
                 InputOption::VALUE_NONE,
                 'Test via 127.0.0.1 with Host header (bypasses CDN/Cloudflare)'
-            )
-            ->addOption(
-                'experiment',
-                'x',
-                InputOption::VALUE_NONE,
-                'Run in experiment mode: detect system info, generate shareable ID'
             );
     }
 
@@ -175,15 +169,9 @@ class BenchmarkCommand extends BaseCommand
         $httpRuns = is_numeric($runsOption) ? max(1, (int)$runsOption) : 3;
 
         $useLocalhost = $input->getOption('localhost') === true;
-        $experimentMode = $input->getOption('experiment') === true;
 
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
-
-        // Experiment mode: run with system detection and shareable ID
-        if ($experimentMode) {
-            return $this->runExperiment($input, $output);
-        }
 
         // Load baseline for comparison if provided
         $baseline = null;
@@ -251,20 +239,62 @@ class BenchmarkCommand extends BaseCommand
             }
         }
 
+        // System detection (CPU, architecture, device type, storage)
+        $detector = new SystemDetector();
+        $detection = $detector->detect();
+
+        // Stack Score (software freshness - PHP, DB, OS versions vs EOL)
+        $stackScorer = new StackScorer($db);
+        $stackScore = $stackScorer->calculate();
+
+        // Config Score (KVS configuration optimization)
+        $configData = $this->collectConfigData();
+        $configScorer = new ConfigScorer();
+        $configScore = $configScorer->calculate($configData);
+
+        // Create experiment result for ID and export
+        $experiment = new ExperimentResult($result);
+        $experiment->setSystemDetection($detection);
+
         // Display results
-        $this->displayResults($result, $baseline);
+        $this->displayResults($result, $baseline, $detection, $stackScore, $configScore, $experiment->getId());
 
         // Export if requested
-        if (is_string($exportPath) && $exportPath !== '') {
-            $this->exportResults($result, $exportPath);
+        if ($exportPath !== false) {
+            $filename = (is_string($exportPath) && $exportPath !== '')
+                ? $exportPath
+                : $experiment->getFilename();
+
+            $json = json_encode($experiment->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+
+            if (file_put_contents($filename, $json) !== false) {
+                $this->io()->success("Results exported to: {$filename}");
+            } else {
+                $this->io()->warning("Failed to export results to: {$filename}");
+            }
         }
 
         return self::SUCCESS;
     }
 
-    private function displayResults(BenchmarkResult $result, ?BenchmarkResult $baseline): void
-    {
-        // System info
+    /**
+     * @param array<string, mixed> $detection
+     * @param array<string, mixed> $stackScore
+     * @param array<string, mixed> $configScore
+     */
+    private function displayResults(
+        BenchmarkResult $result,
+        ?BenchmarkResult $baseline,
+        array $detection,
+        array $stackScore,
+        array $configScore,
+        string $benchmarkId
+    ): void {
+        // System Detection (hardware info)
+        $this->io()->section('System Detection');
+        $this->displayDetectedSystem($detection);
+
+        // System info (software)
         $this->io()->section('System Information');
         $this->displaySystemInfo($result);
 
@@ -322,9 +352,17 @@ class BenchmarkCommand extends BaseCommand
         $this->io()->section('System Metrics');
         $this->displaySystemMetrics($result);
 
-        // Summary
+        // Stack Score (software freshness)
+        $this->io()->section('Stack Score');
+        $stackColor = $this->displayStackScoreSection($stackScore);
+
+        // Config Score (KVS optimization)
+        $this->io()->section('Config Score');
+        $configColor = $this->displayConfigScoreSection($configScore);
+
+        // Summary with all scores
         $this->io()->section('Summary');
-        $this->displaySummary($result, $baseline);
+        $this->displayFullSummary($result, $baseline, $detection, $stackScore, $configScore, $benchmarkId);
     }
 
     private function displaySystemInfo(BenchmarkResult $result): void
@@ -620,41 +658,6 @@ class BenchmarkCommand extends BaseCommand
         }
     }
 
-    private function displaySummary(BenchmarkResult $result, ?BenchmarkResult $baseline): void
-    {
-        $rows = [
-            ['Total Benchmark Time', sprintf('%.2f s', $result->getTotalTime())],
-        ];
-
-        $this->renderTable(['Metric', 'Value'], $rows);
-
-        $this->io()->newLine();
-
-        $score = $result->calculateScore();
-        $rating = $result->getRating();
-        $hasInsufficientData = $result->hasWarnings();
-
-        if ($score > 0) {
-            if ($hasInsufficientData) {
-                $this->io()->text(sprintf('  <fg=yellow;options=bold>SCORE: %s pts*</>', number_format($score)));
-                $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
-                $this->io()->text('  <fg=yellow>* Score may be inflated due to insufficient database data</>');
-            } else {
-                $this->io()->text(sprintf('  <fg=cyan;options=bold>SCORE: %s pts</>', number_format($score)));
-                $this->io()->text(sprintf('  <fg=white>Rating: %s</>', $rating));
-            }
-
-            if ($baseline !== null) {
-                $baselineScore = $baseline->calculateScore();
-                $this->displayScoreComparison($score, $baselineScore);
-            }
-        } else {
-            $this->io()->text('  <fg=yellow>No benchmarks run - cannot calculate score</>');
-        }
-
-        $this->io()->newLine();
-    }
-
     private function displayScoreComparison(int $current, int $baseline): void
     {
         if ($baseline === 0) {
@@ -681,6 +684,119 @@ class BenchmarkCommand extends BaseCommand
         } else {
             $this->io()->text('  <fg=yellow>vs Baseline: Same performance</>');
         }
+    }
+
+    /**
+     * Display full summary with all scores
+     *
+     * @param array<string, mixed> $detection
+     * @param array<string, mixed> $stackScore
+     * @param array<string, mixed> $configScore
+     */
+    private function displayFullSummary(
+        BenchmarkResult $result,
+        ?BenchmarkResult $baseline,
+        array $detection,
+        array $stackScore,
+        array $configScore,
+        string $benchmarkId
+    ): void {
+        $rawScore = $result->calculateScore();
+        $rating = $result->getRating();
+        $hasInsufficientData = $result->hasWarnings();
+
+        // Get CPU cores for efficiency calculation
+        $cpuCores = 1;
+        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
+            $cpuCores = max(1, (int) ($detection['cpu']['cores'] ?? 1));
+        }
+
+        // Calculate efficiency score (pts per vCPU)
+        $efficiencyPerCore = $rawScore / $cpuCores;
+        $baselineEfficiency = 250.0;
+        $efficiencyScore = (int) round(($efficiencyPerCore / $baselineEfficiency) * 1000);
+
+        $stackTotal = (int) ($stackScore['total'] ?? 0);
+        $configTotal = (int) ($configScore['total'] ?? 0);
+
+        // Basic info table
+        $rows = [
+            ['Total Benchmark Time', sprintf('%.2f s', $result->getTotalTime())],
+        ];
+        $this->renderTable(['Metric', 'Value'], $rows);
+
+        // Summary box
+        $separator = str_repeat('━', 65);
+        $this->io()->newLine();
+        $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
+        $this->io()->writeln('<fg=white;options=bold>  BENCHMARK SUMMARY</>');
+        $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
+        $this->io()->newLine();
+
+        // Raw Score
+        if ($rawScore > 0) {
+            if ($hasInsufficientData) {
+                $this->io()->writeln(sprintf(
+                    '  <fg=white>Raw Score:</>         <fg=yellow;options=bold>%s pts*</>  %s',
+                    number_format($rawScore),
+                    $rating
+                ));
+            } else {
+                $this->io()->writeln(sprintf(
+                    '  <fg=white>Raw Score:</>         <fg=cyan;options=bold>%s pts</>  %s',
+                    number_format($rawScore),
+                    $rating
+                ));
+            }
+        }
+
+        // Efficiency Score
+        $effPts = str_pad(number_format($efficiencyScore) . ' pts', 7);
+        $this->io()->writeln(sprintf(
+            '  <fg=white>Efficiency Score:</>  <fg=cyan;options=bold>%s</>  %s',
+            $effPts,
+            $this->getEfficiencyMiniRating($efficiencyScore)
+        ));
+
+        // Stack Score
+        $stackColor = $stackTotal >= 70 ? 'green' : ($stackTotal >= 40 ? 'yellow' : 'red');
+        $this->io()->writeln(sprintf(
+            '  <fg=white>Stack Score:</>       <fg=%s;options=bold>%3d/100</>  %s',
+            $stackColor,
+            $stackTotal,
+            $this->getStackMiniRating($stackTotal)
+        ));
+
+        // Config Score
+        $configColor = $configTotal >= 70 ? 'green' : ($configTotal >= 40 ? 'yellow' : 'red');
+        $this->io()->writeln(sprintf(
+            '  <fg=white>Config Score:</>      <fg=%s;options=bold>%3d/100</>  %s',
+            $configColor,
+            $configTotal,
+            $this->getStackMiniRating($configTotal)
+        ));
+
+        $this->io()->newLine();
+        $this->io()->writeln(sprintf('  <fg=white>Benchmark ID:</>      <fg=green;options=bold>%s</>', $benchmarkId));
+
+        // Baseline comparison
+        if ($baseline !== null) {
+            $baselineScore = $baseline->calculateScore();
+            $this->displayScoreComparison($rawScore, $baselineScore);
+        }
+
+        $this->io()->newLine();
+        $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
+        $this->io()->newLine();
+
+        // Notes
+        if ($hasInsufficientData) {
+            $this->io()->text('<fg=yellow>* Score may be inflated due to insufficient database data</>');
+        }
+        $this->io()->text('<fg=gray>Efficiency Score: Performance normalized per CPU core (higher = better)</>');
+        $this->io()->text('<fg=gray>Stack Score: Software freshness (100 = all actively maintained)</>');
+        $this->io()->text('<fg=gray>Config Score: KVS optimization level (100 = fully optimized)</>');
+        $this->io()->newLine();
     }
 
     private function formatMs(float $ms): string
@@ -757,18 +873,6 @@ class BenchmarkCommand extends BaseCommand
             $this->io()->error("Invalid JSON in baseline file: {$e->getMessage()}");
             return null;
         }
-    }
-
-    private function exportResults(BenchmarkResult $result, string $path): void
-    {
-        $json = json_encode($result->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
-
-        if (file_put_contents($path, $json) === false) {
-            $this->io()->error("Failed to write results to: {$path}");
-            return;
-        }
-
-        $this->io()->success("Results exported to: {$path}");
     }
 
     /**
@@ -946,116 +1050,6 @@ class BenchmarkCommand extends BaseCommand
     }
 
     /**
-     * Run benchmark in experiment mode with system detection and shareable ID
-     */
-    private function runExperiment(InputInterface $input, OutputInterface $output): int
-    {
-        $this->io()->title('KVS Benchmark Experiment');
-
-        // Step 1: Detect system information
-        $this->io()->section('System Detection');
-        $this->io()->text('<comment>Detecting system configuration...</comment>');
-
-        $detector = new SystemDetector();
-        $detection = $detector->detect();
-
-        // Display detected values
-        $this->displayDetectedSystem($detection);
-
-        // Step 2: Run benchmark with standardized settings
-        $this->io()->section('Running Benchmark');
-        $this->io()->text('<comment>Running standardized benchmark...</comment>');
-        $this->io()->newLine();
-
-        // Get options
-        $baseUrl = $input->getOption('url');
-        $baseUrl = is_string($baseUrl) ? $baseUrl : '';
-
-        if ($baseUrl === '') {
-            $projectUrl = $this->config->get('project_url');
-            if (is_string($projectUrl) && $projectUrl !== '') {
-                $baseUrl = $projectUrl;
-            }
-        }
-
-        /** @var string $mcHost */
-        $mcHost = $input->getOption('memcached-host');
-
-        $mcPortOption = $input->getOption('memcached-port');
-        $mcPort = is_numeric($mcPortOption) ? (int)$mcPortOption : Constants::DEFAULT_MEMCACHE_PORT;
-
-        // Standardized settings for fair comparison
-        $samples = 5;
-        $dbIterations = 10;
-        $cacheIterations = 100;
-        $fileIterations = 100;
-        $cpuIterations = 1000;
-        $httpRuns = 3;
-
-        $db = $this->getDatabaseConnection(true);
-
-        $runner = new BenchmarkRunner(
-            $db,
-            $this->config->getTablePrefix(),
-            $baseUrl,
-            $samples,
-            $dbIterations,
-            ['host' => $mcHost, 'port' => $mcPort],
-            $cacheIterations,
-            $fileIterations,
-            $cpuIterations,
-            $httpRuns,
-            false // Don't use localhost mode in experiment
-        );
-
-        $result = $runner->run(function (string $stage, string $message): void {
-            $this->io()->text("<comment>{$message}</comment>");
-        });
-
-        // Step 3: Calculate Stack Score (software freshness)
-        $this->io()->section('Stack Analysis');
-        $this->io()->text('<comment>Checking software versions against EOL data...</comment>');
-
-        $stackScorer = new StackScorer($db);
-        $stackScore = $stackScorer->calculate();
-
-        // Step 4: Calculate Config Score (configuration quality)
-        $this->io()->text('<comment>Checking configuration settings...</comment>');
-
-        $configData = $this->collectConfigData();
-        $configScorer = new ConfigScorer();
-        $configScore = $configScorer->calculate($configData);
-
-        // Step 5: Create experiment result with ID
-        $experiment = new ExperimentResult($result);
-        $experiment->setSystemDetection($detection);
-
-        // Step 6: Display results
-        $this->io()->newLine();
-        $this->displayExperimentResults($experiment, $stackScore, $configScore, $detection);
-
-        // Step 6: Export JSON only if --export is specified
-        // VALUE_OPTIONAL: false (default), null (--export), string (--export=file.json)
-        $exportOpt = $input->getOption('export');
-        if ($exportOpt !== false) {
-            // Use custom filename if provided, otherwise auto-generate
-            $filename = (is_string($exportOpt) && $exportOpt !== '')
-                ? $exportOpt
-                : $experiment->getFilename();
-
-            $json = json_encode($experiment->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
-
-            if (file_put_contents($filename, $json) !== false) {
-                $this->io()->success("Results exported to: {$filename}");
-            } else {
-                $this->io()->warning("Failed to export results to: {$filename}");
-            }
-        }
-
-        return self::SUCCESS;
-    }
-
-    /**
      * Display detected system information
      *
      * @param array<string, mixed> $detection
@@ -1145,54 +1139,6 @@ class BenchmarkCommand extends BaseCommand
     }
 
     /**
-     * Display experiment results with Stack Score, Config Score and Efficiency Score
-     *
-     * @param array<string, mixed> $stackScore
-     * @param array<string, mixed> $configScore
-     * @param array<string, mixed> $detection
-     */
-    private function displayExperimentResults(
-        ExperimentResult $experiment,
-        array $stackScore,
-        array $configScore,
-        array $detection
-    ): void {
-        $result = $experiment->getBenchmarkResult();
-        $rawScore = $result->calculateScore();
-
-        // Get CPU cores for efficiency calculation
-        $cpuCores = 1;
-        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
-            $cpuCores = max(1, (int) ($detection['cpu']['cores'] ?? 1));
-        }
-
-        // Calculate efficiency score (pts per vCPU)
-        $efficiencyPerCore = $rawScore / $cpuCores;
-        $baselineEfficiency = 250.0;
-        $efficiencyScore = (int) round(($efficiencyPerCore / $baselineEfficiency) * 1000);
-
-        $this->io()->section('Benchmark Results');
-
-        // Display each section
-        $stackColor = $this->displayStackScoreSection($stackScore);
-        $configColor = $this->displayConfigScoreSection($configScore);
-        $this->displayPerformanceSection($rawScore, $cpuCores, $efficiencyPerCore, $efficiencyScore, $result);
-        $this->displaySystemSummarySection($detection, $result);
-
-        // Final summary
-        $stackTotal = (int) ($stackScore['total'] ?? 0);
-        $configTotal = (int) ($configScore['total'] ?? 0);
-        $this->displayFinalSummaryBoxWithConfig(
-            $stackTotal,
-            $stackColor,
-            $configTotal,
-            $configColor,
-            $efficiencyScore,
-            $experiment->getId()
-        );
-    }
-
-    /**
      * Display stack score section
      *
      * @param array<string, mixed> $stackScore
@@ -1261,179 +1207,6 @@ class BenchmarkCommand extends BaseCommand
         $this->io()->newLine();
 
         return $stackColor;
-    }
-
-    /**
-     * Display performance score section
-     */
-    private function displayPerformanceSection(
-        int $rawScore,
-        int $cpuCores,
-        float $efficiencyPerCore,
-        int $efficiencyScore,
-        BenchmarkResult $result
-    ): void {
-        $this->io()->writeln('<fg=white;options=bold>PERFORMANCE SCORE</> <fg=gray>(Efficiency-based)</>');
-        $this->io()->newLine();
-
-        $effLabel = sprintf('<fg=cyan;options=bold>%s pts</>', number_format($efficiencyScore));
-        $perfRows = [
-            ['Raw Score', sprintf('%s pts', number_format($rawScore)), $this->getRawScoreContext($rawScore)],
-            ['CPU Cores', (string) $cpuCores, ''],
-            ['Points/Core', sprintf('%.0f pts/core', $efficiencyPerCore), $this->getEfficiencyContext($efficiencyPerCore)],
-            ['Efficiency Score', $effLabel, $this->getEfficiencyRating($efficiencyScore)],
-        ];
-
-        $this->renderTable(['Metric', 'Value', 'Context'], $perfRows);
-
-        $this->io()->text('<fg=gray>Category breakdown (raw scores):</>');
-        $this->displayCategoryBreakdown($result);
-        $this->io()->newLine();
-    }
-
-    /**
-     * Display system summary section
-     *
-     * @param array<string, mixed> $detection
-     */
-    private function displaySystemSummarySection(array $detection, BenchmarkResult $result): void
-    {
-        $this->io()->writeln('<fg=white;options=bold>SYSTEM SUMMARY</>');
-        $this->io()->newLine();
-
-        $systemRows = $this->buildSystemRows($detection, $result);
-        $this->renderTable(['Parameter', 'Value'], $systemRows);
-    }
-
-    /**
-     * Build system info rows
-     *
-     * @param array<string, mixed> $detection
-     * @return list<array{0: string, 1: string}>
-     */
-    private function buildSystemRows(array $detection, BenchmarkResult $result): array
-    {
-        $rows = [];
-
-        // CPU info
-        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
-            $cpu = $detection['cpu'];
-            $cpuModel = (string) ($cpu['model'] ?? 'Unknown');
-            if (strlen($cpuModel) > 50) {
-                $cpuModel = substr($cpuModel, 0, 47) . '...';
-            }
-            $cpuGenVal = isset($cpu['generation']) ? (string) $cpu['generation'] : '';
-            $cpuGen = $cpuGenVal !== '' ? ' <fg=cyan>(' . $cpuGenVal . ')</>' : '';
-            $rows[] = ['CPU', $cpuModel . $cpuGen];
-            $coresVal = (int) ($cpu['cores'] ?? 1);
-            $threadsVal = (int) ($cpu['threads'] ?? 1);
-            $rows[] = ['Cores/Threads', sprintf('%d cores / %d threads', $coresVal, $threadsVal)];
-        }
-
-        // Device type
-        if (isset($detection['device_type']) && is_array($detection['device_type'])) {
-            /** @var array<string, mixed> $deviceType */
-            $deviceType = $detection['device_type'];
-            $rows[] = ['Device Type', $this->formatDeviceType($deviceType)];
-        }
-
-        // Storage
-        if (isset($detection['storage']) && is_array($detection['storage'])) {
-            /** @var array<string, mixed> $storage */
-            $storage = $detection['storage'];
-            $rows[] = ['Storage', $this->formatStorageType($storage)];
-        }
-
-        // Memory
-        $metrics = $result->getSystemMetrics();
-        if (isset($metrics['memory_total']) && is_int($metrics['memory_total'])) {
-            $rows[] = ['Memory', format_bytes($metrics['memory_total'])];
-        }
-
-        return $rows;
-    }
-
-    /**
-     * Format device type for display
-     *
-     * @param array<string, mixed> $deviceInfo
-     */
-    private function formatDeviceType(array $deviceInfo): string
-    {
-        $typeVal = (string) ($deviceInfo['type'] ?? 'unknown');
-        $type = match ($typeVal) {
-            'vm' => '<fg=yellow>VPS/Virtual Machine</>',
-            'container' => '<fg=blue>Container</>',
-            'bare_metal' => '<fg=green>Bare Metal (Dedicated)</>',
-            default => 'Unknown',
-        };
-        $techVal = isset($deviceInfo['technology']) ? (string) $deviceInfo['technology'] : '';
-        if ($techVal !== '') {
-            $type .= ' <fg=gray>(' . $techVal . ')</>';
-        }
-        return $type;
-    }
-
-    /**
-     * Format storage type for display
-     *
-     * @param array<string, mixed> $storageInfo
-     */
-    private function formatStorageType(array $storageInfo): string
-    {
-        $typeVal = (string) ($storageInfo['type'] ?? 'unknown');
-        return match ($typeVal) {
-            'nvme' => '<fg=green>NVMe SSD</>',
-            'ssd' => '<fg=green>SSD</>',
-            'hdd' => '<fg=yellow>HDD</>',
-            'virtio' => '<fg=cyan>VirtIO (Virtual)</>',
-            default => strtoupper($typeVal),
-        };
-    }
-
-    /**
-     * Display final summary box with config score
-     */
-    private function displayFinalSummaryBoxWithConfig(
-        int $stackTotal,
-        string $stackColor,
-        int $configTotal,
-        string $configColor,
-        int $efficiencyScore,
-        string $id
-    ): void {
-        $separator = str_repeat('━', 65);
-        $this->io()->newLine();
-        $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
-        $this->io()->writeln('<fg=white;options=bold>  BENCHMARK SUMMARY</>');
-        $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
-        $this->io()->newLine();
-        $this->io()->writeln(sprintf(
-            '  <fg=white>Stack Score:</>       <fg=%s;options=bold>%3d/100</>  %s',
-            $stackColor,
-            $stackTotal,
-            $this->getStackMiniRating($stackTotal)
-        ));
-        $this->io()->writeln(sprintf(
-            '  <fg=white>Config Score:</>      <fg=%s;options=bold>%3d/100</>  %s',
-            $configColor,
-            $configTotal,
-            $this->getStackMiniRating($configTotal)
-        ));
-        $effPts = str_pad(number_format($efficiencyScore) . ' pts', 7);
-        $this->io()->writeln(sprintf(
-            '  <fg=white>Efficiency Score:</>  <fg=cyan;options=bold>%s</>  %s',
-            $effPts,
-            $this->getEfficiencyMiniRating($efficiencyScore)
-        ));
-        $this->io()->newLine();
-        $this->io()->writeln(sprintf('  <fg=white>Benchmark ID:</>      <fg=green;options=bold>%s</>', $id));
-        $this->io()->newLine();
-        $this->io()->writeln("<fg=cyan;options=bold>{$separator}</>");
-        $this->io()->newLine();
-
-        $this->io()->text('<fg=gray>Stack Score: 100 = All software actively maintained</>');
-        $this->io()->text('<fg=gray>Config Score: 100 = All settings optimized for KVS</>');
     }
 
     /**
@@ -1691,53 +1464,6 @@ class BenchmarkCommand extends BaseCommand
     }
 
     /**
-     * Get context string for raw score
-     */
-    private function getRawScoreContext(int $score): string
-    {
-        if ($score >= 1500) {
-            return '<fg=green>Excellent raw performance</>';
-        } elseif ($score >= 1000) {
-            return '<fg=green>Above baseline</>';
-        } elseif ($score >= 600) {
-            return '<fg=yellow>Below baseline</>';
-        }
-        return '<fg=red>Low raw performance</>';
-    }
-
-    /**
-     * Get context string for efficiency
-     */
-    private function getEfficiencyContext(float $efficiency): string
-    {
-        if ($efficiency >= 400) {
-            return '<fg=green>Very efficient</>';
-        } elseif ($efficiency >= 250) {
-            return '<fg=green>Good efficiency</>';
-        } elseif ($efficiency >= 150) {
-            return '<fg=yellow>Below average efficiency</>';
-        }
-        return '<fg=red>Low efficiency</>';
-    }
-
-    /**
-     * Get efficiency rating string
-     */
-    private function getEfficiencyRating(int $score): string
-    {
-        if ($score >= 1500) {
-            return '★★★★★ Excellent';
-        } elseif ($score >= 1200) {
-            return '★★★★☆ Very Good';
-        } elseif ($score >= 900) {
-            return '★★★☆☆ Good';
-        } elseif ($score >= 600) {
-            return '★★☆☆☆ Fair';
-        }
-        return '★☆☆☆☆ Needs Improvement';
-    }
-
-    /**
      * Get mini rating for stack score (for summary box)
      */
     private function getStackMiniRating(int $score): string
@@ -1769,30 +1495,5 @@ class BenchmarkCommand extends BaseCommand
             return '★★☆☆☆ Fair';
         }
         return '★☆☆☆☆ Needs Improvement';
-    }
-
-    /**
-     * Display category score breakdown
-     */
-    private function displayCategoryBreakdown(BenchmarkResult $result): void
-    {
-        $categories = [];
-
-        if ($result->hasDbResults()) {
-            $categories[] = 'DB';
-        }
-        if ($result->hasCacheResults()) {
-            $categories[] = 'Cache';
-        }
-        if ($result->hasCpuResults()) {
-            $categories[] = 'CPU';
-        }
-        if ($result->hasFileIOResults()) {
-            $categories[] = 'File I/O';
-        }
-
-        if ($categories !== []) {
-            $this->io()->text('  Categories tested: ' . implode(', ', $categories));
-        }
     }
 }
