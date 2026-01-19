@@ -73,6 +73,18 @@ class StatusFormatter
     public const SERVER_CONNECTION_FTP = 2;
     public const SERVER_CONNECTION_S3 = 3;
 
+    // Conversion server status constants
+    public const CONVERSION_DISABLED = 0;
+    public const CONVERSION_ACTIVE = 1;
+    public const CONVERSION_INIT = 2;
+
+    // Conversion server priority constants
+    public const CONVERSION_PRIORITY_REALTIME = 0;
+    public const CONVERSION_PRIORITY_HIGH = 4;
+    public const CONVERSION_PRIORITY_MEDIUM = 9;
+    public const CONVERSION_PRIORITY_LOW = 14;
+    public const CONVERSION_PRIORITY_VERY_LOW = 19;
+
     /**
      * Get formatted status label for videos
      *
@@ -305,6 +317,44 @@ class StatusFormatter
         ];
 
         return self::format($typeId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for conversion servers
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function conversion(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::CONVERSION_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::CONVERSION_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+            self::CONVERSION_INIT => ['text' => 'Initializing', 'color' => 'cyan'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted priority label for conversion servers
+     *
+     * @param int $priorityId Priority ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted priority label
+     */
+    public static function conversionPriority(int $priorityId, bool $withColor = true): string
+    {
+        $labels = [
+            self::CONVERSION_PRIORITY_REALTIME => ['text' => 'Realtime', 'color' => 'red'],
+            self::CONVERSION_PRIORITY_HIGH => ['text' => 'High', 'color' => 'yellow'],
+            self::CONVERSION_PRIORITY_MEDIUM => ['text' => 'Medium', 'color' => 'green'],
+            self::CONVERSION_PRIORITY_LOW => ['text' => 'Low', 'color' => 'cyan'],
+            self::CONVERSION_PRIORITY_VERY_LOW => ['text' => 'Very Low', 'color' => 'gray'],
+        ];
+
+        return self::format($priorityId, $labels, $withColor);
     }
 
     /**
