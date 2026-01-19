@@ -5,6 +5,7 @@ namespace KVS\CLI\Command\System;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
 use KVS\CLI\Util\FpmConfigReader;
+use KVS\CLI\Util\IonCubeDetector;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -90,6 +91,7 @@ class CheckCommand extends BaseCommand
         $results['update'] = $this->checkKvsUpdate($quietOk);
         $results['php_kvs'] = $this->checkPhpKvsCompatibility($quietOk);
         $results['php_extensions'] = $this->checkPhpExtensions($quietOk);
+        $results['ioncube'] = $this->checkIonCube($quietOk);
         $results['tools'] = $this->checkTools($quietOk);
         $results['memcached'] = $this->checkMemcached($quietOk);
         $results['opcache'] = $this->checkOpcache($quietOk);
@@ -423,32 +425,7 @@ class CheckCommand extends BaseCommand
             }
         }
 
-        // Check IonCube Loader
-        $ioncubeLoaded = $this->isExtensionLoaded('ionCube Loader');
-        $result['extensions']['ioncube'] = ['name' => 'IonCube Loader', 'loaded' => $ioncubeLoaded];
-
-        if (!$ioncubeLoaded) {
-            // Check if it's in loaded extensions with different name
-            $loadedExtensions = $this->getLoadedExtensions();
-            $hasIoncube = false;
-            foreach ($loadedExtensions as $e) {
-                if (stripos($e, 'ioncube') !== false) {
-                    $hasIoncube = true;
-                    $result['extensions']['ioncube']['loaded'] = true;
-                    break;
-                }
-            }
-
-            if (!$hasIoncube) {
-                $this->printStatus('IonCube Loader', 'MISSING (required for KVS)', 'error');
-                $this->errors++;
-                $hasError = true;
-            } elseif (!$quietOk) {
-                $this->printStatus('IonCube Loader', 'OK', 'ok');
-            }
-        } elseif (!$quietOk) {
-            $this->printStatus('IonCube Loader', 'OK', 'ok');
-        }
+        // Note: IonCube is checked separately in checkIonCube() with proper file detection
 
         // Check that exec is not in disable_functions
         $disableFunctions = $this->getPhpSetting('disable_functions');
@@ -465,6 +442,73 @@ class CheckCommand extends BaseCommand
         }
 
         $result['status'] = $hasError ? 'error' : 'ok';
+        return $result;
+    }
+
+    /**
+     * Check IonCube Loader status and file encoding
+     *
+     * @return array{
+     *     loader_installed: bool,
+     *     loader_version: string|null,
+     *     files_encoded: bool,
+     *     jit_compatible: bool,
+     *     status: string,
+     *     issues: list<string>,
+     *     recommendations: list<string>
+     * }
+     */
+    private function checkIonCube(bool $quietOk): array
+    {
+        $this->printSection('IonCube');
+
+        $docker = $this->isDockerMode() ? $this->docker() : null;
+        $detector = new IonCubeDetector($this->config, $docker);
+        $result = $detector->getStatus();
+
+        $loaderInstalled = $result['loader_installed'];
+        $loaderVersion = $result['loader_version'];
+        $filesEncoded = $result['files_encoded'];
+
+        // Display encoding status
+        if ($filesEncoded) {
+            if (!$quietOk) {
+                $this->printStatus('KVS Files', 'IonCube encoded', 'ok');
+            }
+        } else {
+            if (!$quietOk) {
+                $this->printStatus('KVS Files', 'Plain PHP (no encoding)', 'ok');
+            }
+        }
+
+        // Display loader status
+        if ($loaderInstalled) {
+            $versionStr = $loaderVersion !== null ? "v{$loaderVersion}" : 'installed';
+
+            // Check version
+            if ($loaderVersion !== null && version_compare($loaderVersion, IonCubeDetector::MIN_RECOMMENDED_VERSION, '<')) {
+                $this->printStatus('IonCube Loader', "{$versionStr} (update recommended)", 'warning');
+                $this->warnings++;
+            } elseif (!$quietOk) {
+                $this->printStatus('IonCube Loader', $versionStr, 'ok');
+            }
+
+            // Warn about JIT incompatibility if not needed
+            if (!$filesEncoded) {
+                $this->printStatus('JIT Compatibility', 'Loader blocks JIT (remove if not needed)', 'warning');
+                $this->warnings++;
+            }
+        } else {
+            // Loader not installed
+            if ($filesEncoded) {
+                $this->printStatus('IonCube Loader', 'MISSING (required for encoded files)', 'error');
+                $this->errors++;
+            } elseif (!$quietOk) {
+                $this->printStatus('IonCube Loader', 'Not installed (not needed)', 'ok');
+                $this->printStatus('JIT Compatibility', 'Can enable JIT', 'ok');
+            }
+        }
+
         return $result;
     }
 
