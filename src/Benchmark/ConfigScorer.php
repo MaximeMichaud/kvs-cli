@@ -15,7 +15,6 @@ class ConfigScorer
     // KVS recommended thresholds (from KVS-install)
     public const UPLOAD_MIN_MB = 1024;           // upload_max_filesize & post_max_size (1G+)
     public const MEMORY_LIMIT_MIN_MB = 256;      // Minimum (256M - 2048M optimal)
-    public const MAX_EXECUTION_TIME_MIN = 300;   // 5 minutes
     public const MAX_INPUT_VARS_MIN = 10000;
 
     public const OPCACHE_MIN_MB = 256;           // opcache.memory_consumption
@@ -74,7 +73,7 @@ class ConfigScorer
     private function scorePhpSettings(array $settings): array
     {
         $score = 0;
-        $max = 4;
+        $max = 3;
         $issues = [];
         $recommendations = [];
 
@@ -106,15 +105,6 @@ class ConfigScorer
             $current = $this->formatBytes($memoryBytes);
             $issues[] = "memory_limit = {$current} (need " . self::MEMORY_LIMIT_MIN_MB . 'M+)';
             $recommendations[] = 'memory_limit = ' . self::MEMORY_LIMIT_MIN_MB . 'M';
-        }
-
-        // max_execution_time (1 point)
-        $maxExec = (int) ($settings['max_execution_time'] ?? 30);
-        if ($maxExec === 0 || $maxExec >= self::MAX_EXECUTION_TIME_MIN) {
-            $score++;
-        } else {
-            $issues[] = "max_execution_time = {$maxExec}s (need " . self::MAX_EXECUTION_TIME_MIN . 's)';
-            $recommendations[] = 'max_execution_time = ' . self::MAX_EXECUTION_TIME_MIN;
         }
 
         return [

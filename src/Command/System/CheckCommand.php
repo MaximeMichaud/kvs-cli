@@ -980,12 +980,6 @@ class CheckCommand extends BaseCommand
                 'format' => 'number',
                 'recommend' => '≥10000 for admin panel',
             ],
-            'max_execution_time' => [
-                'min' => 300,
-                'format' => 'seconds',
-                'recommend' => '≥300 for conversions',
-                'allow_unlimited' => true,
-            ],
         ];
 
         // Use FpmConfigReader to get real PHP-FPM settings (not CLI)
@@ -999,7 +993,6 @@ class CheckCommand extends BaseCommand
             'post_max_size' => $fpmConfig['post_max_size'],
             'memory_limit' => $fpmConfig['memory_limit'],
             'max_input_vars' => (string) $fpmConfig['max_input_vars'],
-            'max_execution_time' => (string) $fpmConfig['max_execution_time'],
         ];
 
         foreach ($checks as $name => $check) {
