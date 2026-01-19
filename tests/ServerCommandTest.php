@@ -236,4 +236,50 @@ class ServerCommandTest extends TestCase
         // Default action is list
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
+
+    public function testServerEnableMissingId(): void
+    {
+        $this->tester->execute([
+            'action' => 'enable'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('required', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testServerDisableMissingId(): void
+    {
+        $this->tester->execute([
+            'action' => 'disable'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('required', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testServerEnableNotFound(): void
+    {
+        $this->tester->execute([
+            'action' => 'enable',
+            'id' => 999999
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testServerDisableNotFound(): void
+    {
+        $this->tester->execute([
+            'action' => 'disable',
+            'id' => 999999
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
 }

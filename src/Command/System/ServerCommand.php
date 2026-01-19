@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
@@ -19,10 +20,12 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 class ServerCommand extends BaseCommand
 {
+    use ToggleStatusTrait;
+
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|stats|group')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|enable|disable|stats|group')
             ->addArgument('id', InputArgument::OPTIONAL, 'Server or group ID')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by content type (video|album)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
@@ -37,10 +40,12 @@ class ServerCommand extends BaseCommand
 Manage KVS storage servers and server groups.
 
 <fg=yellow>ACTIONS:</>
-  list     List all storage servers (default)
-  show     Show server details
-  stats    Show storage statistics overview
-  group    List or show server groups (use: group, group <id>)
+  list        List all storage servers (default)
+  show <id>   Show server details
+  enable <id> Enable/activate a server
+  disable <id> Disable/deactivate a server
+  stats       Show storage statistics overview
+  group       List or show server groups (use: group, group <id>)
 
 <fg=yellow>CONTENT TYPES:</>
   video    Video storage servers (content_type_id=1)
@@ -62,6 +67,8 @@ Manage KVS storage servers and server groups.
   <fg=green>kvs server list --connection=s3</>
   <fg=green>kvs server list --errors</>
   <fg=green>kvs server show 1</>
+  <fg=green>kvs server enable 1</>
+  <fg=green>kvs server disable 1</>
   <fg=green>kvs server stats</>
   <fg=green>kvs server group</>
   <fg=green>kvs server group 1</>
@@ -77,6 +84,8 @@ HELP
         return match ($action) {
             'list' => $this->listServers($input),
             'show' => $this->showServer($id),
+            'enable', 'activate' => $this->enableServer($id),
+            'disable', 'deactivate' => $this->disableServer($id),
             'stats' => $this->showStats(),
             'group' => $id !== null ? $this->showGroup($id) : $this->listGroups($input),
             default => $this->listServers($input),
@@ -773,6 +782,32 @@ HELP
             $this->io()->error('Failed to fetch group: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function enableServer(?string $id): int
+    {
+        return $this->toggleEntityStatus(
+            'Server',
+            $this->table('admin_servers'),
+            'server_id',
+            'title',
+            $id,
+            StatusFormatter::SERVER_ACTIVE,
+            'system:server'
+        );
+    }
+
+    private function disableServer(?string $id): int
+    {
+        return $this->toggleEntityStatus(
+            'Server',
+            $this->table('admin_servers'),
+            'server_id',
+            'title',
+            $id,
+            StatusFormatter::SERVER_DISABLED,
+            'system:server'
+        );
     }
 
     private function formatBytes(int $bytes): string
