@@ -12,6 +12,7 @@ use KVS\CLI\Benchmark\StackScorer;
 use KVS\CLI\Benchmark\SystemDetector;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
+use KVS\CLI\Service\BenchmarkApiClient;
 use KVS\CLI\Util\FpmConfigReader;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -122,6 +123,12 @@ class BenchmarkCommand extends BaseCommand
                 'l',
                 InputOption::VALUE_NONE,
                 'Test via 127.0.0.1 with Host header (bypasses CDN/Cloudflare)'
+            )
+            ->addOption(
+                'submit',
+                'S',
+                InputOption::VALUE_NONE,
+                'Submit results to the benchmark API'
             );
     }
 
@@ -274,7 +281,46 @@ class BenchmarkCommand extends BaseCommand
             }
         }
 
+        // Submit if requested
+        if ($input->getOption('submit') === true) {
+            $this->submitBenchmark($experiment, $exportPath !== false);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Submit benchmark results to the API.
+     */
+    private function submitBenchmark(ExperimentResult $experiment, bool $hasExport): void
+    {
+        // Check if API URL is configured
+        // @phpstan-ignore identical.alwaysTrue (placeholder until API is configured)
+        if (Constants::BENCHMARK_API_URL === '') {
+            $this->io()->warning('Cannot submit: Benchmark API URL not configured.');
+            if (!$hasExport) {
+                $this->io()->text('Use --export to save results locally instead.');
+            }
+            return;
+        }
+
+        /** @phpstan-ignore-next-line deadCode.unreachable (code is reachable once API URL is set) */
+        $this->io()->text('<comment>Submitting benchmark results...</comment>');
+
+        $client = new BenchmarkApiClient();
+        $response = $client->submit($experiment);
+
+        if ($response->success) {
+            $this->io()->success($response->message);
+            if ($response->url !== null) {
+                $this->io()->text("View results: <fg=cyan>{$response->url}</>");
+            }
+        } else {
+            $this->io()->warning("Failed to submit benchmark: {$response->message}");
+            if (!$hasExport) {
+                $this->io()->text('Results saved locally with --export if specified.');
+            }
+        }
     }
 
     /**

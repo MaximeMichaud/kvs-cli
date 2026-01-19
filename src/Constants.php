@@ -204,4 +204,14 @@ final class Constants
 
     /** Months before EOL to show warning */
     public const EOL_WARNING_MONTHS = 6;
+
+    // ========================================
+    // BENCHMARK API
+    // ========================================
+
+    /** Benchmark API URL (empty = disabled) */
+    public const BENCHMARK_API_URL = '';
+
+    /** Timeout for benchmark API requests in seconds */
+    public const BENCHMARK_API_TIMEOUT = 30;
 }
