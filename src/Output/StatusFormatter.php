@@ -57,6 +57,22 @@ class StatusFormatter
     public const TASK_COMPLETED = 3;
     public const TASK_DELETED = 4;
 
+    // Server status constants
+    public const SERVER_DISABLED = 0;
+    public const SERVER_ACTIVE = 1;
+
+    // Server streaming type constants
+    public const SERVER_STREAMING_NGINX = 0;
+    public const SERVER_STREAMING_APACHE = 1;
+    public const SERVER_STREAMING_CDN = 4;
+    public const SERVER_STREAMING_BACKUP = 5;
+
+    // Server connection type constants
+    public const SERVER_CONNECTION_LOCAL = 0;
+    public const SERVER_CONNECTION_MOUNT = 1;
+    public const SERVER_CONNECTION_FTP = 2;
+    public const SERVER_CONNECTION_S3 = 3;
+
     /**
      * Get formatted status label for videos
      *
@@ -234,6 +250,61 @@ class StatusFormatter
         ];
 
         return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for servers
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function server(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::SERVER_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::SERVER_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted streaming type label for servers
+     *
+     * @param int $typeId Streaming type ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted type label
+     */
+    public static function serverStreaming(int $typeId, bool $withColor = true): string
+    {
+        $labels = [
+            self::SERVER_STREAMING_NGINX => ['text' => 'Nginx', 'color' => 'cyan'],
+            self::SERVER_STREAMING_APACHE => ['text' => 'Apache', 'color' => 'cyan'],
+            self::SERVER_STREAMING_CDN => ['text' => 'CDN', 'color' => 'magenta'],
+            self::SERVER_STREAMING_BACKUP => ['text' => 'Backup', 'color' => 'yellow'],
+        ];
+
+        return self::format($typeId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted connection type label for servers
+     *
+     * @param int $typeId Connection type ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted type label
+     */
+    public static function serverConnection(int $typeId, bool $withColor = true): string
+    {
+        $labels = [
+            self::SERVER_CONNECTION_LOCAL => ['text' => 'Local', 'color' => 'green'],
+            self::SERVER_CONNECTION_MOUNT => ['text' => 'Mount', 'color' => 'cyan'],
+            self::SERVER_CONNECTION_FTP => ['text' => 'FTP', 'color' => 'yellow'],
+            self::SERVER_CONNECTION_S3 => ['text' => 'S3', 'color' => 'magenta'],
+        ];
+
+        return self::format($typeId, $labels, $withColor);
     }
 
     /**
