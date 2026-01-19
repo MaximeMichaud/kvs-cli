@@ -27,7 +27,7 @@ class ConversionCommand extends BaseCommand
             ->addArgument(
                 'action',
                 InputArgument::OPTIONAL,
-                'Action: list|show|enable|disable|debug-on|debug-off|stats'
+                'Action: list|show|enable|disable|debug-on|debug-off|log|config|stats'
             )
             ->addArgument('id', InputArgument::OPTIONAL, 'Server ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|init)')
@@ -47,11 +47,13 @@ Manage KVS conversion servers (video/image transcoding).
 
 <fg=yellow>ACTIONS:</>
   list           List all conversion servers (default)
-  show <id>      Show server details
+  show <id>      Show server details (tasks, options, connection)
   enable <id>    Enable/activate a server
   disable <id>   Disable/deactivate a server
   debug-on <id>  Enable debug mode
   debug-off <id> Disable debug mode
+  log <id>       View server conversion log
+  config <id>    View server configuration (libraries, paths)
   stats          Show conversion statistics
 
 <fg=yellow>STATUS VALUES:</>
@@ -73,6 +75,8 @@ Manage KVS conversion servers (video/image transcoding).
   <fg=green>kvs conversion disable 1</>
   <fg=green>kvs conversion debug-on 1</>
   <fg=green>kvs conversion debug-off 1</>
+  <fg=green>kvs conversion log 1</>
+  <fg=green>kvs conversion config 1</>
   <fg=green>kvs conversion stats</>
 HELP
             );
@@ -90,6 +94,8 @@ HELP
             'disable', 'deactivate' => $this->disableServer($id),
             'debug-on' => $this->toggleDebug($id, true),
             'debug-off' => $this->toggleDebug($id, false),
+            'log' => $this->showLog($id),
+            'config' => $this->showConfig($id),
             'stats' => $this->showStats(),
             default => $this->listServers($input),
         };
@@ -225,6 +231,14 @@ HELP
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
             $this->renderTable(['Property', 'Value'], $info);
+
+            // Display task types
+            $this->displayTaskTypes($server);
+
+            // Display server options
+            $this->displayServerOptions($server);
+
+            // Display errors if any
             $this->displayServerErrors($server);
 
             return self::SUCCESS;
@@ -343,6 +357,239 @@ HELP
 
         if (isset($errorMessages[$errorId])) {
             $this->io()->text("<fg=red>* {$errorMessages[$errorId]}</>");
+        }
+    }
+
+    /**
+     * Display task types assigned to server.
+     *
+     * @param array<string, mixed> $server
+     */
+    private function displayTaskTypes(array $server): void
+    {
+        $taskTypesStr = $this->getStringField($server, 'task_types');
+        $isAllowAny = $this->getNumericField($server, 'is_allow_any_tasks') === 1;
+
+        $taskTypeLabels = [
+            'video_admins' => 'New videos from admins',
+            'video_feeds' => 'New videos from feeds',
+            'video_grabbers' => 'New videos from grabbers',
+            'video_users' => 'New videos from users',
+            'video_update' => 'Updating video files',
+            'album_admins' => 'New albums from admins',
+            'album_grabbers' => 'New albums from grabbers',
+            'album_users' => 'New albums from users',
+            'album_update' => 'Updating album files',
+        ];
+
+        $enabledTypes = $taskTypesStr !== '' ? explode(',', $taskTypesStr) : [];
+
+        $this->io()->newLine();
+        $this->io()->section('Task Types');
+
+        if ($enabledTypes === [] && !$isAllowAny) {
+            $this->io()->text('<fg=yellow>No specific task types assigned (processes all types)</>');
+        } else {
+            foreach ($taskTypeLabels as $type => $label) {
+                $enabled = in_array($type, $enabledTypes, true);
+                $icon = $enabled ? '<fg=green>✓</>' : '<fg=gray>-</>';
+                $text = $enabled ? $label : "<fg=gray>$label</>";
+                $this->io()->text("  $icon $text");
+            }
+        }
+
+        if ($isAllowAny) {
+            $this->io()->newLine();
+            $this->io()->text('<fg=cyan>✓ Process any available task when free</>');
+        }
+    }
+
+    /**
+     * Display server options.
+     *
+     * @param array<string, mixed> $server
+     */
+    private function displayServerOptions(array $server): void
+    {
+        $maxTasks = $this->getNumericField($server, 'max_tasks');
+        $isPriority = $this->getNumericField($server, 'max_tasks_priority') === 1;
+        $optionStorage = $this->getNumericField($server, 'option_storage_servers') === 1;
+        $optionPull = $this->getNumericField($server, 'option_pull_source_files') === 1;
+        $isDebug = $this->getNumericField($server, 'is_debug_enabled') === 1;
+
+        $this->io()->newLine();
+        $this->io()->section('Options');
+
+        $options = [
+            ['Maximum concurrent tasks', (string) $maxTasks],
+            ['Prioritize for new tasks', $isPriority ? '<fg=green>Yes</>' : 'No'],
+            ['Copy content to storage servers', $optionStorage ? '<fg=green>Yes</>' : 'No'],
+            ['Pull source files', $optionPull ? '<fg=green>Yes</>' : 'No'],
+            ['Debug mode', $isDebug ? '<fg=yellow>Enabled</>' : 'Disabled'],
+        ];
+
+        $this->renderTable(['Option', 'Value'], $options);
+    }
+
+    /**
+     * Show server conversion log.
+     */
+    private function showLog(?string $id): int
+    {
+        if ($id === null || $id === '') {
+            $this->io()->error('Server ID is required');
+            $this->io()->text('Usage: kvs system:conversion log <server_id>');
+            return self::FAILURE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $stmt = $db->prepare("
+                SELECT path, connection_type_id, title
+                FROM {$this->table('admin_conversion_servers')}
+                WHERE server_id = :id
+            ");
+            $stmt->execute(['id' => $id]);
+            /** @var array<string, mixed>|false $server */
+            $server = $stmt->fetch();
+
+            if ($server === false) {
+                $this->io()->error("Conversion server not found: $id");
+                return self::FAILURE;
+            }
+
+            $path = $this->getStringField($server, 'path');
+            $connType = $this->getNumericField($server, 'connection_type_id');
+
+            // Only local and mount servers have readable logs
+            if ($connType !== 0 && $connType !== 1) {
+                $this->io()->warning('Log viewing only available for Local/Mount servers');
+                return self::FAILURE;
+            }
+
+            $logFile = rtrim($path, '/') . '/log.txt';
+
+            if (!file_exists($logFile)) {
+                $this->io()->warning("Log file not found: $logFile");
+                return self::FAILURE;
+            }
+
+            $title = $this->getStringField($server, 'title');
+            $this->io()->section("Conversion Log - $title");
+
+            $content = file_get_contents($logFile);
+            if ($content === false) {
+                $this->io()->error("Cannot read log file: $logFile");
+                return self::FAILURE;
+            }
+
+            if (trim($content) === '') {
+                $this->io()->info('Log file is empty');
+            } else {
+                $this->io()->text($content);
+            }
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to read log: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * Show server configuration.
+     */
+    private function showConfig(?string $id): int
+    {
+        if ($id === null || $id === '') {
+            $this->io()->error('Server ID is required');
+            $this->io()->text('Usage: kvs system:conversion config <server_id>');
+            return self::FAILURE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $stmt = $db->prepare("
+                SELECT path, connection_type_id, title
+                FROM {$this->table('admin_conversion_servers')}
+                WHERE server_id = :id
+            ");
+            $stmt->execute(['id' => $id]);
+            /** @var array<string, mixed>|false $server */
+            $server = $stmt->fetch();
+
+            if ($server === false) {
+                $this->io()->error("Conversion server not found: $id");
+                return self::FAILURE;
+            }
+
+            $path = $this->getStringField($server, 'path');
+            $connType = $this->getNumericField($server, 'connection_type_id');
+
+            // Only local and mount servers have readable config
+            if ($connType !== 0 && $connType !== 1) {
+                $this->io()->warning('Config viewing only available for Local/Mount servers');
+                return self::FAILURE;
+            }
+
+            $title = $this->getStringField($server, 'title');
+            $this->io()->section("Configuration - $title");
+
+            // Read config.properties
+            $configFile = rtrim($path, '/') . '/config.properties';
+
+            if (!file_exists($configFile)) {
+                $this->io()->warning("Config file not found: $configFile");
+                return self::FAILURE;
+            }
+
+            $content = file_get_contents($configFile);
+            if ($content === false) {
+                $this->io()->error("Cannot read config file: $configFile");
+                return self::FAILURE;
+            }
+
+            // Parse and display config
+            $this->io()->text('<fg=cyan>Configuration File:</>');
+            $this->io()->text($content);
+
+            // Read heartbeat.dat for library versions
+            $heartbeatFile = rtrim($path, '/') . '/heartbeat.dat';
+            if (file_exists($heartbeatFile)) {
+                $heartbeatContent = file_get_contents($heartbeatFile);
+                if ($heartbeatContent !== false) {
+                    $heartbeat = @unserialize($heartbeatContent);
+                    if (is_array($heartbeat) && isset($heartbeat['libraries'])) {
+                        $this->io()->newLine();
+                        $this->io()->text('<fg=cyan>Conversion Libraries:</>');
+
+                        /** @var array<string, array{path?: string, message?: string}> $libraries */
+                        $libraries = $heartbeat['libraries'];
+                        $rows = [];
+                        foreach ($libraries as $name => $info) {
+                            $command = isset($info['path']) && $info['path'] !== '' ? $info['path'] : 'N/A';
+                            $message = $info['message'] ?? '';
+                            // Get first line of message
+                            $firstLine = explode("\n", $message)[0];
+                            $rows[] = [$name, $command, $firstLine];
+                        }
+                        $this->renderTable(['Library', 'Command', 'Version'], $rows);
+                    }
+                }
+            }
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to read config: ' . $e->getMessage());
+            return self::FAILURE;
         }
     }
 

@@ -241,4 +241,50 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('not found', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
+
+    public function testConversionLogMissingId(): void
+    {
+        $this->tester->execute([
+            'action' => 'log'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('required', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionLogNotFound(): void
+    {
+        $this->tester->execute([
+            'action' => 'log',
+            'id' => 999999
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionConfigMissingId(): void
+    {
+        $this->tester->execute([
+            'action' => 'config'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('required', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionConfigNotFound(): void
+    {
+        $this->tester->execute([
+            'action' => 'config',
+            'id' => 999999
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
 }
