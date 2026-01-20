@@ -112,9 +112,14 @@ HELP
                 'error' => StatusFormatter::FORMAT_ERROR,
                 'conditional' => StatusFormatter::FORMAT_CONDITIONAL,
             ];
-            if (isset($statusMap[$status])) {
+            // Accept case-insensitive strings and numeric values
+            $statusLower = strtolower($status);
+            if (isset($statusMap[$statusLower])) {
                 $query .= " AND f.status_id = :status";
-                $params['status'] = $statusMap[$status];
+                $params['status'] = $statusMap[$statusLower];
+            } elseif (ctype_digit($status)) {
+                $query .= " AND f.status_id = :status";
+                $params['status'] = (int) $status;
             }
         }
 
@@ -309,7 +314,7 @@ HELP
                 FROM {$this->table('formats_videos_groups')} g
                 LEFT JOIN {$this->table('formats_videos')} f
                     ON g.format_video_group_id = f.format_video_group_id
-                GROUP BY g.format_video_group_id
+                GROUP BY g.format_video_group_id, g.title, g.is_default, g.is_premium
                 ORDER BY g.format_video_group_id ASC
             ");
 

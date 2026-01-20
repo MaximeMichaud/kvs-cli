@@ -530,10 +530,11 @@ HELP
 
     private function updateOption(\PDO $db, string $variable, string $value): void
     {
+        // Use upsert pattern in case the option doesn't exist yet
         $stmt = $db->prepare("
-            UPDATE {$this->table('options')}
-            SET value = :value
-            WHERE variable = :variable
+            INSERT INTO {$this->table('options')} (variable, value)
+            VALUES (:variable, :value)
+            ON DUPLICATE KEY UPDATE value = VALUES(value)
         ");
         $stmt->execute(['variable' => $variable, 'value' => $value]);
     }

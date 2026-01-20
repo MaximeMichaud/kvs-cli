@@ -592,6 +592,9 @@ HELP
                 return self::SUCCESS;
             }
 
+            // Use transaction to ensure atomic update
+            $db->beginTransaction();
+
             // Approve the comments
             $stmt = $db->prepare("
                 UPDATE {$this->table('comments')}
@@ -603,9 +606,14 @@ HELP
             // Update comment counts on parent objects
             $this->updateCommentCounts($db, $comments);
 
+            $db->commit();
+
             $this->io()->success(count($comments) . ' comment(s) approved successfully!');
             return self::SUCCESS;
         } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             $this->io()->error('Failed to approve comments: ' . $e->getMessage());
             return self::FAILURE;
         }
@@ -671,6 +679,9 @@ HELP
                 return self::SUCCESS;
             }
 
+            // Use transaction to ensure atomic delete
+            $db->beginTransaction();
+
             // Delete user events associated with these comments
             try {
                 $stmt = $db->prepare("DELETE FROM {$this->table('users')}_events WHERE comment_id IN ($placeholders)");
@@ -686,9 +697,14 @@ HELP
             // Update comment counts on parent objects and users
             $this->updateCommentCounts($db, $comments);
 
+            $db->commit();
+
             $this->io()->success(count($comments) . ' comment(s) rejected and deleted!');
             return self::SUCCESS;
         } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             $this->io()->error('Failed to reject comments: ' . $e->getMessage());
             return self::FAILURE;
         }

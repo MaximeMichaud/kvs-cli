@@ -160,7 +160,7 @@ HELP
     /**
      * @return array<string, mixed>
      */
-    private function loadStatsParams(): array
+    private function loadStatsParams(bool $runCompatChecks = true): array
     {
         $path = $this->getStatsParamsPath();
 
@@ -181,8 +181,10 @@ HELP
         /** @var array<string, mixed> $merged */
         $merged = array_merge($this->getDefaultParams(), $params);
 
-        // Run compatibility checks
-        $this->runCompatibilityChecks($merged);
+        // Run compatibility checks (skip for JSON output to ensure valid JSON)
+        if ($runCompatChecks) {
+            $this->runCompatibilityChecks($merged);
+        }
 
         return $merged;
     }
@@ -311,8 +313,10 @@ HELP
 
     private function showSettings(InputInterface $input): int
     {
-        $params = $this->loadStatsParams();
         $format = $this->getStringOption($input, 'format');
+
+        // Load params without compat warnings for JSON (to ensure valid JSON output)
+        $params = $this->loadStatsParams($format !== 'json');
 
         if ($format === 'json') {
             $this->io()->writeln((string) json_encode($params, JSON_PRETTY_PRINT));
