@@ -22,7 +22,7 @@ class EmailCommand extends BaseCommand
             ->addArgument(
                 'action',
                 InputArgument::OPTIONAL,
-                'Action: show|test|set',
+                'Action: show|test|set|log|templates',
                 'show'
             )
             ->addOption('smtp-host', null, InputOption::VALUE_REQUIRED, 'SMTP server hostname')
@@ -30,13 +30,16 @@ class EmailCommand extends BaseCommand
             ->addOption('smtp-user', null, InputOption::VALUE_REQUIRED, 'SMTP username')
             ->addOption('smtp-pass', null, InputOption::VALUE_REQUIRED, 'SMTP password')
             ->addOption('smtp-security', null, InputOption::VALUE_REQUIRED, 'SMTP security (tls|ssl)')
+            ->addOption('smtp-timeout', null, InputOption::VALUE_REQUIRED, 'SMTP timeout in seconds')
             ->addOption('from-email', null, InputOption::VALUE_REQUIRED, 'From email address')
             ->addOption('from-name', null, InputOption::VALUE_REQUIRED, 'From display name')
             ->addOption('mailer', null, InputOption::VALUE_REQUIRED, 'Mailer type (php|smtp|custom)')
+            ->addOption('debug', null, InputOption::VALUE_REQUIRED, 'Debug level (0=none, 1=basic, 2=extended)')
             ->addOption('to', null, InputOption::VALUE_REQUIRED, 'Test email recipient')
             ->addOption('subject', null, InputOption::VALUE_REQUIRED, 'Test email subject')
             ->addOption('body', null, InputOption::VALUE_REQUIRED, 'Test email body')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, json', 'table')
+            ->addOption('lines', null, InputOption::VALUE_REQUIRED, 'Number of log lines to show', 50)
             ->setHelp(<<<'HELP'
 Manage KVS email settings.
 
@@ -44,6 +47,8 @@ Manage KVS email settings.
   show          Display current email settings (default)
   test          Send a test email
   set           Update email settings
+  log           View email sending log (requires debug enabled)
+  templates     List available email templates
 
 <fg=yellow>MAILER TYPES:</>
   php           Use PHP mail() function
@@ -54,6 +59,11 @@ Manage KVS email settings.
   tls           TLS encryption (recommended)
   ssl           SSL encryption
 
+<fg=yellow>DEBUG LEVELS:</>
+  0             None (default)
+  1             Basic logging
+  2             Extended logging with SMTP details
+
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs email show</>
   <fg=green>kvs email show --format=json</>
@@ -61,7 +71,12 @@ Manage KVS email settings.
   <fg=green>kvs email test --to=test@example.com --subject="Test" --body="Hello"</>
   <fg=green>kvs email set --mailer=smtp</>
   <fg=green>kvs email set --smtp-host=smtp.gmail.com --smtp-port=587</>
+  <fg=green>kvs email set --smtp-timeout=30</>
   <fg=green>kvs email set --from-email=noreply@example.com</>
+  <fg=green>kvs email set --debug=1</>
+  <fg=green>kvs email log</>
+  <fg=green>kvs email log --lines=100</>
+  <fg=green>kvs email templates</>
 HELP
             );
     }
@@ -74,6 +89,8 @@ HELP
             'show' => $this->showSettings($input),
             'test' => $this->testEmail($input),
             'set' => $this->setSettings($input),
+            'log' => $this->showLog($input),
+            'templates' => $this->showTemplates(),
             default => $this->showSettings($input),
         };
     }
@@ -366,6 +383,28 @@ HELP
                 $changes[] = "SMTP security: $smtpSecurity";
             }
 
+            $smtpTimeout = $this->getStringOption($input, 'smtp-timeout');
+            if ($smtpTimeout !== null) {
+                $timeout = (int) $smtpTimeout;
+                if ($timeout < 1 || $timeout > 3600) {
+                    $this->io()->error('Invalid SMTP timeout (1-3600 seconds)');
+                    return self::FAILURE;
+                }
+                $settings['smtp_timeout'] = $timeout;
+                $changes[] = "SMTP timeout: {$timeout}s";
+            }
+
+            $debugLevel = $this->getStringOption($input, 'debug');
+            if ($debugLevel !== null) {
+                if (!in_array($debugLevel, ['0', '1', '2'], true)) {
+                    $this->io()->error("Invalid debug level: $debugLevel (use: 0, 1, 2)");
+                    return self::FAILURE;
+                }
+                $settings['debug_level'] = $debugLevel;
+                $debugLabels = ['0' => 'None', '1' => 'Basic', '2' => 'Extended'];
+                $changes[] = 'Debug level: ' . $debugLabels[$debugLevel];
+            }
+
             if ($changes === []) {
                 $this->io()->warning('No settings to update. Use options like --mailer, --from-email, etc.');
                 return self::SUCCESS;
@@ -439,5 +478,123 @@ HELP
     {
         $value = $settings[$key] ?? $default;
         return is_numeric($value) ? (int) $value : $default;
+    }
+
+    private function showLog(InputInterface $input): int
+    {
+        $kvsPath = $this->config->getKvsPath();
+        $logPath = $kvsPath . '/admin/logs';
+
+        // Find email log file
+        $logFiles = glob($logPath . '/email_*.txt');
+        if ($logFiles === false || $logFiles === []) {
+            $this->io()->warning('No email log files found');
+            $this->io()->text('Email logging is only enabled when debug level > 0');
+            $this->io()->text('Enable it with: kvs email set --debug=1');
+            return self::SUCCESS;
+        }
+
+        // Use most recent log file
+        $logFile = $logFiles[0];
+        if (count($logFiles) > 1) {
+            usort($logFiles, function ($a, $b) {
+                $timeA = filemtime($a);
+                $timeB = filemtime($b);
+                if ($timeA === false || $timeB === false) {
+                    return 0;
+                }
+                return $timeB - $timeA;
+            });
+            $logFile = $logFiles[0];
+        }
+
+        if (!file_exists($logFile)) {
+            $this->io()->warning('Email log file not found');
+            return self::SUCCESS;
+        }
+
+        $this->io()->section('Email Log');
+        $this->io()->text('<fg=gray>File: ' . $logFile . '</>');
+        $this->io()->newLine();
+
+        $content = file_get_contents($logFile);
+        if ($content === false) {
+            $this->io()->error('Cannot read log file');
+            return self::FAILURE;
+        }
+
+        if (trim($content) === '') {
+            $this->io()->info('Log file is empty');
+            return self::SUCCESS;
+        }
+
+        // Show last N lines
+        $lines = explode("\n", $content);
+        $limit = $this->getIntOptionOrDefault($input, 'lines', 50);
+        $totalLines = count($lines);
+
+        if ($totalLines > $limit) {
+            $lines = array_slice($lines, -$limit);
+            $this->io()->text("<fg=gray>Showing last $limit of $totalLines lines...</>");
+            $this->io()->newLine();
+        }
+
+        $this->io()->text(implode("\n", $lines));
+
+        return self::SUCCESS;
+    }
+
+    private function showTemplates(): int
+    {
+        $kvsPath = $this->config->getKvsPath();
+        $blocksPath = $kvsPath . '/blocks';
+
+        $this->io()->section('Email Templates');
+
+        $templateDirs = [
+            'signup' => 'User Registration',
+            'logon' => 'User Login',
+            'member_profile_edit' => 'Profile Edit',
+        ];
+
+        $found = false;
+        foreach ($templateDirs as $block => $description) {
+            $emailsPath = $blocksPath . '/' . $block . '/emails';
+            if (!is_dir($emailsPath)) {
+                continue;
+            }
+
+            $templates = glob($emailsPath . '/*_subject.txt');
+            if ($templates === false || $templates === []) {
+                continue;
+            }
+
+            $found = true;
+            $this->io()->text("<fg=cyan>$description</> ($block):");
+
+            foreach ($templates as $subjectFile) {
+                $name = basename($subjectFile, '_subject.txt');
+                $bodyFile = $emailsPath . '/' . $name . '_body.txt';
+
+                $subject = file_get_contents($subjectFile);
+                $subjectPreview = $subject !== false ? trim($subject) : '<error reading>';
+
+                $hasBody = file_exists($bodyFile);
+                $status = $hasBody ? '<fg=green>✓</>' : '<fg=red>✗ missing body</>';
+
+                $this->io()->text("  $status <fg=white>$name</>: $subjectPreview");
+            }
+            $this->io()->newLine();
+        }
+
+        if (!$found) {
+            $this->io()->warning('No email templates found');
+            return self::SUCCESS;
+        }
+
+        $this->io()->text('<fg=gray>Templates location: ' . $blocksPath . '/*/emails/</>');
+        $this->io()->text('<fg=gray>Edit subject in *_subject.txt and body in *_body.txt</>');
+
+        return self::SUCCESS;
     }
 }

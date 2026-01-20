@@ -162,4 +162,48 @@ class EmailCommandTest extends TestCase
         $this->assertStringContainsString('invalid', strtolower($output));
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
+
+    public function testEmailSetInvalidDebugLevel(): void
+    {
+        $this->tester->execute([
+            'action' => 'set',
+            '--debug' => '5'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('invalid debug level', strtolower($output));
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testEmailSetInvalidSmtpTimeout(): void
+    {
+        $this->tester->execute([
+            'action' => 'set',
+            '--smtp-timeout' => '9999'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('invalid', strtolower($output));
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testEmailLogAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'log'
+        ]);
+
+        // Should succeed (may show "no log files" warning)
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testEmailTemplatesAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'templates'
+        ]);
+
+        // Should succeed (may show templates or "not found")
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
 }
