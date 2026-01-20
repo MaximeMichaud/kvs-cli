@@ -417,12 +417,14 @@ HELP
                 return self::FAILURE;
             }
 
+            // Use INSERT ... ON DUPLICATE KEY UPDATE to handle both insert and update cases
+            // The settings table has a unique key on (section, satellite_prefix)
             $stmt = $db->prepare("
-                UPDATE {$this->table('settings')}
-                SET value = :value
-                WHERE section = 'email'
+                INSERT INTO {$this->table('settings')} (section, satellite_prefix, value, added_date, version_control)
+                VALUES ('email', '', :value, NOW(), 1)
+                ON DUPLICATE KEY UPDATE value = :value_update
             ");
-            $stmt->execute(['value' => $newValue]);
+            $stmt->execute(['value' => $newValue, 'value_update' => $newValue]);
 
             $this->io()->success('Email settings updated:');
             foreach ($changes as $change) {

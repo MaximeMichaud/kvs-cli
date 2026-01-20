@@ -92,10 +92,16 @@ HELP
         $params = [];
 
         // Status filter
-        $status = $this->getIntOption($input, 'status');
+        $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $query .= " AND p.status_id = :status";
-            $params['status'] = $status;
+            $statusMap = [
+                'active' => StatusFormatter::PLAYLIST_ACTIVE,
+                'disabled' => StatusFormatter::PLAYLIST_DISABLED,
+            ];
+            if (isset($statusMap[$status])) {
+                $query .= " AND p.status_id = :status";
+                $params['status'] = $statusMap[$status];
+            }
         }
 
         // User filter

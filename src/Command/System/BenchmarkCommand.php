@@ -146,19 +146,19 @@ class BenchmarkCommand extends BaseCommand
         }
 
         $samplesOption = $input->getOption('samples');
-        $samples = is_numeric($samplesOption) ? (int)$samplesOption : 5;
+        $samples = is_numeric($samplesOption) ? max(1, (int)$samplesOption) : 5;
 
         $dbIterOption = $input->getOption('db-iterations');
-        $dbIterations = is_numeric($dbIterOption) ? (int)$dbIterOption : 10;
+        $dbIterations = is_numeric($dbIterOption) ? max(1, (int)$dbIterOption) : 10;
 
         $cacheIterOption = $input->getOption('cache-iterations');
-        $cacheIterations = is_numeric($cacheIterOption) ? (int)$cacheIterOption : 100;
+        $cacheIterations = is_numeric($cacheIterOption) ? max(1, (int)$cacheIterOption) : 100;
 
         $fileIterOption = $input->getOption('file-iterations');
-        $fileIterations = is_numeric($fileIterOption) ? (int)$fileIterOption : 100;
+        $fileIterations = is_numeric($fileIterOption) ? max(1, (int)$fileIterOption) : 100;
 
         $cpuIterOption = $input->getOption('cpu-iterations');
-        $cpuIterations = is_numeric($cpuIterOption) ? (int)$cpuIterOption : 1000;
+        $cpuIterations = is_numeric($cpuIterOption) ? max(1, (int)$cpuIterOption) : 1000;
 
         $mcHostOption = $input->getOption('memcached-host');
         $mcHost = $mcHostOption;

@@ -24,7 +24,7 @@ class AlbumCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Album ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
@@ -85,10 +85,16 @@ HELP
 
         $params = [];
 
-        $status = $this->getIntOption($input, 'status');
+        $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $query .= " AND a.status_id = :status";
-            $params['status'] = $status;
+            $statusMap = [
+                'active' => StatusFormatter::ALBUM_ACTIVE,
+                'disabled' => StatusFormatter::ALBUM_DISABLED,
+            ];
+            if (isset($statusMap[$status])) {
+                $query .= " AND a.status_id = :status";
+                $params['status'] = $statusMap[$status];
+            }
         }
 
         $user = $this->getIntOption($input, 'user');

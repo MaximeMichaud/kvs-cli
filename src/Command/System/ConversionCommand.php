@@ -566,7 +566,7 @@ HELP
             if (file_exists($heartbeatFile)) {
                 $heartbeatContent = file_get_contents($heartbeatFile);
                 if ($heartbeatContent !== false) {
-                    $heartbeat = @unserialize($heartbeatContent);
+                    $heartbeat = @unserialize($heartbeatContent, ['allowed_classes' => false]);
                     if (is_array($heartbeat) && isset($heartbeat['libraries'])) {
                         $this->io()->newLine();
                         $this->io()->text('<fg=cyan>Conversion Libraries:</>');
