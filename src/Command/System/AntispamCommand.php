@@ -187,7 +187,7 @@ HELP
             $this->io()->text('<fg=cyan>Blacklisting</>');
 
             $words = $rows['ANTISPAM_BLACKLIST_WORDS'] ?? '';
-            $wordCount = $words !== '' ? count(array_filter(explode(',', $words), static fn(string $w): bool => $w !== '')) : 0;
+            $wordCount = trim($words) !== '' ? count(array_filter(explode(',', $words), static fn(string $w): bool => trim($w) !== '')) : 0;
             $ignoreFeeds = ($rows['ANTISPAM_BLACKLIST_WORDS_IGNORE_FEEDBACKS'] ?? '0') === '1';
             $action = ($rows['ANTISPAM_BLACKLIST_ACTION'] ?? '0') === '0' ? 'Delete' : 'Deactivate';
 
