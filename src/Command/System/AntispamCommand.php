@@ -42,7 +42,7 @@ class AntispamCommand extends BaseCommand
             ->addArgument(
                 'action',
                 InputArgument::OPTIONAL,
-                'Action: show|set|blacklist',
+                'Action: show|set|add|remove|blacklist',
                 'show'
             )
             // Blacklist options
@@ -71,7 +71,9 @@ Manage KVS anti-spam settings.
 
 <fg=yellow>ACTIONS:</>
   show          Display current anti-spam settings (default)
-  set           Update anti-spam settings
+  set           Replace blacklist (words, domains, IPs)
+  add           Add to existing blacklist
+  remove        Remove from blacklist
   blacklist     Show blacklist details
 
 <fg=yellow>BLACKLIST OPTIONS:</>
@@ -95,15 +97,23 @@ Manage KVS anti-spam settings.
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs antispam show</>
-  <fg=green>kvs antispam show --format=json</>
   <fg=green>kvs antispam blacklist</>
+
+  <fg=cyan># Replace entire blacklist:</>
   <fg=green>kvs antispam set --words="spam,scam,viagra"</>
   <fg=green>kvs antispam set --domains="spam.com,temp.mail"</>
-  <fg=green>kvs antispam set --ips="1.2.3.4,5.6.7.*"</>
-  <fg=green>kvs antispam set --blacklist-action=delete</>
+
+  <fg=cyan># Add to existing blacklist:</>
+  <fg=green>kvs antispam add --words="newspam"</>
+  <fg=green>kvs antispam add --domains="bad.com" --ips="1.2.3.4"</>
+
+  <fg=cyan># Remove from blacklist:</>
+  <fg=green>kvs antispam remove --words="spam"</>
+  <fg=green>kvs antispam remove --domains="spam.com"</>
+
+  <fg=cyan># Configure rules:</>
   <fg=green>kvs antispam set --comments-captcha=5/60</>
-  <fg=green>kvs antispam set --comments-delete=10/120</>
-  <fg=green>kvs antispam set --duplicates-comments=1</>
+  <fg=green>kvs antispam set --blacklist-action=delete</>
 HELP
             );
     }
@@ -115,6 +125,8 @@ HELP
         return match ($action) {
             'show' => $this->showSettings($input),
             'set' => $this->setSettings($input),
+            'add' => $this->addToBlacklist($input),
+            'remove' => $this->removeFromBlacklist($input),
             'blacklist' => $this->showBlacklist($input),
             default => $this->showSettings($input),
         };
@@ -531,5 +543,183 @@ HELP
         }
 
         return "$count / {$seconds}s";
+    }
+
+    private function addToBlacklist(InputInterface $input): int
+    {
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $changes = [];
+
+            // Add words
+            $words = $this->getStringOption($input, 'words');
+            if ($words !== null) {
+                $newWords = array_values(array_filter(array_map('trim', explode(',', $words)), static fn(string $w): bool => $w !== ''));
+                if (count($newWords) > 0) {
+                    $existingWords = $this->getExistingWords($db);
+                    $merged = array_unique(array_merge($existingWords, $newWords));
+                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', implode(',', $merged));
+                    $changes[] = 'Added ' . count($newWords) . ' word(s): ' . implode(', ', $newWords);
+                }
+            }
+
+            // Add domains
+            $domains = $this->getStringOption($input, 'domains');
+            if ($domains !== null) {
+                $newDomains = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
+                if (count($newDomains) > 0) {
+                    $existingDomains = $this->getExistingDomains($db);
+                    $merged = array_unique(array_merge($existingDomains, $newDomains));
+                    $this->updateBlockedDomains($db, $merged);
+                    $changes[] = 'Added ' . count($newDomains) . ' domain(s): ' . implode(', ', $newDomains);
+                }
+            }
+
+            // Add IPs
+            $ips = $this->getStringOption($input, 'ips');
+            if ($ips !== null) {
+                $newIps = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
+                if (count($newIps) > 0) {
+                    $existingIps = $this->getExistingIps($db);
+                    $merged = array_unique(array_merge($existingIps, $newIps));
+                    $this->updateBlockedIps($db, $merged);
+                    $changes[] = 'Added ' . count($newIps) . ' IP(s): ' . implode(', ', $newIps);
+                }
+            }
+
+            if ($changes === []) {
+                $this->io()->warning('Nothing to add. Use --words, --domains, or --ips.');
+                return self::SUCCESS;
+            }
+
+            $this->io()->success('Added to blacklist:');
+            foreach ($changes as $change) {
+                $this->io()->text("  - $change");
+            }
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to add to blacklist: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    private function removeFromBlacklist(InputInterface $input): int
+    {
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $changes = [];
+
+            // Remove words
+            $words = $this->getStringOption($input, 'words');
+            if ($words !== null) {
+                $toRemove = array_values(array_filter(array_map('trim', explode(',', $words)), static fn(string $w): bool => $w !== ''));
+                if (count($toRemove) > 0) {
+                    $existing = $this->getExistingWords($db);
+                    $remaining = array_values(array_diff($existing, $toRemove));
+                    $removed = array_intersect($existing, $toRemove);
+                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', implode(',', $remaining));
+                    if (count($removed) > 0) {
+                        $changes[] = 'Removed ' . count($removed) . ' word(s): ' . implode(', ', $removed);
+                    }
+                }
+            }
+
+            // Remove domains
+            $domains = $this->getStringOption($input, 'domains');
+            if ($domains !== null) {
+                $toRemove = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
+                if (count($toRemove) > 0) {
+                    $existing = $this->getExistingDomains($db);
+                    $remaining = array_values(array_diff($existing, $toRemove));
+                    $removed = array_intersect($existing, $toRemove);
+                    $this->updateBlockedDomains($db, $remaining);
+                    if (count($removed) > 0) {
+                        $changes[] = 'Removed ' . count($removed) . ' domain(s): ' . implode(', ', $removed);
+                    }
+                }
+            }
+
+            // Remove IPs
+            $ips = $this->getStringOption($input, 'ips');
+            if ($ips !== null) {
+                $toRemove = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
+                if (count($toRemove) > 0) {
+                    $existing = $this->getExistingIps($db);
+                    $remaining = array_values(array_diff($existing, $toRemove));
+                    $removed = array_intersect($existing, $toRemove);
+                    $this->updateBlockedIps($db, $remaining);
+                    if (count($removed) > 0) {
+                        $changes[] = 'Removed ' . count($removed) . ' IP(s): ' . implode(', ', $removed);
+                    }
+                }
+            }
+
+            if ($changes === []) {
+                $this->io()->warning('Nothing removed. Items may not exist in blacklist.');
+                return self::SUCCESS;
+            }
+
+            $this->io()->success('Removed from blacklist:');
+            foreach ($changes as $change) {
+                $this->io()->text("  - $change");
+            }
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to remove from blacklist: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function getExistingWords(\PDO $db): array
+    {
+        $stmt = $db->prepare("
+            SELECT value FROM {$this->table('options')}
+            WHERE variable = 'ANTISPAM_BLACKLIST_WORDS'
+        ");
+        $stmt->execute();
+        $value = $stmt->fetchColumn();
+
+        if (!is_string($value) || trim($value) === '') {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', $value)), static fn(string $w): bool => $w !== ''));
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function getExistingDomains(\PDO $db): array
+    {
+        $stmt = $db->prepare("SELECT domain FROM {$this->table('users_blocked_domains')} ORDER BY sort_id");
+        $stmt->execute();
+        /** @var array<string> $domains */
+        $domains = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        return $domains;
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function getExistingIps(\PDO $db): array
+    {
+        $stmt = $db->prepare("SELECT ip FROM {$this->table('users_blocked_ips')} ORDER BY sort_id");
+        $stmt->execute();
+        /** @var array<string> $ips */
+        $ips = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        return $ips;
     }
 }

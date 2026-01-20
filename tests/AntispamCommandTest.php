@@ -196,4 +196,26 @@ class AntispamCommandTest extends TestCase
         $this->assertStringContainsString('Invalid value for --videos-history', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
+
+    public function testAntispamAddNoOptions(): void
+    {
+        $this->tester->execute([
+            'action' => 'add'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Nothing to add', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testAntispamRemoveNoOptions(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Nothing removed', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
 }
