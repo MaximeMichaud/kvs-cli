@@ -8,6 +8,7 @@ use KVS\CLI\Benchmark\BenchmarkResult;
 use KVS\CLI\Benchmark\BenchmarkRunner;
 use KVS\CLI\Benchmark\ConfigScorer;
 use KVS\CLI\Benchmark\ExperimentResult;
+use KVS\CLI\Benchmark\RemoteBenchmarkClient;
 use KVS\CLI\Benchmark\StackScorer;
 use KVS\CLI\Benchmark\SystemDetector;
 use KVS\CLI\Command\BaseCommand;
@@ -129,6 +130,19 @@ class BenchmarkCommand extends BaseCommand
                 'S',
                 InputOption::VALUE_NONE,
                 'Submit results to the benchmark API'
+            )
+            ->addOption(
+                'local',
+                null,
+                InputOption::VALUE_NONE,
+                'Force local CLI execution (skip server-side FPM benchmarks)'
+            )
+            ->addOption(
+                'remote-timeout',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Timeout for server-side benchmark execution in seconds',
+                '120'
             );
     }
 
@@ -207,6 +221,11 @@ class BenchmarkCommand extends BaseCommand
             $this->io()->warning('Database not available. DB tests will be skipped.');
         }
 
+        // Check for remote execution options
+        $forceLocal = $input->getOption('local') === true;
+        $remoteTimeoutOption = $input->getOption('remote-timeout');
+        $remoteTimeout = is_numeric($remoteTimeoutOption) ? max(30, (int) $remoteTimeoutOption) : 120;
+
         // Run benchmarks
         $runner = new BenchmarkRunner(
             $db,
@@ -221,6 +240,29 @@ class BenchmarkCommand extends BaseCommand
             $httpRuns,
             $useLocalhost
         );
+
+        // Enable remote execution if available and not forced local
+        $useRemote = false;
+        if (!$forceLocal && $baseUrl !== '') {
+            $remoteClient = new RemoteBenchmarkClient($this->config);
+            if ($remoteClient->isAvailable()) {
+                $remoteClient->setIterations($cpuIterations, $cacheIterations, $fileIterations, $dbIterations);
+                $remoteClient->setTimeout($remoteTimeout);
+                $runner->setRemoteExecution($remoteClient);
+                $useRemote = true;
+                $this->io()->text('<info>Running benchmarks on KVS server (PHP-FPM) for accurate results</info>');
+                $this->io()->text('<comment>Use --local to force CLI execution</comment>');
+                $this->io()->newLine();
+            }
+        }
+
+        if (!$useRemote) {
+            $this->io()->text('<comment>Running benchmarks locally (CLI PHP)</comment>');
+            if (!$forceLocal) {
+                $this->io()->text('<comment>Tip: Configure project_url in KVS for server-side benchmarks</comment>');
+            }
+            $this->io()->newLine();
+        }
 
         $result = $runner->run(function (string $stage, string $message): void {
             $this->io()->text("<comment>{$message}</comment>");
@@ -263,6 +305,20 @@ class BenchmarkCommand extends BaseCommand
         $experiment = new ExperimentResult($result);
         $experiment->setSystemDetection($detection);
 
+        // Calculate and set additional scores for API submission
+        $cpuCores = 1;
+        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
+            $cpuCores = max(1, (int) ($detection['cpu']['cores'] ?? 1));
+        }
+        $rawScore = $result->calculateScore();
+        $efficiencyPerCore = $rawScore / $cpuCores;
+        $baselineEfficiency = 250.0;
+        $efficiencyScore = (int) round(($efficiencyPerCore / $baselineEfficiency) * 1000);
+
+        $experiment->setEfficiencyScore($efficiencyScore);
+        $experiment->setStackScore($stackScore);
+        $experiment->setConfigScore($configScore);
+
         // Display results
         $this->displayResults($result, $baseline, $detection, $stackScore, $configScore, $experiment->getId());
 
@@ -295,7 +351,7 @@ class BenchmarkCommand extends BaseCommand
     private function submitBenchmark(ExperimentResult $experiment, bool $hasExport): void
     {
         // Check if API URL is configured
-        // @phpstan-ignore identical.alwaysTrue (placeholder until API is configured)
+        // @phpstan-ignore identical.alwaysTrue (will be true in production when API isn't configured)
         if (Constants::BENCHMARK_API_URL === '') {
             $this->io()->warning('Cannot submit: Benchmark API URL not configured.');
             if (!$hasExport) {

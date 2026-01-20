@@ -25,6 +25,14 @@ class ExperimentResult
     /** @var array<string, bool> */
     private array $confirmations = [];
 
+    private ?int $efficiencyScore = null;
+
+    /** @var array<string, mixed> */
+    private array $stackScore = [];
+
+    /** @var array<string, mixed> */
+    private array $configScore = [];
+
     public function __construct(BenchmarkResult $result)
     {
         $this->id = $this->generateId();
@@ -121,6 +129,34 @@ class ExperimentResult
     }
 
     /**
+     * Set efficiency score (performance per CPU core)
+     */
+    public function setEfficiencyScore(int $score): void
+    {
+        $this->efficiencyScore = $score;
+    }
+
+    /**
+     * Set stack score (software freshness)
+     *
+     * @param array<string, mixed> $score
+     */
+    public function setStackScore(array $score): void
+    {
+        $this->stackScore = $score;
+    }
+
+    /**
+     * Set config score (KVS optimization)
+     *
+     * @param array<string, mixed> $score
+     */
+    public function setConfigScore(array $score): void
+    {
+        $this->configScore = $score;
+    }
+
+    /**
      * Export to array for JSON serialization (dashboard-ready format)
      *
      * @return array<string, mixed>
@@ -175,6 +211,9 @@ class ExperimentResult
             'version' => '1.0',
             'score' => $this->benchmarkResult->calculateScore(),
             'rating' => $this->benchmarkResult->getRating(),
+            'efficiency_score' => $this->efficiencyScore,
+            'stack_score' => $this->stackScore !== [] ? $this->stackScore : null,
+            'config_score' => $this->configScore !== [] ? $this->configScore : null,
             'system' => $systemInfo,
             'confirmations' => $this->confirmations,
             'confirmed' => $this->isFullyConfirmed(),

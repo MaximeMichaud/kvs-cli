@@ -34,7 +34,7 @@ final class BenchmarkApiClient
                 'header' => implode("\r\n", [
                     'Content-Type: application/json',
                     'Accept: application/json',
-                    'User-Agent: ' . Application::NAME . '/' . Application::VERSION,
+                    'User-Agent: ' . Application::NAME . '/' . (is_string(Application::VERSION) ? Application::VERSION : '1.0'),
                     'Content-Length: ' . strlen($payload),
                 ]),
                 'content' => $payload,
@@ -61,6 +61,7 @@ final class BenchmarkApiClient
         }
 
         // Check HTTP status from response headers
+        // @phpstan-ignore nullCoalesce.variable ($http_response_header is set by file_get_contents)
         $statusCode = $this->getHttpStatusCode($http_response_header ?? []);
 
         if ($statusCode >= 400) {
