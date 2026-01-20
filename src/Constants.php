@@ -97,6 +97,21 @@ final class Constants
     /** Object type ID for albums */
     public const OBJECT_TYPE_ALBUM = 2;
 
+    /** Object type ID for content sources */
+    public const OBJECT_TYPE_CONTENT_SOURCE = 3;
+
+    /** Object type ID for models */
+    public const OBJECT_TYPE_MODEL = 4;
+
+    /** Object type ID for DVDs */
+    public const OBJECT_TYPE_DVD = 5;
+
+    /** Object type ID for posts */
+    public const OBJECT_TYPE_POST = 12;
+
+    /** Object type ID for playlists */
+    public const OBJECT_TYPE_PLAYLIST = 13;
+
     // ========================================
     // SYSTEM THRESHOLDS
     // ========================================
