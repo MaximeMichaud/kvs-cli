@@ -25,6 +25,7 @@ use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Command\System\ConversionCommand;
 use KVS\CLI\Command\System\EmailCommand;
 use KVS\CLI\Command\System\AntispamCommand;
+use KVS\CLI\Command\System\StatsSettingsCommand;
 use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\AlbumCommand;
@@ -319,6 +320,7 @@ class Application extends BaseApplication
             new ConversionCommand($config),
             new EmailCommand($config),
             new AntispamCommand($config),
+            new StatsSettingsCommand($config),
 
             new VideoCommand($config),
             new UserCommand($config),
