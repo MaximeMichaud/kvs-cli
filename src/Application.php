@@ -38,6 +38,7 @@ use KVS\CLI\Command\Content\PlaylistCommand;
 use KVS\CLI\Command\Content\UserPurgeCommand;
 use KVS\CLI\Command\Video\FormatsCommand;
 use KVS\CLI\Command\Video\ScreenshotsCommand;
+use KVS\CLI\Command\Settings\VideoFormatCommand;
 use KVS\CLI\Command\Database\ExportCommand;
 use KVS\CLI\Command\Database\ImportCommand;
 use KVS\CLI\Command\Dev\DebugCommand;
@@ -335,6 +336,8 @@ class Application extends BaseApplication
 
             new FormatsCommand($config),
             new ScreenshotsCommand($config),
+
+            new VideoFormatCommand($config),
 
             new ExportCommand($config),
             new ImportCommand($config),

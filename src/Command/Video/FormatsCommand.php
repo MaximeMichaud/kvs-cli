@@ -265,8 +265,11 @@ HELP
                     postfix,
                     CASE
                         WHEN status_id = " . StatusFormatter::FORMAT_DISABLED . " THEN 'Disabled'
-                        WHEN status_id = " . StatusFormatter::FORMAT_ACTIVE . " THEN 'Active'
-                        WHEN status_id = " . StatusFormatter::FORMAT_PROCESSING . " THEN 'Processing'
+                        WHEN status_id = " . StatusFormatter::FORMAT_REQUIRED . " THEN 'Required'
+                        WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " THEN 'Optional'
+                        WHEN status_id = " . StatusFormatter::FORMAT_DELETING . " THEN 'Deleting'
+                        WHEN status_id = " . StatusFormatter::FORMAT_ERROR . " THEN 'Error'
+                        WHEN status_id = " . StatusFormatter::FORMAT_CONDITIONAL . " THEN 'Conditional'
                         ELSE 'Unknown'
                     END as status,
                     format_video_group_id as group_id,

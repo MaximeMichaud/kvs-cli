@@ -261,14 +261,36 @@ class StatusFormatterTest extends TestCase
     public function testVideoFormatStatus(): void
     {
         $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::videoFormat(0));
-        $this->assertEquals('<fg=green>Active</>', StatusFormatter::videoFormat(1));
-        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::videoFormat(2));
+        $this->assertEquals('<fg=green>Required</>', StatusFormatter::videoFormat(1));
+        $this->assertEquals('<fg=cyan>Optional</>', StatusFormatter::videoFormat(2));
+        $this->assertEquals('<fg=red>Deleting</>', StatusFormatter::videoFormat(3));
+        $this->assertEquals('<fg=red>Error</>', StatusFormatter::videoFormat(4));
+        $this->assertEquals('<fg=magenta>Conditional</>', StatusFormatter::videoFormat(9));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::videoFormat(999));
 
         // Without color
         $this->assertEquals('Disabled', StatusFormatter::videoFormat(0, false));
-        $this->assertEquals('Active', StatusFormatter::videoFormat(1, false));
-        $this->assertEquals('Processing', StatusFormatter::videoFormat(2, false));
+        $this->assertEquals('Required', StatusFormatter::videoFormat(1, false));
+        $this->assertEquals('Optional', StatusFormatter::videoFormat(2, false));
+        $this->assertEquals('Deleting', StatusFormatter::videoFormat(3, false));
+        $this->assertEquals('Error', StatusFormatter::videoFormat(4, false));
+        $this->assertEquals('Conditional', StatusFormatter::videoFormat(9, false));
+    }
+
+    /**
+     * Test format access level formatting
+     */
+    public function testFormatAccessLevel(): void
+    {
+        $this->assertEquals('<fg=green>Any</>', StatusFormatter::formatAccessLevel(0));
+        $this->assertEquals('<fg=cyan>Member</>', StatusFormatter::formatAccessLevel(1));
+        $this->assertEquals('<fg=magenta>Premium</>', StatusFormatter::formatAccessLevel(2));
+        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::formatAccessLevel(999));
+
+        // Without color
+        $this->assertEquals('Any', StatusFormatter::formatAccessLevel(0, false));
+        $this->assertEquals('Member', StatusFormatter::formatAccessLevel(1, false));
+        $this->assertEquals('Premium', StatusFormatter::formatAccessLevel(2, false));
     }
 
     /**
@@ -315,5 +337,18 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals(2, StatusFormatter::TASK_FAILED);
         $this->assertEquals(3, StatusFormatter::TASK_COMPLETED);
         $this->assertEquals(4, StatusFormatter::TASK_DELETED);
+
+        // Video format constants
+        $this->assertEquals(0, StatusFormatter::FORMAT_DISABLED);
+        $this->assertEquals(1, StatusFormatter::FORMAT_REQUIRED);
+        $this->assertEquals(2, StatusFormatter::FORMAT_OPTIONAL);
+        $this->assertEquals(3, StatusFormatter::FORMAT_DELETING);
+        $this->assertEquals(4, StatusFormatter::FORMAT_ERROR);
+        $this->assertEquals(9, StatusFormatter::FORMAT_CONDITIONAL);
+
+        // Access level constants
+        $this->assertEquals(0, StatusFormatter::ACCESS_ANY);
+        $this->assertEquals(1, StatusFormatter::ACCESS_MEMBER);
+        $this->assertEquals(2, StatusFormatter::ACCESS_PREMIUM);
     }
 }

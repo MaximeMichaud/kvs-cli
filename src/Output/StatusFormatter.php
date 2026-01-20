@@ -47,8 +47,16 @@ class StatusFormatter
 
     // Video format status constants
     public const FORMAT_DISABLED = 0;
-    public const FORMAT_ACTIVE = 1;
-    public const FORMAT_PROCESSING = 2;
+    public const FORMAT_REQUIRED = 1;
+    public const FORMAT_OPTIONAL = 2;
+    public const FORMAT_DELETING = 3;
+    public const FORMAT_ERROR = 4;
+    public const FORMAT_CONDITIONAL = 9;
+
+    // Video format access level constants
+    public const ACCESS_ANY = 0;
+    public const ACCESS_MEMBER = 1;
+    public const ACCESS_PREMIUM = 2;
 
     // Background task status constants
     public const TASK_PENDING = 0;
@@ -237,11 +245,32 @@ class StatusFormatter
     {
         $labels = [
             self::FORMAT_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
-            self::FORMAT_ACTIVE => ['text' => 'Active', 'color' => 'green'],
-            self::FORMAT_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+            self::FORMAT_REQUIRED => ['text' => 'Required', 'color' => 'green'],
+            self::FORMAT_OPTIONAL => ['text' => 'Optional', 'color' => 'cyan'],
+            self::FORMAT_DELETING => ['text' => 'Deleting', 'color' => 'red'],
+            self::FORMAT_ERROR => ['text' => 'Error', 'color' => 'red'],
+            self::FORMAT_CONDITIONAL => ['text' => 'Conditional', 'color' => 'magenta'],
         ];
 
         return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted access level label for video formats
+     *
+     * @param int $accessLevelId Access level ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted access level label
+     */
+    public static function formatAccessLevel(int $accessLevelId, bool $withColor = true): string
+    {
+        $labels = [
+            self::ACCESS_ANY => ['text' => 'Any', 'color' => 'green'],
+            self::ACCESS_MEMBER => ['text' => 'Member', 'color' => 'cyan'],
+            self::ACCESS_PREMIUM => ['text' => 'Premium', 'color' => 'magenta'],
+        ];
+
+        return self::format($accessLevelId, $labels, $withColor);
     }
 
     /**
