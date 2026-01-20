@@ -23,6 +23,7 @@ use KVS\CLI\Command\System\StatsCommand;
 use KVS\CLI\Command\System\MaintenanceCommand;
 use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Command\System\ConversionCommand;
+use KVS\CLI\Command\System\EmailCommand;
 use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\AlbumCommand;
@@ -315,6 +316,7 @@ class Application extends BaseApplication
             new MaintenanceCommand($config),
             new ServerCommand($config),
             new ConversionCommand($config),
+            new EmailCommand($config),
 
             new VideoCommand($config),
             new UserCommand($config),
