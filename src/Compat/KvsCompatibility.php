@@ -179,7 +179,7 @@ class KvsCompatibility
     }
 
     /**
-     * Get a display-friendly version of MAX_TESTED_VERSION.
+     * Get the maximum tested KVS version.
      */
     public static function getMaxTestedVersionDisplay(): string
     {
@@ -287,14 +287,14 @@ class KvsCompatibility
     public function runAllChecks(string $configType, array &$params): array
     {
         $versionOk = $this->checkVersion();
-        $this->applyBackwardsCompat($configType, $params);
+        $remapped = $this->applyBackwardsCompat($configType, $params);
         $unknownKeys = $this->checkUnknownKeys($configType, $params);
         $deprecated = $this->checkDeprecatedKeys($configType, $params);
 
         return [
             'version_ok' => $versionOk,
             'unknown_keys' => $unknownKeys,
-            'remapped' => [],
+            'remapped' => $remapped,
             'deprecated' => $deprecated,
         ];
     }
