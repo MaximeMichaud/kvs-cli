@@ -51,20 +51,57 @@ class AntispamCommand extends BaseCommand
             ->addOption('domains', null, InputOption::VALUE_REQUIRED, 'Blocked domains (comma-separated)')
             ->addOption('ips', null, InputOption::VALUE_REQUIRED, 'Blocked IPs (comma-separated)')
             ->addOption('blacklist-action', null, InputOption::VALUE_REQUIRED, 'Blacklist action (delete|deactivate)')
+            // Clear blacklist options
+            ->addOption('clear-words', null, InputOption::VALUE_NONE, 'Clear all blacklisted words')
+            ->addOption('clear-domains', null, InputOption::VALUE_NONE, 'Clear all blocked domains')
+            ->addOption('clear-ips', null, InputOption::VALUE_NONE, 'Clear all blocked IPs')
             // Duplicates
             ->addOption('duplicates-comments', null, InputOption::VALUE_REQUIRED, 'Delete comment duplicates (0|1)')
             ->addOption('duplicates-messages', null, InputOption::VALUE_REQUIRED, 'Delete message duplicates (0|1)')
-            // Section rules (format: count/seconds)
+            // Videos rules
             ->addOption('videos-captcha', null, InputOption::VALUE_REQUIRED, 'Force captcha for videos (count/seconds)')
             ->addOption('videos-disable', null, InputOption::VALUE_REQUIRED, 'Disable videos after (count/seconds)')
             ->addOption('videos-delete', null, InputOption::VALUE_REQUIRED, 'Delete videos after (count/seconds)')
             ->addOption('videos-error', null, InputOption::VALUE_REQUIRED, 'Show error for videos (count/seconds)')
             ->addOption('videos-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for videos (all|user)')
+            // Albums rules
+            ->addOption('albums-captcha', null, InputOption::VALUE_REQUIRED, 'Force captcha for albums (count/seconds)')
+            ->addOption('albums-disable', null, InputOption::VALUE_REQUIRED, 'Disable albums after (count/seconds)')
+            ->addOption('albums-delete', null, InputOption::VALUE_REQUIRED, 'Delete albums after (count/seconds)')
+            ->addOption('albums-error', null, InputOption::VALUE_REQUIRED, 'Show error for albums (count/seconds)')
+            ->addOption('albums-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for albums (all|user)')
+            // Posts rules
+            ->addOption('posts-captcha', null, InputOption::VALUE_REQUIRED, 'Force captcha for posts (count/seconds)')
+            ->addOption('posts-disable', null, InputOption::VALUE_REQUIRED, 'Disable posts after (count/seconds)')
+            ->addOption('posts-delete', null, InputOption::VALUE_REQUIRED, 'Delete posts after (count/seconds)')
+            ->addOption('posts-error', null, InputOption::VALUE_REQUIRED, 'Show error for posts (count/seconds)')
+            ->addOption('posts-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for posts (all|user)')
+            // Playlists rules
+            ->addOption('playlists-captcha', null, InputOption::VALUE_REQUIRED, 'Force captcha for playlists (count/seconds)')
+            ->addOption('playlists-disable', null, InputOption::VALUE_REQUIRED, 'Disable playlists after (count/seconds)')
+            ->addOption('playlists-delete', null, InputOption::VALUE_REQUIRED, 'Delete playlists after (count/seconds)')
+            ->addOption('playlists-error', null, InputOption::VALUE_REQUIRED, 'Show error for playlists (count/seconds)')
+            ->addOption('playlists-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for playlists (all|user)')
+            // DVDs/Channels rules
+            ->addOption('dvds-captcha', null, InputOption::VALUE_REQUIRED, 'Force captcha for channels (count/seconds)')
+            ->addOption('dvds-disable', null, InputOption::VALUE_REQUIRED, 'Disable channels after (count/seconds)')
+            ->addOption('dvds-delete', null, InputOption::VALUE_REQUIRED, 'Delete channels after (count/seconds)')
+            ->addOption('dvds-error', null, InputOption::VALUE_REQUIRED, 'Show error for channels (count/seconds)')
+            ->addOption('dvds-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for channels (all|user)')
+            // Comments rules
             ->addOption('comments-captcha', null, InputOption::VALUE_REQUIRED, 'Force captcha for comments (count/seconds)')
             ->addOption('comments-disable', null, InputOption::VALUE_REQUIRED, 'Disable comments after (count/seconds)')
             ->addOption('comments-delete', null, InputOption::VALUE_REQUIRED, 'Delete comments after (count/seconds)')
             ->addOption('comments-error', null, InputOption::VALUE_REQUIRED, 'Show error for comments (count/seconds)')
             ->addOption('comments-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for comments (all|user)')
+            // Messages rules (no captcha/disable)
+            ->addOption('messages-delete', null, InputOption::VALUE_REQUIRED, 'Delete messages after (count/seconds)')
+            ->addOption('messages-error', null, InputOption::VALUE_REQUIRED, 'Show error for messages (count/seconds)')
+            ->addOption('messages-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for messages (all|user)')
+            // Feedbacks rules (no captcha/disable)
+            ->addOption('feedbacks-delete', null, InputOption::VALUE_REQUIRED, 'Delete feedbacks after (count/seconds)')
+            ->addOption('feedbacks-error', null, InputOption::VALUE_REQUIRED, 'Show error for feedbacks (count/seconds)')
+            ->addOption('feedbacks-history', null, InputOption::VALUE_REQUIRED, 'Analyze history for feedbacks (all|user)')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, json', 'table')
             ->setHelp(<<<'HELP'
 Manage KVS anti-spam settings.
@@ -82,6 +119,9 @@ Manage KVS anti-spam settings.
   --domains             Blocked email domains
   --ips                 Blocked IP addresses
   --blacklist-action    Action: delete|deactivate
+  --clear-words         Clear all blacklisted words
+  --clear-domains       Clear all blocked domains
+  --clear-ips           Clear all blocked IPs
 
 <fg=yellow>RULE FORMAT:</>
   Rules use count/seconds format, e.g., "5/60" = 5 items within 60 seconds
@@ -110,6 +150,10 @@ Manage KVS anti-spam settings.
   <fg=cyan># Remove from blacklist:</>
   <fg=green>kvs antispam remove --words="spam"</>
   <fg=green>kvs antispam remove --domains="spam.com"</>
+
+  <fg=cyan># Clear blacklist:</>
+  <fg=green>kvs antispam set --clear-words</>
+  <fg=green>kvs antispam set --clear-domains --clear-ips</>
 
   <fg=cyan># Configure rules:</>
   <fg=green>kvs antispam set --comments-captcha=5/60</>
@@ -351,6 +395,22 @@ HELP
         try {
             $changes = [];
 
+            // Clear blacklist options
+            if ($this->getBoolOption($input, 'clear-words')) {
+                $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', '');
+                $changes[] = 'Cleared all blacklisted words';
+            }
+
+            if ($this->getBoolOption($input, 'clear-domains')) {
+                $this->updateBlockedDomains($db, []);
+                $changes[] = 'Cleared all blocked domains';
+            }
+
+            if ($this->getBoolOption($input, 'clear-ips')) {
+                $this->updateBlockedIps($db, []);
+                $changes[] = 'Cleared all blocked IPs';
+            }
+
             // Blacklist words
             $words = $this->getStringOption($input, 'words');
             if ($words !== null) {
@@ -418,10 +478,8 @@ HELP
                 $changes[] = 'Delete duplicate messages: ' . ($dupMessages === '1' ? 'Yes' : 'No');
             }
 
-            // Section rules
-            foreach (['videos', 'comments'] as $section) {
-                $prefix = self::SECTIONS[$section];
-
+            // Section rules - all sections
+            foreach (self::SECTIONS as $section => $prefix) {
                 // History
                 $history = $this->getStringOption($input, "$section-history");
                 if ($history !== null) {
@@ -433,8 +491,13 @@ HELP
                     $changes[] = ucfirst($section) . " analyze history: $history";
                 }
 
-                // Rules
-                foreach (self::ACTIONS as $actionName => $actionKey) {
+                // Rules - messages and feedbacks only have delete/error
+                $availableActions = self::ACTIONS;
+                if (in_array($section, ['messages', 'feedbacks'], true)) {
+                    $availableActions = ['delete' => 'AUTODELETE', 'error' => 'ERROR'];
+                }
+
+                foreach ($availableActions as $actionName => $actionKey) {
                     $rule = $this->getStringOption($input, "$section-$actionName");
                     if ($rule !== null) {
                         if (!$this->validateRule($rule)) {
