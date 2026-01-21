@@ -13,6 +13,7 @@ use KVS\CLI\Benchmark\StackScorer;
 use KVS\CLI\Benchmark\SystemDetector;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
+use KVS\CLI\Util\IonCubeDetector;
 use KVS\CLI\Service\BenchmarkApiClient;
 use KVS\CLI\Util\FpmConfigReader;
 use KVS\CLI\Util\VersionChecker;
@@ -309,8 +310,14 @@ class BenchmarkCommand extends BaseCommand
         $stackScorer = new StackScorer($db);
         $stackScore = $stackScorer->calculate();
 
+        // IonCube detection (affects JIT compatibility)
+        $ionCubeDetector = new IonCubeDetector($this->config);
+        $ionCubeStatus = $ionCubeDetector->getStatus();
+        $hasIonCube = $ionCubeStatus['files_encoded'];
+
         // Config Score (KVS configuration optimization)
         $configData = $this->collectConfigData();
+        $configData['has_ioncube'] = $hasIonCube; // Pass IONCUBE status to scorer
         $configScorer = new ConfigScorer();
         $configScore = $configScorer->calculate($configData);
 
@@ -321,6 +328,8 @@ class BenchmarkCommand extends BaseCommand
         if (is_string($kvsVersion) && $kvsVersion !== '') {
             $systemInfo['kvs_version'] = $kvsVersion;
         }
+        // Add KVS source type (source vs IONCUBE encoded)
+        $systemInfo['kvs_source_type'] = $hasIonCube ? 'ioncube' : 'source';
         $result->setSystemInfo($systemInfo);
 
         // Create experiment result for ID and export
@@ -510,6 +519,15 @@ class BenchmarkCommand extends BaseCommand
 
         $phpVersion = $info['php_version'] ?? 'Unknown';
         $rows[] = ['PHP', is_string($phpVersion) ? $phpVersion : 'Unknown'];
+
+        // KVS source type (source vs IONCUBE encoded)
+        if (isset($info['kvs_source_type']) && is_string($info['kvs_source_type'])) {
+            $kvsSourceType = $info['kvs_source_type'];
+            $sourceDisplay = $kvsSourceType === 'ioncube'
+                ? '<fg=yellow>IONCUBE (Encoded)</>'
+                : '<fg=green>Source</>';
+            $rows[] = ['KVS Type', $sourceDisplay];
+        }
 
         // Check if info came from Docker FPM or local CLI
         $source = isset($info['source']) && is_string($info['source']) ? $info['source'] : '';
