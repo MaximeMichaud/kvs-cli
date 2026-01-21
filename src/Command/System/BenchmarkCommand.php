@@ -317,7 +317,7 @@ class BenchmarkCommand extends BaseCommand
 
         // Config Score (KVS configuration optimization)
         $configData = $this->collectConfigData();
-        $configData['has_ioncube'] = $hasIonCube; // Pass IONCUBE status to scorer
+        $configData['has_ioncube'] = $hasIonCube; // Pass ionCube status to scorer
         $configScorer = new ConfigScorer();
         $configScore = $configScorer->calculate($configData);
 
@@ -328,7 +328,7 @@ class BenchmarkCommand extends BaseCommand
         if (is_string($kvsVersion) && $kvsVersion !== '') {
             $systemInfo['kvs_version'] = $kvsVersion;
         }
-        // Add KVS source type (source vs IONCUBE encoded)
+        // Add KVS source type (source vs ionCube encoded)
         $systemInfo['kvs_source_type'] = $hasIonCube ? 'ioncube' : 'source';
         $result->setSystemInfo($systemInfo);
 
@@ -524,11 +524,12 @@ class BenchmarkCommand extends BaseCommand
         $phpVersion = $info['php_version'] ?? 'Unknown';
         $rows[] = ['PHP', is_string($phpVersion) ? $phpVersion : 'Unknown'];
 
-        // KVS source type (source vs IONCUBE encoded)
+        // KVS source type (source vs ionCube encoded)
+        $kvsSourceType = null;
         if (isset($info['kvs_source_type']) && is_string($info['kvs_source_type'])) {
             $kvsSourceType = $info['kvs_source_type'];
             $sourceDisplay = $kvsSourceType === 'ioncube'
-                ? '<fg=yellow>IONCUBE (Encoded)</>'
+                ? '<fg=yellow>Encoded (ionCube)</>'
                 : '<fg=green>Source</>';
             $rows[] = ['KVS Type', $sourceDisplay];
         }
@@ -543,7 +544,14 @@ class BenchmarkCommand extends BaseCommand
         $rows[] = ['OPcache' . $sourceLabel, $opcacheStatus];
 
         $jit = isset($info['jit']) && $info['jit'] === true;
-        $jitStatus = $jit ? '<fg=green>Enabled</>' : '<fg=yellow>Disabled</>';
+        if ($jit) {
+            $jitStatus = '<fg=green>Enabled</>';
+        } else {
+            // Explain why JIT is disabled if ionCube is present
+            $jitStatus = $kvsSourceType === 'ioncube'
+                ? '<fg=yellow>Disabled (ionCube)</>'
+                : '<fg=yellow>Disabled</>';
+        }
         $rows[] = ['JIT' . $sourceLabel, $jitStatus];
 
         // Database info
