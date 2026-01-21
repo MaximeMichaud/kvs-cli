@@ -390,14 +390,11 @@ class BenchmarkCommand extends BaseCommand
         $response = $client->submit($experiment);
 
         if ($response->success) {
-            $this->io()->success('✓ Benchmark submitted successfully!');
-
             if ($response->url !== null) {
-                $this->io()->newLine();
-                $this->io()->text('<fg=green>View your benchmark results at:</>');
-                $this->io()->text('  <fg=cyan;options=bold>' . $response->url . '</>');
-                $this->io()->newLine();
+                $this->io()->success('✓ Benchmark submitted successfully!');
+                $this->io()->text('  View results: <fg=cyan;options=bold>' . $response->url . '</>');
             } else {
+                $this->io()->success('✓ Benchmark submitted successfully!');
                 $this->io()->text('<fg=yellow>Note: No dashboard URL provided by API</>');
             }
         } else {

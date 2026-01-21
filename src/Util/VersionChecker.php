@@ -110,10 +110,31 @@ class VersionChecker
     /**
      * Compare two semantic versions.
      *
+     * Special handling for -dev versions: development builds are considered
+     * up-to-date when their base version matches the latest release.
+     *
      * @return int -1 if v1 < v2, 0 if equal, 1 if v1 > v2
      */
     private function compareVersions(string $v1, string $v2): int
     {
+        // If current version has -dev suffix, strip it for comparison
+        // Dev versions are considered >= the corresponding release
+        if (str_contains($v1, '-dev')) {
+            // Extract base version (X.Y.Z-dev-hash -> X.Y.Z)
+            $baseV1 = preg_replace('/-dev.*$/', '', $v1);
+            if ($baseV1 !== null && $baseV1 !== '') {
+                // Compare base version
+                $result = version_compare($baseV1, $v2);
+
+                // If base version equals release, consider dev >= release
+                if ($result === 0) {
+                    return 0; // Treat as equal (up to date)
+                }
+
+                return $result;
+            }
+        }
+
         return version_compare($v1, $v2);
     }
 
