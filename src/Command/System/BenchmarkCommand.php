@@ -383,20 +383,30 @@ class BenchmarkCommand extends BaseCommand
         }
 
         /** @phpstan-ignore-next-line deadCode.unreachable (code is reachable once API URL is set) */
-        $this->io()->text('<comment>Submitting benchmark results...</comment>');
+        $this->io()->newLine();
+        $this->io()->text('<comment>Submitting benchmark results to API...</comment>');
 
         $client = new BenchmarkApiClient();
         $response = $client->submit($experiment);
 
         if ($response->success) {
-            $this->io()->success($response->message);
+            $this->io()->success('✓ Benchmark submitted successfully!');
+
             if ($response->url !== null) {
-                $this->io()->text("View results: <fg=cyan>{$response->url}</>");
+                $this->io()->newLine();
+                $this->io()->text('<fg=green>View your benchmark results at:</>');
+                $this->io()->text('  <fg=cyan;options=bold>' . $response->url . '</>');
+                $this->io()->newLine();
+            } else {
+                $this->io()->text('<fg=yellow>Note: No dashboard URL provided by API</>');
             }
         } else {
-            $this->io()->warning("Failed to submit benchmark: {$response->message}");
+            $this->io()->error('✗ Failed to submit benchmark to API');
+            $this->io()->text("Reason: {$response->message}");
+
             if (!$hasExport) {
-                $this->io()->text('Results saved locally with --export if specified.');
+                $this->io()->newLine();
+                $this->io()->text('<fg=yellow>Tip: Use --export to save results locally</>');
             }
         }
     }

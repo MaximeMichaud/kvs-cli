@@ -130,7 +130,9 @@ final class BenchmarkApiClient
             $data = json_decode($response, true, 512, JSON_THROW_ON_ERROR);
 
             if (!is_array($data)) {
-                return SubmitResponse::success('Benchmark submitted successfully');
+                // Fallback: construct URL from benchmark ID
+                $fallbackUrl = $this->constructDashboardUrl($benchmarkId);
+                return SubmitResponse::success('Benchmark submitted successfully', $fallbackUrl);
             }
 
             $url = null;
@@ -138,6 +140,14 @@ final class BenchmarkApiClient
                 $url = $data['url'];
             } elseif (isset($data['dashboard_url']) && is_string($data['dashboard_url'])) {
                 $url = $data['dashboard_url'];
+            } elseif (isset($data['id']) && is_string($data['id'])) {
+                // API returned an ID, construct URL from it
+                $url = $this->constructDashboardUrl($data['id']);
+            }
+
+            // If still no URL, use benchmark ID as fallback
+            if ($url === null) {
+                $url = $this->constructDashboardUrl($benchmarkId);
             }
 
             $message = 'Benchmark submitted successfully';
@@ -147,8 +157,25 @@ final class BenchmarkApiClient
 
             return SubmitResponse::success($message, $url);
         } catch (\JsonException $e) {
-            // Non-JSON response but still successful
-            return SubmitResponse::success('Benchmark submitted successfully');
+            // Non-JSON response but still successful - construct URL from ID
+            $fallbackUrl = $this->constructDashboardUrl($benchmarkId);
+            return SubmitResponse::success('Benchmark submitted successfully', $fallbackUrl);
         }
+    }
+
+    /**
+     * Construct dashboard URL from benchmark ID.
+     */
+    private function constructDashboardUrl(string $benchmarkId): string
+    {
+        // Extract base URL from API URL
+        $apiUrl = Constants::BENCHMARK_API_URL;
+        $baseUrl = preg_replace('#/api/.*$#', '', $apiUrl);
+
+        if ($baseUrl === null || $baseUrl === '') {
+            $baseUrl = $apiUrl;
+        }
+
+        return $baseUrl . '/benchmark/' . $benchmarkId;
     }
 }
