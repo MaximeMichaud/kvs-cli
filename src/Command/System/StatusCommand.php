@@ -135,7 +135,10 @@ class StatusCommand extends BaseCommand
         $info[] = ['PHP Version', $phpVersion . $sourceLabel];
 
         $info[] = ['PHP Memory Limit', $fpmConfig['memory_limit']];
-        $info[] = ['Max Execution Time', $fpmConfig['max_execution_time'] . ' seconds'];
+        $maxExecTime = $fpmConfig['max_execution_time'] === 0
+            ? 'Unlimited'
+            : $fpmConfig['max_execution_time'] . ' seconds';
+        $info[] = ['Max Execution Time', $maxExecTime];
         $info[] = ['Upload Max Filesize', $fpmConfig['upload_max_filesize']];
         $info[] = ['Post Max Size', $fpmConfig['post_max_size']];
 
