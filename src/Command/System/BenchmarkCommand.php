@@ -1654,13 +1654,13 @@ class BenchmarkCommand extends BaseCommand
         if (!$input->isInteractive()) {
             // Non-interactive mode: warn but continue
             $this->io()->text('Continuing with outdated version (non-interactive mode).');
-            $this->io()->text('Update recommended: composer global update maxime-michaud/kvs-cli');
+            $this->io()->text('Update command: kvs self-update');
             return true;
         }
 
         // Interactive mode: ask for confirmation
         $this->io()->text('Benchmark results from outdated versions may not be accurate.');
-        $this->io()->text('Update command: composer global update maxime-michaud/kvs-cli');
+        $this->io()->text('Update command: kvs self-update');
 
         $continue = $this->io()->confirm('Do you want to continue anyway?', false);
 
