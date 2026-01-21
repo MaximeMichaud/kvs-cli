@@ -229,7 +229,7 @@ ini_set('display_errors', '0');
     'php_info' => [
         'version' => PHP_VERSION,
         'sapi' => PHP_SAPI,
-        'opcache_enabled' => function_exists('opcache_get_status') && is_array(@opcache_get_status(false)),
+        'opcache_enabled' => function_exists('opcache_get_status') && filter_var(ini_get('opcache.enable'), FILTER_VALIDATE_BOOLEAN),
         'jit_enabled' => false,
         'memory_limit' => ini_get('memory_limit'),
         'max_execution_time' => (int) ini_get('max_execution_time'),

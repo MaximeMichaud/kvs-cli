@@ -15,6 +15,7 @@ use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
 use KVS\CLI\Service\BenchmarkApiClient;
 use KVS\CLI\Util\FpmConfigReader;
+use KVS\CLI\Util\VersionChecker;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -143,11 +144,23 @@ class BenchmarkCommand extends BaseCommand
                 InputOption::VALUE_REQUIRED,
                 'Timeout for server-side benchmark execution in seconds',
                 '120'
+            )
+            ->addOption(
+                'skip-version-check',
+                null,
+                InputOption::VALUE_NONE,
+                'Skip checking for CLI updates (for CI/headless environments)'
             );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // Check for CLI version updates (unless --skip-version-check is set)
+        $skipVersionCheck = $input->getOption('skip-version-check');
+        if ($skipVersionCheck !== true && !$this->checkVersion($input)) {
+            return self::FAILURE;
+        }
+
         $baseUrl = $input->getOption('url');
         $baseUrl = is_string($baseUrl) ? $baseUrl : '';
 
@@ -1606,5 +1619,49 @@ class BenchmarkCommand extends BaseCommand
             return '★★☆☆☆ Fair';
         }
         return '★☆☆☆☆ Needs Improvement';
+    }
+
+    /**
+     * Check if CLI version is up to date.
+     *
+     * @return bool True to continue, False to abort
+     */
+    private function checkVersion(InputInterface $input): bool
+    {
+        $checker = new VersionChecker();
+        $result = $checker->check();
+
+        if ($result['is_latest']) {
+            // Up to date, continue silently
+            return true;
+        }
+
+        // Outdated version detected
+        $this->io()->warning(sprintf(
+            'Your KVS CLI version (%s) is outdated. Latest version: %s',
+            $result['current'],
+            $result['latest'] ?? 'unknown'
+        ));
+
+        // Check if we're in interactive mode
+        if (!$input->isInteractive()) {
+            // Non-interactive mode: warn but continue
+            $this->io()->text('Continuing with outdated version (non-interactive mode).');
+            $this->io()->text('Update recommended: composer global update maxime-michaud/kvs-cli');
+            return true;
+        }
+
+        // Interactive mode: ask for confirmation
+        $this->io()->text('Benchmark results from outdated versions may not be accurate.');
+        $this->io()->text('Update command: composer global update maxime-michaud/kvs-cli');
+
+        $continue = $this->io()->confirm('Do you want to continue anyway?', false);
+
+        if (!$continue) {
+            $this->io()->info('Benchmark cancelled. Please update and try again.');
+            return false;
+        }
+
+        return true;
     }
 }

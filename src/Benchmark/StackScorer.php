@@ -146,7 +146,7 @@ class StackScorer
                 'version' => 'unknown',
                 'type' => 'unknown',
                 'status' => 'unknown',
-                'score' => 50, // Neutral score if can't detect
+                'score' => 90, // Assume recent DB if can't detect
                 'eol_date' => null,
                 'recommendation' => null,
             ];
@@ -255,7 +255,7 @@ class StackScorer
                 'version' => 'unknown',
                 'name' => 'unknown',
                 'status' => 'unknown',
-                'score' => 50,
+                'score' => 90, // Assume recent OS if can't detect
                 'eol_date' => null,
                 'recommendation' => null,
             ];
@@ -306,6 +306,7 @@ class StackScorer
 
                 $id = strtolower($info['ID'] ?? '');
                 $versionId = $info['VERSION_ID'] ?? '';
+                $buildId = $info['BUILD_ID'] ?? '';
                 $name = $info['PRETTY_NAME'] ?? $info['NAME'] ?? 'Linux';
 
                 // Map to endoflife.date product names
@@ -318,9 +319,23 @@ class StackScorer
                     'rocky' => 'rocky-linux',
                     'almalinux' => 'almalinux',
                     'alpine' => 'alpine',
+                    'arch' => 'arch-linux',
+                    'opensuse' => 'opensuse',
+                    'opensuse-leap' => 'opensuse',
+                    'cachyos' => 'arch-linux', // CachyOS is Arch-based
                 ];
 
                 $product = $productMap[$id] ?? null;
+
+                // Handle rolling releases (Arch, CachyOS, etc.)
+                if ($product !== null && $versionId === '' && $buildId === 'rolling') {
+                    return [
+                        'product' => $product,
+                        'name' => $name,
+                        'version' => 'rolling',
+                    ];
+                }
+
                 if ($product !== null && $versionId !== '') {
                     return [
                         'product' => $product,
@@ -342,10 +357,21 @@ class StackScorer
      */
     private function scoreVersion(string $product, string $version, array $eolData): array
     {
+        // Handle rolling releases (always current by definition)
+        if ($version === 'rolling') {
+            return [
+                'version' => 'rolling',
+                'status' => 'rolling',
+                'score' => self::SCORE_LATEST,
+                'eol_date' => null,
+                'recommendation' => null,
+            ];
+        }
+
         $result = [
             'version' => $version,
             'status' => 'unknown',
-            'score' => 50,
+            'score' => 90, // Assume recent version if can't verify
             'eol_date' => null,
             'recommendation' => null,
         ];
@@ -609,6 +635,9 @@ class StackScorer
             'rocky-linux' => 'Rocky Linux',
             'almalinux' => 'AlmaLinux',
             'alpine' => 'Alpine',
+            'arch-linux' => 'Arch Linux',
+            'opensuse' => 'openSUSE',
+            'cachyos' => 'CachyOS',
             default => ucfirst($product),
         };
     }
@@ -712,6 +741,7 @@ class StackScorer
         return match ($status) {
             'active', 'current' => '<fg=green>Active</>',
             'latest' => '<fg=green>Latest</>',
+            'rolling' => '<fg=green>Rolling Release</>',
             'lts_current' => '<fg=green>LTS Current</>',
             'kvs_optimal' => '<fg=green>KVS Optimal</>',
             'outdated' => '<fg=yellow>Outdated</>',
