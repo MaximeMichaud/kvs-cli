@@ -350,8 +350,11 @@ class BenchmarkCommand extends BaseCommand
         $experiment->setStackScore($stackScore);
         $experiment->setConfigScore($configScore);
 
-        // Display results
-        $this->displayResults($result, $baseline, $detection, $stackScore, $configScore, $experiment->getId());
+        // Display results (show ID only if exporting or submitting)
+        $willSubmit = $input->getOption('submit') === true;
+        $willExport = $exportPath !== false;
+        $showBenchmarkId = $willSubmit || $willExport;
+        $this->displayResults($result, $baseline, $detection, $stackScore, $configScore, $experiment->getId(), $showBenchmarkId);
 
         // Export if requested
         if ($exportPath !== false) {
@@ -428,7 +431,8 @@ class BenchmarkCommand extends BaseCommand
         array $detection,
         array $stackScore,
         array $configScore,
-        string $benchmarkId
+        string $benchmarkId,
+        bool $showBenchmarkId = false
     ): void {
         // System Detection (hardware info)
         $this->io()->section('System Detection');
@@ -502,7 +506,7 @@ class BenchmarkCommand extends BaseCommand
 
         // Summary with all scores
         $this->io()->section('Summary');
-        $this->displayFullSummary($result, $baseline, $detection, $stackScore, $configScore, $benchmarkId);
+        $this->displayFullSummary($result, $baseline, $detection, $stackScore, $configScore, $benchmarkId, $showBenchmarkId);
     }
 
     private function displaySystemInfo(BenchmarkResult $result): void
@@ -848,7 +852,8 @@ class BenchmarkCommand extends BaseCommand
         array $detection,
         array $stackScore,
         array $configScore,
-        string $benchmarkId
+        string $benchmarkId,
+        bool $showBenchmarkId = false
     ): void {
         $rawScore = $result->calculateScore();
         $rating = $result->getRating();
@@ -925,8 +930,11 @@ class BenchmarkCommand extends BaseCommand
             $this->getStackMiniRating($configTotal)
         ));
 
-        $this->io()->newLine();
-        $this->io()->writeln(sprintf('  <fg=white>Benchmark ID:</>      <fg=green;options=bold>%s</>', $benchmarkId));
+        // Only show Benchmark ID if exporting or submitting
+        if ($showBenchmarkId) {
+            $this->io()->newLine();
+            $this->io()->writeln(sprintf('  <fg=white>Benchmark ID:</>      <fg=green;options=bold>%s</>', $benchmarkId));
+        }
 
         // Baseline comparison
         if ($baseline !== null) {
