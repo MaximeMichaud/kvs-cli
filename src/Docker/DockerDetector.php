@@ -292,12 +292,25 @@ class DockerDetector
     }
 
     /**
-     * Get PHP ini value from Docker container.
+     * Get PHP ini value from Docker container (from PHP-FPM, not CLI).
      */
     public function getPhpIni(string $setting): ?string
     {
-        $result = $this->execPhp("echo ini_get('$setting');");
-        return $result !== null ? trim($result) : null;
+        // Use php-fpm -i to get FPM settings, not CLI settings
+        $escapedSetting = escapeshellarg($setting);
+        $result = $this->exec('php', "php-fpm -i 2>&1 | grep -E " . escapeshellarg("^{$setting} =>"));
+
+        if ($result === null || trim($result) === '') {
+            return null;
+        }
+
+        // Parse format: "max_execution_time => 300 => 300"
+        // Extract the local value (middle one)
+        if (preg_match('/^' . preg_quote($setting, '/') . '\s*=>\s*([^\s]+)/', trim($result), $matches) === 1) {
+            return $matches[1];
+        }
+
+        return null;
     }
 
     /**
