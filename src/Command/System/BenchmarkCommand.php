@@ -301,6 +301,15 @@ class BenchmarkCommand extends BaseCommand
         $configScorer = new ConfigScorer();
         $configScore = $configScorer->calculate($configData);
 
+        // Add KVS and CLI versions to system info
+        $systemInfo = $result->getSystemInfo();
+        $systemInfo['kvs_cli_version'] = defined('KVS_CLI_VERSION') ? KVS_CLI_VERSION : 'unknown';
+        $kvsVersion = $this->config->get('project_version');
+        if (is_string($kvsVersion) && $kvsVersion !== '') {
+            $systemInfo['kvs_version'] = $kvsVersion;
+        }
+        $result->setSystemInfo($systemInfo);
+
         // Create experiment result for ID and export
         $experiment = new ExperimentResult($result);
         $experiment->setSystemDetection($detection);
@@ -351,7 +360,7 @@ class BenchmarkCommand extends BaseCommand
     private function submitBenchmark(ExperimentResult $experiment, bool $hasExport): void
     {
         // Check if API URL is configured
-        // @phpstan-ignore identical.alwaysTrue (will be true in production when API isn't configured)
+        // @phpstan-ignore identical.alwaysFalse (check remains for potential config changes)
         if (Constants::BENCHMARK_API_URL === '') {
             $this->io()->warning('Cannot submit: Benchmark API URL not configured.');
             if (!$hasExport) {

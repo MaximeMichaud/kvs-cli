@@ -20,7 +20,7 @@ final class BenchmarkApiClient
     {
         $url = Constants::BENCHMARK_API_URL;
 
-        // @phpstan-ignore identical.alwaysTrue (placeholder until API is configured)
+        // @phpstan-ignore identical.alwaysFalse (check remains for potential config changes)
         if ($url === '') {
             return SubmitResponse::error('Benchmark API URL not configured');
         }
@@ -34,7 +34,7 @@ final class BenchmarkApiClient
                 'header' => implode("\r\n", [
                     'Content-Type: application/json',
                     'Accept: application/json',
-                    'User-Agent: ' . Application::NAME . '/' . (is_string(Application::VERSION) ? Application::VERSION : '1.0'),
+                    'User-Agent: ' . Application::NAME . '/' . Application::VERSION,
                     'Content-Length: ' . strlen($payload),
                 ]),
                 'content' => $payload,
