@@ -223,6 +223,7 @@ class ExperimentResult
                 'cache' => ($benchData['cache_results'] ?? []) !== [] ? $benchData['cache_results'] : new \stdClass(),
                 'fileio' => ($benchData['fileio_results'] ?? []) !== [] ? $benchData['fileio_results'] : new \stdClass(),
                 'http' => ($benchData['http_results'] ?? []) !== [] ? $benchData['http_results'] : new \stdClass(),
+                'weights' => $benchData['weights'] ?? null,
             ],
             'metrics' => ($benchData['system_metrics'] ?? []) !== [] ? $benchData['system_metrics'] : new \stdClass(),
             'warnings' => $benchData['warnings'] ?? [],
