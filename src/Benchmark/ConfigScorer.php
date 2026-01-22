@@ -200,11 +200,17 @@ class ConfigScorer
             if ($memoryMb >= self::MEMCACHE_GOOD_MB) {
                 $score++;
             } else {
-                $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_GOOD_MB . " (current: {$memoryMb}MB)";
+                $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_GOOD_MB . " (current: {$memoryMb}MB, recommended for optimal performance)";
             }
         } else {
             $currentMb = $memoryMb ?? 0;
-            $issues[] = "{$cacheType} memory = {$currentMb}MB (need " . self::MEMCACHE_MIN_MB . 'MB+)';
+            $issues[] = sprintf(
+                '%s memory = %dMB (need %dMB minimum, %dMB recommended)',
+                $cacheType,
+                $currentMb,
+                self::MEMCACHE_MIN_MB,
+                self::MEMCACHE_GOOD_MB
+            );
             $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_GOOD_MB;
         }
 
