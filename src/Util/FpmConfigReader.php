@@ -109,7 +109,7 @@ class FpmConfigReader
             $opcacheMemory = $this->docker->getPhpIni('opcache.memory_consumption');
             $opcacheStrings = $this->docker->getPhpIni('opcache.interned_strings_buffer');
             $opcache = [
-                'enable' => $opcacheEnabled === '1',
+                'enable' => strtolower($opcacheEnabled) === 'on',
                 'memory_consumption' => $opcacheMemory !== null ? (int) $opcacheMemory : 0,
                 'interned_strings_buffer' => $opcacheStrings !== null ? (int) $opcacheStrings : 0,
             ];
