@@ -310,6 +310,19 @@ class BenchmarkResult
     }
 
     /**
+     * Category weights for score calculation
+     *
+     * These weights determine how much each category contributes to the final score.
+     * Total must equal 1.0 (100%).
+     */
+    private const WEIGHTS = [
+        'db' => 0.35,      // 35% - Database performance (most critical for KVS)
+        'cache' => 0.25,   // 25% - Cache performance
+        'cpu' => 0.25,     // 25% - CPU performance
+        'fileio' => 0.15,  // 15% - File I/O performance
+    ];
+
+    /**
      * Baseline values for score calibration (Geekbench-style)
      *
      * These represent a "typical good server" performance.
@@ -404,19 +417,11 @@ class BenchmarkResult
      */
     public function calculateScore(): int
     {
-        // Category weights: DB 35%, Cache 25%, CPU 25%, File I/O 15%
-        $weights = [
-            'db' => 0.35,
-            'cache' => 0.25,
-            'cpu' => 0.25,
-            'fileio' => 0.15,
-        ];
-
         // Calculate weighted arithmetic mean of category scores
         $weightedSum = 0.0;
         $totalWeight = 0.0;
 
-        foreach ($weights as $category => $weight) {
+        foreach (self::WEIGHTS as $category => $weight) {
             $score = $this->calculateCategoryScore($category);
             if ($score > 0) {
                 $weightedSum += $score * $weight;
@@ -539,6 +544,7 @@ class BenchmarkResult
             'total_time' => $this->totalTime,
             'score' => $this->calculateScore(),
             'rating' => $this->getRating(),
+            'weights' => self::WEIGHTS,  // Include weights used for calculation
         ];
 
         if ($this->tag !== '') {
