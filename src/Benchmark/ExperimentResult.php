@@ -11,7 +11,7 @@ namespace KVS\CLI\Benchmark;
  */
 class ExperimentResult
 {
-    private const ID_PREFIX = 'kvs-';
+    private const ID_PREFIX = '';
     private const ID_LENGTH = 12;
     private const ID_CHARSET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -44,7 +44,7 @@ class ExperimentResult
     /**
      * Generate a unique experiment ID
      *
-     * Format: kvs-XXXXXXXXXXXX (12 chars base62)
+     * Format: XXXXXXXXXXXX (12 chars base62)
      * Total combinations: 62^12 = 3.2 × 10^21
      */
     private function generateId(): string
