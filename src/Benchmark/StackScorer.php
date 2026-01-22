@@ -29,18 +29,13 @@ class StackScorer
     /** @var array<string, mixed> */
     private array $systemInfo = [];
 
-    /** @var array<string, mixed> */
-    private array $ioStats = [];
-
     /**
      * @param array<string, mixed> $systemInfo
-     * @param array<string, mixed> $ioStats
      */
-    public function __construct(?\PDO $db = null, array $systemInfo = [], array $ioStats = [])
+    public function __construct(?\PDO $db = null, array $systemInfo = [])
     {
         $this->db = $db;
         $this->systemInfo = $systemInfo;
-        $this->ioStats = $ioStats;
     }
 
     /**
@@ -54,7 +49,6 @@ class StackScorer
      *     database: array{version: string, type: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
      *     os: array{version: string, name: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
      *     web_server: array{name: string, type: string, score: int, recommendation: ?string},
-     *     storage_io: array{write_speed: float, score: int},
      *     rating: string,
      *     recommendations: list<string>
      * }
@@ -67,17 +61,15 @@ class StackScorer
         $dbScore = $this->scoreDatabase();
         $osScore = $this->scoreOs();
         $webServerScore = $this->scoreWebServer();
-        $storageScore = $this->scoreStorageIo();
 
-        // Weighted average: PHP 25%, PHP Config 15%, FFmpeg 15%, DB 20%, OS 10%, WebServer 10%, Storage 5%
+        // Weighted average: PHP 25%, PHP Config 15%, FFmpeg 17.5%, DB 22.5%, OS 10%, WebServer 10%
         $totalScore = (int) (
             ($phpScore['score'] * 0.25) +
             ($phpConfigScore['score'] * 0.15) +
-            ($ffmpegScore['score'] * 0.15) +
-            ($dbScore['score'] * 0.20) +
+            ($ffmpegScore['score'] * 0.175) +
+            ($dbScore['score'] * 0.225) +
             ($osScore['score'] * 0.10) +
-            ($webServerScore['score'] * 0.10) +
-            ($storageScore['score'] * 0.05)
+            ($webServerScore['score'] * 0.10)
         );
 
         // Collect recommendations
@@ -109,7 +101,6 @@ class StackScorer
             'database' => $dbScore,
             'os' => $osScore,
             'web_server' => $webServerScore,
-            'storage_io' => $storageScore,
             'rating' => $this->getRating($totalScore),
             'recommendations' => $recommendations,
         ];
@@ -511,43 +502,6 @@ class StackScorer
             'version' => $version,
             'score' => max(0, $score),
             'issues' => $issues,
-        ];
-    }
-
-    /**
-     * Score storage I/O based on benchmark results
-     *
-     * @return array{write_speed: float, score: int}
-     */
-    private function scoreStorageIo(): array
-    {
-        // Get write speed from I/O stats (MB/s)
-        $writeSpeed = 0.0;
-
-        if (isset($this->ioStats['file_write']) && is_array($this->ioStats['file_write'])) {
-            $writeResult = $this->ioStats['file_write'];
-            if (isset($writeResult['avg_time']) && is_numeric($writeResult['avg_time'])) {
-                $avgTimeMs = (float) $writeResult['avg_time'];
-                if ($avgTimeMs > 0) {
-                    // Assume 10MB write (typical test size)
-                    $writeSpeed = (10.0 / $avgTimeMs) * 1000;
-                }
-            }
-        }
-
-        // Score based on write speed
-        $score = match (true) {
-            $writeSpeed >= 1000 => 100,
-            $writeSpeed >= 500 => 95,
-            $writeSpeed >= 300 => 85,
-            $writeSpeed >= 100 => 75,
-            $writeSpeed >= 50 => 60,
-            default => 40,
-        };
-
-        return [
-            'write_speed' => round($writeSpeed, 2),
-            'score' => $score,
         ];
     }
 

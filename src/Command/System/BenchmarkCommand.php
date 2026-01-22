@@ -318,8 +318,7 @@ class BenchmarkCommand extends BaseCommand
 
         // Stack Score (software freshness - PHP, DB, OS versions vs EOL)
         $systemInfo = $result->getSystemInfo();
-        $ioResults = $result->getFileIOResults();
-        $stackScorer = new StackScorer($db, $systemInfo, $ioResults);
+        $stackScorer = new StackScorer($db, $systemInfo);
         $stackScore = $stackScorer->calculate();
 
         // IonCube detection (affects JIT compatibility)
@@ -1418,8 +1417,6 @@ class BenchmarkCommand extends BaseCommand
         $os = is_array($stackScore['os'] ?? null) ? $stackScore['os'] : [];
         /** @var array<string, mixed> $webServer */
         $webServer = is_array($stackScore['web_server'] ?? null) ? $stackScore['web_server'] : [];
-        /** @var array<string, mixed> $storage */
-        $storage = is_array($stackScore['storage_io'] ?? null) ? $stackScore['storage_io'] : [];
 
         return [
             $this->buildPhpRow($php),
@@ -1428,7 +1425,6 @@ class BenchmarkCommand extends BaseCommand
             $this->buildDatabaseRow($db),
             $this->buildOsRow($os),
             $this->buildWebServerRow($webServer),
-            $this->buildStorageRow($storage),
         ];
     }
 
@@ -1524,18 +1520,6 @@ class BenchmarkCommand extends BaseCommand
             $this->formatStackScore((int) ($webServer['score'] ?? 0)),
             '-',
         ];
-    }
-
-    /**
-     * @param array<string, mixed> $storage
-     * @return list<string>
-     */
-    private function buildStorageRow(array $storage): array
-    {
-        $speed = (float) ($storage['write_speed'] ?? 0);
-        $info = $speed > 0 ? sprintf('%.0f MB/s write', $speed) : 'N/A';
-
-        return ['Storage I/O', $info, '', $this->formatStackScore((int) ($storage['score'] ?? 0)), '-'];
     }
 
     /**
