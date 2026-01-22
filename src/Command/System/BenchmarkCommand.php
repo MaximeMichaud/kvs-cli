@@ -401,21 +401,39 @@ class BenchmarkCommand extends BaseCommand
     {
         $commandParts = ['kvs benchmark'];
 
+        // Test mode flags
         if ($input->getOption('local') === true) {
             $commandParts[] = '--local';
         }
         if ($input->getOption('cli') === true) {
             $commandParts[] = '--cli';
         }
-        if ($input->getOption('skip-http') === true) {
-            $commandParts[] = '--skip-http';
+
+        // Custom iterations (only if non-default)
+        $dbIter = $input->getOption('db-iterations');
+        if ($dbIter !== '10') {
+            $commandParts[] = '--db-iterations=' . $dbIter;
+        }
+        $cacheIter = $input->getOption('cache-iterations');
+        if ($cacheIter !== '100') {
+            $commandParts[] = '--cache-iterations=' . $cacheIter;
+        }
+        $fileIter = $input->getOption('file-iterations');
+        if ($fileIter !== '100') {
+            $commandParts[] = '--file-iterations=' . $fileIter;
+        }
+        $cpuIter = $input->getOption('cpu-iterations');
+        if ($cpuIter !== '1000') {
+            $commandParts[] = '--cpu-iterations=' . $cpuIter;
         }
 
-        $iterations = $input->getOption('iterations');
-        if ($iterations !== false && is_int($iterations)) {
-            $commandParts[] = '--iterations=' . $iterations;
+        // HTTP runs (only if non-default)
+        $runs = $input->getOption('runs');
+        if ($runs !== '3') {
+            $commandParts[] = '--runs=' . $runs;
         }
 
+        // Export/Submit flags
         if ($input->getOption('export') !== false) {
             $commandParts[] = '--export';
         }
