@@ -33,6 +33,8 @@ class ExperimentResult
     /** @var array<string, mixed> */
     private array $configScore = [];
 
+    private ?string $commandLine = null;
+
     public function __construct(BenchmarkResult $result)
     {
         $this->id = $this->generateId();
@@ -157,6 +159,14 @@ class ExperimentResult
     }
 
     /**
+     * Set the command line used to run the benchmark
+     */
+    public function setCommandLine(string $commandLine): void
+    {
+        $this->commandLine = $commandLine;
+    }
+
+    /**
      * Export to array for JSON serialization (dashboard-ready format)
      *
      * @return array<string, mixed>
@@ -228,6 +238,7 @@ class ExperimentResult
             'metrics' => ($benchData['system_metrics'] ?? []) !== [] ? $benchData['system_metrics'] : new \stdClass(),
             'warnings' => $benchData['warnings'] ?? [],
             'total_time' => $benchData['total_time'] ?? 0,
+            'command_line' => $this->commandLine,
         ];
     }
 

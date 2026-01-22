@@ -348,6 +348,9 @@ class BenchmarkCommand extends BaseCommand
         $experiment = new ExperimentResult($result);
         $experiment->setSystemDetection($detection);
 
+        // Capture command line options for reproducibility
+        $experiment->setCommandLine($this->buildCommandLine($input));
+
         // Calculate and set additional scores for API submission
         $cpuCores = 1;
         if (isset($detection['cpu']) && is_array($detection['cpu'])) {
@@ -389,6 +392,38 @@ class BenchmarkCommand extends BaseCommand
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Build command line string from input options
+     */
+    private function buildCommandLine(InputInterface $input): string
+    {
+        $commandParts = ['kvs benchmark'];
+
+        if ($input->getOption('local') === true) {
+            $commandParts[] = '--local';
+        }
+        if ($input->getOption('cli') === true) {
+            $commandParts[] = '--cli';
+        }
+        if ($input->getOption('skip-http') === true) {
+            $commandParts[] = '--skip-http';
+        }
+
+        $iterations = $input->getOption('iterations');
+        if ($iterations !== false && is_int($iterations)) {
+            $commandParts[] = '--iterations=' . $iterations;
+        }
+
+        if ($input->getOption('export') !== false) {
+            $commandParts[] = '--export';
+        }
+        if ($input->getOption('submit') === true) {
+            $commandParts[] = '--submit';
+        }
+
+        return implode(' ', $commandParts);
     }
 
     /**
