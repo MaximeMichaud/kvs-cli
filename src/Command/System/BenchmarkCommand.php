@@ -122,10 +122,16 @@ class BenchmarkCommand extends BaseCommand
                 '3'
             )
             ->addOption(
-                'localhost',
+                'local',
                 'l',
                 InputOption::VALUE_NONE,
-                'Test via 127.0.0.1 with Host header (bypasses CDN/Cloudflare)'
+                'Test local server via 127.0.0.1 (bypass DNS, CDN, proxy)'
+            )
+            ->addOption(
+                'localhost',
+                null,
+                InputOption::VALUE_NONE,
+                'Alias for --local'
             )
             ->addOption(
                 'submit',
@@ -134,10 +140,10 @@ class BenchmarkCommand extends BaseCommand
                 'Submit results to the benchmark API'
             )
             ->addOption(
-                'local',
+                'cli',
                 null,
                 InputOption::VALUE_NONE,
-                'Force local CLI execution (skip server-side FPM benchmarks)'
+                'Force CLI execution (skip server-side FPM benchmarks)'
             )
             ->addOption(
                 'remote-timeout',
@@ -203,7 +209,8 @@ class BenchmarkCommand extends BaseCommand
         $runsOption = $input->getOption('runs');
         $httpRuns = is_numeric($runsOption) ? max(1, (int)$runsOption) : 3;
 
-        $useLocalhost = $input->getOption('localhost') === true;
+        // --local or --localhost: test via 127.0.0.1 (bypass DNS/CDN)
+        $useLocalhost = $input->getOption('local') === true || $input->getOption('localhost') === true;
 
         $exportPath = $input->getOption('export');
         $comparePath = $input->getOption('compare');
@@ -236,7 +243,7 @@ class BenchmarkCommand extends BaseCommand
         }
 
         // Check for remote execution options
-        $forceLocal = $input->getOption('local') === true;
+        $forceCli = $input->getOption('cli') === true;
         $remoteTimeoutOption = $input->getOption('remote-timeout');
         $remoteTimeout = is_numeric($remoteTimeoutOption) ? max(30, (int) $remoteTimeoutOption) : 120;
 
@@ -255,24 +262,27 @@ class BenchmarkCommand extends BaseCommand
             $useLocalhost
         );
 
-        // Enable remote execution if available and not forced local
+        // Enable remote execution if available and not forced to CLI
         $useRemote = false;
-        if (!$forceLocal && $baseUrl !== '') {
+        if (!$forceCli && $baseUrl !== '') {
             $remoteClient = new RemoteBenchmarkClient($this->config);
             if ($remoteClient->isAvailable()) {
                 $remoteClient->setIterations($cpuIterations, $cacheIterations, $fileIterations, $dbIterations);
                 $remoteClient->setTimeout($remoteTimeout);
                 $runner->setRemoteExecution($remoteClient);
                 $useRemote = true;
-                $this->io()->text('<info>Running benchmarks on KVS server (PHP-FPM) for accurate results</info>');
-                $this->io()->text('<comment>Use --local to force CLI execution</comment>');
+                $this->io()->text('<info>Running server-side benchmarks (PHP-FPM)</info>');
+                if ($useLocalhost) {
+                    $this->io()->text('<info>Mode: Local server (127.0.0.1 - bypass DNS/CDN/proxy)</info>');
+                }
+                $this->io()->text('<comment>Use --cli to force CLI execution</comment>');
                 $this->io()->newLine();
             }
         }
 
         if (!$useRemote) {
-            $this->io()->text('<comment>Running benchmarks locally (CLI PHP)</comment>');
-            if (!$forceLocal) {
+            $this->io()->text('<comment>Running CLI benchmarks (no web server)</comment>');
+            if (!$forceCli) {
                 $this->io()->text('<comment>Tip: Configure project_url in KVS for server-side benchmarks</comment>');
             }
             $this->io()->newLine();
