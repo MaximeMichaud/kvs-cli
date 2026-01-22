@@ -218,7 +218,11 @@ header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
 
-// Set execution limits
+// Capture original limits BEFORE modifying them
+\$originalMaxExecTime = (int) ini_get('max_execution_time');
+\$originalMemoryLimit = ini_get('memory_limit');
+
+// Set execution limits for benchmark
 set_time_limit({$timeout});
 ini_set('memory_limit', '256M');
 error_reporting(E_ALL);
@@ -231,8 +235,8 @@ ini_set('display_errors', '0');
         'sapi' => PHP_SAPI,
         'opcache_enabled' => function_exists('opcache_get_status') && filter_var(ini_get('opcache.enable'), FILTER_VALIDATE_BOOLEAN),
         'jit_enabled' => false,
-        'memory_limit' => ini_get('memory_limit'),
-        'max_execution_time' => (int) ini_get('max_execution_time'),
+        'memory_limit' => \$originalMemoryLimit,
+        'max_execution_time' => \$originalMaxExecTime,
     ],
     'cpu' => [],
     'cache' => ['connected' => false, 'results' => []],

@@ -250,6 +250,7 @@ class BenchmarkRunner
             $systemInfo['opcache'] = $phpInfo['opcache_enabled'] ?? false;
             $systemInfo['jit'] = $phpInfo['jit_enabled'] ?? false;
             $systemInfo['memory_limit'] = $phpInfo['memory_limit'] ?? ini_get('memory_limit');
+            $systemInfo['max_execution_time'] = $phpInfo['max_execution_time'] ?? ini_get('max_execution_time');
         }
 
         $systemInfo['benchmark_mode'] = 'fpm';
