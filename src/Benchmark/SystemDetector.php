@@ -130,10 +130,7 @@ class SystemDetector
      */
     private function detectAmdGeneration(string $modelName): string
     {
-        // Zen 5 - Strix Point APUs (Ryzen AI 300 series, Ryzen 7/9 2xx/3xx)
-        if (preg_match('/Ryzen\s+(AI\s+)?\d+\s+[23]\d{2}/i', $modelName) === 1) {
-            return 'Zen 5 (Strix Point)';
-        }
+        // Check 4-digit series FIRST (more specific) before 3-digit APU series
 
         // Zen 5 (2024+) - Desktop (Ryzen 9000 series)
         if (preg_match('/Ryzen\s+\d+\s+9\d{3}/i', $modelName) === 1) {
@@ -162,6 +159,12 @@ class SystemDetector
         }
         if (preg_match('/EPYC\s+7\d{2}2/i', $modelName) === 1) {
             return 'Zen 2 (Rome)';
+        }
+
+        // Zen 5 - Strix Point APUs (Ryzen AI 300 series, Ryzen 7/9 2xx/3xx)
+        // MUST come after 3000/5000/7000/9000 series to avoid false matches
+        if (preg_match('/Ryzen\s+(AI\s+)?\d+\s+[23]\d{2}(?![0-9])/i', $modelName) === 1) {
+            return 'Zen 5 (Strix Point)';
         }
 
         // Zen+ (Ryzen 2000 series)
