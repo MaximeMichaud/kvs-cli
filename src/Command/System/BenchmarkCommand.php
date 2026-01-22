@@ -307,7 +307,9 @@ class BenchmarkCommand extends BaseCommand
         $detection = $detector->detect();
 
         // Stack Score (software freshness - PHP, DB, OS versions vs EOL)
-        $stackScorer = new StackScorer($db);
+        $systemInfo = $result->getSystemInfo();
+        $ioResults = $result->getFileIOResults();
+        $stackScorer = new StackScorer($db, $systemInfo, $ioResults);
         $stackScore = $stackScorer->calculate();
 
         // IonCube detection (affects JIT compatibility)
@@ -959,7 +961,7 @@ class BenchmarkCommand extends BaseCommand
             $this->io()->text('<fg=yellow>* Score may be inflated due to insufficient database data</>');
         }
         $this->io()->text('<fg=gray>Efficiency Score: Performance normalized per CPU core (higher = better)</>');
-        $this->io()->text('<fg=gray>Stack Score: Software freshness (100 = all actively maintained)</>');
+        $this->io()->text('<fg=gray>Stack Score: Software stack quality (PHP, FFmpeg, DB, OS, web server, I/O)</>');
         $this->io()->text('<fg=gray>Config Score: KVS optimization level (100 = fully optimized)</>');
         $this->io()->newLine();
     }
@@ -1311,41 +1313,11 @@ class BenchmarkCommand extends BaseCommand
      */
     private function displayStackScoreSection(array $stackScore): string
     {
-        $this->io()->writeln('<fg=white;options=bold>STACK SCORE</> <fg=gray>(Software Freshness)</>');
+        $this->io()->writeln('<fg=white;options=bold>STACK SCORE</> <fg=gray>(Software & Infrastructure)</>');
         $this->io()->newLine();
 
-        // Extract values with proper types - ensure arrays
-        /** @var array<string, mixed> $php */
-        $php = is_array($stackScore['php'] ?? null) ? $stackScore['php'] : [];
-        /** @var array<string, mixed> $db */
-        $db = is_array($stackScore['database'] ?? null) ? $stackScore['database'] : [];
-        /** @var array<string, mixed> $os */
-        $os = is_array($stackScore['os'] ?? null) ? $stackScore['os'] : [];
-
-        $phpVersion = (string) ($php['version'] ?? 'Unknown');
-        $phpStatus = (string) ($php['status'] ?? 'unknown');
-        $phpScoreVal = (int) ($php['score'] ?? 0);
-        $phpEol = (string) ($php['eol_date'] ?? '-');
-
-        $dbVersion = (string) ($db['version'] ?? 'Unknown');
-        $dbType = (string) ($db['type'] ?? 'unknown');
-        $dbStatus = (string) ($db['status'] ?? 'unknown');
-        $dbScoreVal = (int) ($db['score'] ?? 0);
-        $dbEol = (string) ($db['eol_date'] ?? '-');
-
-        $osVersion = (string) ($os['version'] ?? 'Unknown');
-        $osName = (string) ($os['name'] ?? 'Unknown');
-        $osStatus = (string) ($os['status'] ?? 'unknown');
-        $osScoreVal = (int) ($os['score'] ?? 0);
-        $osEol = (string) ($os['eol_date'] ?? '-');
-
-        $stackRows = [
-            ['PHP', $phpVersion, StackScorer::getStatusLabel($phpStatus), $this->formatStackScore($phpScoreVal), $phpEol],
-            ['Database', $dbVersion . ' (' . $dbType . ')', StackScorer::getStatusLabel($dbStatus), $this->formatStackScore($dbScoreVal), $dbEol],
-            ['OS', $osName . ' ' . $osVersion, StackScorer::getStatusLabel($osStatus), $this->formatStackScore($osScoreVal), $osEol],
-        ];
-
-        $this->renderTable(['Component', 'Version', 'Status', 'Score', 'EOL Date'], $stackRows);
+        $stackRows = $this->buildStackScoreRows($stackScore);
+        $this->renderTable(['Component', 'Info', 'Status', 'Score', 'EOL Date'], $stackRows);
 
         $stackTotal = (int) ($stackScore['total'] ?? 0);
         $rating = (string) ($stackScore['rating'] ?? '');
@@ -1357,10 +1329,163 @@ class BenchmarkCommand extends BaseCommand
             $rating
         ));
 
-        // Display recommendations if any
+        $this->displayStackRecommendations($stackScore);
+        $this->io()->newLine();
+
+        return $stackColor;
+    }
+
+    /**
+     * Build stack score table rows
+     *
+     * @param array<string, mixed> $stackScore
+     * @return list<list<string>>
+     */
+    private function buildStackScoreRows(array $stackScore): array
+    {
+        /** @var array<string, mixed> $php */
+        $php = is_array($stackScore['php'] ?? null) ? $stackScore['php'] : [];
+        /** @var array<string, mixed> $phpConfig */
+        $phpConfig = is_array($stackScore['php_config'] ?? null) ? $stackScore['php_config'] : [];
+        /** @var array<string, mixed> $ffmpeg */
+        $ffmpeg = is_array($stackScore['ffmpeg'] ?? null) ? $stackScore['ffmpeg'] : [];
+        /** @var array<string, mixed> $db */
+        $db = is_array($stackScore['database'] ?? null) ? $stackScore['database'] : [];
+        /** @var array<string, mixed> $os */
+        $os = is_array($stackScore['os'] ?? null) ? $stackScore['os'] : [];
+        /** @var array<string, mixed> $webServer */
+        $webServer = is_array($stackScore['web_server'] ?? null) ? $stackScore['web_server'] : [];
+        /** @var array<string, mixed> $storage */
+        $storage = is_array($stackScore['storage_io'] ?? null) ? $stackScore['storage_io'] : [];
+
+        return [
+            $this->buildPhpRow($php),
+            $this->buildPhpConfigRow($phpConfig),
+            $this->buildFfmpegRow($ffmpeg),
+            $this->buildDatabaseRow($db),
+            $this->buildOsRow($os),
+            $this->buildWebServerRow($webServer),
+            $this->buildStorageRow($storage),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $php
+     * @return list<string>
+     */
+    private function buildPhpRow(array $php): array
+    {
+        return [
+            'PHP Version',
+            (string) ($php['version'] ?? 'Unknown'),
+            StackScorer::getStatusLabel((string) ($php['status'] ?? 'unknown')),
+            $this->formatStackScore((int) ($php['score'] ?? 0)),
+            (string) ($php['eol_date'] ?? '-'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $phpConfig
+     * @return list<string>
+     */
+    private function buildPhpConfigRow(array $phpConfig): array
+    {
+        $opcacheEnabled = isset($phpConfig['opcache']) && $phpConfig['opcache'] === true;
+        $info = sprintf(
+            'OPcache: %s | Memory: %s',
+            $opcacheEnabled ? 'On' : 'Off',
+            (string) ($phpConfig['memory_limit'] ?? 'unknown')
+        );
+
+        return ['PHP Config', $info, '', $this->formatStackScore((int) ($phpConfig['score'] ?? 0)), '-'];
+    }
+
+    /**
+     * @param array<string, mixed> $ffmpeg
+     * @return list<string>
+     */
+    private function buildFfmpegRow(array $ffmpeg): array
+    {
+        $installed = (bool) ($ffmpeg['installed'] ?? false);
+        $status = $installed ? '<fg=green>Installed</>' : '<fg=red>Missing</>';
+
+        return [
+            'FFmpeg',
+            (string) ($ffmpeg['version'] ?? 'not installed'),
+            $status,
+            $this->formatStackScore((int) ($ffmpeg['score'] ?? 0)),
+            '-',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $db
+     * @return list<string>
+     */
+    private function buildDatabaseRow(array $db): array
+    {
+        return [
+            'Database',
+            (string) ($db['version'] ?? 'Unknown') . ' (' . (string) ($db['type'] ?? 'unknown') . ')',
+            StackScorer::getStatusLabel((string) ($db['status'] ?? 'unknown')),
+            $this->formatStackScore((int) ($db['score'] ?? 0)),
+            (string) ($db['eol_date'] ?? '-'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $os
+     * @return list<string>
+     */
+    private function buildOsRow(array $os): array
+    {
+        return [
+            'OS',
+            (string) ($os['name'] ?? 'Unknown') . ' ' . (string) ($os['version'] ?? 'Unknown'),
+            StackScorer::getStatusLabel((string) ($os['status'] ?? 'unknown')),
+            $this->formatStackScore((int) ($os['score'] ?? 0)),
+            (string) ($os['eol_date'] ?? '-'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $webServer
+     * @return list<string>
+     */
+    private function buildWebServerRow(array $webServer): array
+    {
+        return [
+            'Web Server',
+            (string) ($webServer['name'] ?? 'Unknown'),
+            '',
+            $this->formatStackScore((int) ($webServer['score'] ?? 0)),
+            '-',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $storage
+     * @return list<string>
+     */
+    private function buildStorageRow(array $storage): array
+    {
+        $speed = (float) ($storage['write_speed'] ?? 0);
+        $info = $speed > 0 ? sprintf('%.0f MB/s write', $speed) : 'N/A';
+
+        return ['Storage I/O', $info, '', $this->formatStackScore((int) ($storage['score'] ?? 0)), '-'];
+    }
+
+    /**
+     * Display stack score recommendations
+     *
+     * @param array<string, mixed> $stackScore
+     */
+    private function displayStackRecommendations(array $stackScore): void
+    {
         $recs = $stackScore['recommendations'] ?? [];
         /** @var list<string> $recommendations */
         $recommendations = is_array($recs) ? $recs : [];
+
         if ($recommendations !== []) {
             $this->io()->newLine();
             $this->io()->text('<fg=cyan;options=bold>Recommendations:</>');
@@ -1368,10 +1493,6 @@ class BenchmarkCommand extends BaseCommand
                 $this->io()->text(sprintf('  → %s', $recommendation));
             }
         }
-
-        $this->io()->newLine();
-
-        return $stackColor;
     }
 
     /**

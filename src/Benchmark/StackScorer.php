@@ -26,9 +26,21 @@ class StackScorer
 
     private ?\PDO $db = null;
 
-    public function __construct(?\PDO $db = null)
+    /** @var array<string, mixed> */
+    private array $systemInfo = [];
+
+    /** @var array<string, mixed> */
+    private array $ioStats = [];
+
+    /**
+     * @param array<string, mixed> $systemInfo
+     * @param array<string, mixed> $ioStats
+     */
+    public function __construct(?\PDO $db = null, array $systemInfo = [], array $ioStats = [])
     {
         $this->db = $db;
+        $this->systemInfo = $systemInfo;
+        $this->ioStats = $ioStats;
     }
 
     /**
@@ -37,8 +49,12 @@ class StackScorer
      * @return array{
      *     total: int,
      *     php: array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
+     *     php_config: array{opcache: bool, memory_limit: string, max_execution_time: string, score: int, issues: list<string>},
+     *     ffmpeg: array{installed: bool, version: string, score: int, issues: list<string>},
      *     database: array{version: string, type: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
      *     os: array{version: string, name: string, status: string, score: int, eol_date: ?string, recommendation: ?string},
+     *     web_server: array{name: string, type: string, score: int, recommendation: ?string},
+     *     storage_io: array{write_speed: float, score: int},
      *     rating: string,
      *     recommendations: list<string>
      * }
@@ -46,14 +62,22 @@ class StackScorer
     public function calculate(): array
     {
         $phpScore = $this->scorePhp();
+        $phpConfigScore = $this->scorePhpConfig();
+        $ffmpegScore = $this->scoreFfmpeg();
         $dbScore = $this->scoreDatabase();
         $osScore = $this->scoreOs();
+        $webServerScore = $this->scoreWebServer();
+        $storageScore = $this->scoreStorageIo();
 
-        // Weighted average: PHP 40%, Database 40%, OS 20%
+        // Weighted average: PHP 25%, PHP Config 15%, FFmpeg 15%, DB 20%, OS 10%, WebServer 10%, Storage 5%
         $totalScore = (int) (
-            ($phpScore['score'] * 0.4) +
-            ($dbScore['score'] * 0.4) +
-            ($osScore['score'] * 0.2)
+            ($phpScore['score'] * 0.25) +
+            ($phpConfigScore['score'] * 0.15) +
+            ($ffmpegScore['score'] * 0.15) +
+            ($dbScore['score'] * 0.20) +
+            ($osScore['score'] * 0.10) +
+            ($webServerScore['score'] * 0.10) +
+            ($storageScore['score'] * 0.05)
         );
 
         // Collect recommendations
@@ -61,18 +85,31 @@ class StackScorer
         if ($phpScore['recommendation'] !== null) {
             $recommendations[] = $phpScore['recommendation'];
         }
+        foreach ($phpConfigScore['issues'] as $issue) {
+            $recommendations[] = $issue;
+        }
+        foreach ($ffmpegScore['issues'] as $issue) {
+            $recommendations[] = $issue;
+        }
         if ($dbScore['recommendation'] !== null) {
             $recommendations[] = $dbScore['recommendation'];
         }
         if ($osScore['recommendation'] !== null) {
             $recommendations[] = $osScore['recommendation'];
         }
+        if ($webServerScore['recommendation'] !== null) {
+            $recommendations[] = $webServerScore['recommendation'];
+        }
 
         return [
             'total' => $totalScore,
             'php' => $phpScore,
+            'php_config' => $phpConfigScore,
+            'ffmpeg' => $ffmpegScore,
             'database' => $dbScore,
             'os' => $osScore,
+            'web_server' => $webServerScore,
+            'storage_io' => $storageScore,
             'rating' => $this->getRating($totalScore),
             'recommendations' => $recommendations,
         ];
@@ -281,6 +318,301 @@ class StackScorer
             'score' => $scored['score'],
             'eol_date' => $scored['eol_date'],
             'recommendation' => $recommendation,
+        ];
+    }
+
+    /**
+     * Score PHP configuration (OPcache, memory_limit, max_execution_time)
+     *
+     * @return array{opcache: bool, memory_limit: string, max_execution_time: string, score: int, issues: list<string>}
+     */
+    private function scorePhpConfig(): array
+    {
+        $opcacheEnabled = isset($this->systemInfo['opcache']) && $this->systemInfo['opcache'] === true;
+        $memoryLimit = $this->systemInfo['memory_limit'] ?? 'unknown';
+        $maxExecTime = $this->systemInfo['max_execution_time'] ?? 'unknown';
+
+        $score = 100;
+        $issues = [];
+
+        // OPcache check (-15 pts if disabled)
+        if ($opcacheEnabled === false) {
+            $score -= 15;
+            $issues[] = 'OPcache is disabled (performance impact: -15%)';
+        }
+
+        // Memory limit check (-15 pts if < 256M)
+        if (is_string($memoryLimit) && $memoryLimit !== 'unknown' && $memoryLimit !== '-1') {
+            $memoryBytes = $this->parseMemoryLimit($memoryLimit);
+            if ($memoryBytes > 0 && $memoryBytes < 256 * 1024 * 1024) {
+                $score -= 15;
+                $issues[] = "memory_limit is {$memoryLimit} (recommended: 256M+)";
+            }
+        }
+
+        // Max execution time check (-10 pts if < 30)
+        if (is_numeric($maxExecTime)) {
+            $maxExecTimeInt = (int) $maxExecTime;
+            if ($maxExecTimeInt > 0 && $maxExecTimeInt < 30) {
+                $score -= 10;
+                $issues[] = "max_execution_time is {$maxExecTime}s (recommended: 30s+)";
+            }
+        }
+
+        return [
+            'opcache' => $opcacheEnabled,
+            'memory_limit' => is_string($memoryLimit) ? $memoryLimit : 'unknown',
+            'max_execution_time' => is_string($maxExecTime) || is_int($maxExecTime) ? (string) $maxExecTime : 'unknown',
+            'score' => max(0, $score),
+            'issues' => $issues,
+        ];
+    }
+
+    /**
+     * Score web server type
+     *
+     * @return array{name: string, type: string, score: int, recommendation: ?string}
+     */
+    private function scoreWebServer(): array
+    {
+        $serverSoftwareRaw = $this->systemInfo['server_software'] ?? '';
+        $serverSoftware = is_string($serverSoftwareRaw) ? $serverSoftwareRaw : '';
+        $phpSapiRaw = $this->systemInfo['php_sapi'] ?? PHP_SAPI;
+        $phpSapi = is_string($phpSapiRaw) ? $phpSapiRaw : PHP_SAPI;
+
+        if ($serverSoftware === '') {
+            return [
+                'name' => 'Unknown',
+                'type' => 'unknown',
+                'score' => 80,
+                'recommendation' => null,
+            ];
+        }
+
+        $serverLower = strtolower($serverSoftware);
+
+        // nginx, Caddy, LiteSpeed = 100
+        if (str_contains($serverLower, 'nginx')) {
+            return [
+                'name' => 'nginx',
+                'type' => 'nginx',
+                'score' => 100,
+                'recommendation' => null,
+            ];
+        }
+
+        if (str_contains($serverLower, 'caddy')) {
+            return [
+                'name' => 'Caddy',
+                'type' => 'caddy',
+                'score' => 100,
+                'recommendation' => null,
+            ];
+        }
+
+        if (str_contains($serverLower, 'litespeed')) {
+            return [
+                'name' => 'LiteSpeed',
+                'type' => 'litespeed',
+                'score' => 100,
+                'recommendation' => null,
+            ];
+        }
+
+        // Apache detection
+        if (str_contains($serverLower, 'apache')) {
+            // Check if using PHP-FPM or mod_php
+            $isFpm = str_contains(strtolower($phpSapi), 'fpm');
+
+            if ($isFpm) {
+                return [
+                    'name' => 'Apache + PHP-FPM',
+                    'type' => 'apache-fpm',
+                    'score' => 50,
+                    'recommendation' => 'Consider nginx for better performance with video streaming',
+                ];
+            }
+
+            return [
+                'name' => 'Apache + mod_php',
+                'type' => 'apache-modphp',
+                'score' => 20,
+                'recommendation' => 'Switch to nginx or use PHP-FPM for significant performance improvement',
+            ];
+        }
+
+        return [
+            'name' => $serverSoftware,
+            'type' => 'other',
+            'score' => 80,
+            'recommendation' => null,
+        ];
+    }
+
+    /**
+     * Score FFmpeg installation and version
+     *
+     * @return array{installed: bool, version: string, score: int, issues: list<string>}
+     */
+    private function scoreFfmpeg(): array
+    {
+        $ffmpegInfo = $this->detectFfmpeg();
+
+        if ($ffmpegInfo === null) {
+            return [
+                'installed' => false,
+                'version' => 'not installed',
+                'score' => 0,
+                'issues' => ['FFmpeg is not installed (required for video processing)'],
+            ];
+        }
+
+        $version = $ffmpegInfo['version'];
+        $major = $ffmpegInfo['major'];
+        $issues = [];
+        $score = 100;
+
+        // Score based on version
+        if ($major >= 7) {
+            $score = 100;
+        } elseif ($major >= 6) {
+            $score = 100;
+        } elseif ($major >= 5) {
+            $score = 90;
+        } elseif ($major >= 4) {
+            $score = 70;
+            $issues[] = "FFmpeg {$version} is outdated (recommend 5.x or 6.x)";
+        } else {
+            $score = 40;
+            $issues[] = "FFmpeg {$version} is very outdated (recommend upgrading to 6.x)";
+        }
+
+        // Check for critical codecs
+        $missingCodecs = [];
+        if (!in_array('libx264', $ffmpegInfo['codecs'], true)) {
+            $missingCodecs[] = 'libx264';
+            $score -= 10;
+        }
+        if (!in_array('libx265', $ffmpegInfo['codecs'], true)) {
+            $missingCodecs[] = 'libx265';
+            $score -= 10;
+        }
+        if (!in_array('aac', $ffmpegInfo['codecs'], true)) {
+            $missingCodecs[] = 'aac';
+            $score -= 10;
+        }
+
+        if ($missingCodecs !== []) {
+            $issues[] = 'Missing codecs: ' . implode(', ', $missingCodecs);
+        }
+
+        return [
+            'installed' => true,
+            'version' => $version,
+            'score' => max(0, $score),
+            'issues' => $issues,
+        ];
+    }
+
+    /**
+     * Score storage I/O based on benchmark results
+     *
+     * @return array{write_speed: float, score: int}
+     */
+    private function scoreStorageIo(): array
+    {
+        // Get write speed from I/O stats (MB/s)
+        $writeSpeed = 0.0;
+
+        if (isset($this->ioStats['file_write']) && is_array($this->ioStats['file_write'])) {
+            $writeResult = $this->ioStats['file_write'];
+            if (isset($writeResult['avg_time']) && is_numeric($writeResult['avg_time'])) {
+                $avgTimeMs = (float) $writeResult['avg_time'];
+                if ($avgTimeMs > 0) {
+                    // Assume 10MB write (typical test size)
+                    $writeSpeed = (10.0 / $avgTimeMs) * 1000;
+                }
+            }
+        }
+
+        // Score based on write speed
+        $score = match (true) {
+            $writeSpeed >= 1000 => 100,
+            $writeSpeed >= 500 => 95,
+            $writeSpeed >= 300 => 85,
+            $writeSpeed >= 100 => 75,
+            $writeSpeed >= 50 => 60,
+            default => 40,
+        };
+
+        return [
+            'write_speed' => round($writeSpeed, 2),
+            'score' => $score,
+        ];
+    }
+
+    /**
+     * Parse memory limit string to bytes
+     */
+    private function parseMemoryLimit(string $limit): int
+    {
+        $limit = trim($limit);
+        $unit = strtoupper(substr($limit, -1));
+        $value = (int) substr($limit, 0, -1);
+
+        return match ($unit) {
+            'G' => $value * 1024 * 1024 * 1024,
+            'M' => $value * 1024 * 1024,
+            'K' => $value * 1024,
+            default => (int) $limit,
+        };
+    }
+
+    /**
+     * Detect FFmpeg installation and version
+     *
+     * @return array{version: string, major: int, codecs: list<string>}|null
+     */
+    private function detectFfmpeg(): ?array
+    {
+        $output = [];
+        $returnCode = 0;
+        @exec('ffmpeg -version 2>&1', $output, $returnCode);
+
+        if ($returnCode !== 0 || $output === []) {
+            return null;
+        }
+
+        $version = 'unknown';
+        $major = 0;
+
+        // Parse version from first line (e.g., "ffmpeg version 6.0")
+        if (preg_match('/ffmpeg version (\d+\.\d+)/', $output[0], $matches) === 1) {
+            $version = $matches[1];
+            $major = (int) explode('.', $version)[0];
+        }
+
+        // Detect codecs
+        $codecOutput = [];
+        @exec('ffmpeg -codecs 2>&1', $codecOutput);
+
+        $codecs = [];
+        foreach ($codecOutput as $line) {
+            if (str_contains($line, 'libx264')) {
+                $codecs[] = 'libx264';
+            }
+            if (str_contains($line, 'libx265')) {
+                $codecs[] = 'libx265';
+            }
+            if (str_contains($line, 'aac') && !str_contains($line, 'aac_fixed')) {
+                $codecs[] = 'aac';
+            }
+        }
+
+        return [
+            'version' => $version,
+            'major' => $major,
+            'codecs' => array_values(array_unique($codecs)),
         ];
     }
 

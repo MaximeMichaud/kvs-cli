@@ -237,6 +237,7 @@ ini_set('display_errors', '0');
         'jit_enabled' => false,
         'memory_limit' => \$originalMemoryLimit,
         'max_execution_time' => \$originalMaxExecTime,
+        'server_software' => \$_SERVER['SERVER_SOFTWARE'] ?? 'unknown',
     ],
     'cpu' => [],
     'cache' => ['connected' => false, 'results' => []],
