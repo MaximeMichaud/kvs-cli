@@ -439,18 +439,34 @@ EOT
         $docker = $this->targetDocker;
         $useDocker = $docker !== null && $docker->isKvsInDocker();
 
-        $directories = [
-            'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
-            'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
-            'Albums' => Constants::CONTENT_ALBUMS_SOURCES,
-            'Categories' => Constants::CONTENT_CATEGORIES,
-            'Models' => Constants::CONTENT_MODELS,
-            'DVDs' => Constants::CONTENT_DVDS,
-            'Avatars' => Constants::CONTENT_AVATARS,
+        // Expected KVS directories with their labels
+        $expectedDirs = [
+            Constants::CONTENT_VIDEOS_SOURCES => 'Videos Sources',
+            Constants::CONTENT_VIDEOS_SCREENSHOTS => 'Screenshots',
+            Constants::CONTENT_ALBUMS_SOURCES => 'Albums',
+            Constants::CONTENT_CATEGORIES => 'Categories',
+            Constants::CONTENT_MODELS => 'Models',
+            Constants::CONTENT_DVDS => 'DVDs',
+            Constants::CONTENT_AVATARS => 'Avatars',
         ];
 
-        foreach ($directories as $label => $dir) {
+        // Scan all actual directories in content path
+        $actualDirs = [];
+        $handle = opendir($contentPath);
+        if ($handle !== false) {
+            while (($entry = readdir($handle)) !== false) {
+                if ($entry !== '.' && $entry !== '..' && is_dir($contentPath . '/' . $entry)) {
+                    $actualDirs[] = $entry;
+                }
+            }
+            closedir($handle);
+        }
+        sort($actualDirs);
+
+        // Process each actual directory
+        foreach ($actualDirs as $dir) {
             $path = $contentPath . '/' . $dir;
+            $label = $expectedDirs[$dir] ?? ucfirst(str_replace('_', ' ', $dir));
 
             if ($useDocker) {
                 $info = $this->getDirectorySizeDocker($path);
