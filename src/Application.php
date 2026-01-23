@@ -223,6 +223,7 @@ class Application extends BaseApplication
             'self-update', 'selfupdate', 'self:update',
             'completion',
             'cli:info', 'info',
+            'migrate:import', 'import',
         ];
 
         return in_array($command, $standaloneCommands, true) || $isVersionRequest || $isHelpRequest;
