@@ -45,6 +45,28 @@ class ImportCommand extends Command
         return is_string($value) ? $value : null;
     }
 
+    /**
+     * @param \Symfony\Component\Console\Helper\QuestionHelper $helper
+     */
+    private function askSslChoice($helper, InputInterface $input, OutputInterface $output): string
+    {
+        $this->io()->text([
+            'SSL Certificate options:',
+            "  [1] Let's Encrypt (recommended for production)",
+            '  [2] ZeroSSL (alternative CA)',
+            '  [3] Self-signed (for testing only)',
+        ]);
+        $question = new Question('SSL choice [1]: ', '1');
+        $question->setValidator(function (?string $value): string {
+            if ($value === null || !in_array($value, ['1', '2', '3'], true)) {
+                throw new \RuntimeException('Please enter 1, 2, or 3');
+            }
+            return $value;
+        });
+        $result = $helper->ask($input, $output, $question);
+        return is_string($result) ? $result : '1';
+    }
+
     protected function configure(): void
     {
         $this
@@ -52,7 +74,7 @@ class ImportCommand extends Command
             ->addOption('domain', 'd', InputOption::VALUE_REQUIRED, 'Target domain name')
             ->addOption('email', 'e', InputOption::VALUE_REQUIRED, 'Admin email for SSL certificates')
             ->addOption('target', 't', InputOption::VALUE_REQUIRED, 'KVS-Install directory', self::KVS_INSTALL_DIR)
-            ->addOption('ssl', null, InputOption::VALUE_REQUIRED, 'SSL: 1=letsencrypt, 2=zerossl, 3=selfsigned', '3')
+            ->addOption('ssl', null, InputOption::VALUE_REQUIRED, 'SSL: 1=letsencrypt, 2=zerossl, 3=selfsigned')
             ->addOption('db', null, InputOption::VALUE_REQUIRED, 'MariaDB: 1=11.8, 2=11.4, 3=10.11, 4=10.6', '1')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompts')
             ->setHelp(<<<'EOT'
@@ -82,7 +104,7 @@ This command:
 <info>SSL options:</info>
   --ssl=1  Let's Encrypt (requires valid DNS + ports 80/443)
   --ssl=2  ZeroSSL (alternative CA)
-  --ssl=3  Self-signed (default, for testing)
+  --ssl=3  Self-signed (for testing only)
 
 <info>Requirements:</info>
   • Docker and Docker Compose
@@ -106,7 +128,7 @@ EOT
         $domain = $this->getStringOption($input, 'domain');
         $email = $this->getStringOption($input, 'email');
         $targetDir = $this->getStringOption($input, 'target') ?? self::KVS_INSTALL_DIR;
-        $sslChoice = $this->getStringOption($input, 'ssl') ?? '3';
+        $sslChoice = $this->getStringOption($input, 'ssl');
         $dbChoice = $this->getStringOption($input, 'db') ?? '1';
         $skipConfirm = $input->getOption('yes') === true;
 
@@ -178,6 +200,10 @@ EOT
                 return Command::FAILURE;
             }
             $email = $result;
+        }
+
+        if ($sslChoice === null) {
+            $sslChoice = $this->askSslChoice($helper, $input, $output);
         }
 
         // Step 5: Show import plan
