@@ -275,26 +275,29 @@ EOT
         $destDir = $tempDir . '/content';
         mkdir($destDir, 0755, true);
 
-        // List of content subdirectories to copy
-        $dirs = [
-            Constants::CONTENT_VIDEOS_SOURCES,
-            Constants::CONTENT_VIDEOS_SCREENSHOTS,
-            Constants::CONTENT_ALBUMS_SOURCES,
-            Constants::CONTENT_CATEGORIES,
-            Constants::CONTENT_MODELS,
-            Constants::CONTENT_DVDS,
-            Constants::CONTENT_AVATARS,
-        ];
+        // Scan all actual subdirectories in content path
+        $dirs = [];
+        $handle = opendir($contentPath);
+        if ($handle !== false) {
+            while (($entry = readdir($handle)) !== false) {
+                if ($entry !== '.' && $entry !== '..' && is_dir($contentPath . '/' . $entry)) {
+                    $dirs[] = $entry;
+                }
+            }
+            closedir($handle);
+        }
+        sort($dirs);
+
+        if ($dirs === []) {
+            $this->io()->warning('No subdirectories found in: ' . $contentPath);
+            return null;
+        }
 
         $totalFiles = 0;
         $totalSize = 0;
 
         foreach ($dirs as $dir) {
             $srcPath = $contentPath . '/' . $dir;
-            if (!is_dir($srcPath)) {
-                continue;
-            }
-
             $destPath = $destDir . '/' . $dir;
             $this->io()->text("Copying {$dir}...");
 
