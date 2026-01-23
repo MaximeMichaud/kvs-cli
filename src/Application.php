@@ -55,6 +55,7 @@ use KVS\CLI\Command\CliInfoCommand;
 use KVS\CLI\Command\Migrate\ScanCommand;
 use KVS\CLI\Command\Migrate\PackageCommand;
 use KVS\CLI\Command\Migrate\ToDockerCommand;
+use KVS\CLI\Command\Migrate\ImportCommand as MigrateImportCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
 use KVS\CLI\Bootstrap\BootstrapStep;
@@ -119,6 +120,7 @@ class Application extends BaseApplication
 
         $commands[] = new CompletionCommand();
         $commands[] = new CliInfoCommand();
+        $commands[] = new MigrateImportCommand();
 
         return $commands;
     }
