@@ -52,6 +52,9 @@ use KVS\CLI\Command\PluginCommand;
 use KVS\CLI\Command\SelfUpdateCommand;
 use KVS\CLI\Command\CompletionCommand;
 use KVS\CLI\Command\CliInfoCommand;
+use KVS\CLI\Command\Migrate\ScanCommand;
+use KVS\CLI\Command\Migrate\PackageCommand;
+use KVS\CLI\Command\Migrate\ToDockerCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
 use KVS\CLI\Bootstrap\BootstrapStep;
@@ -352,6 +355,10 @@ class Application extends BaseApplication
             new EvalCommand($config),
             new EvalFileCommand($config),
             new PluginCommand($config),
+
+            new ScanCommand($config),
+            new PackageCommand($config),
+            new ToDockerCommand($config),
         ]);
     }
 

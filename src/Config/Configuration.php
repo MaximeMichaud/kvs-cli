@@ -287,14 +287,20 @@ class Configuration
             return $standardPath;
         }
 
+        // Fallback: try kvsPath/contents (when project_path in config is stale/wrong)
+        $kvsContentPath = $this->kvsPath . '/' . Constants::CONTENT_DIR;
+        if (is_dir($kvsContentPath)) {
+            return $kvsContentPath;
+        }
+
         // Try project_path/../content (alternate layout)
         $alternatePath = dirname($projectPath) . '/content';
         if (is_dir($alternatePath)) {
             return $alternatePath;
         }
 
-        // Return the standard path even if it doesn't exist (for error reporting)
-        return $standardPath;
+        // Return kvsPath-based path for better error reporting
+        return $kvsContentPath;
     }
 
     /**
