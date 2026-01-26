@@ -78,6 +78,16 @@ EOT
         $dryRun = $this->getBoolOption($input, 'dry-run');
         $skipConfirm = $this->getBoolOption($input, 'yes');
 
+        // Validate SSL and DB choices
+        if ($sslChoice !== null && !in_array($sslChoice, ['1', '2', '3'], true)) {
+            $this->io()->error('Invalid --ssl value. Must be 1, 2, or 3');
+            return self::FAILURE;
+        }
+        if (!in_array($dbChoice, ['1', '2', '3', '4'], true)) {
+            $this->io()->error('Invalid --db value. Must be 1, 2, 3, or 4');
+            return self::FAILURE;
+        }
+
         $this->io()->title('KVS Migration to Docker');
 
         // Step 1: Load and validate source
@@ -128,21 +138,27 @@ EOT
         }
 
         if ($sslChoice === null) {
-            $this->io()->text([
-                'SSL Certificate options:',
-                "  [1] Let's Encrypt (recommended for production)",
-                '  [2] ZeroSSL (alternative CA)',
-                '  [3] Self-signed (for testing only)',
-            ]);
-            $question = new Question('SSL choice [1]: ', '1');
-            $question->setValidator(function (?string $value): string {
-                if ($value === null || !in_array($value, ['1', '2', '3'], true)) {
-                    throw new \RuntimeException('Please enter 1, 2, or 3');
-                }
-                return $value;
-            });
-            $result = $helper->ask($input, $output, $question);
-            $sslChoice = is_string($result) ? $result : '1';
+            if (!$input->isInteractive()) {
+                // Non-interactive mode: use Let's Encrypt by default
+                $sslChoice = '1';
+                $this->io()->note("Using default SSL: Let's Encrypt (use --ssl to override)");
+            } else {
+                $this->io()->text([
+                    'SSL Certificate options:',
+                    "  [1] Let's Encrypt (recommended for production)",
+                    '  [2] ZeroSSL (alternative CA)',
+                    '  [3] Self-signed (for testing only)',
+                ]);
+                $question = new Question('SSL choice [1]: ', '1');
+                $question->setValidator(function (?string $value): string {
+                    if ($value === null || !in_array($value, ['1', '2', '3'], true)) {
+                        throw new \RuntimeException('Please enter 1, 2, or 3');
+                    }
+                    return $value;
+                });
+                $result = $helper->ask($input, $output, $question);
+                $sslChoice = is_string($result) ? $result : '1';
+            }
         }
 
         // Step 4: Display migration plan
@@ -159,7 +175,6 @@ EOT
             '2' => 'MariaDB 11.4 LTS',
             '3' => 'MariaDB 10.11 LTS',
             '4' => 'MariaDB 10.6 LTS',
-            default => 'MariaDB 11.8',
         };
 
         $this->io()->table(['Parameter', 'Value'], [
@@ -377,7 +392,10 @@ EOT
             $process = new Process(['git', 'pull'], $targetDir);
             $process->setTimeout(120);
             $process->run();
-            // Don't fail on pull errors, use existing version
+
+            if (!$process->isSuccessful()) {
+                $this->io()->warning('Failed to update KVS-Install, using existing version: ' . $process->getErrorOutput());
+            }
         } else {
             $this->io()->text('Cloning KVS-Install...');
 
@@ -584,23 +602,34 @@ EOT
                         $sourcePath . '/',
                         $targetPath . '/'
                     ]);
+                    $process->setTimeout(3600);
+                    $process->run(function (string $type, string $buffer): void {
+                        if (str_contains($buffer, '%')) {
+                            $this->io()->write("\r" . trim($buffer));
+                        }
+                    });
+                    $this->io()->newLine();
                 } else {
-                    $process = Process::fromShellCommandline(
-                        'cp -r ' . escapeshellarg($sourcePath) . '/* ' . escapeshellarg($targetPath) . '/'
-                    );
+                    // Fallback to cp with /. to include dot files
+                    $process = new Process(['cp', '-r', $sourcePath . '/.', $targetPath . '/']);
+                    $process->setTimeout(3600);
+                    $process->run();
                 }
 
-                $process->setTimeout(3600);
-                $process->run(function (string $type, string $buffer): void {
-                    if (str_contains($buffer, '%')) {
-                        $this->io()->write("\r" . trim($buffer));
-                    }
-                });
-                $this->io()->newLine();
+                if (!$process->isSuccessful()) {
+                    $this->io()->error('Content copy failed: ' . $process->getErrorOutput());
+                    return false;
+                }
 
                 // Fix permissions
                 $process = new Process(['chown', '-R', 'www-data:www-data', $targetPath]);
+                $process->setTimeout(300);
                 $process->run();
+
+                if (!$process->isSuccessful()) {
+                    $this->io()->warning('Failed to set permissions: ' . $process->getErrorOutput());
+                    // Don't fail on permission errors, just warn
+                }
 
                 $this->io()->text('Content copied');
             } else {

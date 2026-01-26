@@ -48,6 +48,20 @@ class ImportCommand extends Command
     /**
      * @param \Symfony\Component\Console\Helper\QuestionHelper $helper
      */
+    private function getSslChoice($helper, InputInterface $input, OutputInterface $output): string
+    {
+        if (!$input->isInteractive()) {
+            // Non-interactive mode: use Let's Encrypt by default
+            $this->io()->note("Using default SSL: Let's Encrypt (use --ssl to override)");
+            return '1';
+        }
+
+        return $this->askSslChoice($helper, $input, $output);
+    }
+
+    /**
+     * @param \Symfony\Component\Console\Helper\QuestionHelper $helper
+     */
     private function askSslChoice($helper, InputInterface $input, OutputInterface $output): string
     {
         $this->io()->text([
@@ -132,6 +146,11 @@ EOT
         $dbChoice = $this->getStringOption($input, 'db') ?? '1';
         $skipConfirm = $input->getOption('yes') === true;
 
+        // Validate SSL and DB choices
+        if (!$this->validateOptions($sslChoice, $dbChoice)) {
+            return Command::FAILURE;
+        }
+
         $this->io()->title('KVS Migration Import');
 
         // Step 1: Validate package
@@ -203,23 +222,26 @@ EOT
         }
 
         if ($sslChoice === null) {
-            $sslChoice = $this->askSslChoice($helper, $input, $output);
+            $sslChoice = $this->getSslChoice($helper, $input, $output);
         }
 
         // Step 5: Show import plan
         $this->io()->section('Import Plan');
 
+        // Assert valid choices for PHPStan
+        assert(in_array($sslChoice, ['1', '2', '3'], true));
+        assert(in_array($dbChoice, ['1', '2', '3', '4'], true));
+
         $sslName = match ($sslChoice) {
             '1' => "Let's Encrypt",
             '2' => 'ZeroSSL',
-            default => 'Self-signed',
+            '3' => 'Self-signed',
         };
         $dbName = match ($dbChoice) {
             '1' => 'MariaDB 11.8',
             '2' => 'MariaDB 11.4 LTS',
             '3' => 'MariaDB 10.11 LTS',
             '4' => 'MariaDB 10.6 LTS',
-            default => 'MariaDB 11.8',
         };
 
         $dbData = is_array($metadata['database'] ?? null) ? $metadata['database'] : [];
@@ -346,16 +368,26 @@ EOT
 
         $this->io()->text('Extracting package...');
 
-        // Extract .tar.zst
-        $command = sprintf(
-            'zstd -d -c %s | tar -xf - -C %s',
-            escapeshellarg($packagePath),
-            escapeshellarg($extractDir)
-        );
+        // Extract .tar.zst in two steps to avoid pipeline errors
+        $tempTar = $extractDir . '/temp.tar';
 
-        $process = Process::fromShellCommandline($command);
+        // Step 1: Decompress with zstd
+        $process = new Process(['zstd', '-d', '-o', $tempTar, $packagePath]);
         $process->setTimeout(3600);
         $process->run();
+
+        if (!$process->isSuccessful()) {
+            $this->io()->error('Failed to decompress package: ' . $process->getErrorOutput());
+            $this->cleanup($extractDir);
+            return null;
+        }
+
+        // Step 2: Extract tar
+        $process = new Process(['tar', '-xf', $tempTar, '-C', $extractDir]);
+        $process->setTimeout(3600);
+        $process->run();
+
+        unlink($tempTar); // Cleanup temp file
 
         if (!$process->isSuccessful()) {
             $this->io()->error('Failed to extract package: ' . $process->getErrorOutput());
@@ -426,6 +458,11 @@ EOT
             $process = new Process(['git', 'pull'], $targetDir);
             $process->setTimeout(120);
             $process->run();
+
+            if (!$process->isSuccessful()) {
+                $this->io()->error('Failed to update KVS-Install: ' . $process->getErrorOutput());
+                return false;
+            }
         } else {
             $this->io()->text('Cloning KVS-Install...');
 
@@ -530,18 +567,37 @@ EOT
             }
         }
 
-        // Decompress and import
+        // Decompress and import in two steps to avoid pipeline errors
         $this->io()->text('Importing database...');
-        $command = sprintf(
-            'zstd -d -c %s | docker exec -i %s mariadb -u root %s',
-            escapeshellarg($dbFile),
-            escapeshellarg($mariadbContainer),
-            escapeshellarg($database)
-        );
+        $tempSql = $extractDir . '/database.sql';
 
-        $process = Process::fromShellCommandline($command);
+        // Step 1: Decompress database
+        $process = new Process(['zstd', '-d', '-o', $tempSql, $dbFile]);
         $process->setTimeout(3600);
         $process->run();
+
+        if (!$process->isSuccessful()) {
+            $this->io()->error('Failed to decompress database: ' . $process->getErrorOutput());
+            return false;
+        }
+
+        // Step 2: Import via docker exec with stdin
+        $sqlContent = file_get_contents($tempSql);
+        if ($sqlContent === false) {
+            $this->io()->error('Failed to read decompressed database');
+            unlink($tempSql);
+            return false;
+        }
+
+        $process = new Process([
+            'docker', 'exec', '-i', $mariadbContainer,
+            'mariadb', '-u', 'root', $database
+        ]);
+        $process->setInput($sqlContent);
+        $process->setTimeout(3600);
+        $process->run();
+
+        unlink($tempSql); // Cleanup temp file
 
         if (!$process->isSuccessful()) {
             $this->io()->error('Database import failed: ' . $process->getErrorOutput());
@@ -575,25 +631,49 @@ EOT
                 $contentDir . '/',
                 $targetPath . '/'
             ]);
+            $process->setTimeout(3600);
+            $process->run(function (string $type, string $buffer): void {
+                if (str_contains($buffer, '%')) {
+                    $this->io()->write("\r" . trim($buffer));
+                }
+            });
+            $this->io()->newLine();
         } else {
-            $process = Process::fromShellCommandline(
-                'cp -r ' . escapeshellarg($contentDir) . '/* ' . escapeshellarg($targetPath) . '/'
-            );
+            // Fallback to cp with /. to include dot files
+            $process = new Process(['cp', '-r', $contentDir . '/.', $targetPath . '/']);
+            $process->setTimeout(3600);
+            $process->run();
         }
 
-        $process->setTimeout(3600);
-        $process->run(function (string $type, string $buffer): void {
-            if (str_contains($buffer, '%')) {
-                $this->io()->write("\r" . trim($buffer));
-            }
-        });
-        $this->io()->newLine();
+        if (!$process->isSuccessful()) {
+            $this->io()->error('Content copy failed: ' . $process->getErrorOutput());
+            return false;
+        }
 
         // Fix permissions
         $process = new Process(['chown', '-R', 'www-data:www-data', $targetPath]);
+        $process->setTimeout(300);
         $process->run();
 
+        if (!$process->isSuccessful()) {
+            $this->io()->warning('Failed to set permissions: ' . $process->getErrorOutput());
+            // Don't fail on permission errors, just warn
+        }
+
         $this->io()->text('Content imported');
+        return true;
+    }
+
+    private function validateOptions(?string $sslChoice, string $dbChoice): bool
+    {
+        if ($sslChoice !== null && !in_array($sslChoice, ['1', '2', '3'], true)) {
+            $this->io()->error('Invalid --ssl value. Must be 1, 2, or 3');
+            return false;
+        }
+        if (!in_array($dbChoice, ['1', '2', '3', '4'], true)) {
+            $this->io()->error('Invalid --db value. Must be 1, 2, 3, or 4');
+            return false;
+        }
         return true;
     }
 
