@@ -682,8 +682,8 @@ class CheckCommand extends BaseCommand
             return $matches[1];
         }
 
-        // For FFmpeg, look for "ffmpeg version X.Y.Z"
-        if (preg_match('/ffmpeg\s+version\s+(\d+\.\d+(?:\.\d+)?)/i', $output, $matches) === 1) {
+        // For FFmpeg, look for "ffmpeg version X.Y.Z" or "ffmpeg version nX.Y.Z" (nightly builds)
+        if (preg_match('/ffmpeg\s+version\s+[nN]?(\d+\.\d+(?:\.\d+)?)/i', $output, $matches) === 1) {
             return $matches[1];
         }
 

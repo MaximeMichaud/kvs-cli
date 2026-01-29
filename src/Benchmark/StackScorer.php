@@ -540,8 +540,9 @@ class StackScorer
         $version = 'unknown';
         $major = 0;
 
-        // Parse version from first line (e.g., "ffmpeg version 6.0")
-        if (preg_match('/ffmpeg version (\d+\.\d+)/', $output[0], $matches) === 1) {
+        // Parse version from first line
+        // Handles: "ffmpeg version 6.0", "ffmpeg version n8.0.1", "ffmpeg version N-12345-g..."
+        if (preg_match('/ffmpeg version [nN]?(\d+\.\d+(?:\.\d+)?)/', $output[0], $matches) === 1) {
             $version = $matches[1];
             $major = (int) explode('.', $version)[0];
         }
