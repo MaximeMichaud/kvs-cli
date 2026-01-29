@@ -176,6 +176,6 @@ final class BenchmarkApiClient
             $baseUrl = $apiUrl;
         }
 
-        return $baseUrl . '/benchmark/' . $benchmarkId;
+        return $baseUrl . '/' . $benchmarkId;
     }
 }
