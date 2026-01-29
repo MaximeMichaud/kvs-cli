@@ -1744,6 +1744,8 @@ class BenchmarkCommand extends BaseCommand
      */
     private function getMemcachedMemory(string $server, int $port): ?int
     {
+        $limitMaxbytes = null;
+
         if (class_exists('Memcached')) {
             try {
                 $m = new \Memcached();
@@ -1752,7 +1754,7 @@ class BenchmarkCommand extends BaseCommand
                 $key = "$server:$port";
                 if (isset($stats[$key]) && is_array($stats[$key]) && isset($stats[$key]['limit_maxbytes'])) {
                     $limitMaxbytes = $stats[$key]['limit_maxbytes'];
-                    if (is_numeric($limitMaxbytes)) {
+                    if (is_numeric($limitMaxbytes) && (int) $limitMaxbytes > 0) {
                         return (int) ((float) $limitMaxbytes / 1024 / 1024);
                     }
                 }
@@ -1761,27 +1763,73 @@ class BenchmarkCommand extends BaseCommand
             }
         }
 
-        // Try raw socket
+        // Try raw socket for memcached stats
         $fp = @fsockopen($server, $port, $errno, $errstr, 2);
+        if ($fp !== false) {
+            fwrite($fp, "stats\r\n");
+            $response = '';
+            while (!feof($fp)) {
+                $line = fgets($fp, 256);
+                if ($line !== false) {
+                    $response .= $line;
+                    if (trim($line) === 'END') {
+                        break;
+                    }
+                }
+            }
+            fclose($fp);
+
+            if (preg_match('/STAT limit_maxbytes (\d+)/', $response, $matches) === 1) {
+                $limitMaxbytes = (int) $matches[1];
+                if ($limitMaxbytes > 0) {
+                    return (int) ($limitMaxbytes / 1024 / 1024);
+                }
+            }
+        }
+
+        // If limit_maxbytes is -1 or 0 (Dragonfly), try Redis protocol on port 6379
+        // Dragonfly exposes both memcached (11211) and Redis (6379) protocols
+        $redisMemory = $this->getDragonflyMemoryViaRedis($server);
+        if ($redisMemory !== null) {
+            return $redisMemory;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get Dragonfly memory limit via Redis INFO command
+     * Dragonfly doesn't report limit_maxbytes via memcached protocol, but does via Redis INFO
+     */
+    private function getDragonflyMemoryViaRedis(string $server): ?int
+    {
+        $fp = @fsockopen($server, 6379, $errno, $errstr, 2);
         if ($fp === false) {
             return null;
         }
 
-        fwrite($fp, "stats\r\n");
+        // Send Redis RESP protocol: INFO memory
+        fwrite($fp, "*2\r\n\$4\r\nINFO\r\n\$6\r\nmemory\r\n");
         $response = '';
+        stream_set_timeout($fp, 2);
         while (!feof($fp)) {
-            $line = fgets($fp, 256);
-            if ($line !== false) {
-                $response .= $line;
-                if (trim($line) === 'END') {
-                    break;
-                }
+            $chunk = fread($fp, 4096);
+            if ($chunk === false || $chunk === '') {
+                break;
+            }
+            $response .= $chunk;
+            if (strpos($response, 'maxmemory:') !== false && strpos($response, "\r\n\r\n") !== false) {
+                break;
             }
         }
         fclose($fp);
 
-        if (preg_match('/STAT limit_maxbytes (\d+)/', $response, $matches) === 1) {
-            return (int) ((int) $matches[1] / 1024 / 1024);
+        // Parse maxmemory from INFO response
+        if (preg_match('/maxmemory:(\d+)/', $response, $matches) === 1) {
+            $maxmemory = (int) $matches[1];
+            if ($maxmemory > 0) {
+                return (int) ($maxmemory / 1024 / 1024);
+            }
         }
 
         return null;

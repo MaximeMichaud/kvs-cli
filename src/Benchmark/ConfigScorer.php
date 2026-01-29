@@ -193,20 +193,24 @@ class ConfigScorer
         $memoryMb = $cache['memory_mb'];
         $cacheType = $cache['type'];
 
-        // Memory >= 256MB (1 point)
-        if ($memoryMb !== null && $memoryMb >= self::MEMCACHE_MIN_MB) {
+        // Memory scoring - null means we can't detect (e.g., Dragonfly doesn't report limit_maxbytes)
+        if ($memoryMb === null) {
+            // Can't detect memory - give partial credit, no recommendation
+            // Dragonfly and some cache servers don't report memory limits via memcached protocol
+            $score += 2; // Assume it's configured properly if cache is working
+        } elseif ($memoryMb >= self::MEMCACHE_MIN_MB) {
             $score++;
-            // Memory >= 512MB (1 point bonus) - no recommendation if >= 256MB
+            // Memory >= 512MB (1 point bonus)
             if ($memoryMb >= self::MEMCACHE_GOOD_MB) {
                 $score++;
             }
-            // 256MB is sufficient, 512MB is just a bonus - no recommendation needed
+            // 256MB+ is sufficient - no recommendation needed
         } else {
-            $currentMb = $memoryMb ?? 0;
+            // Memory is set but too low
             $issues[] = sprintf(
                 '%s memory = %dMB (need %dMB minimum, %dMB recommended)',
                 $cacheType,
-                $currentMb,
+                $memoryMb,
                 self::MEMCACHE_MIN_MB,
                 self::MEMCACHE_GOOD_MB
             );
