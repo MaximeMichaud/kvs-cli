@@ -225,7 +225,7 @@ final class Constants
     // ========================================
 
     /** Benchmark API URL (empty = disabled) */
-    public const BENCHMARK_API_URL = 'https://kvs-benchmark.maximemichaud.workers.dev/api/benchmarks';
+    public const BENCHMARK_API_URL = 'https://kvs-bench.mich.sh/api/benchmarks';
 
     /** Timeout for benchmark API requests in seconds */
     public const BENCHMARK_API_TIMEOUT = 30;
