@@ -196,12 +196,11 @@ class ConfigScorer
         // Memory >= 256MB (1 point)
         if ($memoryMb !== null && $memoryMb >= self::MEMCACHE_MIN_MB) {
             $score++;
-            // Memory >= 512MB (1 point bonus)
+            // Memory >= 512MB (1 point bonus) - no recommendation if >= 256MB
             if ($memoryMb >= self::MEMCACHE_GOOD_MB) {
                 $score++;
-            } else {
-                $recommendations[] = "{$cacheType}: -m " . self::MEMCACHE_GOOD_MB . " (current: {$memoryMb}MB, recommended for optimal performance)";
             }
+            // 256MB is sufficient, 512MB is just a bonus - no recommendation needed
         } else {
             $currentMb = $memoryMb ?? 0;
             $issues[] = sprintf(
