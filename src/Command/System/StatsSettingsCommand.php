@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Compat\KvsCompatibility;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
@@ -12,11 +13,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'system:stats-settings',
-    description: 'Manage KVS statistics collection settings',
+    description: '[EXPERIMENTAL] Manage KVS statistics collection settings',
     aliases: ['stats-settings']
 )]
 class StatsSettingsCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     protected function configure(): void
     {
         $this
@@ -139,10 +142,16 @@ Manage KVS statistics collection settings.
   <fg=green>kvs stats-settings set --search=1 --search-lowercase=1</>
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {

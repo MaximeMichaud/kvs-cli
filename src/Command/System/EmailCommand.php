@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -11,11 +12,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'system:email',
-    description: 'Manage KVS email settings',
+    description: '[EXPERIMENTAL] Manage KVS email settings',
     aliases: ['email']
 )]
 class EmailCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     protected function configure(): void
     {
         $this
@@ -79,10 +82,16 @@ Manage KVS email settings.
   <fg=green>kvs email templates</>
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {

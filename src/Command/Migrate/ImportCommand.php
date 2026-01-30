@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command\Migrate;
 
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -17,11 +18,13 @@ use function KVS\CLI\Utils\format_bytes;
 
 #[AsCommand(
     name: 'migrate:import',
-    description: 'Import a KVS migration package into Docker',
+    description: '[EXPERIMENTAL] Import a KVS migration package into Docker',
     aliases: ['import']
 )]
 class ImportCommand extends Command
 {
+    use ExperimentalCommandTrait;
+
     private const KVS_INSTALL_REPO = 'https://github.com/MaximeMichaud/KVS-install.git';
     private const KVS_INSTALL_DIR = '/opt/kvs';
 
@@ -127,15 +130,20 @@ This command:
   • Root/sudo access
 EOT
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->io = new SymfonyStyle($input, $output);
 
-        $packagePath = $this->getStringArgument($input, 'package');
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
+        $packagePath = $this->validatePackage($input);
         if ($packagePath === null) {
-            $this->io()->error('Package path is required');
             return Command::FAILURE;
         }
 
@@ -152,17 +160,6 @@ EOT
         }
 
         $this->io()->title('KVS Migration Import');
-
-        // Step 1: Validate package
-        if (!file_exists($packagePath)) {
-            $this->io()->error('Package not found: ' . $packagePath);
-            return Command::FAILURE;
-        }
-
-        if (!str_ends_with($packagePath, '.tar.zst')) {
-            $this->io()->error('Package must be a .tar.zst file');
-            return Command::FAILURE;
-        }
 
         // Step 2: Check requirements
         if (!$this->checkRequirements()) {
@@ -338,6 +335,27 @@ EOT
         ]);
 
         return Command::SUCCESS;
+    }
+
+    private function validatePackage(InputInterface $input): ?string
+    {
+        $packagePath = $this->getStringArgument($input, 'package');
+        if ($packagePath === null) {
+            $this->io()->error('Package path is required');
+            return null;
+        }
+
+        if (!file_exists($packagePath)) {
+            $this->io()->error('Package not found: ' . $packagePath);
+            return null;
+        }
+
+        if (!str_ends_with($packagePath, '.tar.zst')) {
+            $this->io()->error('Package must be a .tar.zst file');
+            return null;
+        }
+
+        return $packagePath;
     }
 
     private function checkRequirements(): bool

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Migrate;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use KVS\CLI\Docker\DockerDetector;
@@ -82,11 +83,13 @@ use function KVS\CLI\Utils\format_bytes;
  */
 #[AsCommand(
     name: 'migrate:scan',
-    description: 'Scan a KVS installation for migration',
+    description: '[EXPERIMENTAL] Scan a KVS installation for migration',
     aliases: ['scan']
 )]
 class ScanCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     private ?Configuration $targetConfig = null;
     private ?DockerDetector $targetDocker = null;
 
@@ -111,10 +114,16 @@ Scan a KVS installation to analyze its structure, content, and readiness for mig
   • Migration readiness assessment
 EOT
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $jsonOutput = $this->getBoolOption($input, 'json');
         $targetPath = $this->getStringArgument($input, 'path');
 

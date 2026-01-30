@@ -56,6 +56,7 @@ class ToDockerCommandTest extends TestCase
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -69,6 +70,7 @@ class ToDockerCommandTest extends TestCase
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -86,6 +88,7 @@ class ToDockerCommandTest extends TestCase
             '--domain' => 'example.com',
             '--email' => 'admin@example.com',
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -102,6 +105,7 @@ class ToDockerCommandTest extends TestCase
             'source' => '/nonexistent/path',
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -117,6 +121,7 @@ class ToDockerCommandTest extends TestCase
             '--email' => 'test@test.com',
             '--db' => '3',
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -131,6 +136,7 @@ class ToDockerCommandTest extends TestCase
             '--email' => 'test@test.com',
             '--db' => '2',
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -145,6 +151,7 @@ class ToDockerCommandTest extends TestCase
             '--email' => 'test@test.com',
             '--ssl' => '1',
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -159,6 +166,7 @@ class ToDockerCommandTest extends TestCase
             '--email' => 'test@test.com',
             '--no-content' => true,
             '--dry-run' => true,
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Migrate;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -16,11 +17,13 @@ use function KVS\CLI\Utils\format_bytes;
 
 #[AsCommand(
     name: 'migrate:package',
-    description: 'Create a portable migration package',
+    description: '[EXPERIMENTAL] Create a portable migration package',
     aliases: ['package']
 )]
 class PackageCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     protected function configure(): void
     {
         $this
@@ -49,10 +52,16 @@ The package is a tar archive compressed with zstd containing:
   10-19 Maximum compression (slow)
 EOT
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $targetPath = $this->getStringArgument($input, 'path');
         $noContent = $this->getBoolOption($input, 'no-content');
         $compressionLevel = (int) ($this->getStringOption($input, 'compression') ?? '3');

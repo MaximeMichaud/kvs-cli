@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Settings;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -12,11 +13,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'settings:options',
-    description: 'Manage KVS system options',
+    description: '[EXPERIMENTAL] Manage KVS system options',
     aliases: ['options', 'option']
 )]
 class OptionsCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     /**
      * Option category mappings based on KVS admin/options.php pages
      * @var array<string, list<string>>
@@ -87,10 +90,16 @@ Manage KVS system options (ktvs_options table).
   Use with caution - changing options can affect site behavior.
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {

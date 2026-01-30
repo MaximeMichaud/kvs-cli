@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Settings;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
@@ -14,11 +15,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'settings:video-format',
-    description: 'Manage KVS video formats',
+    description: '[EXPERIMENTAL] Manage KVS video formats',
     aliases: ['video-format', 'vformat']
 )]
 class VideoFormatCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     protected function configure(): void
     {
         $this
@@ -63,10 +66,16 @@ Manage KVS video format configurations.
   Use "kvs video:formats" to check actual video files.
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {

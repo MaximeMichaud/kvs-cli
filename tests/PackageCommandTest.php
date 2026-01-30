@@ -53,7 +53,7 @@ class PackageCommandTest extends TestCase
     public function testPackageCommandShowsTitle(): void
     {
         // This test will fail if zstd/mysqldump not available, which is expected in CI
-        $this->tester->execute(['--no-content' => true, '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst']);
+        $this->tester->execute(['--no-content' => true, '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst', '--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -62,14 +62,14 @@ class PackageCommandTest extends TestCase
 
     public function testPackageCommandWithInvalidPath(): void
     {
-        $this->tester->execute(['path' => '/nonexistent/path']);
+        $this->tester->execute(['path' => '/nonexistent/path', '--force' => true]);
 
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testPackageCommandShowsSource(): void
     {
-        $this->tester->execute(['--no-content' => true, '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst']);
+        $this->tester->execute(['--no-content' => true, '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst', '--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -82,7 +82,8 @@ class PackageCommandTest extends TestCase
         $this->tester->execute([
             '--no-content' => true,
             '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst',
-            '-c' => '5'
+            '-c' => '5',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -95,7 +96,8 @@ class PackageCommandTest extends TestCase
         $this->tester->execute([
             '--no-content' => true,
             '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst',
-            '-c' => '25'
+            '-c' => '25',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();

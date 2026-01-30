@@ -22,17 +22,19 @@ class ImportCommandTest extends TestCase
         $this->tester = new CommandTester($this->command);
     }
 
-    public function testImportCommandShowsTitle(): void
+    public function testImportCommandValidatesPackageExists(): void
     {
         $this->tester->execute([
             'package' => '/nonexistent/package.tar.zst',
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('KVS Migration Import', $output);
+        $this->assertStringContainsString('Package not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testImportCommandWithMissingPackage(): void
@@ -41,6 +43,7 @@ class ImportCommandTest extends TestCase
             'package' => '/nonexistent/package.tar.zst',
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
@@ -59,6 +62,7 @@ class ImportCommandTest extends TestCase
                 'package' => $tempFile,
                 '--domain' => 'test.local',
                 '--email' => 'test@test.com',
+                '--force' => true,
             ]);
 
             $output = $this->tester->getDisplay();
@@ -70,32 +74,36 @@ class ImportCommandTest extends TestCase
         }
     }
 
-    public function testImportCommandShowsSslOptions(): void
+    public function testImportCommandRejectsNonexistentWithSslOption(): void
     {
         $this->tester->execute([
             'package' => '/nonexistent/package.tar.zst',
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
             '--ssl' => '1',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('KVS Migration Import', $output);
+        $this->assertStringContainsString('Package not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
-    public function testImportCommandShowsDbOptions(): void
+    public function testImportCommandRejectsNonexistentWithDbOption(): void
     {
         $this->tester->execute([
             'package' => '/nonexistent/package.tar.zst',
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
             '--db' => '3',
+            '--force' => true,
         ]);
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('KVS Migration Import', $output);
+        $this->assertStringContainsString('Package not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testImportCommandHelp(): void

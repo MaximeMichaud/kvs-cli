@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
@@ -14,11 +15,12 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'system:conversion',
-    description: 'Manage KVS conversion servers',
+    description: '[EXPERIMENTAL] Manage KVS conversion servers',
     aliases: ['conversion']
 )]
 class ConversionCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
     protected function configure(): void
@@ -80,10 +82,16 @@ Manage KVS conversion servers (video/image transcoding).
   <fg=green>kvs conversion stats</>
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
         $id = $this->getStringArgument($input, 'id');
 

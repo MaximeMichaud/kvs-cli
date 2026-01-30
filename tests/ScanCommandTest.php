@@ -54,7 +54,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsInstallation(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -66,7 +66,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsEnvironment(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -77,7 +77,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsDatabase(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -88,7 +88,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsContentStats(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -100,7 +100,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsMigrationSummary(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -112,7 +112,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandJsonOutput(): void
     {
-        $this->tester->execute(['--json' => true]);
+        $this->tester->execute(['--json' => true, '--force' => true]);
 
         $output = $this->tester->getDisplay();
         $data = json_decode($output, true);
@@ -131,7 +131,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandWithExplicitPath(): void
     {
-        $this->tester->execute(['path' => $this->tempDir]);
+        $this->tester->execute(['path' => $this->tempDir, '--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -141,14 +141,14 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandWithInvalidPath(): void
     {
-        $this->tester->execute(['path' => '/nonexistent/path']);
+        $this->tester->execute(['path' => '/nonexistent/path', '--force' => true]);
 
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testScanCommandJsonWithInvalidPath(): void
     {
-        $this->tester->execute(['path' => '/nonexistent/path', '--json' => true]);
+        $this->tester->execute(['path' => '/nonexistent/path', '--json' => true, '--force' => true]);
 
         $output = $this->tester->getDisplay();
         $data = json_decode($output, true);
@@ -161,7 +161,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsKvsVersion(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -174,7 +174,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsZstdEstimate(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -183,7 +183,7 @@ class ScanCommandTest extends TestCase
 
     public function testScanCommandShowsAssessment(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         $output = $this->tester->getDisplay();
 

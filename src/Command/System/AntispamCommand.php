@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -11,11 +12,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'system:antispam',
-    description: 'Manage KVS anti-spam settings',
+    description: '[EXPERIMENTAL] Manage KVS anti-spam settings',
     aliases: ['antispam']
 )]
 class AntispamCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     /** @var array<string, string> */
     private const SECTIONS = [
         'videos' => 'ANTISPAM_VIDEOS',
@@ -160,10 +163,16 @@ Manage KVS anti-spam settings.
   <fg=green>kvs antispam set --blacklist-action=delete</>
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
 
         return match ($action) {

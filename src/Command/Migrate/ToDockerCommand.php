@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Migrate;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -18,11 +19,13 @@ use function KVS\CLI\Utils\format_bytes;
 
 #[AsCommand(
     name: 'migrate:to-docker',
-    description: 'Migrate a standalone KVS installation to Docker via KVS-Install',
+    description: '[EXPERIMENTAL] Migrate a standalone KVS installation to Docker via KVS-Install',
     aliases: ['to-docker']
 )]
 class ToDockerCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
+
     private const KVS_INSTALL_REPO = 'https://github.com/MaximeMichaud/KVS-install.git';
     private const KVS_INSTALL_DIR = '/opt/kvs';
 
@@ -64,10 +67,16 @@ This command delegates to KVS-Install's setup.sh which handles:
   • Root/sudo access
 EOT
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $sourcePath = $this->getStringArgument($input, 'source');
         $domain = $this->getStringOption($input, 'domain');
         $email = $this->getStringOption($input, 'email');

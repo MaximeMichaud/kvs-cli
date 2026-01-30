@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
@@ -15,11 +16,12 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'system:server',
-    description: 'Manage KVS storage servers',
+    description: '[EXPERIMENTAL] Manage KVS storage servers',
     aliases: ['server', 'servers']
 )]
 class ServerCommand extends BaseCommand
 {
+    use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
     protected function configure(): void
@@ -74,10 +76,16 @@ Manage KVS storage servers and server groups.
   <fg=green>kvs server group 1</>
 HELP
             );
+        $this->configureExperimentalOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $abort = $this->confirmExperimental($input, $output);
+        if ($abort !== null) {
+            return $abort;
+        }
+
         $action = $this->getStringArgument($input, 'action');
         $id = $this->getStringArgument($input, 'id');
 
