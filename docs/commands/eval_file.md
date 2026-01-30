@@ -5,7 +5,7 @@ Execute PHP file with KVS context loaded.
 ## Synopsis
 
 ```bash
-kvs eval-file <file>
+kvs eval-file <file> [options]
 ```
 
 ## Description
@@ -17,6 +17,13 @@ The `eval-file` command executes a PHP file with the KVS context pre-loaded. Thi
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `file` | Yes | Path to PHP file |
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `--skip-kvs` | Skip loading KVS context (faster, for standalone scripts) |
+| `--args=VALUE` | Arguments to pass to the script (can be used multiple times) |
 
 ## Available Variables
 
@@ -34,6 +41,28 @@ The following variables are available in your script:
 Same as [`eval`](eval.md) command:
 - `Video`, `User`, `Album`, `Category`, `Tag`, `DVD`, `Model_`
 - `DB::query()`, `DB::escape()`, `DB::exec()`
+
+## Script Arguments
+
+When using `--args`, the arguments are available in your script as `$argv`:
+
+```php
+<?php
+// script.php
+echo "Arguments: " . implode(', ', $argv) . "\n";
+echo "First arg: " . ($argv[1] ?? 'none') . "\n";
+```
+
+Run:
+```bash
+kvs eval-file script.php --args="arg1" --args="arg2"
+```
+
+Output:
+```
+Arguments: script.php, arg1, arg2
+First arg: arg1
+```
 
 ## Examples
 
@@ -54,6 +83,54 @@ Run:
 
 ```bash
 kvs eval-file script.php
+```
+
+### Script with Arguments
+
+Create `migrate.php`:
+
+```php
+<?php
+// migrate.php
+
+$action = $argv[1] ?? 'help';
+$dryRun = in_array('--dry-run', $argv);
+
+echo "Migration: $action\n";
+echo "Dry run: " . ($dryRun ? 'yes' : 'no') . "\n";
+
+if ($action === 'videos') {
+    echo "Migrating videos...\n";
+    // Your migration logic
+}
+```
+
+Run:
+
+```bash
+# Run migration
+kvs eval-file migrate.php --args="videos"
+
+# Dry run
+kvs eval-file migrate.php --args="videos" --args="--dry-run"
+```
+
+### Standalone Script (No KVS Context)
+
+Create `standalone.php`:
+
+```php
+<?php
+// standalone.php - doesn't need KVS
+echo "This script doesn't use KVS.\n";
+// Your code here
+```
+
+Run:
+
+```bash
+# Faster execution - skips KVS loading
+kvs eval-file standalone.php --skip-kvs
 ```
 
 ### Migration Script

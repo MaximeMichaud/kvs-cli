@@ -144,10 +144,10 @@ kvs config get db.host
 
 ```bash
 # Clear all caches
-kvs cache clear
+kvs system:cache --clear
 
 # Clear specific cache type
-kvs cache clear --type=blocks
+kvs system:cache --clear --type=file
 ```
 
 ### Maintenance Mode

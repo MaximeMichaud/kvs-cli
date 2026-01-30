@@ -11,58 +11,81 @@ Complete reference for all KVS-CLI commands.
 | [`video`](video.md) | `videos`, `content:video` | Manage videos |
 | [`album`](album.md) | `albums`, `content:album` | Manage photo albums |
 | [`user`](user.md) | `users`, `content:user` | Manage users |
-| [`user:purge`](user-purge.md) | `users:purge` | Bulk delete users |
+| [`user:purge`](user_purge.md) | `users:purge` | Bulk delete users |
 | [`comment`](comment.md) | `comments`, `content:comment` | Manage comments |
 | [`category`](category.md) | `categories`, `content:category` | Manage categories |
 | [`tag`](tag.md) | `tags`, `content:tag` | Manage tags |
 | [`model`](model.md) | `models`, `content:model` | Manage models/performers |
 | [`dvd`](dvd.md) | `dvds`, `content:dvd` | Manage DVDs/channels |
+| [`playlist`](playlist.md) | `playlists`, `content:playlist` | Manage playlists |
 
 ### System Administration
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| [`system:status`](system-status.md) | `status` | Show system status |
-| [`system:check`](system-check.md) | `check` | Run health checks |
-| [`system:cache`](system-cache.md) | `cache` | Manage cache |
-| [`system:cron`](system-cron.md) | `cron` | Run cron jobs |
-| [`system:backup`](system-backup.md) | `backup` | Create/restore backups |
-| [`system:benchmark`](system-benchmark.md) | `benchmark`, `bench` | Run performance benchmarks |
+| [`system:status`](system_status.md) | `status` | Show system status |
+| [`system:check`](system_check.md) | `check` | Run health checks |
+| [`system:cache`](system_cache.md) | `cache` | Manage cache |
+| [`system:cron`](system_cron.md) | `cron` | Run cron jobs |
+| [`system:backup`](system_backup.md) | `backup` | Create/restore backups |
+| [`system:benchmark`](system_benchmark.md) | `benchmark`, `bench` | Run performance benchmarks |
 | [`system:queue`](queue.md) | `queue` | Manage background tasks queue |
+| [`system:server`](system_server.md) | `server`, `servers` | [EXPERIMENTAL] Manage storage servers |
+| [`system:conversion`](system_conversion.md) | `conversion` | [EXPERIMENTAL] Manage conversion servers |
+| [`system:email`](system_email.md) | `email` | [EXPERIMENTAL] Manage email settings |
+| [`system:antispam`](system_antispam.md) | `antispam` | [EXPERIMENTAL] Manage anti-spam settings |
+| [`system:stats`](system_stats.md) | `stats` | Show site statistics |
+| [`system:stats-settings`](system_stats_settings.md) | `stats-settings` | [EXPERIMENTAL] Manage statistics collection |
 | [`maintenance`](maintenance.md) | `maint` | Maintenance mode |
+
+### Settings
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| [`settings:options`](settings_options.md) | `options`, `option` | [EXPERIMENTAL] Manage system options |
+| [`settings:video-format`](settings_video_format.md) | `video-format`, `vformat` | [EXPERIMENTAL] Manage video format settings |
 
 ### Video Operations
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| [`video:formats`](video-formats.md) | `formats` | Manage video formats |
-| [`video:screenshots`](video-screenshots.md) | `screenshots` | Manage screenshots |
+| [`video:formats`](video_formats.md) | `formats` | Manage video formats |
+| [`video:screenshots`](video_screenshots.md) | `screenshots` | Manage screenshots |
 
 ### Database Operations
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| [`db:export`](db-export.md) | `database:export`, `db:dump` | Export database |
-| [`db:import`](db-import.md) | `database:import`, `db:restore` | Import database |
+| [`db:export`](db_export.md) | `database:export`, `db:dump` | Export database |
+| [`db:import`](db_import.md) | `database:import`, `db:restore` | Import database |
 
 ### Development Tools
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
 | [`eval`](eval.md) | `eval-php` | Execute PHP code |
-| [`eval-file`](eval-file.md) | `eval:file` | Execute PHP file |
+| [`eval-file`](eval_file.md) | `eval:file` | Execute PHP file |
 | [`shell`](shell.md) | `console`, `repl` | Interactive shell |
 | [`config`](config.md) | `conf`, `cfg` | Manage configuration |
 | [`plugin`](plugin.md) | `plugins` | List plugins |
-| [`dev:debug`](dev-debug.md) | `debug` | Debug information |
-| [`dev:log`](dev-log.md) | `log`, `logs` | View logs |
+| [`dev:debug`](dev_debug.md) | `debug` | Debug information |
+| [`dev:log`](dev_log.md) | `log`, `logs` | View logs |
+
+### Migration Tools
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| [`migrate:scan`](migrate_scan.md) | `scan` | [EXPERIMENTAL] Scan installation for migration |
+| [`migrate:package`](migrate_package.md) | `package` | [EXPERIMENTAL] Create migration package |
+| [`migrate:import`](migrate_import.md) | `import` | [EXPERIMENTAL] Import migration package |
+| [`migrate:to-docker`](migrate_to_docker.md) | `to-docker` | [EXPERIMENTAL] Migrate to Docker |
 
 ### Utility Commands
 
 | Command | Aliases | Description |
 |---------|---------|-------------|
-| [`cli:info`](cli-info.md) | `info` | Display CLI environment info |
-| [`self-update`](self-update.md) | `selfupdate`, `self:update` | Update KVS-CLI |
+| [`cli:info`](cli_info.md) | `info` | Display CLI environment info |
+| [`self-update`](self_update.md) | `selfupdate`, `self:update` | Update KVS-CLI |
 | [`completion`](completion.md) | - | Shell completion |
 
 ## Global Options
