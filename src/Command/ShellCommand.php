@@ -128,6 +128,7 @@ if (file_exists('$kvsPath/admin/include/setup.php')) {
 // Simple model classes for convenience
 class Model {
     protected static \$table;
+    protected static \$idColumn = 'id';
     protected static \$db;
 
     public static function setDb(\$connection) {
@@ -136,7 +137,7 @@ class Model {
 
     public static function find(\$id) {
         if (!self::\$db || !static::\$table) return null;
-        \$result = mysqli_query(self::\$db, "SELECT * FROM " . static::\$table . " WHERE id = " . (int)\$id);
+        \$result = mysqli_query(self::\$db, "SELECT * FROM " . static::\$table . " WHERE " . static::\$idColumn . " = " . (int)\$id);
         return \$result ? mysqli_fetch_assoc(\$result) : null;
     }
 
@@ -177,13 +178,13 @@ class Model {
     }
 }
 
-class Video extends Model { protected static \$table = '{$prefix}videos'; }
-class User extends Model { protected static \$table = '{$prefix}users'; }
-class Album extends Model { protected static \$table = '{$prefix}albums'; }
-class Category extends Model { protected static \$table = '{$prefix}categories'; }
-class Tag extends Model { protected static \$table = '{$prefix}tags'; }
-class DVD extends Model { protected static \$table = '{$prefix}dvds'; }
-class Model_ extends Model { protected static \$table = '{$prefix}models'; }
+class Video extends Model { protected static \$table = '{$prefix}videos'; protected static \$idColumn = 'video_id'; }
+class User extends Model { protected static \$table = '{$prefix}users'; protected static \$idColumn = 'user_id'; }
+class Album extends Model { protected static \$table = '{$prefix}albums'; protected static \$idColumn = 'album_id'; }
+class Category extends Model { protected static \$table = '{$prefix}categories'; protected static \$idColumn = 'category_id'; }
+class Tag extends Model { protected static \$table = '{$prefix}tags'; protected static \$idColumn = 'tag_id'; }
+class DVD extends Model { protected static \$table = '{$prefix}dvds'; protected static \$idColumn = 'dvd_id'; }
+class Model_ extends Model { protected static \$table = '{$prefix}models'; protected static \$idColumn = 'model_id'; }
 
 // Database helper
 class DB {
