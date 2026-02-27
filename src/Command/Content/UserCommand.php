@@ -357,18 +357,28 @@ HELP
                 return self::FAILURE;
             }
 
+            // Relax sql_mode (KVS tables have many NOT NULL without DEFAULT)
+            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
+
             $stmt = $db->prepare("
-                INSERT INTO {$this->table('users')} (username, email, pass, display_name, status_id, added_date, ip)
-                VALUES (:username, :email, :pass, :display_name, " . StatusFormatter::USER_ACTIVE . ", NOW(), :ip)
+                INSERT INTO {$this->table('users')}
+                    (username, email, pass, display_name,
+                     status_id, added_date, last_login_date, ip)
+                VALUES
+                    (:username, :email, :pass, :display_name,
+                     " . StatusFormatter::USER_ACTIVE . ",
+                     NOW(), NOW(), INET_ATON('127.0.0.1'))
             ");
 
             $stmt->execute([
                 'username' => $username,
                 'email' => $email,
                 'pass' => md5(is_string($password) ? $password : ''),
-                'display_name' => (is_string($displayName) && $displayName !== '') ? $displayName : $username,
-                'ip' => '127.0.0.1',
+                'display_name' => (is_string($displayName) && $displayName !== '')
+                    ? $displayName : $username,
             ]);
+
+            $db->exec("SET sql_mode = @old_sql_mode");
 
             $userId = $db->lastInsertId();
             $this->io()->success("User created successfully with ID: $userId");
