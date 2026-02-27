@@ -46,7 +46,7 @@ Manage KVS users.
 <info>AVAILABLE FIELDS:</info>
   id, username, display_name, email, status
   tokens_available, tokens_required, profile_viewed
-  country_code, gender, birth_date, ip
+  country_id, gender, birth_date, ip
   added_date, last_login_date, logins_count, activity
   videos, albums, is_trusted, is_removal_requested, removal_reason
 
@@ -243,7 +243,7 @@ HELP
             $this->io()->section("User: {$username}");
 
             $displayName = $this->getStr($user['display_name'] ?? null);
-            $countryCode = $this->getStr($user['country_code'] ?? null);
+            $countryCode = $this->getStr($user['country_id'] ?? null);
             $birthDate = $this->getStr($user['birth_date'] ?? null);
             $ip = $this->getStr($user['ip'] ?? null);
 

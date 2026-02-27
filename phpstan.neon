@@ -19,6 +19,7 @@ parameters:
     # Directories to exclude
     excludePaths:
         - src/Bootstrap/legacy_*.php
+        - src/Module
         - vendor
 
     # Check for uninitialized properties

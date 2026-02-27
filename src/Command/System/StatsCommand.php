@@ -208,8 +208,8 @@ class StatsCommand extends BaseCommand
         }
 
         // Today's activity
-        $todayStart = strtotime('today');
-        $weekStart = strtotime('-7 days');
+        $todayStart = date('Y-m-d H:i:s', strtotime('today'));
+        $weekStart = date('Y-m-d H:i:s', strtotime('-7 days'));
 
         // Videos today (use added_date - post_date can be 0 for non-scheduled videos)
         $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}videos WHERE added_date >= ?");
@@ -390,17 +390,17 @@ class StatsCommand extends BaseCommand
         $this->io()->section('Recent Activity (7 days)');
 
         $prefix = $this->config->getTablePrefix();
-        $weekStart = strtotime('-7 days');
+        $weekStart = date('Y-m-d H:i:s', strtotime('-7 days'));
 
         $rows = [];
 
         // New videos per day (use added_date which is always set, post_date can be 0)
         $stmt = $db->prepare("SELECT
-            DATE(FROM_UNIXTIME(added_date)) as date,
+            DATE(added_date) as date,
             COUNT(*) as count
             FROM {$prefix}videos
             WHERE added_date >= ?
-            GROUP BY DATE(FROM_UNIXTIME(added_date))
+            GROUP BY DATE(added_date)
             ORDER BY date DESC
             LIMIT 7");
         $stmt->execute([$weekStart]);
@@ -455,7 +455,7 @@ class StatsCommand extends BaseCommand
             COUNT(*) as total,
             SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active,
             SUM(CASE WHEN status_id = 0 THEN 1 ELSE 0 END) as disabled,
-            SUM(CASE WHEN has_errors = 1 THEN 1 ELSE 0 END) as errors,
+            SUM(CASE WHEN has_errors != 0 THEN 1 ELSE 0 END) as errors,
             SUM(video_viewed) as total_views,
             SUM(video_viewed_unique) as unique_views,
             AVG(video_viewed) as avg_views,
@@ -598,9 +598,9 @@ class StatsCommand extends BaseCommand
             SUM(CASE WHEN status_id = 6 THEN 1 ELSE 0 END) as webmaster,
             SUM(total_videos_count) as total_videos,
             SUM(total_albums_count) as total_albums,
-            SUM(comments_count) as total_comments,
+            SUM(comments_total_count) as total_comments,
             SUM(profile_viewed) as total_profile_views,
-            AVG(login_count) as avg_logins
+            AVG(logins_count) as avg_logins
             FROM {$prefix}users");
 
         if ($stmt !== false) {
@@ -663,13 +663,13 @@ class StatsCommand extends BaseCommand
         $this->io()->text('');
         $this->io()->text('<info>Recent Registrations (7 days):</info>');
 
-        $weekStart = strtotime('-7 days');
+        $weekStart = date('Y-m-d H:i:s', strtotime('-7 days'));
         $stmt = $db->prepare("SELECT
-            DATE(FROM_UNIXTIME(added_date)) as date,
+            DATE(added_date) as date,
             COUNT(*) as count
             FROM {$prefix}users
             WHERE added_date >= ?
-            GROUP BY DATE(FROM_UNIXTIME(added_date))
+            GROUP BY DATE(added_date)
             ORDER BY date DESC");
         $stmt->execute([$weekStart]);
         $daily = $stmt->fetchAll(\PDO::FETCH_ASSOC);
