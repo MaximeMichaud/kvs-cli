@@ -191,13 +191,21 @@ HELP
                 return self::FAILURE;
             }
 
-            // Create tag
+            // Create tag - tag_dir is URL slug of tag name
+            $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($tagName));
+            $tagDir = trim((string) $tagDir, '-');
+
+            // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
+            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
+
             $stmt = $db->prepare("
-                INSERT INTO {$this->table('tags')} (tag, status_id)
-                VALUES (:tag, 1)
+                INSERT INTO {$this->table('tags')} (tag, tag_dir, synonyms, status_id, added_date, last_content_date)
+                VALUES (:tag, :tag_dir, '', 1, NOW(), NOW())
             ");
 
-            $stmt->execute(['tag' => $tagName]);
+            $stmt->execute(['tag' => $tagName, 'tag_dir' => $tagDir]);
+
+            $db->exec("SET sql_mode = @old_sql_mode");
 
             $tagId = $db->lastInsertId();
 
@@ -537,7 +545,7 @@ HELP
             $name = $this->getStringOption($input, 'name');
             if ($name !== null) {
                 // Check if new name already exists
-                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id !== :id");
+                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
                 if ($stmt->fetch() !== false) {
                     $this->io()->error("Tag name already exists: $name");
@@ -546,6 +554,11 @@ HELP
                 }
                 $updates[] = 'tag = :tag';
                 $params['tag'] = $name;
+                // Also update tag_dir (URL slug)
+                $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($name));
+                $tagDir = trim((string) $tagDir, '-');
+                $updates[] = 'tag_dir = :tag_dir';
+                $params['tag_dir'] = $tagDir;
             }
 
             // Status
