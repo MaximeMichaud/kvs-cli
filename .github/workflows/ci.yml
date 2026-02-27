@@ -188,7 +188,7 @@ jobs:
         run: ./kvs.phar --version
 
       - name: Upload PHAR artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: kvs-cli-phar
           path: kvs.phar
