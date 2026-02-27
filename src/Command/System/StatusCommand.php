@@ -766,7 +766,7 @@ class StatusCommand extends BaseCommand
                     $stmt = $db->query("
                         SELECT MAX(added_date) as last_backup
                         FROM " . $this->table('admin_system_log') . "
-                        WHERE event_level = 'info'
+                        WHERE event_level = 2
                         AND event_message LIKE '%backup%'
                     ");
                     if ($stmt !== false) {
