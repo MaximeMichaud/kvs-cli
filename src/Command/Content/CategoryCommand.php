@@ -131,7 +131,7 @@ HELP
                 SELECT c.*,
                        (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = c.category_id) as video_count
                 FROM {$this->table('categories')} c
-                ORDER BY parent_id, title
+                ORDER BY category_group_id, title
             ");
             if ($stmt === false) {
                 $this->io()->error('Failed to execute query');
@@ -143,7 +143,8 @@ HELP
             $this->io()->section('Category Tree');
 
             foreach ($categories as $cat) {
-                $prefix = isset($cat['parent_id']) ? '  └─ ' : '';
+                $groupIdVal = $cat['category_group_id'] ?? 0;
+                $prefix = (is_numeric($groupIdVal) && (int) $groupIdVal > 0) ? '  └─ ' : '';
                 $videoCountVal = $cat['video_count'] ?? 0;
                 $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
                 $count = " ({$videoCount} videos)";
@@ -198,9 +199,9 @@ HELP
             $albumCountRaw = $stmt->fetchColumn();
             $albumCount = is_numeric($albumCountRaw) ? (int) $albumCountRaw : 0;
 
-            $parentId = $category['parent_id'] ?? null;
-            $hasParent = $parentId !== null && $parentId !== '' && $parentId !== false && is_scalar($parentId);
-            $parentIdStr = $hasParent ? (string) $parentId : 'None (Root)';
+            $groupId = $category['category_group_id'] ?? 0;
+            $groupIdInt = is_numeric($groupId) ? (int) $groupId : 0;
+            $groupIdStr = $groupIdInt > 0 ? (string) $groupIdInt : 'None (Root)';
             $addedDate = $category['added_date'] ?? null;
             $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
 
@@ -210,7 +211,7 @@ HELP
             $info = [
                 ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
                 ['Title', $categoryTitle],
-                ['Parent ID', $parentIdStr],
+                ['Group ID', $groupIdStr],
                 ['Status', StatusFormatter::category($statusId)],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
@@ -275,18 +276,32 @@ HELP
                 }
             }
 
-            // Create category
+            // Create category - dir is URL slug of title
+            $dir = preg_replace('/[^a-z0-9]+/', '-', strtolower($title));
+            $dir = trim((string) $dir, '-');
+
+            // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
+            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
+
+            $table = $this->table('categories');
             $stmt = $db->prepare("
-                INSERT INTO {$this->table('categories')} (title, description, parent_id, status_id, video_count, added_date)
-                VALUES (:title, :description, :parent_id, :status_id, 0, NOW())
+                INSERT INTO {$table}
+                    (title, dir, description, synonyms, category_group_id,
+                     status_id, added_date, last_content_date)
+                VALUES
+                    (:title, :dir, :description, '',
+                     :category_group_id, :status_id, NOW(), NOW())
             ");
 
             $stmt->execute([
                 'title' => $title,
+                'dir' => $dir,
                 'description' => $description,
-                'parent_id' => $parentId,
+                'category_group_id' => $parentId !== null ? (int) $parentId : 0,
                 'status_id' => $statusId,
             ]);
+
+            $db->exec("SET sql_mode = @old_sql_mode");
 
             $categoryId = $db->lastInsertId();
 
@@ -296,7 +311,7 @@ HELP
                 [
                     ['ID', (string) $categoryId],
                     ['Title', $title],
-                    ['Parent ID', $parentId ?? 'None (Root)'],
+                    ['Group ID', $parentId ?? 'None (Root)'],
                     ['Description', $description !== '' ? $description : 'None'],
                     ['Status', 'Active'],
                 ]
@@ -334,7 +349,7 @@ HELP
             }
 
             // Check for child categories
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')} WHERE parent_id = :id");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')} WHERE category_group_id = :id");
             $stmt->execute(['id' => $id]);
             $childCount = $stmt->fetchColumn();
 
@@ -442,8 +457,8 @@ HELP
                     $this->io()->error('Category cannot be its own parent');
                     return self::FAILURE;
                 }
-                $updates[] = 'parent_id = :parent_id';
-                $params['parent_id'] = $parentId !== '' ? $parentId : null;
+                $updates[] = 'category_group_id = :category_group_id';
+                $params['category_group_id'] = $parentId !== '' ? (int) $parentId : 0;
             }
 
             // Status
