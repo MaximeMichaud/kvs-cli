@@ -87,7 +87,7 @@ HELP
                  (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
                  c.title as country_name
                  FROM {$this->table('models')} m
-                 LEFT JOIN {$this->table('countries')} c ON m.country_id = c.country_id
+                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
                  WHERE 1=1";
 
         $params = [];
@@ -194,7 +194,7 @@ HELP
                        (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
                        c.title as country_name
                 FROM {$this->table('models')} m
-                LEFT JOIN {$this->table('countries')} c ON m.country_id = c.country_id
+                LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
                 WHERE m.model_id = :id
             ");
             $stmt->execute(['id' => $id]);
