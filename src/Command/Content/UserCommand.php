@@ -378,9 +378,9 @@ HELP
                     ? $displayName : $username,
             ]);
 
-            $db->exec("SET sql_mode = @old_sql_mode");
-
             $userId = $db->lastInsertId();
+
+            $db->exec("SET sql_mode = @old_sql_mode");
             $this->io()->success("User created successfully with ID: $userId");
         } catch (\Exception $e) {
             $this->io()->error('Failed to create user: ' . $e->getMessage());

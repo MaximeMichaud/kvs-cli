@@ -301,9 +301,9 @@ HELP
                 'status_id' => $statusId,
             ]);
 
-            $db->exec("SET sql_mode = @old_sql_mode");
-
             $categoryId = $db->lastInsertId();
+
+            $db->exec("SET sql_mode = @old_sql_mode");
 
             $this->io()->success("Category created successfully!");
             $this->renderTable(

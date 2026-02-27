@@ -72,6 +72,7 @@ HELP
 
         return match ($action) {
             'list' => $this->listTags($input),
+            'show' => $this->showTag($identifier),
             'create' => $this->createTag($identifier),
             'delete' => $this->deleteTag($identifier),
             'update' => $this->updateTag($identifier, $input),
@@ -168,6 +169,72 @@ HELP
         return self::SUCCESS;
     }
 
+    private function showTag(?string $id): int
+    {
+        if ($id === null || $id === '') {
+            $this->io()->error('Tag ID is required');
+            $this->io()->text('Usage: kvs content:tag show <id>');
+            return self::FAILURE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $stmt = $db->prepare("
+                SELECT t.*,
+                       (SELECT COUNT(*) FROM {$this->table('tags')}_videos
+                        WHERE tag_id = t.tag_id) as video_count,
+                       (SELECT COUNT(*) FROM {$this->table('tags')}_albums
+                        WHERE tag_id = t.tag_id) as album_count
+                FROM {$this->table('tags')} t
+                WHERE t.tag_id = :id
+            ");
+            $stmt->execute(['id' => $id]);
+            /** @var array<string, mixed>|false $tag */
+            $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($tag === false) {
+                $this->io()->error("Tag not found: $id");
+                return self::FAILURE;
+            }
+
+            $tagName = is_string($tag['tag'] ?? null) ? $tag['tag'] : '';
+            $this->io()->section("Tag: $tagName");
+
+            $videoCountRaw = $tag['video_count'] ?? 0;
+            $videoCount = is_numeric($videoCountRaw) ? (int) $videoCountRaw : 0;
+            $albumCountRaw = $tag['album_count'] ?? 0;
+            $albumCount = is_numeric($albumCountRaw) ? (int) $albumCountRaw : 0;
+            $statusIdRaw = $tag['status_id'] ?? 0;
+            $statusId = is_numeric($statusIdRaw) ? (int) $statusIdRaw : 0;
+            $tagIdRaw = $tag['tag_id'] ?? 0;
+            $tagId = is_scalar($tagIdRaw) ? (string) $tagIdRaw : '0';
+            $tagDir = is_string($tag['tag_dir'] ?? null) ? $tag['tag_dir'] : '';
+            $addedDate = is_string($tag['added_date'] ?? null) ? $tag['added_date'] : 'N/A';
+
+            $info = [
+                ['ID', $tagId],
+                ['Name', $tagName],
+                ['Slug', $tagDir],
+                ['Status', StatusFormatter::tag($statusId)],
+                ['Videos', (string) $videoCount],
+                ['Albums', (string) $albumCount],
+                ['Total Usage', (string) ($videoCount + $albumCount)],
+                ['Added', $addedDate],
+            ];
+
+            $this->renderTable(['Property', 'Value'], $info);
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to fetch tag: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
+    }
+
     private function createTag(?string $tagName): int
     {
         if ($tagName === null || $tagName === '') {
@@ -205,9 +272,9 @@ HELP
 
             $stmt->execute(['tag' => $tagName, 'tag_dir' => $tagDir]);
 
-            $db->exec("SET sql_mode = @old_sql_mode");
-
             $tagId = $db->lastInsertId();
+
+            $db->exec("SET sql_mode = @old_sql_mode");
 
             $this->io()->success("Tag created successfully!");
             $this->renderTable(
