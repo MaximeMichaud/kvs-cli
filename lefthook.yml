@@ -1,0 +1,79 @@
+# Lefthook — Git hooks manager
+# https://github.com/evilmartians/lefthook
+#
+# Local setup:   lefthook install
+# Run manually:  lefthook run pre-commit --all-files
+
+# Prevent lefthook from re-installing hooks automatically (e.g. in CI)
+no_auto_install: true
+
+# ─────────────────────────────────────────────
+#  pre-commit — fast checks, run in parallel
+# ─────────────────────────────────────────────
+pre-commit:
+  parallel: true
+
+  commands:
+    # Enforces .editorconfig rules: trailing whitespace, final newline, line endings (lf)
+    editorconfig:
+      name: EditorConfig
+      # PHP indentation is enforced by PHPCS — ec false-positives on docblock bullet lists
+      glob: "*.{yml,yaml,json,md,xml,editorconfig,gitattributes,gitignore,sh}"
+      run: ./vendor/bin/ec {staged_files}
+      exclude:
+        - "tests/fixtures/**"
+
+    check-json:
+      name: JSON Lint
+      glob: "*.json"
+      run: ./vendor/bin/jsonlint {staged_files}
+
+    check-yaml:
+      name: YAML Lint
+      glob: "*.{yml,yaml}"
+      # Uses symfony/yaml (already a project dependency) — no extra tool required
+      run: >
+        php -r
+        "require 'vendor/autoload.php';
+        foreach (array_slice(\$argv, 1) as \$f) {
+          try { (new Symfony\Component\Yaml\Parser())->parseFile(\$f); }
+          catch (\Exception \$e) { fprintf(STDERR, \"%s: %s\n\", \$f, \$e->getMessage()); exit(1); }
+        }"
+        {staged_files}
+
+    # Anchored to line-start with trailing space — avoids false positives on markdown headings
+    check-merge-conflict:
+      name: Merge Conflict Markers
+      run: grep -Pln '^(<{7} |>{7} |\|{7} )' {staged_files} | grep . && exit 1 || true
+
+    # Blocks files larger than 500 KB from being committed
+    check-large-files:
+      name: Large File Check
+      run: find {staged_files} -maxdepth 0 -size +500k 2>/dev/null | grep . && exit 1 || true
+
+    # Runs on the full project (matching original pass_filenames: false behaviour)
+    phpcs:
+      name: PHP_CodeSniffer
+      glob: "*.php"
+      run: ./vendor/bin/phpcs --standard=phpcs.xml -n
+
+    phpstan:
+      name: PHPStan
+      glob: "*.php"
+      # Intentionally runs on the full project (no {staged_files}) for accurate cross-file analysis
+      run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
+    composer-validate:
+      name: Composer Validate
+      glob: "composer.json"
+      run: composer validate --strict --no-interaction
+
+# ─────────────────────────────────────────────
+#  pre-push — slower checks before pushing
+# ─────────────────────────────────────────────
+pre-push:
+  commands:
+    phpunit:
+      name: PHPUnit
+      glob: "*.php"
+      run: ./vendor/bin/phpunit --no-progress

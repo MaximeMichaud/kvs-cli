@@ -20,7 +20,9 @@
         "phpstan/phpstan-symfony": "^1.4 || ^2.0",
         "phpstan/phpstan-strict-rules": "^1.6 || ^2.0",
         "squizlabs/php_codesniffer": "^3.8 || ^4.0",
-        "mikey179/vfsstream": "^1.6"
+        "mikey179/vfsstream": "^1.6",
+        "editorconfig-checker/editorconfig-checker": "^10.6",
+        "seld/jsonlint": "^1.11"
     },
     "autoload": {
         "psr-4": {
@@ -36,6 +38,7 @@
         "bin/kvs"
     ],
     "scripts": {
+        "prepare": "@php -r \"if (!getenv('CI')) { $r = null; exec('lefthook install 2>&1', $o, $r); if ($r !== 0) { fwrite(STDERR, implode(PHP_EOL, $o) . PHP_EOL); exit($r); } }\"",
         "build": "php -d phar.readonly=0 build.php",
         "test": "phpunit",
         "test-unit": "phpunit --testsuite=\"Unit Tests\"",
