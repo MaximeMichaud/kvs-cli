@@ -183,22 +183,21 @@ Priority order:
 
 ```bash
 composer install
-pip install pre-commit
-pre-commit install
 ```
 
-### Pre-commit Hooks
+Git hooks are installed automatically via the `composer install` post-install script.
 
-This project uses [pre-commit](https://pre-commit.com/) to run checks before each commit:
+### Git Hooks
 
-- **PHPCS** - Code style (PSR-12)
-- **PHPStan** - Static analysis (level 10)
-- **PHPUnit** - Tests
+This project uses [lefthook](https://github.com/evilmartians/lefthook) to run checks automatically:
+
+- **pre-commit** — PHPCS (PSR-12), PHPStan (level 10), EditorConfig, YAML/JSON lint
+- **pre-push** — PHPUnit
 
 To run all checks manually:
 
 ```bash
-pre-commit run --all-files
+lefthook run pre-commit --all-files
 ```
 
 ### Testing
