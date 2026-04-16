@@ -21,31 +21,7 @@ jobs:
       github.event.pull_request.user.login == 'renovate[bot]'
 
     steps:
-      - name: Fetch Dependabot metadata
-        id: dependabot-metadata
-        if: github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: dependabot/fetch-metadata@v2
-        with:
-          github-token: ${{ github.token }}
-
-      - name: Determine update type
-        id: update-type
-        run: |
-          if [[ "${{ github.event.pull_request.user.login }}" == "dependabot[bot]" ]]; then
-            UPDATE_TYPE="${{ steps.dependabot-metadata.outputs.update-type }}"
-          else
-            TITLE="${{ github.event.pull_request.title }}"
-            if echo "$TITLE" | grep -iqE '\bmajor\b'; then
-              UPDATE_TYPE="version-update:semver-major"
-            else
-              UPDATE_TYPE="version-update:semver-minor"
-            fi
-          fi
-          echo "update_type=$UPDATE_TYPE" >> "$GITHUB_OUTPUT"
-          echo "Detected update type: $UPDATE_TYPE"
-
       - name: Wait for CI checks
-        if: steps.update-type.outputs.update_type != 'version-update:semver-major'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -68,16 +44,10 @@ jobs:
           echo "Timeout waiting for checks"
           exit 1
 
-      - name: Merge minor/patch updates
-        if: steps.update-type.outputs.update_type != 'version-update:semver-major'
+      - name: Merge dependency update
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh pr merge "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" \
             --squash
-
-      - name: Skip auto-merge for major updates
-        if: steps.update-type.outputs.update_type == 'version-update:semver-major'
-        run: |
-          echo "Major version bump detected. PR NOT auto-merged."
