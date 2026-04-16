@@ -190,13 +190,13 @@ class SystemBench
             }
 
             // Only count actual block devices (sda, nvme0n1, etc), not partitions
-            $device = $parts[2] ?? '';
+            $device = $parts[2];
             if (preg_match('/^(sd[a-z]|nvme\d+n\d+|vd[a-z])$/', $device) !== 1) {
                 continue;
             }
 
-            $readOps += (int)($parts[3] ?? 0);
-            $writeOps += (int)($parts[7] ?? 0);
+            $readOps += (int) $parts[3];
+            $writeOps += (int) $parts[7];
         }
 
         if ($readOps === 0 && $writeOps === 0) {

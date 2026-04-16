@@ -262,7 +262,7 @@ HELP
 
             if ($tags !== []) {
                 $this->io()->section('Tags');
-                $this->io()->text(implode(', ', $tags));
+                $this->io()->text(implode(', ', array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $tags)));
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch video: ' . $e->getMessage());

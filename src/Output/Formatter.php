@@ -195,7 +195,7 @@ class Formatter
             }
         }
 
-        $output->writeln(implode(' ', $ids));
+        $output->writeln(implode(' ', array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $ids)));
     }
 
     /**
