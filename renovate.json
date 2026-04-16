@@ -5,18 +5,15 @@
   "schedule": ["before 6am on Monday"],
   "labels": ["dependencies"],
   "rangeStrategy": "update-lockfile",
+  "dependencyDashboard": false,
   "packageRules": [
     {
-      "matchManagers": ["composer"],
       "matchUpdateTypes": ["major"],
       "enabled": false
     },
     {
-      "matchManagers": ["composer"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "Composer dependencies"
     }
-  ],
-  "commitMessagePrefix": "chore(deps):",
-  "prConcurrentLimit": 5
+  ]
 }
