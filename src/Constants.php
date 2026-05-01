@@ -113,6 +113,13 @@ final class Constants
     public const OBJECT_TYPE_PLAYLIST = 13;
 
     // ========================================
+    // FAVORITE TYPES (ktvs_fav_videos.fav_type)
+    // ========================================
+
+    /** fav_type value marking a row in ktvs_fav_videos as a playlist membership */
+    public const FAV_TYPE_PLAYLIST = 10;
+
+    // ========================================
     // SYSTEM THRESHOLDS
     // ========================================
 

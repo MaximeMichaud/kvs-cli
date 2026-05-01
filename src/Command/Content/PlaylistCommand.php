@@ -22,7 +22,7 @@ class PlaylistCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete)')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|add|remove|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Playlist ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
@@ -33,6 +33,7 @@ class PlaylistCommand extends BaseCommand
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
+            ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Video ID (required for add/remove actions)')
             ->setHelp(<<<'HELP'
 Manage KVS playlists.
 
@@ -56,6 +57,8 @@ Manage KVS playlists.
   <fg=green>kvs playlist list --format=json</>
   <fg=green>kvs playlist list --format=count</>
   <fg=green>kvs playlist show 1</>
+  <fg=green>kvs playlist add 1 --video=42</>
+  <fg=green>kvs playlist remove 1 --video=42</>
   <fg=green>kvs playlist delete 1</>
 
 <fg=yellow>NOTE:</>
@@ -72,6 +75,14 @@ HELP
         return match ($action) {
             'list' => $this->listPlaylists($input),
             'show' => $this->showPlaylist($this->getStringArgument($input, 'id')),
+            'add' => $this->addVideoToPlaylist(
+                $this->getStringArgument($input, 'id'),
+                $this->getIntOption($input, 'video')
+            ),
+            'remove' => $this->removeVideoFromPlaylist(
+                $this->getStringArgument($input, 'id'),
+                $this->getIntOption($input, 'video')
+            ),
             'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id')),
             default => $this->showHelp(),
         };
@@ -351,6 +362,239 @@ HELP
         }
     }
 
+    /**
+     * Fetch a playlist by ID, returning [user_id, is_locked, title] or null if not found.
+     *
+     * @return array{user_id: int, is_locked: int, title: string}|null
+     */
+    private function fetchPlaylistOwnerAndLock(\PDO $db, int $playlistId): ?array
+    {
+        $stmt = $db->prepare(
+            "SELECT user_id, is_locked, title FROM {$this->table('playlists')} WHERE playlist_id = :id"
+        );
+        $stmt->execute(['id' => $playlistId]);
+        /** @var array{user_id: int|string, is_locked: int|string, title: string}|false $row */
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+        return [
+            'user_id' => (int) $row['user_id'],
+            'is_locked' => (int) $row['is_locked'],
+            'title' => $row['title'],
+        ];
+    }
+
+    private function videoExists(\PDO $db, int $videoId): bool
+    {
+        $stmt = $db->prepare("SELECT 1 FROM {$this->table('videos')} WHERE video_id = :id");
+        $stmt->execute(['id' => $videoId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * Recompute counters after a fav_videos change for a playlist.
+     * Mirrors fav_videos_changed() in kvs/admin/include/functions.php:652
+     * but scoped to a single playlist + video + owner.
+     */
+    private function recountAfterFavChange(\PDO $db, int $playlistId, int $videoId, int $ownerUserId): void
+    {
+        // 1) playlists.total_videos for this playlist
+        $stmt = $db->prepare(
+            "UPDATE {$this->table('playlists')} p
+             SET p.total_videos = (
+                 SELECT COUNT(*) FROM {$this->table('fav_videos')} f
+                 WHERE f.playlist_id = p.playlist_id
+             )
+             WHERE p.playlist_id = :id"
+        );
+        $stmt->execute(['id' => $playlistId]);
+
+        // 2) videos.favourites_count for this video (counts every fav_type incl. 10)
+        $stmt = $db->prepare(
+            "UPDATE {$this->table('videos')} v
+             SET v.favourites_count = (
+                 SELECT COUNT(*) FROM {$this->table('fav_videos')} f
+                 WHERE f.video_id = v.video_id
+             )
+             WHERE v.video_id = :id"
+        );
+        $stmt->execute(['id' => $videoId]);
+
+        // 3) users.favourite_videos_count for the playlist owner
+        $stmt = $db->prepare(
+            "UPDATE {$this->table('users')} u
+             SET u.favourite_videos_count = (
+                 SELECT COUNT(*) FROM {$this->table('fav_videos')} f
+                 WHERE f.user_id = u.user_id
+             )
+             WHERE u.user_id = :id"
+        );
+        $stmt->execute(['id' => $ownerUserId]);
+    }
+
+    private function addVideoToPlaylist(?string $id, ?int $videoId): int
+    {
+        if ($id === null || $id === '' || !is_numeric($id)) {
+            $this->io()->error('Playlist ID is required');
+            return self::FAILURE;
+        }
+        if ($videoId === null || $videoId <= 0) {
+            $this->io()->error('Video ID is required (use --video=<id>)');
+            return self::FAILURE;
+        }
+        $playlistId = (int) $id;
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $playlist = $this->fetchPlaylistOwnerAndLock($db, $playlistId);
+            if ($playlist === null) {
+                $this->io()->error("Playlist not found: $playlistId");
+                return self::FAILURE;
+            }
+            if ($playlist['is_locked'] === 1) {
+                $this->io()->error("Playlist #$playlistId is locked");
+                return self::FAILURE;
+            }
+
+            if (!$this->videoExists($db, $videoId)) {
+                $this->io()->error("Video not found: $videoId");
+                return self::FAILURE;
+            }
+
+            $ownerUserId = $playlist['user_id'];
+
+            $db->beginTransaction();
+
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM {$this->table('fav_videos')}
+                 WHERE user_id = :user_id AND video_id = :video_id
+                   AND fav_type = :fav_type AND playlist_id = :playlist_id"
+            );
+            $stmt->execute([
+                'user_id' => $ownerUserId,
+                'video_id' => $videoId,
+                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
+                'playlist_id' => $playlistId,
+            ]);
+            $alreadyExists = ((int) $stmt->fetchColumn()) > 0;
+
+            if ($alreadyExists) {
+                $db->commit();
+                $this->io()->note("Video #$videoId is already in playlist #$playlistId");
+                return self::SUCCESS;
+            }
+
+            $stmt = $db->prepare(
+                "INSERT INTO {$this->table('fav_videos')}
+                    (user_id, video_id, fav_type, playlist_id, playlist_sort_id, added_date)
+                 VALUES (:user_id, :video_id, :fav_type, :playlist_id, :playlist_sort_id, :added_date)"
+            );
+            $stmt->execute([
+                'user_id' => $ownerUserId,
+                'video_id' => $videoId,
+                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
+                'playlist_id' => $playlistId,
+                'playlist_sort_id' => 0,
+                'added_date' => date('Y-m-d H:i:s'),
+            ]);
+
+            $stmt = $db->prepare(
+                "UPDATE {$this->table('playlists')}
+                 SET last_content_date = :now
+                 WHERE playlist_id = :id"
+            );
+            $stmt->execute(['now' => date('Y-m-d H:i:s'), 'id' => $playlistId]);
+
+            $this->recountAfterFavChange($db, $playlistId, $videoId, $ownerUserId);
+
+            $db->commit();
+            $this->io()->success("Video #$videoId added to playlist #$playlistId");
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            $this->io()->error('Failed to add video to playlist: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    private function removeVideoFromPlaylist(?string $id, ?int $videoId): int
+    {
+        if ($id === null || $id === '' || !is_numeric($id)) {
+            $this->io()->error('Playlist ID is required');
+            return self::FAILURE;
+        }
+        if ($videoId === null || $videoId <= 0) {
+            $this->io()->error('Video ID is required (use --video=<id>)');
+            return self::FAILURE;
+        }
+        $playlistId = (int) $id;
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $playlist = $this->fetchPlaylistOwnerAndLock($db, $playlistId);
+            if ($playlist === null) {
+                $this->io()->error("Playlist not found: $playlistId");
+                return self::FAILURE;
+            }
+            if ($playlist['is_locked'] === 1) {
+                $this->io()->error("Playlist #$playlistId is locked");
+                return self::FAILURE;
+            }
+
+            $ownerUserId = $playlist['user_id'];
+
+            if (!$this->videoExists($db, $videoId)) {
+                $this->io()->error("Video not found: $videoId");
+                return self::FAILURE;
+            }
+
+            $db->beginTransaction();
+
+            $stmt = $db->prepare(
+                "DELETE FROM {$this->table('fav_videos')}
+                 WHERE user_id = :user_id AND video_id = :video_id
+                   AND fav_type = :fav_type AND playlist_id = :playlist_id"
+            );
+            $stmt->execute([
+                'user_id' => $ownerUserId,
+                'video_id' => $videoId,
+                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
+                'playlist_id' => $playlistId,
+            ]);
+            $deleted = $stmt->rowCount();
+
+            if ($deleted === 0) {
+                $db->commit();
+                $this->io()->note("Video #$videoId is not in playlist #$playlistId");
+                return self::SUCCESS;
+            }
+
+            $this->recountAfterFavChange($db, $playlistId, $videoId, $ownerUserId);
+
+            $db->commit();
+            $this->io()->success("Video #$videoId removed from playlist #$playlistId");
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            $this->io()->error('Failed to remove video from playlist: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
     private function deletePlaylist(?string $id): int
     {
         if ($id === null || $id === '') {
@@ -458,6 +702,8 @@ HELP
         $this->io()->listing([
             'list : List playlists',
             'show <id> : Show playlist details',
+            'add <id> --video=<video_id> : Add a video to a playlist',
+            'remove <id> --video=<video_id> : Remove a video from a playlist',
             'delete <id> : Delete a playlist',
         ]);
 

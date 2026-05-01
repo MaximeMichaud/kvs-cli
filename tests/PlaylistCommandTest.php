@@ -229,6 +229,120 @@ class PlaylistCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testPlaylistAddMissingId(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            '--video' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('required', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistAddMissingVideoOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Video ID', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistAddPlaylistNotFound(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 999999,
+            '--video' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistAddVideoNotFound(): void
+    {
+        $stmt = $this->db->query("SELECT playlist_id FROM ktvs_playlists WHERE is_locked=0 LIMIT 1");
+        $playlistId = $stmt->fetchColumn();
+
+        if ($playlistId === false) {
+            $this->markTestSkipped('No unlocked playlists in database');
+        }
+
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => $playlistId,
+            '--video' => 999999,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Video not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistRemoveMissingId(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            '--video' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('required', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistRemoveMissingVideoOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Video ID', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistRemovePlaylistNotFound(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 999999,
+            '--video' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testPlaylistRemoveVideoNotFound(): void
+    {
+        $stmt = $this->db->query("SELECT playlist_id FROM ktvs_playlists WHERE is_locked=0 LIMIT 1");
+        $playlistId = $stmt->fetchColumn();
+
+        if ($playlistId === false) {
+            $this->markTestSkipped('No unlocked playlists in database');
+        }
+
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => $playlistId,
+            '--video' => 999999,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Video not found', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testPlaylistCommandMetadata(): void
     {
         $this->assertEquals('content:playlist', $this->command->getName());
