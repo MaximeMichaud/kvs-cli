@@ -268,6 +268,38 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * Parse a status filter from --status, accepting both named aliases and KVS numeric status IDs.
+     *
+     * @param array<string, int> $aliases
+     * @param list<int> $numericStatuses
+     */
+    protected function parseStatusFilter(InputInterface $input, array $aliases, array $numericStatuses = []): ?int
+    {
+        $status = $this->getStringOption($input, 'status');
+        if ($status === null) {
+            return null;
+        }
+
+        $statusKey = strtolower(trim($status));
+        if (array_key_exists($statusKey, $aliases)) {
+            return $aliases[$statusKey];
+        }
+
+        if ($numericStatuses === []) {
+            $numericStatuses = array_values(array_unique($aliases));
+        }
+
+        if (preg_match('/^\d+$/', $statusKey) === 1) {
+            $statusId = (int) $statusKey;
+            if (in_array($statusId, $numericStatuses, true)) {
+                return $statusId;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Render a table with consistent box style
      *
      * @param list<string> $headers

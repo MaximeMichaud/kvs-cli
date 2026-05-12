@@ -87,13 +87,14 @@ HELP
 
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = [
+            $statusId = $this->parseStatusFilter($input, [
                 'active' => StatusFormatter::ALBUM_ACTIVE,
                 'disabled' => StatusFormatter::ALBUM_DISABLED,
-            ];
-            if (isset($statusMap[$status])) {
+                'inactive' => StatusFormatter::ALBUM_DISABLED,
+            ], [0, 1, 2, 3, 4, 5]);
+            if ($statusId !== null) {
                 $query .= " AND a.status_id = :status";
-                $params['status'] = $statusMap[$status];
+                $params['status'] = $statusId;
             }
         }
 

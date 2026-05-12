@@ -99,14 +99,14 @@ HELP
 
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = [
+            $statusId = $this->parseStatusFilter($input, [
                 'active' => StatusFormatter::VIDEO_ACTIVE,
                 'disabled' => StatusFormatter::VIDEO_DISABLED,
                 'error' => StatusFormatter::VIDEO_ERROR,
-            ];
-            if (isset($statusMap[$status])) {
+            ], [0, 1, 2, 3, 4, 5]);
+            if ($statusId !== null) {
                 $query .= " AND v.status_id = :status";
-                $params['status'] = $statusMap[$status];
+                $params['status'] = $statusId;
             }
         }
 

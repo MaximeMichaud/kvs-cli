@@ -105,13 +105,14 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = [
+            $statusId = $this->parseStatusFilter($input, [
                 'active' => StatusFormatter::PLAYLIST_ACTIVE,
                 'disabled' => StatusFormatter::PLAYLIST_DISABLED,
-            ];
-            if (isset($statusMap[$status])) {
+                'inactive' => StatusFormatter::PLAYLIST_DISABLED,
+            ]);
+            if ($statusId !== null) {
                 $query .= " AND p.status_id = :status";
-                $params['status'] = $statusMap[$status];
+                $params['status'] = $statusId;
             }
         }
 

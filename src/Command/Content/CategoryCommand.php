@@ -87,6 +87,20 @@ HELP
         }
 
         try {
+            $conditions = [];
+            $params = [];
+
+            $statusId = $this->parseStatusFilter($input, [
+                'active' => StatusFormatter::CATEGORY_ACTIVE,
+                'inactive' => StatusFormatter::CATEGORY_INACTIVE,
+                'disabled' => StatusFormatter::CATEGORY_INACTIVE,
+            ]);
+            if ($statusId !== null) {
+                $conditions[] = 'c.status_id = :status';
+                $params['status'] = $statusId;
+            }
+
+            $whereClause = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
             $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
 
             $sql = "
@@ -94,11 +108,15 @@ HELP
                        (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = c.category_id) as video_count,
                        (SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = c.category_id) as album_count
                 FROM {$this->table('categories')} c
+                $whereClause
                 ORDER BY c.title
                 LIMIT :limit
             ";
 
             $stmt = $db->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue(':' . $key, $value, \PDO::PARAM_INT);
+            }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 

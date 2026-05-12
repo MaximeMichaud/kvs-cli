@@ -112,14 +112,17 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusMap = [
+            $statusId = $this->parseStatusFilter($input, [
                 'active' => StatusFormatter::USER_ACTIVE,
                 'disabled' => StatusFormatter::USER_DISABLED,
                 'premium' => StatusFormatter::USER_PREMIUM,
-            ];
-            if (isset($statusMap[$status])) {
+                'not-confirmed' => StatusFormatter::USER_NOT_CONFIRMED,
+                'vip' => StatusFormatter::USER_VIP,
+                'webmaster' => StatusFormatter::USER_WEBMASTER,
+            ], [0, 1, 2, 3, 4, 6]);
+            if ($statusId !== null) {
                 $query .= " AND u.status_id = :status";
-                $params['status'] = $statusMap[$status];
+                $params['status'] = $statusId;
             }
         }
 

@@ -98,9 +98,15 @@ HELP
             // Status filter
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? StatusFormatter::TAG_ACTIVE : StatusFormatter::TAG_INACTIVE;
-                $conditions[] = 't.status_id = :status';
-                $params['status'] = $statusId;
+                $statusId = $this->parseStatusFilter($input, [
+                    'active' => StatusFormatter::TAG_ACTIVE,
+                    'inactive' => StatusFormatter::TAG_INACTIVE,
+                    'disabled' => StatusFormatter::TAG_INACTIVE,
+                ]);
+                if ($statusId !== null) {
+                    $conditions[] = 't.status_id = :status';
+                    $params['status'] = $statusId;
+                }
             }
 
             // Search filter
