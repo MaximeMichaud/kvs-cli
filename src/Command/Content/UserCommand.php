@@ -31,7 +31,7 @@ Manage KVS users.
   list              List users (default)
   show <id>         Show user details
   create            Create new user (interactive)
-  delete <id>       Delete user
+  delete <id>       Delete user using KVS native cleanup
   stats             Show user statistics
 
 <info>LIST OPTIONS:</info>
@@ -400,8 +400,8 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will permanently delete user: $id");
-        $this->io()->warning("All associated content will also be deleted");
+        $this->io()->warning("This will delete user using KVS native cleanup: $id");
+        $this->io()->warning('Associated videos and albums will be queued for KVS background deletion.');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
@@ -413,38 +413,86 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT user_id FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
+            $stmt = $db->prepare("SELECT user_id, username FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
             $stmt->execute(['id' => $id]);
-            $userId = $stmt->fetchColumn();
+            /** @var array<string, mixed>|false $user */
+            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if ($userId === false || $userId === null || $userId === '' || $userId === 0) {
+            if ($user === false) {
                 $this->io()->error("User not found: $id");
                 return self::FAILURE;
             }
 
-            $db->beginTransaction();
-
-            $tables = [
-                $this->table('users'),
-                $this->table('videos'),
-                $this->table('albums'),
-                $this->table('comments'),
-            ];
-
-            foreach ($tables as $table) {
-                $stmt = $db->prepare("DELETE FROM $table WHERE user_id = :id");
-                $stmt->execute(['id' => $userId]);
+            $userIdValue = $user['user_id'] ?? null;
+            if (!is_numeric($userIdValue)) {
+                $this->io()->error("User not found: $id");
+                return self::FAILURE;
             }
 
-            $db->commit();
-            $this->io()->success("User and all associated content deleted successfully");
+            $userId = (int) $userIdValue;
+            $this->deleteUsersWithKvs([$userId]);
+
+            $username = $user['username'] ?? $id;
+            $username = is_scalar($username) ? (string) $username : $id;
+            $this->io()->success("User deleted with KVS cleanup: {$username} ({$userId})");
         } catch (\Exception $e) {
-            $db->rollBack();
             $this->io()->error('Failed to delete user: ' . $e->getMessage());
             return self::FAILURE;
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Delete users through KVS native cleanup so files, references, counters and background tasks stay consistent.
+     *
+     * @param list<int> $userIds
+     */
+    protected function deleteUsersWithKvs(array $userIds): void
+    {
+        $kvsPath = $this->config->getKvsPath();
+        $adminPath = $kvsPath . '/admin';
+
+        if (!is_dir($adminPath)) {
+            throw new \RuntimeException(sprintf('KVS admin directory not found: %s', $adminPath));
+        }
+
+        $originalDir = getcwd();
+        if ($originalDir === false) {
+            throw new \RuntimeException('Failed to get current working directory');
+        }
+
+        if (!chdir($adminPath)) {
+            throw new \RuntimeException(sprintf('Failed to switch to KVS admin directory: %s', $adminPath));
+        }
+
+        try {
+            require_once $adminPath . '/include/setup.php';
+            require_once $adminPath . '/include/setup_db.php';
+            require_once $adminPath . '/include/functions_base.php';
+            require_once $adminPath . '/include/functions.php';
+
+            $_SESSION['userdata'] = [
+                'user_id' => 1,
+                'login' => 'kvs-cli',
+                'is_superadmin' => 1,
+                'content_delete_daily_limit' => PHP_INT_MAX,
+            ];
+
+            $deleteUsers = $this->getKvsDeleteUsersFunctionName();
+            if (!function_exists($deleteUsers)) {
+                throw new \RuntimeException('KVS delete_users function is not available');
+            }
+
+            $deleteUsers($userIds, true, 'ap');
+        } finally {
+            chdir($originalDir);
+        }
+    }
+
+    private function getKvsDeleteUsersFunctionName(): string
+    {
+        return 'delete_users';
     }
 
     private function showStats(): int
