@@ -59,8 +59,8 @@ HELP
         $this->io()->title('KVS Interactive Shell');
         $this->io()->info('Loading KVS context...');
 
-        // Get database connection
-        $db = $this->getDatabaseConnection();
+        // Get mysqli connection for compatibility with KVS native snippets and helpers.
+        $db = $this->getMysqliConnection();
         if ($db === null) {
             $this->io()->warning('Database connection not available');
         }
@@ -265,7 +265,7 @@ PHP;
             'kvsPath' => $this->config->getKvsPath(),
         ];
 
-        $db = $this->getDatabaseConnection(true);
+        $db = $this->getMysqliConnection(true);
         if ($db !== null) {
             $vars['db'] = $db;
         }

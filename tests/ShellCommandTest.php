@@ -86,6 +86,32 @@ class ShellCommandTest extends TestCase
         $this->assertStringContainsString('$db', $help);
     }
 
+    public function testShellVariablesUseMysqliConnection(): void
+    {
+        $command = new class ($this->config) extends ShellCommand {
+            public bool $mysqliRequested = false;
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                throw new \RuntimeException('Shell variables should not request a PDO connection');
+            }
+
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                $this->mysqliRequested = true;
+                return null;
+            }
+        };
+
+        $reflection = new \ReflectionClass(ShellCommand::class);
+        $method = $reflection->getMethod('getShellVariables');
+        $variables = $method->invoke($command);
+
+        $this->assertTrue($command->mysqliRequested);
+        $this->assertIsArray($variables);
+        $this->assertArrayNotHasKey('db', $variables);
+    }
+
     public function testShellRequiresPsySH(): void
     {
         if (!class_exists('Psy\Shell')) {

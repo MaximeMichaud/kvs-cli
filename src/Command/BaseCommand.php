@@ -267,6 +267,73 @@ abstract class BaseCommand extends Command
         return null;
     }
 
+    protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+    {
+        if (!class_exists(\mysqli::class)) {
+            if (!$quiet) {
+                $this->io()->error('MySQLi extension is not available');
+            }
+            return null;
+        }
+
+        $dbConfig = $this->config->getDatabaseConfig();
+
+        $requiredKeys = ['host', 'database', 'user'];
+        foreach ($requiredKeys as $key) {
+            if (!isset($dbConfig[$key]) || $dbConfig[$key] === '') {
+                if (!$quiet) {
+                    $this->io()->error("Database configuration missing: $key");
+                }
+                return null;
+            }
+        }
+        if (!array_key_exists('password', $dbConfig)) {
+            if (!$quiet) {
+                $this->io()->error('Database configuration missing: password');
+            }
+            return null;
+        }
+
+        $hostsToTry = [$dbConfig['host']];
+        $originalHost = $dbConfig['host'];
+        if (!str_contains($originalHost, '.') && $originalHost !== 'localhost' && $originalHost !== '127.0.0.1') {
+            $hostsToTry[] = '127.0.0.1';
+            $hostsToTry[] = 'localhost';
+        }
+
+        $lastError = 'unknown error';
+        mysqli_report(MYSQLI_REPORT_OFF);
+
+        foreach ($hostsToTry as $host) {
+            $port = 3306;
+            if (str_contains($host, ':')) {
+                [$host, $portStr] = explode(':', $host, 2);
+                $port = (int) $portStr;
+            }
+
+            try {
+                $mysqli = new \mysqli($host, $dbConfig['user'], $dbConfig['password'], $dbConfig['database'], $port);
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+                continue;
+            }
+
+            if ($mysqli->connect_errno === 0) {
+                $mysqli->set_charset(Constants::DB_CHARSET);
+                $mysqli->query("SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION', SESSION SQL_BIG_SELECTS = 1, SESSION wait_timeout = 3600");
+                return $mysqli;
+            }
+
+            $lastError = $mysqli->connect_error . ' (' . $mysqli->connect_errno . ')';
+            $mysqli->close();
+        }
+
+        if (!$quiet) {
+            $this->io()->error('Database connection failed: ' . $lastError);
+        }
+        return null;
+    }
+
     /**
      * Parse a status filter from --status, accepting both named aliases and KVS numeric status IDs.
      *
