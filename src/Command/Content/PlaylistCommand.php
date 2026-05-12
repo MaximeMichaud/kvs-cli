@@ -602,6 +602,10 @@ HELP
             $this->io()->error('Playlist ID is required');
             return self::FAILURE;
         }
+        if (!ctype_digit($id)) {
+            $this->io()->error('Playlist ID must be numeric');
+            return self::FAILURE;
+        }
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -630,7 +634,7 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will permanently delete playlist #$id and all associated data");
+        $this->io()->warning("This will delete playlist #$id using KVS native cleanup");
         $this->io()->text("Title: " . $playlist['title']);
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
@@ -638,63 +642,25 @@ HELP
         }
 
         try {
-            $db->beginTransaction();
-
-            // Delete from related tables (order matters for foreign key constraints)
-            // Core tables with playlist_id column
-            $coreTables = [
-                ['table' => $this->table('fav_videos'), 'column' => 'playlist_id'],
-                ['table' => $this->table('categories') . '_playlists', 'column' => 'playlist_id'],
-                ['table' => $this->table('tags') . '_playlists', 'column' => 'playlist_id'],
-            ];
-
-            foreach ($coreTables as $tableInfo) {
-                $stmt = $db->prepare("DELETE FROM {$tableInfo['table']} WHERE {$tableInfo['column']} = :id");
-                $stmt->execute(['id' => $id]);
-            }
-
-            // Comments (object_type_id = 13 for playlists)
-            $stmt = $db->prepare("DELETE FROM {$this->table('comments')} WHERE object_id = :id AND object_type_id = 13");
-            $stmt->execute(['id' => $id]);
-
-            // Subscriptions (subscribed_object_type_id = 13 for playlists)
-            $subscriptionsTable = $this->table('users') . '_subscriptions';
-            $stmt = $db->prepare(
-                "DELETE FROM {$subscriptionsTable} WHERE subscribed_object_id = :id AND subscribed_object_type_id = 13"
-            );
-            $stmt->execute(['id' => $id]);
-
-            // Optional tables - gracefully handle if they don't exist
-            $optionalTables = [
-                ['table' => $this->table('flags') . '_playlists', 'column' => 'playlist_id'],
-                ['table' => $this->table('flags') . '_history', 'column' => 'playlist_id'],
-                ['table' => $this->table('flags') . '_messages', 'column' => 'playlist_id'],
-                ['table' => $this->table('users') . '_events', 'column' => 'playlist_id'],
-                ['table' => $this->table('rating') . '_history', 'column' => 'playlist_id'],
-            ];
-
-            foreach ($optionalTables as $tableInfo) {
-                try {
-                    $stmt = $db->prepare("DELETE FROM {$tableInfo['table']} WHERE {$tableInfo['column']} = :id");
-                    $stmt->execute(['id' => $id]);
-                } catch (\PDOException) {
-                    // Table may not exist, ignore
-                }
-            }
-
-            // Delete main playlist record (LAST)
-            $stmt = $db->prepare("DELETE FROM {$this->table('playlists')} WHERE playlist_id = :id");
-            $stmt->execute(['id' => $id]);
-
-            $db->commit();
-            $this->io()->success("Playlist #$id deleted successfully");
+            $this->deletePlaylistWithKvs($playlist['playlist_id']);
+            $this->io()->success("Playlist #$id deleted with KVS cleanup");
 
             return self::SUCCESS;
         } catch (\Exception $e) {
-            $db->rollBack();
             $this->io()->error('Failed to delete playlist: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    protected function deletePlaylistWithKvs(int $playlistId): void
+    {
+        $this->runWithKvsAdminContext(function () use ($playlistId): void {
+            if (!function_exists('delete_playlists')) {
+                throw new \RuntimeException('KVS delete_playlists function is not available');
+            }
+
+            delete_playlists([$playlistId], 'ap');
+        });
     }
 
     private function showHelp(): int
