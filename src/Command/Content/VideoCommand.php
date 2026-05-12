@@ -310,8 +310,13 @@ HELP
             // Delete from core tables
             $commentsTable = $this->table('comments');
             foreach ($coreTables as $table) {
-                $column = $table === $commentsTable ? 'object_id' : 'video_id';
-                $stmt = $db->prepare("DELETE FROM $table WHERE $column = :id");
+                if ($table === $commentsTable) {
+                    $stmt = $db->prepare("DELETE FROM $table WHERE object_id = :id AND object_type_id = 1");
+                    $stmt->execute(['id' => $id]);
+                    continue;
+                }
+
+                $stmt = $db->prepare("DELETE FROM $table WHERE video_id = :id");
                 $stmt->execute(['id' => $id]);
             }
 
