@@ -67,6 +67,31 @@ class EvalCommandTest extends TestCase
         $this->assertStringContainsString($this->tempDir, $output);
     }
 
+    public function testEvalUsesMysqliConnectionForKvsContext(): void
+    {
+        $command = new class ($this->config) extends EvalCommand {
+            public bool $mysqliConnectionRequested = false;
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                throw new \RuntimeException('Eval should not request a PDO connection');
+            }
+
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                $this->mysqliConnectionRequested = true;
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute(['code' => 'echo $db === null ? "null-db" : get_class($db);']);
+
+        $this->assertTrue($command->mysqliConnectionRequested);
+        $this->assertStringContainsString('null-db', $tester->getDisplay());
+        $this->assertEquals(0, $tester->getStatusCode());
+    }
+
     public function testEvalCommandMetadata(): void
     {
         $this->assertEquals('eval', $this->command->getName());

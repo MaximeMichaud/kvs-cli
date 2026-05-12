@@ -78,8 +78,8 @@ HELP
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;
 
-            // Get database connection (PDO)
-            $db = $this->getDatabaseConnection();
+            // Get mysqli connection for compatibility with KVS native snippets and helpers.
+            $db = $this->getMysqliConnection();
             if ($db === null) {
                 $this->io()->warning('Database connection not available');
             }
@@ -93,11 +93,11 @@ HELP
                 'db_name' => $dbConfig['database'] ?? null,
             ];
 
-            // Load bootstrap (this defines Model and DB classes with PDO)
+            // Load bootstrap (this defines Model and DB classes with mysqli)
             $bootstrap = $this->getEvalBootstrapCode($this->config->getTablePrefix());
             eval($bootstrap);
 
-            // Initialize Model and DB helpers with PDO connection
+            // Initialize Model and DB helpers with mysqli connection
             // Must use global namespace since classes are defined in eval()
             if ($db !== null) {
                 // @phpstan-ignore-next-line - Model and DB classes are dynamically created in bootstrap code

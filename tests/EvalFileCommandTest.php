@@ -66,6 +66,34 @@ class EvalFileCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testEvalFileUsesMysqliConnectionForKvsContext(): void
+    {
+        $testFile = $this->tempDir . '/test_mysqli_context.php';
+        file_put_contents($testFile, '<?php echo $db === null ? "null-db" : get_class($db);');
+
+        $command = new class ($this->config) extends EvalFileCommand {
+            public bool $mysqliConnectionRequested = false;
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                throw new \RuntimeException('Eval-file should not request a PDO connection');
+            }
+
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                $this->mysqliConnectionRequested = true;
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute(['file' => $testFile]);
+
+        $this->assertTrue($command->mysqliConnectionRequested);
+        $this->assertStringContainsString('null-db', $tester->getDisplay());
+        $this->assertEquals(0, $tester->getStatusCode());
+    }
+
     public function testEvalFileNotFound(): void
     {
         $this->tester->execute(['file' => '/nonexistent/file.php']);

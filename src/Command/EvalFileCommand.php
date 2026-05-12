@@ -106,13 +106,13 @@ HELP
             $kvsConfig = $this->config;
             $config = $this->config; // Alias for compatibility
 
-            // Get database connection
-            $db = $this->getDatabaseConnection();
+            // Get mysqli connection for compatibility with KVS native snippets and helpers.
+            $db = $this->getMysqliConnection();
             if ($db === null) {
                 $this->io()->warning('Database connection not available');
             }
 
-            // Load bootstrap (this defines Model and DB classes with PDO)
+            // Load bootstrap (this defines Model and DB classes with mysqli)
             $bootstrap = $this->getEvalBootstrapCode($this->config->getTablePrefix());
             eval($bootstrap);
         }

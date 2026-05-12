@@ -42,7 +42,7 @@ trait EvalSecurityTrait
     }
 
     /**
-     * Get PDO-based bootstrap code that defines Model and DB helper classes.
+     * Get mysqli-based bootstrap code that defines Model and DB helper classes.
      *
      * This code is eval'd to provide convenient database access in eval commands.
      * It defines: Video, User, Album, Category, Tag, DVD, Model_ classes and DB helper.
@@ -50,53 +50,53 @@ trait EvalSecurityTrait
     private function getEvalBootstrapCode(string $tablePrefix): string
     {
         $code = <<<'PHP'
-// PDO-based model classes for convenience
+// mysqli-based model classes for convenience
 if (!class_exists('Model')) {
     class Model {
         protected static $table;
-        protected static $db; // PDO instance
+        protected static $db; // mysqli instance
         protected static $prefix = 'ktvs_'; // Will be replaced by str_replace
 
-        public static function setDb($pdo) {
-            self::$db = $pdo;
+        public static function setDb($connection) {
+            self::$db = $connection;
         }
 
         public static function find($id) {
             if (!self::$db || !static::$table) return null;
-            try {
-                $stmt = self::$db->prepare("SELECT * FROM " . static::$table . " WHERE " . static::getIdColumn() . " = ?");
-                $stmt->execute([(int)$id]);
-                return $stmt->fetch();
-            } catch (\PDOException $e) {
-                echo "Query error: " . $e->getMessage() . "\n";
+            $sql = "SELECT * FROM " . static::$table . " WHERE " . static::getIdColumn() . " = " . (int)$id;
+            $result = mysqli_query(self::$db, $sql);
+            if ($result === false) {
+                echo "Query error: " . mysqli_error(self::$db) . "\n";
                 return null;
             }
+            return mysqli_fetch_assoc($result) ?: null;
         }
 
         public static function all($limit = 10) {
             if (!self::$db || !static::$table) return [];
-            try {
-                // Note: PDO doesn't support binding LIMIT as parameter in some drivers
-                $sql = "SELECT * FROM " . static::$table . " LIMIT " . (int)$limit;
-                $stmt = self::$db->query($sql);
-                return $stmt->fetchAll();
-            } catch (\PDOException $e) {
-                echo "Query error: " . $e->getMessage() . "\n";
+            $result = mysqli_query(self::$db, "SELECT * FROM " . static::$table . " LIMIT " . (int)$limit);
+            if ($result === false) {
+                echo "Query error: " . mysqli_error(self::$db) . "\n";
                 return [];
             }
+            $data = [];
+            while ($row = mysqli_fetch_assoc($result)) {
+                $data[] = $row;
+            }
+            return $data;
         }
 
         public static function count($where = '') {
             if (!self::$db || !static::$table) return 0;
-            try {
-                $sql = "SELECT COUNT(*) as total FROM " . static::$table;
-                if ($where) $sql .= " WHERE $where";
-                $stmt = self::$db->query($sql);
-                return (int)$stmt->fetchColumn();
-            } catch (\PDOException $e) {
-                echo "Query error: " . $e->getMessage() . "\n";
+            $sql = "SELECT COUNT(*) as total FROM " . static::$table;
+            if ($where) $sql .= " WHERE $where";
+            $result = mysqli_query(self::$db, $sql);
+            if ($result === false) {
+                echo "Query error: " . mysqli_error(self::$db) . "\n";
                 return 0;
             }
+            $row = mysqli_fetch_assoc($result);
+            return (int)($row['total'] ?? 0);
         }
 
         // Helper to get primary key column name
@@ -142,13 +142,13 @@ if (!class_exists('Model')) {
     }
 }
 
-// PDO-based database helper
+// mysqli-based database helper
 if (!class_exists('DB')) {
     class DB {
-        private static $connection; // PDO instance
+        private static $connection; // mysqli instance
 
-        public static function setConnection($pdo) {
-            self::$connection = $pdo;
+        public static function setConnection($connection) {
+            self::$connection = $connection;
         }
 
         public static function query($sql, $params = []) {
@@ -156,23 +156,65 @@ if (!class_exists('DB')) {
                 echo "No database connection\n";
                 return false;
             }
-            try {
-                if ($params === []) {
-                    $stmt = self::$connection->query($sql);
-                } else {
-                    $stmt = self::$connection->prepare($sql);
-                    $stmt->execute($params);
+            if ($params !== []) {
+                $stmt = mysqli_prepare(self::$connection, $sql);
+                if ($stmt === false) {
+                    echo "Query error: " . mysqli_error(self::$connection) . "\n";
+                    return false;
                 }
-                return $stmt->fetchAll();
-            } catch (\PDOException $e) {
-                echo "Query error: " . $e->getMessage() . "\n";
+                $types = '';
+                $values = [];
+                foreach ($params as $param) {
+                    if (is_int($param)) {
+                        $types .= 'i';
+                    } elseif (is_float($param)) {
+                        $types .= 'd';
+                    } else {
+                        $types .= 's';
+                    }
+                    $values[] = $param;
+                }
+                $refs = [];
+                foreach ($values as $key => $value) {
+                    $refs[$key] = &$values[$key];
+                }
+                if (!mysqli_stmt_bind_param($stmt, $types, ...$refs)) {
+                    echo "Query error: " . mysqli_stmt_error($stmt) . "\n";
+                    return false;
+                }
+                if (!mysqli_stmt_execute($stmt)) {
+                    echo "Query error: " . mysqli_stmt_error($stmt) . "\n";
+                    return false;
+                }
+                $result = mysqli_stmt_get_result($stmt);
+                if ($result === false) {
+                    return mysqli_stmt_affected_rows($stmt);
+                }
+                $data = [];
+                while ($row = mysqli_fetch_assoc($result)) {
+                    $data[] = $row;
+                }
+                return $data;
+            }
+
+            $result = mysqli_query(self::$connection, $sql);
+            if ($result === false) {
+                echo "Query error: " . mysqli_error(self::$connection) . "\n";
                 return false;
             }
+            if ($result === true) {
+                return true;
+            }
+            $data = [];
+            while ($row = mysqli_fetch_assoc($result)) {
+                $data[] = $row;
+            }
+            return $data;
         }
 
         public static function escape($value) {
             if (!self::$connection) return $value;
-            return self::$connection->quote($value);
+            return mysqli_real_escape_string(self::$connection, (string)$value);
         }
 
         public static function exec($sql) {
@@ -180,12 +222,17 @@ if (!class_exists('DB')) {
                 echo "No database connection\n";
                 return false;
             }
-            try {
-                return self::$connection->exec($sql);
-            } catch (\PDOException $e) {
-                echo "Query error: " . $e->getMessage() . "\n";
+            $result = mysqli_query(self::$connection, $sql);
+            if ($result === false) {
+                echo "Query error: " . mysqli_error(self::$connection) . "\n";
                 return false;
             }
+            return mysqli_affected_rows(self::$connection);
+        }
+
+        public static function lastId() {
+            if (!self::$connection) return null;
+            return mysqli_insert_id(self::$connection);
         }
     }
 }

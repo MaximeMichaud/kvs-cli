@@ -165,6 +165,7 @@ class EvalSecurityTraitTest extends TestCase
         $this->assertStringContainsString('public static function query', $code);
         $this->assertStringContainsString('public static function escape', $code);
         $this->assertStringContainsString('public static function exec', $code);
+        $this->assertStringContainsString('public static function lastId', $code);
     }
 
     public function testBootstrapCodeContainsModelMethods(): void
@@ -227,5 +228,16 @@ class EvalSecurityTraitTest extends TestCase
 
         // DB::query checks for null connection
         $this->assertStringContainsString('if (!self::$connection)', $code);
+    }
+
+    public function testBootstrapCodeUsesMysqliHelpers(): void
+    {
+        $code = $this->helper->testGetEvalBootstrapCode('ktvs_');
+
+        $this->assertStringContainsString('mysqli_query', $code);
+        $this->assertStringContainsString('mysqli_fetch_assoc', $code);
+        $this->assertStringContainsString('mysqli_real_escape_string', $code);
+        $this->assertStringNotContainsString('PDO', $code);
+        $this->assertStringNotContainsString('PDOException', $code);
     }
 }
