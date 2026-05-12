@@ -2,13 +2,13 @@
 
 namespace KVS\CLI\Tests;
 
-use KVS\CLI\Command\Content\VideoCommand;
+use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
-class VideoCommandDeleteTest extends TestCase
+class AlbumCommandDeleteTest extends TestCase
 {
     private string $tempDir;
 
@@ -27,31 +27,26 @@ class VideoCommandDeleteTest extends TestCase
         }
     }
 
-    public function testDeleteVideoUsesKvsNativeCleanup(): void
+    public function testDeleteAlbumUsesKvsNativeCleanup(): void
     {
         $db = new \PDO('sqlite::memory:');
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
 
-        $db->exec('INSERT INTO ktvs_videos (video_id) VALUES (1), (2)');
-        $db->exec('INSERT INTO ktvs_categories_videos (video_id) VALUES (1)');
-        $db->exec('INSERT INTO ktvs_tags_videos (video_id) VALUES (1)');
-        $db->exec('INSERT INTO ktvs_models_videos (video_id) VALUES (1)');
-        $db->exec('INSERT INTO ktvs_stats_videos_users_views (video_id) VALUES (1)');
-        $db->exec(
-            'INSERT INTO ktvs_comments (comment_id, object_id, object_type_id) VALUES ' .
-            '(1, 1, 1), (2, 1, 2), (3, 1, 13), (4, 2, 1)'
-        );
+        $db->exec('INSERT INTO ktvs_albums (album_id) VALUES (1), (2)');
+        $db->exec('INSERT INTO ktvs_albums_images (album_id) VALUES (1)');
+        $db->exec('INSERT INTO ktvs_categories_albums (album_id) VALUES (1)');
+        $db->exec('INSERT INTO ktvs_tags_albums (album_id) VALUES (1)');
 
         $config = new Configuration(['path' => $this->tempDir]);
-        $command = new class ($config, $db) extends VideoCommand {
+        $command = new class ($config, $db) extends AlbumCommand {
             /** @var list<int> */
-            public array $deletedVideoIds = [];
+            public array $deletedAlbumIds = [];
 
             public function __construct(Configuration $config, private \PDO $testDb)
             {
                 parent::__construct($config);
-                $this->setName('content:video');
+                $this->setName('content:album');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO
@@ -59,9 +54,9 @@ class VideoCommandDeleteTest extends TestCase
                 return $this->testDb;
             }
 
-            protected function deleteVideoWithKvs(int $videoId): void
+            protected function deleteAlbumWithKvs(int $albumId): void
             {
-                $this->deletedVideoIds[] = $videoId;
+                $this->deletedAlbumIds[] = $albumId;
             }
         };
 
@@ -73,30 +68,29 @@ class VideoCommandDeleteTest extends TestCase
         $tester->execute(['action' => 'delete', 'id' => '1']);
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertSame([1], $command->deletedVideoIds);
+        $this->assertSame([1], $command->deletedAlbumIds);
 
-        $remainingResult = $db->query('SELECT comment_id FROM ktvs_comments ORDER BY comment_id');
-        $remaining = $remainingResult->fetchAll(\PDO::FETCH_COLUMN);
-        $this->assertSame([1, 2, 3, 4], array_map('intval', $remaining));
+        $albums = $db->query('SELECT album_id FROM ktvs_albums ORDER BY album_id')->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertSame([1, 2], array_map('intval', $albums));
 
-        $videos = $db->query('SELECT video_id FROM ktvs_videos ORDER BY video_id')->fetchAll(\PDO::FETCH_COLUMN);
-        $this->assertSame([1, 2], array_map('intval', $videos));
+        $images = $db->query('SELECT album_id FROM ktvs_albums_images')->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertSame([1], array_map('intval', $images));
     }
 
-    public function testDeleteVideoDoesNotCallKvsCleanupWhenVideoDoesNotExist(): void
+    public function testDeleteAlbumDoesNotCallKvsCleanupWhenAlbumDoesNotExist(): void
     {
         $db = new \PDO('sqlite::memory:');
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
 
         $config = new Configuration(['path' => $this->tempDir]);
-        $command = new class ($config, $db) extends VideoCommand {
+        $command = new class ($config, $db) extends AlbumCommand {
             public bool $kvsCleanupCalled = false;
 
             public function __construct(Configuration $config, private \PDO $testDb)
             {
                 parent::__construct($config);
-                $this->setName('content:video');
+                $this->setName('content:album');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO
@@ -104,7 +98,7 @@ class VideoCommandDeleteTest extends TestCase
                 return $this->testDb;
             }
 
-            protected function deleteVideoWithKvs(int $videoId): void
+            protected function deleteAlbumWithKvs(int $albumId): void
             {
                 $this->kvsCleanupCalled = true;
             }
@@ -116,16 +110,14 @@ class VideoCommandDeleteTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode());
         $this->assertFalse($command->kvsCleanupCalled);
-        $this->assertStringContainsString('Video not found', $tester->getDisplay());
+        $this->assertStringContainsString('Album not found', $tester->getDisplay());
     }
 
     private function createDeleteSchema(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (video_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_tags_videos (video_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_models_videos (video_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_stats_videos_users_views (video_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_albums (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags_albums (album_id INTEGER)');
     }
 }

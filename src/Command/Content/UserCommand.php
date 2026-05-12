@@ -450,44 +450,14 @@ HELP
      */
     protected function deleteUsersWithKvs(array $userIds): void
     {
-        $kvsPath = $this->config->getKvsPath();
-        $adminPath = $kvsPath . '/admin';
-
-        if (!is_dir($adminPath)) {
-            throw new \RuntimeException(sprintf('KVS admin directory not found: %s', $adminPath));
-        }
-
-        $originalDir = getcwd();
-        if ($originalDir === false) {
-            throw new \RuntimeException('Failed to get current working directory');
-        }
-
-        if (!chdir($adminPath)) {
-            throw new \RuntimeException(sprintf('Failed to switch to KVS admin directory: %s', $adminPath));
-        }
-
-        try {
-            require_once $adminPath . '/include/setup.php';
-            require_once $adminPath . '/include/setup_db.php';
-            require_once $adminPath . '/include/functions_base.php';
-            require_once $adminPath . '/include/functions.php';
-
-            $_SESSION['userdata'] = [
-                'user_id' => 1,
-                'login' => 'kvs-cli',
-                'is_superadmin' => 1,
-                'content_delete_daily_limit' => PHP_INT_MAX,
-            ];
-
+        $this->runWithKvsAdminContext(function () use ($userIds): void {
             $deleteUsers = $this->getKvsDeleteUsersFunctionName();
             if (!function_exists($deleteUsers)) {
                 throw new \RuntimeException('KVS delete_users function is not available');
             }
 
             $deleteUsers($userIds, true, 'ap');
-        } finally {
-            chdir($originalDir);
-        }
+        });
     }
 
     private function getKvsDeleteUsersFunctionName(): string

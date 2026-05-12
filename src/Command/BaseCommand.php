@@ -201,6 +201,75 @@ abstract class BaseCommand extends Command
         return implode("\n", $output);
     }
 
+    /**
+     * Run a callback with the native KVS admin include context loaded.
+     *
+     * @param callable(): mixed $callback
+     * @param list<string> $includeFiles
+     */
+    protected function runWithKvsAdminContext(callable $callback, array $includeFiles = []): mixed
+    {
+        $kvsPath = $this->config->getKvsPath();
+        $adminPath = $kvsPath . '/admin';
+        $includePath = $adminPath . '/include';
+
+        if (!is_dir($adminPath)) {
+            throw new \RuntimeException(sprintf('KVS admin directory not found: %s', $adminPath));
+        }
+
+        $originalDir = getcwd();
+        if ($originalDir === false) {
+            throw new \RuntimeException('Failed to get current working directory');
+        }
+
+        $originalIncludePath = get_include_path();
+        $originalSession = $_SESSION ?? null;
+        $originalKvsConfig = $GLOBALS['config'] ?? null;
+
+        if (!chdir($adminPath)) {
+            throw new \RuntimeException(sprintf('Failed to switch to KVS admin directory: %s', $adminPath));
+        }
+
+        try {
+            set_include_path($includePath . PATH_SEPARATOR . $originalIncludePath);
+
+            global $config;
+            include $includePath . '/setup.php';
+
+            $files = array_values(array_unique(array_merge([
+                'setup_db.php',
+                'functions_base.php',
+                'functions.php',
+            ], $includeFiles)));
+
+            foreach ($files as $file) {
+                require_once $includePath . '/' . $file;
+            }
+
+            $_SESSION['userdata'] = [
+                'user_id' => 1,
+                'login' => 'kvs-cli',
+                'is_superadmin' => 1,
+                'content_delete_daily_limit' => PHP_INT_MAX,
+            ];
+
+            return $callback();
+        } finally {
+            set_include_path($originalIncludePath);
+            if ($originalSession === null) {
+                unset($_SESSION);
+            } else {
+                $_SESSION = $originalSession;
+            }
+            if ($originalKvsConfig === null) {
+                unset($GLOBALS['config']);
+            } else {
+                $GLOBALS['config'] = $originalKvsConfig;
+            }
+            chdir($originalDir);
+        }
+    }
+
     protected function getDatabaseConnection(bool $quiet = false): ?\PDO
     {
         $dbConfig = $this->config->getDatabaseConfig();

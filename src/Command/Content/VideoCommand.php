@@ -278,8 +278,13 @@ HELP
             $this->io()->error('Video ID is required');
             return self::FAILURE;
         }
+        if (!ctype_digit($id)) {
+            $this->io()->error('Video ID must be numeric');
+            return self::FAILURE;
+        }
 
-        $this->io()->warning("This will permanently delete video #$id");
+        $this->io()->warning("This will delete video #$id using KVS native cleanup");
+        $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
@@ -291,57 +296,35 @@ HELP
         }
 
         try {
-            $db->beginTransaction();
-
-            // Core tables that must exist
-            $coreTables = [
-                $this->table('videos'),
-                $this->table('categories_videos'),
-                $this->table('tags_videos'),
-                $this->table('models_videos'),
-                $this->table('comments'),
-            ];
-
-            // Optional tables that may not exist in all installations
-            $optionalTables = [
-                $this->table('stats_videos_users_views'),
-            ];
-
-            // Delete from core tables
-            $commentsTable = $this->table('comments');
-            foreach ($coreTables as $table) {
-                if ($table === $commentsTable) {
-                    $stmt = $db->prepare("DELETE FROM $table WHERE object_id = :id AND object_type_id = 1");
-                    $stmt->execute(['id' => $id]);
-                    continue;
-                }
-
-                $stmt = $db->prepare("DELETE FROM $table WHERE video_id = :id");
-                $stmt->execute(['id' => $id]);
+            $stmt = $db->prepare("SELECT video_id FROM {$this->table('videos')} WHERE video_id = :id");
+            $stmt->execute(['id' => $id]);
+            $videoId = $stmt->fetchColumn();
+            if (!is_numeric($videoId)) {
+                $this->io()->error("Video not found: #$id");
+                return self::FAILURE;
             }
 
-            // Delete from optional tables (ignore if table doesn't exist)
-            foreach ($optionalTables as $table) {
-                try {
-                    $stmt = $db->prepare("DELETE FROM $table WHERE video_id = :id");
-                    $stmt->execute(['id' => $id]);
-                } catch (\PDOException $e) {
-                    // Ignore table not found errors
-                    if ($e->getCode() !== '42S02') {
-                        throw $e;
-                    }
-                }
-            }
-
-            $db->commit();
-            $this->io()->success("Video #$id deleted successfully");
+            $this->deleteVideoWithKvs((int) $videoId);
+            $this->io()->success("Video #$id queued for KVS deletion");
         } catch (\Exception $e) {
-            $db->rollBack();
             $this->io()->error('Failed to delete video: ' . $e->getMessage());
             return self::FAILURE;
         }
 
         return self::SUCCESS;
+    }
+
+    protected function deleteVideoWithKvs(int $videoId): void
+    {
+        $this->runWithKvsAdminContext(function () use ($videoId): void {
+            if (!function_exists('delete_video')) {
+                throw new \RuntimeException('KVS delete_video function is not available');
+            }
+
+            if (delete_video($videoId) !== true) {
+                throw new \RuntimeException("KVS refused to delete video #$videoId");
+            }
+        }, ['functions_servers.php', 'functions_admin.php']);
     }
 
     private function updateVideo(?string $id, InputInterface $input): int

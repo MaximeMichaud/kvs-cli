@@ -222,8 +222,13 @@ HELP
             $this->io()->error('Album ID is required');
             return self::FAILURE;
         }
+        if (!ctype_digit($id)) {
+            $this->io()->error('Album ID must be numeric');
+            return self::FAILURE;
+        }
 
-        $this->io()->warning("This will permanently delete album #$id");
+        $this->io()->warning("This will delete album #$id using KVS native cleanup");
+        $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
             return self::SUCCESS;
@@ -235,29 +240,35 @@ HELP
         }
 
         try {
-            $db->beginTransaction();
-
-            $tables = [
-                $this->table('albums'),
-                $this->table('albums_images'),
-                $this->table('categories_albums'),
-                $this->table('tags_albums'),
-            ];
-
-            foreach ($tables as $table) {
-                $stmt = $db->prepare("DELETE FROM $table WHERE album_id = :id");
-                $stmt->execute(['id' => $id]);
+            $stmt = $db->prepare("SELECT album_id FROM {$this->table('albums')} WHERE album_id = :id");
+            $stmt->execute(['id' => $id]);
+            $albumId = $stmt->fetchColumn();
+            if (!is_numeric($albumId)) {
+                $this->io()->error("Album not found: #$id");
+                return self::FAILURE;
             }
 
-            $db->commit();
-            $this->io()->success("Album #$id deleted successfully");
+            $this->deleteAlbumWithKvs((int) $albumId);
+            $this->io()->success("Album #$id queued for KVS deletion");
         } catch (\Exception $e) {
-            $db->rollBack();
             $this->io()->error('Failed to delete album: ' . $e->getMessage());
             return self::FAILURE;
         }
 
         return self::SUCCESS;
+    }
+
+    protected function deleteAlbumWithKvs(int $albumId): void
+    {
+        $this->runWithKvsAdminContext(function () use ($albumId): void {
+            if (!function_exists('delete_album')) {
+                throw new \RuntimeException('KVS delete_album function is not available');
+            }
+
+            if (delete_album($albumId) !== true) {
+                throw new \RuntimeException("KVS refused to delete album #$albumId");
+            }
+        }, ['functions_servers.php', 'functions_admin.php']);
     }
 
     private function showHelp(): int

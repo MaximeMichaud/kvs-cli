@@ -198,52 +198,26 @@ HELP
         // Load KVS admin context and delete
         $this->io()->text('Loading KVS admin context...');
 
-        $kvsPath = $this->config->getKvsPath();
-        $adminPath = $kvsPath . '/admin';
-
-        if (!is_dir($adminPath)) {
-            $this->io()->error(sprintf('KVS admin directory not found: %s', $adminPath));
-            return self::FAILURE;
-        }
-
-        // Change to admin directory for relative includes
-        $originalDir = getcwd();
-        if ($originalDir === false) {
-            $this->io()->error('Failed to get current working directory');
-            return self::FAILURE;
-        }
-        chdir($adminPath);
-
         try {
-            // Load KVS admin context
-            require_once $adminPath . '/include/setup.php';
-            require_once $adminPath . '/include/setup_db.php';
-            require_once $adminPath . '/include/functions_base.php';
-            require_once $adminPath . '/include/functions.php';
-
-            // Simulate admin session for delete_users
-            /** @var array<string, mixed> $sessionUserdata */
-            $sessionUserdata = [
-                'user_id' => 1,
-                'login' => 'kvs-cli',
-                'is_superadmin' => 1,
-            ];
-            $_SESSION['userdata'] = $sessionUserdata;
-
-            $userIds = array_column($users, 'user_id');
+            $userIds = [];
+            foreach ($users as $user) {
+                if (is_array($user) && isset($user['user_id']) && is_numeric($user['user_id'])) {
+                    $userIds[] = (int) $user['user_id'];
+                }
+            }
 
             $this->io()->text(sprintf('Deleting %d users...', $count));
 
-            // Use KVS delete_users function with 'ap' context
-            // @phpstan-ignore-next-line (function is loaded dynamically from KVS)
-            delete_users($userIds, true, 'ap');
-
-            chdir($originalDir);
+            $this->runWithKvsAdminContext(function () use ($userIds): void {
+                if (!function_exists('delete_users')) {
+                    throw new \RuntimeException('KVS delete_users function is not available');
+                }
+                delete_users($userIds, true, 'ap');
+            });
 
             $this->io()->success(sprintf('Successfully deleted %d users.', $count));
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            chdir($originalDir);
             $this->io()->error('Failed to delete users: ' . $e->getMessage());
             if ($this->io()->isVerbose()) {
                 $this->io()->text($e->getTraceAsString());
