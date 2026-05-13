@@ -16,8 +16,13 @@ class TagCategoryCleanupTest extends TestCase
     {
         $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
         mkdir($this->tempDir . '/admin/include', 0755, true);
+        mkdir($this->tempDir . '/contents/categories', 0755, true);
         file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');
-        file_put_contents($this->tempDir . '/admin/include/setup.php', '<?php $config = ["tables_prefix" => "ktvs_"];');
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config = ["tables_prefix" => "ktvs_", "content_path_categories" => "'
+            . $this->tempDir . '/contents/categories"];'
+        );
     }
 
     protected function tearDown(): void
@@ -39,6 +44,8 @@ class TagCategoryCleanupTest extends TestCase
             $db->exec("INSERT INTO ktvs_categories_{$suffix} (category_id, {$objectColumn}) VALUES (1, 100)");
             $db->exec("INSERT INTO ktvs_categories_{$suffix} (category_id, {$objectColumn}) VALUES (2, 200)");
         }
+        mkdir($this->tempDir . '/contents/categories/1', 0755, true);
+        file_put_contents($this->tempDir . '/contents/categories/1/avatar.jpg', 'test');
 
         $db->exec('INSERT INTO ktvs_users (user_id, favourite_category_id) VALUES (1, 1), (2, 2)');
         $db->exec('INSERT INTO ktvs_stats_referers_list (referer_id, category_id) VALUES (1, 1), (2, 2)');
@@ -68,6 +75,11 @@ class TagCategoryCleanupTest extends TestCase
         $this->assertSame(
             2,
             $this->fetchInt($db, 'SELECT category_id FROM ktvs_stats_referers_list WHERE referer_id = 2')
+        );
+        $this->assertDirectoryDoesNotExist($this->tempDir . '/contents/categories/1');
+        $this->assertSame(
+            1,
+            $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_admin_audit_log WHERE object_id = 1')
         );
     }
 
@@ -182,6 +194,17 @@ class TagCategoryCleanupTest extends TestCase
         }
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, favourite_category_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_stats_referers_list (referer_id INTEGER, category_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ktvs_admin_audit_log (
+                user_id INTEGER,
+                username TEXT,
+                action_id INTEGER,
+                object_id INTEGER,
+                object_type_id INTEGER,
+                action_details TEXT,
+                added_date TEXT
+            )'
+        );
     }
 
     private function createTagSchema(\PDO $db): void

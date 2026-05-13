@@ -106,11 +106,17 @@ final class Constants
     /** Object type ID for DVDs */
     public const OBJECT_TYPE_DVD = 5;
 
+    /** Object type ID for categories */
+    public const OBJECT_TYPE_CATEGORY = 6;
+
     /** Object type ID for posts */
     public const OBJECT_TYPE_POST = 12;
 
     /** Object type ID for playlists */
     public const OBJECT_TYPE_PLAYLIST = 13;
+
+    /** Object type ID for comments */
+    public const OBJECT_TYPE_COMMENT = 15;
 
     // ========================================
     // FAVORITE TYPES (ktvs_fav_videos.fav_type)

@@ -406,6 +406,9 @@ HELP
                 }
             }
 
+            $this->deleteCategoryFiles($id);
+            $this->writeAdminAuditLog($db, 180, (int) $id, Constants::OBJECT_TYPE_CATEGORY);
+
             $stmt = $db->prepare("DELETE FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
             $this->deleteCategoryRelations($db, $id);
@@ -486,6 +489,43 @@ HELP
         $table = $this->multiTable('stats_referers_list');
         $stmt = $db->prepare("UPDATE {$table} SET category_id = 0 WHERE category_id = :id");
         $stmt->execute(['id' => $categoryId]);
+    }
+
+    private function deleteCategoryFiles(string $categoryId): void
+    {
+        $contentPath = $this->config->get('content_path_categories');
+        if (!is_string($contentPath) || $contentPath === '') {
+            $contentPath = $this->config->getContentPath() . '/categories';
+        }
+
+        $path = rtrim($contentPath, '/') . '/' . $categoryId;
+        if (!is_dir($path)) {
+            return;
+        }
+
+        $this->removeDirectory($path);
+    }
+
+    private function removeDirectory(string $path): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            if (!$item instanceof \SplFileInfo) {
+                continue;
+            }
+
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+
+        @rmdir($path);
     }
 
     private function updateCategory(?string $id, InputInterface $input): int

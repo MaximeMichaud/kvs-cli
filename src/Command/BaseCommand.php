@@ -465,4 +465,46 @@ abstract class BaseCommand extends Command
     {
         return $this->config->getMultiTablePrefix() . $name;
     }
+
+    protected function writeAdminAuditLog(
+        \PDO $db,
+        int $actionId,
+        int $objectId,
+        int $objectTypeId,
+        ?string $actionDetails = null
+    ): void {
+        $table = $this->table('admin_audit_log');
+        $params = [
+            'user_id' => 1,
+            'username' => 'kvs-cli',
+            'action_id' => $actionId,
+            'object_id' => $objectId,
+            'object_type_id' => $objectTypeId,
+            'action_details' => $actionDetails,
+            'added_date' => date('Y-m-d H:i:s'),
+        ];
+
+        try {
+            $stmt = $db->prepare("
+                INSERT INTO {$table}
+                    (user_id, username, action_id, object_id, object_type_id, action_details, added_date)
+                VALUES
+                    (:user_id, :username, :action_id, :object_id, :object_type_id, :action_details, :added_date)
+            ");
+            $stmt->execute($params);
+        } catch (\PDOException) {
+            unset($params['action_details']);
+            try {
+                $stmt = $db->prepare("
+                    INSERT INTO {$table}
+                        (user_id, username, action_id, object_id, object_type_id, added_date)
+                    VALUES
+                        (:user_id, :username, :action_id, :object_id, :object_type_id, :added_date)
+                ");
+                $stmt->execute($params);
+            } catch (\PDOException) {
+                // Audit log table can be absent in minimal test or legacy installs.
+            }
+        }
+    }
 }

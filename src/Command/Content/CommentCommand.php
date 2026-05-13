@@ -605,6 +605,18 @@ HELP
 
             // Update comment counts on parent objects
             $this->updateCommentCounts($db, $comments);
+            foreach ($comments as $comment) {
+                $commentId = $comment['comment_id'] ?? null;
+                if (is_numeric($commentId)) {
+                    $this->writeAdminAuditLog(
+                        $db,
+                        150,
+                        (int) $commentId,
+                        Constants::OBJECT_TYPE_COMMENT,
+                        'is_approved'
+                    );
+                }
+            }
 
             $db->commit();
 
@@ -696,6 +708,12 @@ HELP
 
             // Update comment counts on parent objects and users
             $this->updateCommentCounts($db, $comments);
+            foreach ($comments as $comment) {
+                $commentId = $comment['comment_id'] ?? null;
+                if (is_numeric($commentId)) {
+                    $this->writeAdminAuditLog($db, 180, (int) $commentId, Constants::OBJECT_TYPE_COMMENT);
+                }
+            }
 
             $db->commit();
 
@@ -832,11 +850,45 @@ HELP
                     // Column may not exist in some KVS versions, ignore
                 }
             }
+
+            if ($typeId === Constants::OBJECT_TYPE_ALBUM) {
+                $this->updateAlbumImageCommentCounts($db, array_keys($objectIds));
+            }
         }
 
         // Update user comment counts
         if ($userIds !== []) {
             $this->updateUserCommentCounts($db, array_keys($userIds));
+        }
+    }
+
+    /**
+     * @param list<int> $albumIds
+     */
+    private function updateAlbumImageCommentCounts(\PDO $db, array $albumIds): void
+    {
+        if ($albumIds === []) {
+            return;
+        }
+
+        $commentsTable = $this->table('comments');
+        $imagesTable = $this->table('albums_images');
+
+        foreach ($albumIds as $albumId) {
+            try {
+                $db->prepare("
+                    UPDATE {$imagesTable}
+                    SET comments_count = (
+                        SELECT COUNT(*) FROM {$commentsTable}
+                        WHERE object_sub_id = {$imagesTable}.image_id
+                          AND object_type_id = ?
+                          AND is_approved = 1
+                    )
+                    WHERE album_id = ?
+                ")->execute([Constants::OBJECT_TYPE_ALBUM, $albumId]);
+            } catch (\PDOException) {
+                // Table or columns may not exist in some KVS versions, ignore
+            }
         }
     }
 
