@@ -8,6 +8,11 @@
   "dependencyDashboard": false,
   "packageRules": [
     {
+      "matchManagers": ["composer"],
+      "matchPackageNames": ["phpunit/phpunit"],
+      "allowedVersions": "<11"
+    },
+    {
       "matchUpdateTypes": ["major"],
       "enabled": false
     },

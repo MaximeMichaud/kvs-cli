@@ -7,6 +7,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  checks: read
+  statuses: read
 
 concurrency:
   group: auto-merge-${{ github.event.pull_request.number }}
@@ -25,20 +27,86 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          REQUIRED_CHECKS='[
+            "PHP 8.1 - highest",
+            "PHP 8.1 - lowest",
+            "PHP 8.2 - highest",
+            "PHP 8.3 - highest",
+            "PHP 8.4 - highest",
+            "PHP 8.5 - highest",
+            "Lint & Static Analysis",
+            "Build PHAR"
+          ]'
+
           for i in $(seq 1 90); do
-            OUTPUT=$(gh pr checks "${{ github.event.pull_request.number }}" \
-              --repo "${{ github.repository }}" 2>&1 || true)
-            FILTERED=$(echo "$OUTPUT" | grep -v "Auto-merge")
-            echo "$FILTERED"
-            if echo "$FILTERED" | grep -q "fail"; then
-              echo "CI check failed"
-              exit 1
-            fi
-            if echo "$FILTERED" | grep -qE "pending|in_progress"; then
+            CHECKS=$(gh pr checks "${{ github.event.pull_request.number }}" \
+              --repo "${{ github.repository }}" \
+              --json name,bucket,workflow 2>/tmp/pr-checks.err || true)
+
+            if [ -z "$CHECKS" ]; then
+              cat /tmp/pr-checks.err
               sleep 10
               continue
             fi
-            echo "All CI checks passed"
+
+            echo "$CHECKS" | jq -r '
+              .[]
+              | select(.workflow != "Auto-merge dependency updates")
+              | "\(.bucket)\t\(.name)\t\(.workflow)"
+            '
+
+            MISSING=$(
+              echo "$CHECKS" \
+                | jq --argjson required "$REQUIRED_CHECKS" -r '
+                  [
+                    $required[] as $name
+                    | select(any(.[]; .name == $name) | not)
+                  ] | .[]
+                '
+            )
+            FAILED=$(
+              echo "$CHECKS" \
+                | jq --argjson required "$REQUIRED_CHECKS" -r '
+                  .[]
+                  | select(.name as $name | $required | index($name))
+                  | select(
+                    .bucket == "fail"
+                    or .bucket == "cancel"
+                    or .bucket == "skipping"
+                  )
+                  | "\(.bucket) \(.name)"
+                '
+            )
+            PENDING=$(
+              echo "$CHECKS" \
+                | jq --argjson required "$REQUIRED_CHECKS" -r '
+                  .[]
+                  | select(.name as $name | $required | index($name))
+                  | select(.bucket != "pass")
+                  | "\(.bucket) \(.name)"
+                '
+            )
+
+            if [ -n "$FAILED" ]; then
+              echo "CI check failed:"
+              echo "$FAILED"
+              exit 1
+            fi
+
+            if [ -n "$MISSING" ] || [ -n "$PENDING" ]; then
+              if [ -n "$MISSING" ]; then
+                echo "Waiting for required checks to appear:"
+                echo "$MISSING"
+              fi
+              if [ -n "$PENDING" ]; then
+                echo "Waiting for required checks to pass:"
+                echo "$PENDING"
+              fi
+              sleep 10
+              continue
+            fi
+
+            echo "All required CI checks passed"
             exit 0
           done
           echo "Timeout waiting for checks"
