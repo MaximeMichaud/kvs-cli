@@ -339,6 +339,34 @@ $config["memcache_server"] = "127.0.0.1";
         $this->assertStringNotContainsString('Database Configuration', $output);
     }
 
+    public function testConfigListRejectsUnknownFile(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--file' => 'bogus',
+            '--json' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Unknown config file', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConfigListPathsJsonIsNotEmpty(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--file' => 'paths',
+            '--json' => true,
+        ]);
+
+        $json = json_decode($this->tester->getDisplay(), true);
+        $this->assertIsArray($json);
+        $this->assertArrayHasKey('main.project_path', $json);
+        $this->assertArrayHasKey('main.content_path_videos_sources', $json);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
     public function testConfigSetRequiresBothKeyAndValue(): void
     {
         // Try to set without value

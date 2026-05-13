@@ -1,5 +1,6 @@
 #!/usr/bin/env php
 <?php
+
 /**
  * KVS-CLI Build Script
  * Builds PHAR from source files
@@ -14,8 +15,56 @@ if (ini_get('phar.readonly')) {
     die("Error: phar.readonly is enabled. Run with: php -d phar.readonly=0 build.php\n");
 }
 
+/**
+ * @return list<string>|null
+ */
+function findComposerCommand(string $sourceDir): ?array
+{
+    $composerPhar = $sourceDir . '/composer.phar';
+    if (is_file($composerPhar)) {
+        return [PHP_BINARY, $composerPhar];
+    }
+
+    $composerPath = trim((string) shell_exec('command -v composer 2>/dev/null'));
+    if ($composerPath !== '') {
+        return [$composerPath];
+    }
+
+    return null;
+}
+
+/**
+ * @param list<string> $composerCommand
+ * @param list<string> $args
+ */
+function runComposerCommand(array $composerCommand, string $sourceDir, array $args): void
+{
+    $currentDir = getcwd();
+    if ($currentDir === false) {
+        throw new RuntimeException('Unable to resolve current working directory');
+    }
+
+    if (!chdir($sourceDir)) {
+        throw new RuntimeException("Unable to change directory to $sourceDir");
+    }
+
+    $command = implode(' ', array_map('escapeshellarg', array_merge($composerCommand, $args)));
+    passthru($command, $exitCode);
+
+    if (!chdir($currentDir)) {
+        throw new RuntimeException("Unable to restore working directory to $currentDir");
+    }
+
+    if ($exitCode !== 0) {
+        throw new RuntimeException('Composer command failed: ' . implode(' ', $args));
+    }
+}
+
 $sourceDir = __DIR__;
 $outputFile = $sourceDir . '/kvs.phar';
+$composerCommand = findComposerCommand($sourceDir);
+$restoreComposerAutoload = false;
+$buildException = null;
 
 echo "🔧 Building KVS CLI from source files\n";
 echo "=====================================\n";
@@ -26,14 +75,91 @@ if (file_exists($outputFile)) {
     echo "🗑️  Removed existing kvs.phar\n";
 }
 
-// Create new PHAR
 try {
+    if (!is_dir($sourceDir . '/vendor/composer')) {
+        throw new RuntimeException('Composer dependencies are not installed. Run composer install first.');
+    }
+    if ($composerCommand === null) {
+        throw new RuntimeException('Composer is required to prepare a production PHAR autoloader.');
+    }
+
+    echo "📦 Preparing Composer autoloader (no-dev)...\n";
+    runComposerCommand($composerCommand, $sourceDir, ['dump-autoload', '--no-dev', '--optimize']);
+    $restoreComposerAutoload = true;
+
+    // Create new PHAR
     $phar = new Phar($outputFile);
     $phar->startBuffering();
 
     // Add source files
     echo "📁 Adding source files...\n";
-    $phar->buildFromDirectory($sourceDir, '/\.(php|json)$/');
+    $excludeVendorPackages = [];
+    $composerLock = $sourceDir . '/composer.lock';
+    if (is_file($composerLock)) {
+        $lockData = json_decode((string) file_get_contents($composerLock), true);
+        if (is_array($lockData)) {
+            $prodPackages = [];
+            foreach (($lockData['packages'] ?? []) as $package) {
+                if (isset($package['name']) && is_string($package['name'])) {
+                    $prodPackages[$package['name']] = true;
+                }
+            }
+            foreach (($lockData['packages-dev'] ?? []) as $package) {
+                if (!isset($package['name']) || !is_string($package['name']) || isset($prodPackages[$package['name']])) {
+                    continue;
+                }
+                $excludeVendorPackages[] = 'vendor/' . $package['name'];
+            }
+        }
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($sourceDir, FilesystemIterator::SKIP_DOTS)
+    );
+
+    $files = [];
+    foreach ($iterator as $file) {
+        if (!$file instanceof SplFileInfo || !$file->isFile()) {
+            continue;
+        }
+
+        $relativePath = str_replace('\\', '/', substr($file->getPathname(), strlen($sourceDir) + 1));
+        $extension = strtolower($file->getExtension());
+        if (!in_array($extension, ['php', 'json'], true)) {
+            continue;
+        }
+
+        if (
+            $relativePath === 'build.php'
+            || $relativePath === 'kvs.phar'
+            || str_starts_with($relativePath, 'tests/')
+            || str_starts_with($relativePath, '.git/')
+            || str_starts_with($relativePath, '.github/')
+            || str_starts_with($relativePath, '.phpunit.cache/')
+            || str_starts_with($relativePath, 'coverage-report/')
+            || str_starts_with($relativePath, 'temp/')
+            || str_starts_with($relativePath, 'tmp/')
+        ) {
+            continue;
+        }
+
+        $isDevPackage = false;
+        foreach ($excludeVendorPackages as $packagePath) {
+            if (str_starts_with($relativePath, $packagePath . '/')) {
+                $isDevPackage = true;
+                break;
+            }
+        }
+        if ($isDevPackage) {
+            continue;
+        }
+
+        $files[$file->getPathname()] = $relativePath;
+    }
+
+    foreach ($files as $sourceFile => $localName) {
+        $phar->addFile($sourceFile, $localName);
+    }
 
     // Add VERSION file
     $phar->addFile($sourceDir . '/VERSION', 'VERSION');
@@ -62,7 +188,7 @@ try {
             "use KVS\\CLI\\Application;\n\n" .
             "try {\n" .
             "    \$app = new Application();\n" .
-            "    \$app->run();\n" .
+            "    exit(\$app->run());\n" .
             "} catch (Exception \$e) {\n" .
             "    fprintf(STDERR, \"Error: %s\\n\", \$e->getMessage());\n" .
             "    exit(1);\n" .
@@ -100,7 +226,19 @@ try {
     echo "🧪 To test locally:\n";
     echo "   ./kvs.phar --version\n";
     echo "   ./kvs.phar --help\n";
-
 } catch (Exception $e) {
-    die("Build failed: " . $e->getMessage() . "\n");
+    $buildException = $e;
+} finally {
+    if ($restoreComposerAutoload && $composerCommand !== null) {
+        echo "♻️  Restoring Composer dev autoloader...\n";
+        try {
+            runComposerCommand($composerCommand, $sourceDir, ['dump-autoload', '--optimize']);
+        } catch (Exception $e) {
+            fwrite(STDERR, "Warning: failed to restore Composer autoloader: {$e->getMessage()}\n");
+        }
+    }
+}
+
+if ($buildException !== null) {
+    die("Build failed: " . $buildException->getMessage() . "\n");
 }

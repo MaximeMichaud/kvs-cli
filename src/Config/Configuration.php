@@ -36,10 +36,15 @@ class Configuration
 
     private function findKvsPath(): string
     {
+        $allowMissingKvs = ($this->options['allow_missing_kvs'] ?? false) === true;
+
         // 1. Check --path parameter (highest priority)
         if (isset($this->options['path']) && is_string($this->options['path'])) {
             $path = $this->options['path'];
             if (!$this->isKvsInstallation($path)) {
+                if ($allowMissingKvs) {
+                    return '';
+                }
                 throw new \Exception("The path '$path' does not contain a valid KVS installation.");
             }
             return $path;
@@ -62,6 +67,10 @@ class Configuration
             if ($dir === '/') {
                 break;
             }
+        }
+
+        if ($allowMissingKvs) {
+            return '';
         }
 
         throw new \Exception('KVS installation not found. Use --path=' . \KVS\CLI\Application::EXAMPLE_PATH . ' or run from KVS directory.');
@@ -269,14 +278,14 @@ class Configuration
     {
         // Check for explicit content path in config
         $videosPathConfig = $this->config['content_path_videos_sources'] ?? null;
-        if (is_string($videosPathConfig)) {
-            // Extract parent directory from videos sources path
-            // The content root is typically 2 levels up from videos_sources
-            // e.g., /var/www/content/videos/sources -> /var/www/content
-            $contentRoot = dirname(dirname($videosPathConfig));
-            if (is_dir($contentRoot)) {
-                return $contentRoot;
+        if (is_string($videosPathConfig) && is_dir($videosPathConfig)) {
+            $basename = basename($videosPathConfig);
+            if ($basename === Constants::CONTENT_VIDEOS_SOURCES) {
+                return dirname($videosPathConfig);
             }
+
+            // Alternate layout: content/videos/sources.
+            return dirname(dirname($videosPathConfig));
         }
 
         // Try project_path/contents/ (standard layout)
@@ -287,10 +296,21 @@ class Configuration
             return $standardPath;
         }
 
+        $singularProjectContentPath = $projectPath . '/content';
+        if (is_dir($singularProjectContentPath)) {
+            return $singularProjectContentPath;
+        }
+
         // Fallback: try kvsPath/contents (when project_path in config is stale/wrong)
         $kvsContentPath = $this->kvsPath . '/' . Constants::CONTENT_DIR;
         if (is_dir($kvsContentPath)) {
             return $kvsContentPath;
+        }
+
+        // Older/local test installs can use singular content.
+        $kvsSingularContentPath = $this->kvsPath . '/content';
+        if (is_dir($kvsSingularContentPath)) {
+            return $kvsSingularContentPath;
         }
 
         // Try project_path/../content (alternate layout)

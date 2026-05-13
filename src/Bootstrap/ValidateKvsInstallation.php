@@ -14,6 +14,11 @@ class ValidateKvsInstallation implements BootstrapStep
 {
     public function process(BootstrapState $state): BootstrapState
     {
+        if ($state->getValue('skip_kvs_context') === true) {
+            $state->setValue('kvs_available', false);
+            return $state;
+        }
+
         $config = $state->getValue('config');
 
         if ($config === null || !($config instanceof Configuration)) {

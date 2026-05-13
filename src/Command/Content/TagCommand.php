@@ -132,17 +132,19 @@ HELP
             $whereClause = implode(' AND ', $conditions);
             $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
 
+            $usageSelectors = $this->getTagUsageSelectors();
+            $totalUsageExpression = $this->getTagTotalUsageExpression();
+
             $sql = "
                 SELECT t.*,
-                       (SELECT COUNT(*) FROM {$this->table('tags')}_videos WHERE tag_id = t.tag_id) as video_count,
-                       (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = t.tag_id) as album_count
+                       {$usageSelectors}
                 FROM {$this->table('tags')} t
                 WHERE $whereClause
             ";
 
             // Unused filter
             if ($this->getBoolOption($input, 'unused')) {
-                $sql .= " HAVING video_count = 0 AND album_count = 0";
+                $sql .= " HAVING {$totalUsageExpression} = 0";
             }
 
             $sql .= " ORDER BY t.tag LIMIT :limit";
@@ -157,21 +159,20 @@ HELP
             /** @var list<array<string, mixed>> $tags */
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Add total_usage field to each tag
-            $transformedTags = array_map(function (array $tag): array {
-                $videoCountVal = $tag['video_count'] ?? 0;
-                $albumCountVal = $tag['album_count'] ?? 0;
-                $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
-                $albumCount = is_numeric($albumCountVal) ? (int) $albumCountVal : 0;
-                return [
+            /** @var list<array<string, mixed>> $transformedTags */
+            $transformedTags = [];
+            foreach ($tags as $tag) {
+                $counts = $this->extractTagUsageCounts($tag);
+                $transformedTags[] = [
                     'tag_id' => $tag['tag_id'] ?? 0,
                     'tag' => $tag['tag'] ?? '',
-                    'video_count' => $videoCount,
-                    'album_count' => $albumCount,
-                    'total_usage' => $videoCount + $albumCount,
+                    'video_count' => $counts['videos'],
+                    'album_count' => $counts['albums'],
+                    'total_usage' => array_sum($counts),
                     'status_id' => $tag['status_id'] ?? 0,
+                    ...$counts,
                 ];
-            }, $tags);
+            }
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
@@ -367,6 +368,45 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    private function getTagUsageSelectors(): string
+    {
+        $selectors = [];
+        foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
+            $alias = $this->getTagUsageAlias($suffix);
+            $selectors[] = "(SELECT COUNT(*) FROM {$this->table('tags')}_{$suffix} WHERE tag_id = t.tag_id) as {$alias}";
+        }
+
+        return implode(",\n                       ", $selectors);
+    }
+
+    private function getTagTotalUsageExpression(): string
+    {
+        return implode(' + ', array_map(
+            fn(string $suffix): string => $this->getTagUsageAlias($suffix),
+            array_keys(self::TAG_RELATION_TABLES)
+        ));
+    }
+
+    private function getTagUsageAlias(string $suffix): string
+    {
+        return $suffix . '_count';
+    }
+
+    /**
+     * @param array<string, mixed> $tag
+     * @return array<string, int>
+     */
+    private function extractTagUsageCounts(array $tag): array
+    {
+        $counts = [];
+        foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
+            $value = $tag[$this->getTagUsageAlias($suffix)] ?? 0;
+            $counts[$suffix] = is_numeric($value) ? (int) $value : 0;
+        }
+
+        return $counts;
     }
 
     private function mergeTags(?string $sourceId, ?string $targetId): int

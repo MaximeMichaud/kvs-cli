@@ -95,7 +95,8 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT p.*, u.username
+        $query = "SELECT p.*, u.username,
+                        (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
                  FROM {$this->table('playlists')} p
                  LEFT JOIN {$this->table('users')} u ON p.user_id = u.user_id
                  WHERE 1=1";
@@ -176,8 +177,8 @@ HELP
                     'status' => StatusFormatter::playlist($statusId, false),  // Alias
                     'is_private' => $isPrivate,
                     'type' => $isPrivate !== 0 ? 'Private' : 'Public',  // Alias
-                    'total_videos' => $playlist['total_videos'] ?? 0,
-                    'videos' => $playlist['total_videos'] ?? 0,  // Alias
+                    'total_videos' => $playlist['video_count'] ?? 0,
+                    'videos' => $playlist['video_count'] ?? 0,  // Alias
                     'username' => $playlist['username'] ?? '',
                     'user' => $playlist['username'] ?? '',  // Alias
                     'playlist_viewed' => $playlist['playlist_viewed'] ?? 0,
@@ -217,7 +218,8 @@ HELP
         try {
             // Fetch main playlist data with username
             $stmt = $db->prepare("
-                SELECT p.*, u.username
+                SELECT p.*, u.username,
+                       (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
                 FROM {$this->table('playlists')} p
                 LEFT JOIN {$this->table('users')} u ON p.user_id = u.user_id
                 WHERE p.playlist_id = :id
@@ -264,7 +266,7 @@ HELP
             $title = is_string($titleVal) ? $titleVal : '';
             $usernameVal = $playlist['username'] ?? 'Unknown';
             $username = is_string($usernameVal) ? $usernameVal : 'Unknown';
-            $totalVideosVal = $playlist['total_videos'] ?? 0;
+            $totalVideosVal = $playlist['video_count'] ?? 0;
             $totalVideos = is_numeric($totalVideosVal) ? (int) $totalVideosVal : 0;
             $playlistViewedVal = $playlist['playlist_viewed'] ?? 0;
             $playlistViewed = is_numeric($playlistViewedVal) ? (int) $playlistViewedVal : 0;

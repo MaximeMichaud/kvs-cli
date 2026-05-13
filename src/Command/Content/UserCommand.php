@@ -117,9 +117,10 @@ HELP
                 'disabled' => StatusFormatter::USER_DISABLED,
                 'premium' => StatusFormatter::USER_PREMIUM,
                 'not-confirmed' => StatusFormatter::USER_NOT_CONFIRMED,
-                'vip' => StatusFormatter::USER_VIP,
+                'anonymous' => StatusFormatter::USER_ANONYMOUS,
+                'generated' => StatusFormatter::USER_GENERATED,
                 'webmaster' => StatusFormatter::USER_WEBMASTER,
-            ], [0, 1, 2, 3, 4, 6]);
+            ], [0, 1, 2, 3, 4, 5, 6]);
             if ($statusId !== null) {
                 $query .= " AND u.status_id = :status";
                 $params['status'] = $statusId;
@@ -413,7 +414,7 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT user_id, username FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
+            $stmt = $db->prepare("SELECT user_id, username, status_id FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
             $stmt->execute(['id' => $id]);
             /** @var array<string, mixed>|false $user */
             $user = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -430,7 +431,19 @@ HELP
             }
 
             $userId = (int) $userIdValue;
+            if ($this->getInt($user['status_id'] ?? null) === StatusFormatter::USER_ANONYMOUS) {
+                $this->io()->error("Anonymous system user cannot be deleted: {$userId}");
+                return self::FAILURE;
+            }
+
             $this->deleteUsersWithKvs([$userId]);
+
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE user_id = :id");
+            $stmt->execute(['id' => $userId]);
+            if ((int) $stmt->fetchColumn() > 0) {
+                $this->io()->error("KVS did not delete user: {$userId}");
+                return self::FAILURE;
+            }
 
             $username = $user['username'] ?? $id;
             $username = is_scalar($username) ? (string) $username : $id;

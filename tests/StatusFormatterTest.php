@@ -21,6 +21,9 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::video(0));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::video(1));
         $this->assertEquals('<fg=red>Error</>', StatusFormatter::video(2));
+        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::video(3));
+        $this->assertEquals('<fg=red>Deleting</>', StatusFormatter::video(4));
+        $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::video(5));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::video(999));
     }
 
@@ -32,6 +35,9 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals('Disabled', StatusFormatter::video(0, false));
         $this->assertEquals('Active', StatusFormatter::video(1, false));
         $this->assertEquals('Error', StatusFormatter::video(2, false));
+        $this->assertEquals('Processing', StatusFormatter::video(3, false));
+        $this->assertEquals('Deleting', StatusFormatter::video(4, false));
+        $this->assertEquals('Deleted', StatusFormatter::video(5, false));
         $this->assertEquals('Unknown', StatusFormatter::video(999, false));
     }
 
@@ -44,9 +50,9 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals('<fg=yellow>Not Confirmed</>', StatusFormatter::user(1));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::user(2));
         $this->assertEquals('<fg=cyan>Premium</>', StatusFormatter::user(3));
-        $this->assertEquals('<fg=magenta>VIP</>', StatusFormatter::user(4));
+        $this->assertEquals('<fg=gray>Anonymous</>', StatusFormatter::user(4));
+        $this->assertEquals('<fg=magenta>Generated</>', StatusFormatter::user(5));
         $this->assertEquals('<fg=blue>Webmaster</>', StatusFormatter::user(6));
-        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::user(5));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::user(999));
     }
 
@@ -59,7 +65,8 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals('Not Confirmed', StatusFormatter::user(1, false));
         $this->assertEquals('Active', StatusFormatter::user(2, false));
         $this->assertEquals('Premium', StatusFormatter::user(3, false));
-        $this->assertEquals('VIP', StatusFormatter::user(4, false));
+        $this->assertEquals('Anonymous', StatusFormatter::user(4, false));
+        $this->assertEquals('Generated', StatusFormatter::user(5, false));
         $this->assertEquals('Webmaster', StatusFormatter::user(6, false));
         $this->assertEquals('Unknown', StatusFormatter::user(999, false));
     }
@@ -71,6 +78,10 @@ class StatusFormatterTest extends TestCase
     {
         $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::album(0));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::album(1));
+        $this->assertEquals('<fg=red>Error</>', StatusFormatter::album(2));
+        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::album(3));
+        $this->assertEquals('<fg=red>Deleting</>', StatusFormatter::album(4));
+        $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::album(5));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::album(999));
     }
 
@@ -81,6 +92,10 @@ class StatusFormatterTest extends TestCase
     {
         $this->assertEquals('Disabled', StatusFormatter::album(0, false));
         $this->assertEquals('Active', StatusFormatter::album(1, false));
+        $this->assertEquals('Error', StatusFormatter::album(2, false));
+        $this->assertEquals('Processing', StatusFormatter::album(3, false));
+        $this->assertEquals('Deleting', StatusFormatter::album(4, false));
+        $this->assertEquals('Deleted', StatusFormatter::album(5, false));
         $this->assertEquals('Unknown', StatusFormatter::album(999, false));
     }
 
@@ -200,7 +215,8 @@ class StatusFormatterTest extends TestCase
             StatusFormatter::user(1),   // yellow
             StatusFormatter::user(2),   // green
             StatusFormatter::user(3),   // cyan
-            StatusFormatter::user(4),   // magenta
+            StatusFormatter::user(4),   // gray
+            StatusFormatter::user(5),   // magenta
             StatusFormatter::user(6),   // blue
             StatusFormatter::user(999), // gray
         ];
@@ -322,13 +338,17 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals(0, StatusFormatter::VIDEO_DISABLED);
         $this->assertEquals(1, StatusFormatter::VIDEO_ACTIVE);
         $this->assertEquals(2, StatusFormatter::VIDEO_ERROR);
+        $this->assertEquals(3, StatusFormatter::VIDEO_PROCESSING);
+        $this->assertEquals(4, StatusFormatter::VIDEO_DELETING);
+        $this->assertEquals(5, StatusFormatter::VIDEO_DELETED);
 
         // User constants
         $this->assertEquals(0, StatusFormatter::USER_DISABLED);
         $this->assertEquals(1, StatusFormatter::USER_NOT_CONFIRMED);
         $this->assertEquals(2, StatusFormatter::USER_ACTIVE);
         $this->assertEquals(3, StatusFormatter::USER_PREMIUM);
-        $this->assertEquals(4, StatusFormatter::USER_VIP);
+        $this->assertEquals(4, StatusFormatter::USER_ANONYMOUS);
+        $this->assertEquals(5, StatusFormatter::USER_GENERATED);
         $this->assertEquals(6, StatusFormatter::USER_WEBMASTER);
 
         // Task constants

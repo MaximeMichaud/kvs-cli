@@ -80,7 +80,7 @@ class CommentCleanupTest extends TestCase
         $db = $this->createDatabase();
         $this->createSchema($db);
 
-        $db->exec("INSERT INTO ktvs_albums (album_id, comments_count) VALUES (1, 1)");
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 1)");
         $db->exec("INSERT INTO ktvs_albums_images (image_id, album_id, comments_count) VALUES (10, 1, 1)");
         $db->exec(
             "INSERT INTO ktvs_users (
@@ -101,6 +101,7 @@ class CommentCleanupTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame(1, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id = 3'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id = 3'));
         $this->assertSame(2, $this->fetchInt($db, 'SELECT comments_count FROM ktvs_albums WHERE album_id = 1'));
         $this->assertSame(
             2,
@@ -120,6 +121,102 @@ class CommentCleanupTest extends TestCase
                    AND object_type_id = 15 AND action_details = 'is_approved'"
             )
         );
+    }
+
+    public function testApproveAlreadyApprovedReviewNeededCommentMarksReviewed(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 1)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_albums_count, comments_total_count
+            ) VALUES (5, 'tester', 1, 1)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (5, 1, 0, 2, 5, 'Already approved but still needs review', 1, 1)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->setInputs(['yes']);
+        $tester->execute(['action' => 'approve', 'id' => '5']);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id = 5'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id = 5'));
+        $this->assertSame(
+            0,
+            $this->fetchInt(
+                $db,
+                "SELECT COUNT(*) FROM ktvs_admin_audit_log
+                 WHERE action_id = 150 AND object_id = 5
+                   AND object_type_id = 15 AND action_details = 'is_approved'"
+            )
+        );
+    }
+
+    public function testListPendingUsesReviewNeededFlagLikeKvs(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 1)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_albums_count, comments_total_count
+            ) VALUES (5, 'tester', 1, 1)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (6, 1, 0, 2, 5, 'Review me even though approved', 1, 1)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--pending' => true,
+            '--search' => 'Review me even though approved',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $output = $tester->getDisplay();
+        $this->assertStringContainsString('"comment_id": 6', $output);
+        $this->assertStringContainsString('"object_title": "Album One"', $output);
+    }
+
+    public function testListCommentsShowsPlaylistObjectTitle(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_playlists (playlist_id, title, comments_count) VALUES (7, 'Playlist Seven', 1)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_playlists_count, comments_total_count
+            ) VALUES (5, 'tester', 1, 1)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (7, 7, 0, 13, 5, 'Playlist comment marker', 1, 0)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--search' => 'Playlist comment marker',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $output = $tester->getDisplay();
+        $this->assertStringContainsString('"object_type": "Playlist"', $output);
+        $this->assertStringContainsString('"object_title": "Playlist Seven"', $output);
     }
 
     private function createCommand(\PDO $db): CommentCommand
@@ -161,11 +258,12 @@ class CommentCleanupTest extends TestCase
                 user_id INTEGER,
                 comment TEXT,
                 is_approved INTEGER,
-                is_review_needed INTEGER
+                is_review_needed INTEGER,
+                added_date TEXT DEFAULT "2026-01-01 00:00:00"
             )'
         );
         $db->exec('CREATE TABLE ktvs_users_events (comment_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER, comments_count INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER, title TEXT, comments_count INTEGER)');
         $db->exec('CREATE TABLE ktvs_albums_images (image_id INTEGER, album_id INTEGER, comments_count INTEGER)');
         foreach (['videos', 'content_sources', 'models', 'dvds', 'posts', 'playlists'] as $table) {
             $idColumn = [
@@ -176,7 +274,7 @@ class CommentCleanupTest extends TestCase
                 'posts' => 'post_id',
                 'playlists' => 'playlist_id',
             ][$table];
-            $db->exec("CREATE TABLE ktvs_{$table} ({$idColumn} INTEGER, comments_count INTEGER)");
+            $db->exec("CREATE TABLE ktvs_{$table} ({$idColumn} INTEGER, title TEXT, comments_count INTEGER)");
         }
         $db->exec(
             'CREATE TABLE ktvs_users (

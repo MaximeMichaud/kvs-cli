@@ -77,8 +77,9 @@ HELP
             return self::FAILURE;
         }
 
-        // Build query - counts will be added when we know the table structure
-        $query = "SELECT d.*
+        $query = "SELECT d.*,
+                        (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
+                        (SELECT COALESCE(SUM(duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
                  FROM {$this->table('dvds')} d
                  WHERE 1=1";
 
@@ -136,10 +137,10 @@ HELP
                     'title' => $dvd['title'] ?? '',
                     'status_id' => $statusId,
                     'status' => StatusFormatter::dvd($statusId, false),
-                    'total_videos' => $dvd['total_videos'] ?? 0,
-                    'videos' => $dvd['total_videos'] ?? 0,
-                    'total_videos_duration' => $dvd['total_videos_duration'] ?? 0,
-                    'duration' => $dvd['total_videos_duration'] ?? 0,
+                    'total_videos' => $dvd['video_count'] ?? 0,
+                    'videos' => $dvd['video_count'] ?? 0,
+                    'total_videos_duration' => $dvd['video_duration'] ?? 0,
+                    'duration' => $dvd['video_duration'] ?? 0,
                     'release_year' => $dvd['release_year'] ?? '',
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
@@ -177,7 +178,9 @@ HELP
 
         try {
             $stmt = $db->prepare("
-                SELECT d.*
+                SELECT d.*,
+                       (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
+                       (SELECT COALESCE(SUM(duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
                 FROM {$this->table('dvds')} d
                 WHERE d.dvd_id = :id
             ");
@@ -194,7 +197,7 @@ HELP
             $dvdTitle = is_scalar($titleValue) ? (string) $titleValue : '';
             $this->io()->title("DVD: $dvdTitle");
 
-            $totalVideosVal = $dvd['total_videos'] ?? 0;
+            $totalVideosVal = $dvd['video_count'] ?? 0;
             $dvdViewedVal = $dvd['dvd_viewed'] ?? 0;
             $dvdIdVal = $dvd['dvd_id'] ?? 0;
             $statusIdVal = $dvd['status_id'] ?? 0;
@@ -212,7 +215,7 @@ HELP
             ];
 
             // Duration
-            $durationVal = $dvd['total_videos_duration'] ?? 0;
+            $durationVal = $dvd['video_duration'] ?? 0;
             $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
             if ($duration > 0) {
                 $hours = floor($duration / 3600);

@@ -147,6 +147,11 @@ class ConfigCommand extends BaseCommand
     private function listConfig(InputInterface $input): int
     {
         $file = $this->getStringOptionOrDefault($input, 'file', 'all');
+        if (!$this->isValidConfigFile($file)) {
+            $this->io()->error("Unknown config file: $file");
+            return self::FAILURE;
+        }
+
         $showProtected = $this->getBoolOption($input, 'show-protected');
         $json = $this->getBoolOption($input, 'json');
 
@@ -171,15 +176,17 @@ class ConfigCommand extends BaseCommand
         $mainConfigs = $this->getMainConfigs();
 
         // Show organized sections for 'all' or 'main'
-        if ($file === 'main' || $file === 'all') {
+        if ($file === 'main' || $file === 'paths' || $file === 'all') {
             // Project Configuration
-            $this->showConfigSection('Project Configuration', [
-                'project_name' => 'Project Name',
-                'project_version' => 'Version',
-                'project_path' => 'Installation Path',
-                'project_url' => 'Project URL',
-                'project_licence_domain' => 'Licensed Domain',
-            ], $mainConfigs, $showProtected);
+            if ($file !== 'paths') {
+                $this->showConfigSection('Project Configuration', [
+                    'project_name' => 'Project Name',
+                    'project_version' => 'Version',
+                    'project_path' => 'Installation Path',
+                    'project_url' => 'Project URL',
+                    'project_licence_domain' => 'Licensed Domain',
+                ], $mainConfigs, $showProtected);
+            }
 
             // Tools & Paths
             $this->showConfigSection('Tools & Paths', [
@@ -193,12 +200,14 @@ class ConfigCommand extends BaseCommand
             ], $mainConfigs, $showProtected);
 
             // Server Configuration
-            $this->showConfigSection('Server Configuration', [
-                'server_type' => 'Server Type',
-                'conversion_server_id' => 'Conversion Server ID',
-                'memcache_server' => 'Memcache Server',
-                'memcache_port' => 'Memcache Port',
-            ], $mainConfigs, $showProtected);
+            if ($file !== 'paths') {
+                $this->showConfigSection('Server Configuration', [
+                    'server_type' => 'Server Type',
+                    'conversion_server_id' => 'Conversion Server ID',
+                    'memcache_server' => 'Memcache Server',
+                    'memcache_port' => 'Memcache Port',
+                ], $mainConfigs, $showProtected);
+            }
 
             // Content Paths & URLs - combine paths and URLs in same table
             $contentItems = [];
@@ -447,6 +456,22 @@ class ConfigCommand extends BaseCommand
             }
         }
 
+        if ($type === 'paths') {
+            $mainConfigs = $this->getMainConfigs();
+            foreach ($mainConfigs as $key => $value) {
+                if (
+                    !is_array($value)
+                    && (
+                        str_contains($key, '_path')
+                        || str_starts_with($key, 'content_url_')
+                        || in_array($key, ['project_url', 'admin_url'], true)
+                    )
+                ) {
+                    $configs["main.$key"] = $value;
+                }
+            }
+        }
+
         return $configs;
     }
 
@@ -607,6 +632,11 @@ class ConfigCommand extends BaseCommand
 
         $path = $this->config->getKvsPath() . $this->configFiles[$file];
         return file_exists($path) ? $path : null;
+    }
+
+    private function isValidConfigFile(string $file): bool
+    {
+        return in_array($file, ['all', 'db', 'main', 'paths'], true);
     }
 
     private function createBackup(string $key): void

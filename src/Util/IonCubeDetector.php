@@ -136,9 +136,17 @@ class IonCubeDetector
         }
 
         // Get version from ioncube_loader_version() if available
-        if (function_exists('ioncube_loader_version')) {
-            $version = ioncube_loader_version();
-            return is_string($version) ? $version : null;
+        $loaderVersionCallback = $this->getIonCubeLoaderVersionFunctionName();
+        if (is_callable($loaderVersionCallback)) {
+            $version = $this->callIonCubeLoaderVersion($loaderVersionCallback);
+
+            if (is_string($version)) {
+                return $version;
+            }
+
+            if (is_int($version) || is_float($version)) {
+                return (string) $version;
+            }
         }
 
         // Fallback: parse from phpinfo
@@ -151,6 +159,19 @@ class IonCubeDetector
         }
 
         return null;
+    }
+
+    /**
+     * @param callable(): mixed $callback
+     */
+    private function callIonCubeLoaderVersion(callable $callback): mixed
+    {
+        return $callback();
+    }
+
+    private function getIonCubeLoaderVersionFunctionName(): string
+    {
+        return 'ioncube_loader_version';
     }
 
     /**

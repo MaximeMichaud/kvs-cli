@@ -18,18 +18,19 @@
         <testsuite name="KVS-CLI Test Suite">
             <directory suffix="Test.php">tests</directory>
         </testsuite>
-
-        <!-- Future: organized test structure
         <testsuite name="Unit Tests">
-            <directory>tests/Unit</directory>
+            <directory suffix="Test.php">tests</directory>
+            <exclude>tests/IntegrationTest.php</exclude>
         </testsuite>
         <testsuite name="Integration Tests">
-            <directory>tests/Integration</directory>
+            <file>tests/IntegrationTest.php</file>
         </testsuite>
         <testsuite name="Functional Tests">
-            <directory>tests/Functional</directory>
+            <directory suffix="CommandTest.php">tests</directory>
+            <directory suffix="CommandDeleteTest.php">tests</directory>
+            <file>tests/ApplicationTest.php</file>
+            <file>tests/ApplicationComprehensiveTest.php</file>
         </testsuite>
-        -->
     </testsuites>
 
     <!-- Code coverage -->

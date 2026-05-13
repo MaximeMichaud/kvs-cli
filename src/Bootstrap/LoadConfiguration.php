@@ -30,6 +30,10 @@ class LoadConfiguration implements BootstrapStep
         if ($pathOption !== null) {
             $configArray['path'] = $pathOption;
         }
+        if ($this->shouldAllowMissingKvs($input)) {
+            $configArray['allow_missing_kvs'] = true;
+            $state->setValue('skip_kvs_context', true);
+        }
 
         try {
             $config = new Configuration($configArray);
@@ -70,12 +74,44 @@ class LoadConfiguration implements BootstrapStep
             return null;
         }
 
-        foreach ($argv as $arg) {
-            if (is_string($arg) && str_starts_with($arg, '--path=')) {
+        foreach ($argv as $index => $arg) {
+            if (!is_string($arg)) {
+                continue;
+            }
+            if (str_starts_with($arg, '--path=')) {
                 return substr($arg, 7);
+            }
+            if ($arg === '--path') {
+                $nextArg = $argv[$index + 1] ?? null;
+                if (is_string($nextArg) && $nextArg !== '') {
+                    return $nextArg;
+                }
             }
         }
 
         return null;
+    }
+
+    private function shouldAllowMissingKvs(InputInterface $input): bool
+    {
+        $command = $input->getFirstArgument();
+        if (!in_array($command, ['eval', 'eval-php', 'eval-file'], true)) {
+            return false;
+        }
+
+        try {
+            if ($input->hasParameterOption('--skip-kvs')) {
+                return true;
+            }
+        } catch (\Exception) {
+            // Input may not be fully parsed yet, fallback to argv below.
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        if (!is_array($argv)) {
+            return false;
+        }
+
+        return in_array('--skip-kvs', $argv, true);
     }
 }

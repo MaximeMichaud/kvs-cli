@@ -32,7 +32,7 @@ class UserCommandDeleteTest extends TestCase
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
 
-        $db->exec("INSERT INTO ktvs_users (user_id, username) VALUES (1, 'member')");
+        $db->exec("INSERT INTO ktvs_users (user_id, username, status_id) VALUES (1, 'member', 2)");
         $db->exec('INSERT INTO ktvs_videos (video_id, user_id) VALUES (10, 1)');
         $db->exec('INSERT INTO ktvs_albums (album_id, user_id) VALUES (20, 1)');
         $db->exec('INSERT INTO ktvs_comments (comment_id, user_id) VALUES (30, 1)');
@@ -56,6 +56,10 @@ class UserCommandDeleteTest extends TestCase
             protected function deleteUsersWithKvs(array $userIds): void
             {
                 $this->deletedUserIds = $userIds;
+                foreach ($userIds as $userId) {
+                    $stmt = $this->testDb->prepare('DELETE FROM ktvs_users WHERE user_id = :id');
+                    $stmt->execute(['id' => $userId]);
+                }
             }
         };
 
@@ -65,7 +69,7 @@ class UserCommandDeleteTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame([1], $command->deletedUserIds);
-        $this->assertSame(1, $this->countRows($db, 'ktvs_users'));
+        $this->assertSame(0, $this->countRows($db, 'ktvs_users'));
         $this->assertSame(1, $this->countRows($db, 'ktvs_videos'));
         $this->assertSame(1, $this->countRows($db, 'ktvs_albums'));
         $this->assertSame(1, $this->countRows($db, 'ktvs_comments'));
@@ -73,7 +77,7 @@ class UserCommandDeleteTest extends TestCase
 
     private function createDeleteSchema(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT, status_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, user_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER, user_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, user_id INTEGER)');

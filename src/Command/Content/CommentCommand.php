@@ -118,6 +118,54 @@ HELP
         };
     }
 
+    private function getCommentObjectSelectSql(): string
+    {
+        $titleCases = [
+            Constants::OBJECT_TYPE_VIDEO => ['videos', 'video_id'],
+            Constants::OBJECT_TYPE_ALBUM => ['albums', 'album_id'],
+            Constants::OBJECT_TYPE_CONTENT_SOURCE => ['content_sources', 'content_source_id'],
+            Constants::OBJECT_TYPE_MODEL => ['models', 'model_id'],
+            Constants::OBJECT_TYPE_DVD => ['dvds', 'dvd_id'],
+            Constants::OBJECT_TYPE_POST => ['posts', 'post_id'],
+            Constants::OBJECT_TYPE_PLAYLIST => ['playlists', 'playlist_id'],
+        ];
+
+        $typeNames = [
+            Constants::OBJECT_TYPE_VIDEO => 'Video',
+            Constants::OBJECT_TYPE_ALBUM => 'Album',
+            Constants::OBJECT_TYPE_CONTENT_SOURCE => 'Content Source',
+            Constants::OBJECT_TYPE_MODEL => 'Model',
+            Constants::OBJECT_TYPE_DVD => 'DVD',
+            Constants::OBJECT_TYPE_POST => 'Post',
+            Constants::OBJECT_TYPE_PLAYLIST => 'Playlist',
+        ];
+
+        $titleSql = [];
+        foreach ($titleCases as $typeId => [$table, $idColumn]) {
+            $titleSql[] = sprintf(
+                'WHEN %d THEN (SELECT title FROM %s WHERE %s = c.object_id)',
+                $typeId,
+                $this->table($table),
+                $idColumn
+            );
+        }
+
+        $typeSql = [];
+        foreach ($typeNames as $typeId => $label) {
+            $typeSql[] = sprintf("WHEN %d THEN '%s'", $typeId, $label);
+        }
+
+        return "
+                       CASE c.object_type_id
+                           " . implode("\n                           ", $titleSql) . "
+                           ELSE 'Unknown'
+                       END as object_title,
+                       CASE c.object_type_id
+                           " . implode("\n                           ", $typeSql) . "
+                           ELSE 'Unknown'
+                       END as object_type";
+    }
+
     private function listComments(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
@@ -161,7 +209,7 @@ HELP
             if ($this->getBoolOption($input, 'approved')) {
                 $conditions[] = 'c.is_approved = 1';
             } elseif ($this->getBoolOption($input, 'pending')) {
-                $conditions[] = 'c.is_approved = 0';
+                $conditions[] = 'c.is_review_needed = 1';
             }
 
             $whereClause = implode(' AND ', $conditions);
@@ -172,16 +220,7 @@ HELP
             $sql = "
                 SELECT c.*,
                        u.username,
-                       CASE c.object_type_id
-                           WHEN 1 THEN (SELECT title FROM {$this->table('videos')} WHERE video_id = c.object_id)
-                           WHEN 2 THEN (SELECT title FROM {$this->table('albums')} WHERE album_id = c.object_id)
-                           ELSE 'Unknown'
-                       END as object_title,
-                       CASE c.object_type_id
-                           WHEN 1 THEN 'Video'
-                           WHEN 2 THEN 'Album'
-                           ELSE 'Unknown'
-                       END as object_type
+                       {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE $whereClause
@@ -243,16 +282,7 @@ HELP
                 SELECT c.*,
                        u.username,
                        u.email,
-                       CASE c.object_type_id
-                           WHEN 1 THEN (SELECT title FROM {$this->table('videos')} WHERE video_id = c.object_id)
-                           WHEN 2 THEN (SELECT title FROM {$this->table('albums')} WHERE album_id = c.object_id)
-                           ELSE 'Unknown'
-                       END as object_title,
-                       CASE c.object_type_id
-                           WHEN 1 THEN 'Video'
-                           WHEN 2 THEN 'Album'
-                           ELSE 'Unknown'
-                       END as object_type
+                       {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id = :id
@@ -313,14 +343,17 @@ HELP
 
         try {
             // Overall stats
-            $videoType = Constants::OBJECT_TYPE_VIDEO;
-            $albumType = Constants::OBJECT_TYPE_ALBUM;
             $stmt = $db->query("
                 SELECT
                     COUNT(*) as total_comments,
                     COUNT(DISTINCT user_id) as unique_users,
-                    SUM(CASE WHEN object_type_id = $videoType THEN 1 ELSE 0 END) as video_comments,
-                    SUM(CASE WHEN object_type_id = $albumType THEN 1 ELSE 0 END) as album_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_VIDEO . " THEN 1 ELSE 0 END) as video_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_ALBUM . " THEN 1 ELSE 0 END) as album_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_CONTENT_SOURCE . " THEN 1 ELSE 0 END) as content_source_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_MODEL . " THEN 1 ELSE 0 END) as model_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_DVD . " THEN 1 ELSE 0 END) as dvd_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_POST . " THEN 1 ELSE 0 END) as post_comments,
+                    SUM(CASE WHEN object_type_id = " . Constants::OBJECT_TYPE_PLAYLIST . " THEN 1 ELSE 0 END) as playlist_comments,
                     MIN(added_date) as first_comment,
                     MAX(added_date) as last_comment
                 FROM {$this->table('comments')}
@@ -377,6 +410,11 @@ HELP
             $uniqueUsers = is_numeric($overall['unique_users']) ? (int) $overall['unique_users'] : 0;
             $videoComments = is_numeric($overall['video_comments']) ? (int) $overall['video_comments'] : 0;
             $albumComments = is_numeric($overall['album_comments']) ? (int) $overall['album_comments'] : 0;
+            $contentSourceComments = is_numeric($overall['content_source_comments']) ? (int) $overall['content_source_comments'] : 0;
+            $modelComments = is_numeric($overall['model_comments']) ? (int) $overall['model_comments'] : 0;
+            $dvdComments = is_numeric($overall['dvd_comments']) ? (int) $overall['dvd_comments'] : 0;
+            $postComments = is_numeric($overall['post_comments']) ? (int) $overall['post_comments'] : 0;
+            $playlistComments = is_numeric($overall['playlist_comments']) ? (int) $overall['playlist_comments'] : 0;
             $recentComments = is_numeric($recentStats['recent_comments']) ? (int) $recentStats['recent_comments'] : 0;
             $firstComment = $overall['first_comment'] ?? null;
             $firstCommentStr = is_scalar($firstComment) ? (string) $firstComment : 'N/A';
@@ -390,6 +428,11 @@ HELP
                     ['Unique Commenters', number_format($uniqueUsers)],
                     ['Video Comments', number_format($videoComments)],
                     ['Album Comments', number_format($albumComments)],
+                    ['Content Source Comments', number_format($contentSourceComments)],
+                    ['Model Comments', number_format($modelComments)],
+                    ['DVD Comments', number_format($dvdComments)],
+                    ['Post Comments', number_format($postComments)],
+                    ['Playlist Comments', number_format($playlistComments)],
                     ['Comments (Last 7 Days)', number_format($recentComments)],
                     ['First Comment', $firstCommentStr !== '' ? $firstCommentStr : 'N/A'],
                     ['Latest Comment', $lastCommentStr !== '' ? $lastCommentStr : 'N/A'],
@@ -467,16 +510,7 @@ HELP
             $sql = "
                 SELECT c.*,
                        u.username,
-                       CASE c.object_type_id
-                           WHEN 1 THEN (SELECT title FROM {$this->table('videos')} WHERE video_id = c.object_id)
-                           WHEN 2 THEN (SELECT title FROM {$this->table('albums')} WHERE album_id = c.object_id)
-                           ELSE 'Unknown'
-                       END as object_title,
-                       CASE c.object_type_id
-                           WHEN 1 THEN 'Video'
-                           WHEN 2 THEN 'Album'
-                           ELSE 'Unknown'
-                       END as object_type
+                       {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE $whereClause
@@ -549,15 +583,13 @@ HELP
             $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
             $stmt = $db->prepare("
                 SELECT c.comment_id, c.object_id, c.object_type_id, c.user_id, c.comment,
+                       c.is_approved, c.is_review_needed,
                        u.username,
-                       CASE c.object_type_id
-                           WHEN 1 THEN 'Video'
-                           WHEN 2 THEN 'Album'
-                           ELSE 'Other'
-                       END as object_type
+                       {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
-                WHERE c.comment_id IN ($placeholders) AND c.is_approved = 0
+                WHERE c.comment_id IN ($placeholders)
+                  AND (c.is_approved = 0 OR c.is_review_needed = 1)
             ");
             $stmt->execute($commentIds);
 
@@ -607,7 +639,9 @@ HELP
             $this->updateCommentCounts($db, $comments);
             foreach ($comments as $comment) {
                 $commentId = $comment['comment_id'] ?? null;
-                if (is_numeric($commentId)) {
+                $wasApproved = $comment['is_approved'] ?? 0;
+                $wasApprovedInt = is_numeric($wasApproved) ? (int) $wasApproved : 0;
+                if (is_numeric($commentId) && $wasApprovedInt === 0) {
                     $this->writeAdminAuditLog(
                         $db,
                         150,
@@ -649,11 +683,7 @@ HELP
             $stmt = $db->prepare("
                 SELECT c.comment_id, c.object_id, c.object_type_id, c.user_id, c.comment,
                        u.username,
-                       CASE c.object_type_id
-                           WHEN 1 THEN 'Video'
-                           WHEN 2 THEN 'Album'
-                           ELSE 'Other'
-                       END as object_type
+                       {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id IN ($placeholders)

@@ -67,8 +67,19 @@ class ContentStatusFilterTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT, status_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_tags_videos (tag_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_tags_albums (tag_id INTEGER)');
+        $tagRelations = [
+            'videos',
+            'albums',
+            'posts',
+            'playlists',
+            'content_sources',
+            'models',
+            'dvds',
+            'dvds_groups',
+        ];
+        foreach ($tagRelations as $suffix) {
+            $db->exec("CREATE TABLE ktvs_tags_{$suffix} (tag_id INTEGER)");
+        }
         $db->exec("INSERT INTO ktvs_tags (tag_id, tag, status_id) VALUES (1, 'Active', 1), (2, 'Inactive', 0)");
 
         $tester = new CommandTester($this->createTagCommand($db));

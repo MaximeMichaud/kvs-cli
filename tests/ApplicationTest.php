@@ -112,4 +112,28 @@ class ApplicationTest extends TestCase
         $this->assertEquals(0, $exitCode);
         $this->assertStringContainsString('Available commands:', $display);
     }
+
+    public function testEvalSkipKvsWorksWithoutKvs(): void
+    {
+        $this->app->setAutoExit(false);
+
+        $input = new ArrayInput([
+            'command' => 'eval',
+            'code' => 'echo "ok";',
+            '--skip-kvs' => true,
+        ]);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+
+        $oldCwd = getcwd();
+        chdir(sys_get_temp_dir());
+        $exitCode = $this->app->run($input, $output);
+        if ($oldCwd !== false) {
+            chdir($oldCwd);
+        }
+
+        $display = $output->fetch();
+        $this->assertSame(0, $exitCode);
+        $this->assertSame('ok', trim($display));
+    }
 }

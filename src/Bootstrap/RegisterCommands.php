@@ -23,6 +23,9 @@ class RegisterCommands implements BootstrapStep
         if ($kvsAvailable === true && $app instanceof Application && $config instanceof Configuration) {
             $app->registerKvsCommands($config);
             $state->setValue('commands_registered', true);
+        } elseif ($state->getValue('skip_kvs_context') === true && $app instanceof Application && $config instanceof Configuration) {
+            $app->registerStandaloneEvalCommands($config);
+            $state->setValue('commands_registered', true);
         } else {
             $state->setValue('commands_registered', false);
         }

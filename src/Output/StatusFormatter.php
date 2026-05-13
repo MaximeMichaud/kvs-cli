@@ -14,17 +14,25 @@ class StatusFormatter
     public const VIDEO_DISABLED = 0;
     public const VIDEO_ACTIVE = 1;
     public const VIDEO_ERROR = 2;
+    public const VIDEO_PROCESSING = 3;
+    public const VIDEO_DELETING = 4;
+    public const VIDEO_DELETED = 5;
 
     // Album status constants
     public const ALBUM_DISABLED = 0;
     public const ALBUM_ACTIVE = 1;
+    public const ALBUM_ERROR = 2;
+    public const ALBUM_PROCESSING = 3;
+    public const ALBUM_DELETING = 4;
+    public const ALBUM_DELETED = 5;
 
     // User status constants
     public const USER_DISABLED = 0;
     public const USER_NOT_CONFIRMED = 1;
     public const USER_ACTIVE = 2;
     public const USER_PREMIUM = 3;
-    public const USER_VIP = 4;
+    public const USER_ANONYMOUS = 4;
+    public const USER_GENERATED = 5;
     public const USER_WEBMASTER = 6;
 
     // Category/Tag status constants
@@ -106,6 +114,9 @@ class StatusFormatter
             self::VIDEO_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
             self::VIDEO_ACTIVE => ['text' => 'Active', 'color' => 'green'],
             self::VIDEO_ERROR => ['text' => 'Error', 'color' => 'red'],
+            self::VIDEO_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+            self::VIDEO_DELETING => ['text' => 'Deleting', 'color' => 'red'],
+            self::VIDEO_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -123,6 +134,10 @@ class StatusFormatter
         $labels = [
             self::ALBUM_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
             self::ALBUM_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+            self::ALBUM_ERROR => ['text' => 'Error', 'color' => 'red'],
+            self::ALBUM_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+            self::ALBUM_DELETING => ['text' => 'Deleting', 'color' => 'red'],
+            self::ALBUM_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -142,7 +157,8 @@ class StatusFormatter
             self::USER_NOT_CONFIRMED => ['text' => 'Not Confirmed', 'color' => 'yellow'],
             self::USER_ACTIVE => ['text' => 'Active', 'color' => 'green'],
             self::USER_PREMIUM => ['text' => 'Premium', 'color' => 'cyan'],
-            self::USER_VIP => ['text' => 'VIP', 'color' => 'magenta'],
+            self::USER_ANONYMOUS => ['text' => 'Anonymous', 'color' => 'gray'],
+            self::USER_GENERATED => ['text' => 'Generated', 'color' => 'magenta'],
             self::USER_WEBMASTER => ['text' => 'Webmaster', 'color' => 'blue'],
         ];
 

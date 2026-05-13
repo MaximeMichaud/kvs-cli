@@ -8,6 +8,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'eval-file',
@@ -51,6 +52,16 @@ The <info>eval-file</info> command executes a PHP file with the KVS context pre-
   DB::query(), DB::escape()
 HELP
             );
+    }
+
+    protected function initialize(InputInterface $input, OutputInterface $output): void
+    {
+        if ($this->getBoolOption($input, 'skip-kvs')) {
+            $this->io = new SymfonyStyle($input, $output);
+            return;
+        }
+
+        parent::initialize($input, $output);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int

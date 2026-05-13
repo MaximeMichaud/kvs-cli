@@ -365,6 +365,14 @@ class Application extends BaseApplication
         ]);
     }
 
+    public function registerStandaloneEvalCommands(Configuration $config): void
+    {
+        $this->addCommands([
+            new EvalCommand($config),
+            new EvalFileCommand($config),
+        ]);
+    }
+
     public function getLongVersion(): string
     {
         return sprintf(

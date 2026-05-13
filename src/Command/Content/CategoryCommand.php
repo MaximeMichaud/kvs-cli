@@ -53,7 +53,7 @@ Manage KVS categories with full CRUD operations.
 <info>EXAMPLES:</info>
   <comment>kvs category list</comment>
   <comment>kvs category tree</comment>
-  <comment>kvs category create "New Category" --parent=5</comment>
+  <comment>kvs category create "New Category" --group=5</comment>
   <comment>kvs category update 3 --title="Renamed" --status=inactive</comment>
   <comment>kvs category delete 3</comment>
   <comment>kvs category enable 2</comment>
@@ -64,7 +64,8 @@ HELP
             ->addArgument('id', InputArgument::OPTIONAL, 'Category ID or title')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Category title')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Category description')
-            ->addOption('parent', null, InputOption::VALUE_REQUIRED, 'Parent category ID')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Category group ID')
+            ->addOption('parent', null, InputOption::VALUE_REQUIRED, 'Deprecated alias for --group')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Status (active|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
@@ -272,7 +273,7 @@ HELP
         if ($title === null) {
             $this->io()->error('Category title is required');
             $this->io()->text('Usage: kvs content:category create "Category Name"');
-            $this->io()->text('   or: kvs content:category create --title="Category Name" --description="..." --parent=5');
+            $this->io()->text('   or: kvs content:category create --title="Category Name" --description="..." --group=5');
             return self::FAILURE;
         }
 
@@ -293,15 +294,15 @@ HELP
 
             // Prepare data
             $description = $this->getStringOption($input, 'description') ?? '';
-            $parentId = $this->getStringOption($input, 'parent');
+            $groupId = $this->getCategoryGroupInput($input);
             $statusId = StatusFormatter::CATEGORY_ACTIVE;
 
-            // Validate parent category if provided
-            if ($parentId !== null) {
-                $stmt = $db->prepare("SELECT category_id FROM {$this->table('categories')} WHERE category_id = :id");
-                $stmt->execute(['id' => $parentId]);
+            // KVS category_group_id points to categories_groups, not another category.
+            if ($groupId !== null && $groupId !== '') {
+                $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
+                $stmt->execute(['id' => $groupId]);
                 if ($stmt->fetch() === false) {
-                    $this->io()->error("Parent category not found: $parentId");
+                    $this->io()->error("Category group not found: $groupId");
                     return self::FAILURE;
                 }
             }
@@ -327,7 +328,7 @@ HELP
                 'title' => $title,
                 'dir' => $dir,
                 'description' => $description,
-                'category_group_id' => $parentId !== null ? (int) $parentId : 0,
+                'category_group_id' => $groupId !== null && $groupId !== '' ? (int) $groupId : 0,
                 'status_id' => $statusId,
             ]);
 
@@ -341,7 +342,7 @@ HELP
                 [
                     ['ID', (string) $categoryId],
                     ['Title', $title],
-                    ['Group ID', $parentId ?? 'None (Root)'],
+                    ['Group ID', $groupId ?? 'None'],
                     ['Description', $description !== '' ? $description : 'None'],
                     ['Status', 'Active'],
                 ]
@@ -379,17 +380,6 @@ HELP
 
             if (!is_array($category)) {
                 $this->io()->error("Category not found: $id");
-                return self::FAILURE;
-            }
-
-            // Check for child categories
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')} WHERE category_group_id = :id");
-            $stmt->execute(['id' => $id]);
-            $childCount = $stmt->fetchColumn();
-
-            if ($childCount > 0) {
-                $this->io()->error("Cannot delete category with $childCount child categories.");
-                $this->io()->text('Please delete or reassign child categories first.');
                 return self::FAILURE;
             }
 
@@ -569,15 +559,23 @@ HELP
                 $params['description'] = $description;
             }
 
-            // Parent
-            $parentId = $this->getStringOption($input, 'parent');
-            if ($parentId !== null) {
-                if ($parentId === $id) {
-                    $this->io()->error('Category cannot be its own parent');
-                    return self::FAILURE;
+            // Category group
+            $groupId = $this->getCategoryGroupInput($input);
+            if ($groupId !== null) {
+                if ($groupId !== '') {
+                    $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
+                    $stmt->execute(['id' => $groupId]);
+                    if ($stmt->fetch() === false) {
+                        $this->io()->error("Category group not found: $groupId");
+                        return self::FAILURE;
+                    }
                 }
                 $updates[] = 'category_group_id = :category_group_id';
-                $params['category_group_id'] = $parentId !== '' ? (int) $parentId : 0;
+                $params['category_group_id'] = $groupId !== '' ? (int) $groupId : 0;
+            }
+
+            if ($this->getStringOption($input, 'parent') !== null && $this->getStringOption($input, 'group') === null) {
+                $this->io()->warning('--parent is deprecated for categories; KVS uses category groups. Use --group instead.');
             }
 
             // Status
@@ -589,7 +587,7 @@ HELP
             }
 
             if ($updates === []) {
-                $this->io()->warning('No changes specified. Use --title, --description, --parent, or --status options.');
+                $this->io()->warning('No changes specified. Use --title, --description, --group, or --status options.');
                 return self::FAILURE;
             }
 
@@ -606,6 +604,16 @@ HELP
             $this->io()->error('Failed to update category: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function getCategoryGroupInput(InputInterface $input): ?string
+    {
+        $groupId = $this->getStringOption($input, 'group');
+        if ($groupId !== null) {
+            return $groupId;
+        }
+
+        return $this->getStringOption($input, 'parent');
     }
 
     /**
