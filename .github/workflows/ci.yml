@@ -72,6 +72,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-php-${{ matrix.php-version }}-${{ matrix.deps }}-composer-
 
+      - name: Verify lock file installs on PHP 8.1
+        if: matrix.php-version == '8.1' && matrix.deps == 'highest'
+        run: composer install --dry-run --prefer-dist --no-progress --no-interaction
+
       - name: Install dependencies (lowest)
         if: matrix.deps == 'lowest'
         run: composer update --prefer-lowest --prefer-stable --no-progress --no-interaction

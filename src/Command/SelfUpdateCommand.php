@@ -263,7 +263,7 @@ HELP
             // @phpstan-ignore nullCoalesce.variable
             $responseHeaders = $http_response_header ?? [];
         }
-        $httpCode = $this->getHttpStatusCode($responseHeaders);
+        $httpCode = $this->getHttpStatusCode($this->normalizeResponseHeaders($responseHeaders));
         if ($httpCode !== 200) {
             $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));
             if ($httpCode === 403) {
@@ -570,7 +570,7 @@ HELP
             // @phpstan-ignore nullCoalesce.variable
             $responseHeaders = $http_response_header ?? [];
         }
-        $httpCode = $this->getHttpStatusCode($responseHeaders);
+        $httpCode = $this->getHttpStatusCode($this->normalizeResponseHeaders($responseHeaders));
         if ($httpCode !== 200) {
             $io->error(sprintf('GitHub API returned HTTP %d.', $httpCode));
             if ($httpCode === 403) {
@@ -615,6 +615,18 @@ HELP
         }
 
         return (string) $runId;
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function normalizeResponseHeaders(mixed $headers): array
+    {
+        if (!is_array($headers)) {
+            return [];
+        }
+
+        return array_values(array_filter($headers, static fn(mixed $header): bool => is_string($header)));
     }
 
     /**
