@@ -22,6 +22,18 @@ class TagCommand extends BaseCommand
 {
     use ToggleStatusTrait;
 
+    /** @var array<string, string> */
+    private const TAG_RELATION_TABLES = [
+        'videos' => 'video_id',
+        'albums' => 'album_id',
+        'posts' => 'post_id',
+        'playlists' => 'playlist_id',
+        'content_sources' => 'content_source_id',
+        'models' => 'model_id',
+        'dvds' => 'dvd_id',
+        'dvds_groups' => 'dvd_group_id',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -306,6 +318,10 @@ HELP
             $this->io()->text('Usage: kvs content:tag delete <tag_id>');
             return self::FAILURE;
         }
+        if (!ctype_digit($identifier)) {
+            $this->io()->error('Tag ID must be numeric');
+            return self::FAILURE;
+        }
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -323,30 +339,12 @@ HELP
                 return self::FAILURE;
             }
 
-            // Check usage
-            $stmt = $db->prepare("
-                SELECT
-                    (SELECT COUNT(*) FROM {$this->table('tags')}_videos WHERE tag_id = :id) as video_count,
-                    (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = :id) as album_count
-            ");
-            $stmt->execute(['id' => $identifier]);
-            $usage = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if (!is_array($usage)) {
-                $this->io()->error('Failed to retrieve tag usage information');
-                return self::FAILURE;
-            }
-
-            $videoCount = is_numeric($usage['video_count']) ? (int) $usage['video_count'] : 0;
-            $albumCount = is_numeric($usage['album_count']) ? (int) $usage['album_count'] : 0;
-            $totalUsage = $videoCount + $albumCount;
+            $usage = $this->getTagUsageCounts($db, $identifier);
+            $totalUsage = array_sum($usage);
 
             if ($totalUsage > 0) {
                 $this->io()->warning("This tag is used by $totalUsage items:");
-                $this->io()->listing([
-                    "Videos: $videoCount",
-                    "Albums: $albumCount",
-                ]);
+                $this->io()->listing($this->formatUsageCounts($usage));
 
                 if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
                     $this->io()->info('Operation cancelled');
@@ -354,9 +352,7 @@ HELP
                 }
             }
 
-            // Delete associations first
-            $db->prepare("DELETE FROM {$this->table('tags')}_videos WHERE tag_id = :id")->execute(['id' => $identifier]);
-            $db->prepare("DELETE FROM {$this->table('tags')}_albums WHERE tag_id = :id")->execute(['id' => $identifier]);
+            $this->deleteTagRelations($db, $identifier);
 
             // Delete tag
             $stmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
@@ -378,6 +374,10 @@ HELP
         if ($sourceId === null || $sourceId === '' || $targetId === null || $targetId === '') {
             $this->io()->error('Both source and target tag IDs are required');
             $this->io()->text('Usage: kvs content:tag merge <source_tag_id> <target_tag_id>');
+            return self::FAILURE;
+        }
+        if (!ctype_digit($sourceId) || !ctype_digit($targetId)) {
+            $this->io()->error('Source and target tag IDs must be numeric');
             return self::FAILURE;
         }
 
@@ -443,23 +443,7 @@ HELP
 
             $db->beginTransaction();
 
-            // Move video associations (avoid duplicates)
-            $db->prepare("
-                INSERT IGNORE INTO {$this->table('tags')}_videos (tag_id, video_id)
-                SELECT :target, video_id FROM {$this->table('tags')}_videos WHERE tag_id = :source
-            ")->execute(['target' => $targetId, 'source' => $sourceId]);
-
-            // Move album associations (avoid duplicates)
-            $db->prepare("
-                INSERT IGNORE INTO {$this->table('tags')}_albums (tag_id, album_id)
-                SELECT :target, album_id FROM {$this->table('tags')}_albums WHERE tag_id = :source
-            ")->execute(['target' => $targetId, 'source' => $sourceId]);
-
-            // Delete old associations
-            $db->prepare("DELETE FROM {$this->table('tags')}_videos WHERE tag_id = :id")->execute(['id' => $sourceId]);
-            $db->prepare("DELETE FROM {$this->table('tags')}_albums WHERE tag_id = :id")->execute(['id' => $sourceId]);
-
-            // Delete source tag
+            $this->mergeTagRelations($db, $sourceId, $targetId);
             $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id")->execute(['id' => $sourceId]);
 
             $db->commit();
@@ -475,6 +459,85 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function getTagUsageCounts(\PDO $db, string $tagId): array
+    {
+        $usage = [];
+        foreach (self::TAG_RELATION_TABLES as $suffix => $objectColumn) {
+            $table = $this->table('tags') . '_' . $suffix;
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE tag_id = :id");
+            $stmt->execute(['id' => $tagId]);
+            $count = $stmt->fetchColumn();
+            $usage[$suffix] = is_numeric($count) ? (int) $count : 0;
+        }
+
+        return $usage;
+    }
+
+    /**
+     * @param array<string, int> $usage
+     * @return list<string>
+     */
+    private function formatUsageCounts(array $usage): array
+    {
+        $labels = [
+            'videos' => 'Videos',
+            'albums' => 'Albums',
+            'posts' => 'Posts',
+            'playlists' => 'Playlists',
+            'content_sources' => 'Content sources',
+            'models' => 'Models',
+            'dvds' => 'DVDs',
+            'dvds_groups' => 'DVD groups',
+        ];
+
+        $lines = [];
+        foreach ($usage as $suffix => $count) {
+            $label = $labels[$suffix] ?? $suffix;
+            $lines[] = "$label: $count";
+        }
+
+        return $lines;
+    }
+
+    private function deleteTagRelations(\PDO $db, string $tagId): void
+    {
+        foreach (self::TAG_RELATION_TABLES as $suffix => $objectColumn) {
+            $table = $this->table('tags') . '_' . $suffix;
+            $db->prepare("DELETE FROM {$table} WHERE tag_id = :id")->execute(['id' => $tagId]);
+        }
+    }
+
+    private function mergeTagRelations(\PDO $db, string $sourceId, string $targetId): void
+    {
+        foreach (self::TAG_RELATION_TABLES as $suffix => $objectColumn) {
+            $table = $this->table('tags') . '_' . $suffix;
+            $stmt = $db->prepare("
+                SELECT src.{$objectColumn}
+                FROM {$table} src
+                INNER JOIN {$table} dst ON dst.{$objectColumn} = src.{$objectColumn}
+                WHERE src.tag_id = :source AND dst.tag_id = :target
+            ");
+            $stmt->execute(['source' => $sourceId, 'target' => $targetId]);
+            $duplicates = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+            $deleteStmt = $db->prepare("
+                DELETE FROM {$table}
+                WHERE tag_id = :source AND {$objectColumn} = :object_id
+            ");
+            foreach ($duplicates as $duplicate) {
+                if (is_scalar($duplicate)) {
+                    $deleteStmt->execute(['source' => $sourceId, 'object_id' => $duplicate]);
+                }
+            }
+
+            $updateStmt = $db->prepare("UPDATE {$table} SET tag_id = :target WHERE tag_id = :source");
+            $updateStmt->execute(['target' => $targetId, 'source' => $sourceId]);
+        }
     }
 
     private function showStats(): int

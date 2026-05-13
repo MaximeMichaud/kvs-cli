@@ -366,6 +366,15 @@ class Configuration
         return Constants::DEFAULT_TABLE_PREFIX;
     }
 
+    public function getMultiTablePrefix(): string
+    {
+        $prefix = $this->config['tables_prefix_multi'] ?? null;
+        if (is_string($prefix)) {
+            return $prefix;
+        }
+        return $this->getTablePrefix();
+    }
+
     public function getKvsVersion(): string
     {
         $version = $this->config['project_version'] ?? null;

@@ -22,6 +22,18 @@ class CategoryCommand extends BaseCommand
 {
     use ToggleStatusTrait;
 
+    /** @var list<string> */
+    private const CATEGORY_RELATION_TABLES = [
+        'videos',
+        'content_sources',
+        'albums',
+        'posts',
+        'playlists',
+        'dvds',
+        'dvds_groups',
+        'models',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -349,6 +361,10 @@ HELP
             $this->io()->text('Usage: kvs content:category delete <category_id>');
             return self::FAILURE;
         }
+        if (!ctype_digit($id)) {
+            $this->io()->error('Category ID must be numeric');
+            return self::FAILURE;
+        }
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -377,30 +393,12 @@ HELP
                 return self::FAILURE;
             }
 
-            // Check usage
-            $stmt = $db->prepare("
-                SELECT
-                    (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id) as video_count,
-                    (SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id) as album_count
-            ");
-            $stmt->execute(['id' => $id]);
-            $usage = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if (!is_array($usage)) {
-                $this->io()->error('Failed to retrieve category usage information');
-                return self::FAILURE;
-            }
-
-            $videoCount = is_numeric($usage['video_count']) ? (int) $usage['video_count'] : 0;
-            $albumCount = is_numeric($usage['album_count']) ? (int) $usage['album_count'] : 0;
-            $totalUsage = $videoCount + $albumCount;
+            $usage = $this->getCategoryUsageCounts($db, $id);
+            $totalUsage = array_sum($usage);
 
             if ($totalUsage > 0) {
                 $this->io()->warning("This category is used by $totalUsage items:");
-                $this->io()->listing([
-                    "Videos: $videoCount",
-                    "Albums: $albumCount",
-                ]);
+                $this->io()->listing($this->formatUsageCounts($usage));
 
                 if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
                     $this->io()->info('Operation cancelled');
@@ -408,13 +406,10 @@ HELP
                 }
             }
 
-            // Delete associations first
-            $db->prepare("DELETE FROM {$this->table('categories')}_videos WHERE category_id = :id")->execute(['id' => $id]);
-            $db->prepare("DELETE FROM {$this->table('categories')}_albums WHERE category_id = :id")->execute(['id' => $id]);
-
-            // Delete category
             $stmt = $db->prepare("DELETE FROM {$this->table('categories')} WHERE category_id = :id");
             $stmt->execute(['id' => $id]);
+            $this->deleteCategoryRelations($db, $id);
+            $this->resetCategoryReferences($db, $id);
 
             $titleValue = $category['title'] ?? '';
             $deletedTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
@@ -425,6 +420,72 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function getCategoryUsageCounts(\PDO $db, string $categoryId): array
+    {
+        $usage = [];
+        foreach (self::CATEGORY_RELATION_TABLES as $suffix) {
+            $table = $this->table('categories') . '_' . $suffix;
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE category_id = :id");
+            $stmt->execute(['id' => $categoryId]);
+            $count = $stmt->fetchColumn();
+            $usage[$suffix] = is_numeric($count) ? (int) $count : 0;
+        }
+
+        return $usage;
+    }
+
+    /**
+     * @param array<string, int> $usage
+     * @return list<string>
+     */
+    private function formatUsageCounts(array $usage): array
+    {
+        $labels = [
+            'videos' => 'Videos',
+            'content_sources' => 'Content sources',
+            'albums' => 'Albums',
+            'posts' => 'Posts',
+            'playlists' => 'Playlists',
+            'dvds' => 'DVDs',
+            'dvds_groups' => 'DVD groups',
+            'models' => 'Models',
+        ];
+
+        $lines = [];
+        foreach ($usage as $suffix => $count) {
+            $label = $labels[$suffix] ?? $suffix;
+            $lines[] = "$label: $count";
+        }
+
+        return $lines;
+    }
+
+    private function deleteCategoryRelations(\PDO $db, string $categoryId): void
+    {
+        foreach (self::CATEGORY_RELATION_TABLES as $suffix) {
+            $table = $this->table('categories') . '_' . $suffix;
+            $db->prepare("DELETE FROM {$table} WHERE category_id = :id")->execute(['id' => $categoryId]);
+        }
+    }
+
+    private function resetCategoryReferences(\PDO $db, string $categoryId): void
+    {
+        $usersTable = $this->table('users');
+        $stmt = $db->prepare("
+            UPDATE {$usersTable}
+            SET favourite_category_id = 0
+            WHERE favourite_category_id = :id
+        ");
+        $stmt->execute(['id' => $categoryId]);
+
+        $table = $this->multiTable('stats_referers_list');
+        $stmt = $db->prepare("UPDATE {$table} SET category_id = 0 WHERE category_id = :id");
+        $stmt->execute(['id' => $categoryId]);
     }
 
     private function updateCategory(?string $id, InputInterface $input): int

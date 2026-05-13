@@ -457,4 +457,12 @@ abstract class BaseCommand extends Command
     {
         return $this->config->getTablePrefix() . $name;
     }
+
+    /**
+     * Get prefixed table name for multi-site shared tables.
+     */
+    protected function multiTable(string $name): string
+    {
+        return $this->config->getMultiTablePrefix() . $name;
+    }
 }
