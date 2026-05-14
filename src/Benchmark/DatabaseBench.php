@@ -70,8 +70,6 @@ class DatabaseBench
     private function benchVideoListing(BenchmarkResult $result): void
     {
         $videosTable = $this->tablePrefix . 'videos';
-        $catsTable = $this->tablePrefix . 'categories';
-        $videoCatsTable = $this->tablePrefix . 'videos_categories';
 
         // Check if tables exist
         if (!$this->tableExists($videosTable)) {
@@ -127,7 +125,7 @@ class DatabaseBench
     private function benchCategoryListing(BenchmarkResult $result): void
     {
         $catsTable = $this->tablePrefix . 'categories';
-        $videoCatsTable = $this->tablePrefix . 'videos_categories';
+        $videoCatsTable = $this->tablePrefix . 'categories_videos';
 
         if (!$this->tableExists($catsTable)) {
             return;
@@ -151,7 +149,7 @@ class DatabaseBench
                     $stmt->fetchAll();
                 }
             } catch (\PDOException $e) {
-                // videos_categories might not exist
+                // categories_videos might not exist
                 break;
             }
             $timings[] = (microtime(true) - $start) * 1000;
@@ -294,7 +292,7 @@ class DatabaseBench
     {
         $catsTable = $this->tablePrefix . 'categories';
         $videosTable = $this->tablePrefix . 'videos';
-        $videoCatsTable = $this->tablePrefix . 'videos_categories';
+        $videoCatsTable = $this->tablePrefix . 'categories_videos';
 
         if (!$this->tableExists($catsTable) || !$this->tableExists($videoCatsTable)) {
             return;
@@ -390,9 +388,9 @@ class DatabaseBench
     {
         $videosTable = $this->tablePrefix . 'videos';
         $catsTable = $this->tablePrefix . 'categories';
-        $videoCatsTable = $this->tablePrefix . 'videos_categories';
+        $videoCatsTable = $this->tablePrefix . 'categories_videos';
         $tagsTable = $this->tablePrefix . 'tags';
-        $videoTagsTable = $this->tablePrefix . 'videos_tags';
+        $videoTagsTable = $this->tablePrefix . 'tags_videos';
 
         if (!$this->tableExists($videosTable)) {
             return;
@@ -403,7 +401,7 @@ class DatabaseBench
             SELECT
                 v.video_id, v.title, v.description, v.duration, v.video_viewed, v.rating,
                 GROUP_CONCAT(DISTINCT c.title SEPARATOR ', ') as categories,
-                GROUP_CONCAT(DISTINCT t.title SEPARATOR ', ') as tags
+                GROUP_CONCAT(DISTINCT t.tag SEPARATOR ', ') as tags
             FROM {$videosTable} v
             LEFT JOIN {$videoCatsTable} vc ON v.video_id = vc.video_id
             LEFT JOIN {$catsTable} c ON vc.category_id = c.category_id
