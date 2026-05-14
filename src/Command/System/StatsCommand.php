@@ -314,7 +314,7 @@ class StatsCommand extends BaseCommand
             $ratingCount = (int) ($video['rating_amount'] ?? 0);
             $duration = (int) ($video['duration'] ?? 0);
 
-            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
+            $ratingStr = $this->formatRatingPercent($rating, $ratingCount);
             $durationStr = $duration > 0 ? gmdate('H:i:s', $duration) : '-';
 
             $rows[] = [
@@ -327,7 +327,7 @@ class StatsCommand extends BaseCommand
             $rank++;
         }
 
-        $this->renderTable(['#', 'Title', 'Views', 'Rating', 'Duration'], $rows);
+        $this->renderTable(['#', 'Title', 'Views', 'Rating %', 'Duration'], $rows);
     }
 
     /**
@@ -371,7 +371,7 @@ class StatsCommand extends BaseCommand
             $ratingCount = (int) ($album['rating_amount'] ?? 0);
             $photos = (int) ($album['photos_amount'] ?? 0);
 
-            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
+            $ratingStr = $this->formatRatingPercent($rating, $ratingCount);
 
             $rows[] = [
                 $rank,
@@ -383,7 +383,7 @@ class StatsCommand extends BaseCommand
             $rank++;
         }
 
-        $this->renderTable(['#', 'Title', 'Views', 'Rating', 'Photos'], $rows);
+        $this->renderTable(['#', 'Title', 'Views', 'Rating %', 'Photos'], $rows);
     }
 
     /**
@@ -487,7 +487,7 @@ class StatsCommand extends BaseCommand
                     ['Max Views', $this->formatNumber((int) ($row['max_views'] ?? 0))],
                     ['', ''],
                     ['Total Ratings', $this->formatNumber((int) ($row['total_ratings'] ?? 0))],
-                    ['Avg Rating', sprintf('%.2f', (float) ($row['avg_rating'] ?? 0))],
+                    ['Avg Rating %', $this->formatAverageRatingPercent($row['avg_rating'] ?? null)],
                     ['Total Comments', $this->formatNumber((int) ($row['total_comments'] ?? 0))],
                     ['Total Favourites', $this->formatNumber((int) ($row['total_favourites'] ?? 0))],
                     ['', ''],
@@ -505,7 +505,7 @@ class StatsCommand extends BaseCommand
         $this->showTopVideos($db, $limit);
 
         // Top by rating
-        $this->io()->text('<info>Top by Rating:</info>');
+        $this->io()->text('<info>Top by Rating %:</info>');
         $stmt = $db->prepare("SELECT
             video_id, title, video_viewed, rating / rating_amount as avg_rating, rating_amount
             FROM {$prefix}videos
@@ -529,13 +529,13 @@ class StatsCommand extends BaseCommand
                 $rows[] = [
                     $rank,
                     $title,
-                    sprintf('%.2f', (float) ($video['avg_rating'] ?? 0)),
+                    $this->formatAverageRatingPercent($video['avg_rating'] ?? null),
                     (int) ($video['rating_amount'] ?? 0) . ' votes',
                     $this->formatNumber((int) ($video['video_viewed'] ?? 0)) . ' views',
                 ];
                 $rank++;
             }
-            $this->renderTable(['#', 'Title', 'Rating', 'Votes', 'Views'], $rows);
+            $this->renderTable(['#', 'Title', 'Rating %', 'Votes', 'Views'], $rows);
         }
     }
 
@@ -573,7 +573,7 @@ class StatsCommand extends BaseCommand
                     ['Avg Photos/Album', $this->formatNumber((int) ($row['avg_photos'] ?? 0))],
                     ['', ''],
                     ['Total Ratings', $this->formatNumber((int) ($row['total_ratings'] ?? 0))],
-                    ['Avg Rating', sprintf('%.2f', (float) ($row['avg_rating'] ?? 0))],
+                    ['Avg Rating %', $this->formatAverageRatingPercent($row['avg_rating'] ?? null)],
                 ];
 
                 $this->renderTable(['Metric', 'Value'], $rows);
@@ -861,7 +861,7 @@ class StatsCommand extends BaseCommand
 
             $rating = $model['avg_rating'] ?? null;
             $ratingCount = (int) ($model['rating_amount'] ?? 0);
-            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
+            $ratingStr = $this->formatRatingPercent($rating, $ratingCount);
 
             $rows[] = [
                 $rank,
@@ -874,7 +874,7 @@ class StatsCommand extends BaseCommand
             $rank++;
         }
 
-        $this->renderTable(['#', 'Model', 'Videos', 'Albums', 'Views', 'Rating'], $rows);
+        $this->renderTable(['#', 'Model', 'Videos', 'Albums', 'Views', 'Rating %'], $rows);
 
         // Top models by views
         $this->io()->text('');
@@ -981,7 +981,7 @@ class StatsCommand extends BaseCommand
 
             $rating = $dvd['avg_rating'] ?? null;
             $ratingCount = (int) ($dvd['rating_amount'] ?? 0);
-            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
+            $ratingStr = $this->formatRatingPercent($rating, $ratingCount);
 
             $rows[] = [
                 $rank,
@@ -993,7 +993,7 @@ class StatsCommand extends BaseCommand
             $rank++;
         }
 
-        $this->renderTable(['#', 'DVD/Channel', 'Videos', 'Views', 'Rating'], $rows);
+        $this->renderTable(['#', 'DVD/Channel', 'Videos', 'Views', 'Rating %'], $rows);
 
         // Top DVDs by views
         $this->io()->text('');
@@ -1042,13 +1042,22 @@ class StatsCommand extends BaseCommand
         return number_format($number, 0, '.', ',');
     }
 
-    private function formatAverageRating(mixed $rating, int $ratingCount): string
+    private function formatRatingPercent(mixed $rating, int $ratingCount): string
     {
         if ($ratingCount <= 0 || !is_numeric($rating)) {
             return '-';
         }
 
-        return sprintf('%.1f (%d)', (float) $rating, $ratingCount);
+        return sprintf('%.1f%% (%d)', (float) $rating * 20, $ratingCount);
+    }
+
+    private function formatAverageRatingPercent(mixed $rating): string
+    {
+        if (!is_numeric($rating)) {
+            return '0.00%';
+        }
+
+        return sprintf('%.2f%%', (float) $rating * 20);
     }
 
     /**

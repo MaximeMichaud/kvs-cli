@@ -36,7 +36,7 @@ class StatsCommandTest extends TestCase
         }
     }
 
-    public function testVideoStatsUseKvsAverageRating(): void
+    public function testVideoStatsUseKvsRatingPercent(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -57,12 +57,12 @@ class StatsCommandTest extends TestCase
         $output = $tester->getDisplay();
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('Avg Rating', $output);
-        $this->assertStringContainsString('6.50', $output);
-        $this->assertStringContainsString('9.0 (5)', $output);
-        $this->assertStringContainsString('4.0 (20)', $output);
+        $this->assertStringContainsString('Avg Rating %', $output);
+        $this->assertStringContainsString('130.00%', $output);
+        $this->assertStringContainsString('180.0% (5)', $output);
+        $this->assertStringContainsString('80.0% (20)', $output);
 
-        $ratingSectionStart = strpos($output, 'Top by Rating:');
+        $ratingSectionStart = strpos($output, 'Top by Rating %:');
         $this->assertIsInt($ratingSectionStart);
         $ratingSection = substr($output, $ratingSectionStart);
         $betterAveragePosition = strpos($ratingSection, 'Better Average');
@@ -72,7 +72,7 @@ class StatsCommandTest extends TestCase
         $this->assertLessThan($manyVotesPosition, $betterAveragePosition);
     }
 
-    public function testAlbumStatsUseKvsAverageRating(): void
+    public function testAlbumStatsUseKvsRatingPercent(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -92,13 +92,13 @@ class StatsCommandTest extends TestCase
         $output = $tester->getDisplay();
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('Avg Rating', $output);
-        $this->assertStringContainsString('7.00', $output);
-        $this->assertStringContainsString('9.0 (10)', $output);
-        $this->assertStringContainsString('5.0 (5)', $output);
+        $this->assertStringContainsString('Avg Rating %', $output);
+        $this->assertStringContainsString('140.00%', $output);
+        $this->assertStringContainsString('180.0% (10)', $output);
+        $this->assertStringContainsString('100.0% (5)', $output);
     }
 
-    public function testModelAndDvdStatsUseKvsAverageRating(): void
+    public function testModelAndDvdStatsUseKvsRatingPercent(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -127,12 +127,12 @@ class StatsCommandTest extends TestCase
         $dvdTester->execute(['--dvds' => true, '--top' => '1']);
 
         $this->assertSame(0, $modelTester->getStatusCode());
-        $this->assertStringContainsString('8.0 (10)', $modelTester->getDisplay());
-        $this->assertStringNotContainsString('80.0 (10)', $modelTester->getDisplay());
+        $this->assertStringContainsString('160.0% (10)', $modelTester->getDisplay());
+        $this->assertStringNotContainsString('8.0 (10)', $modelTester->getDisplay());
 
         $this->assertSame(0, $dvdTester->getStatusCode());
-        $this->assertStringContainsString('9.0 (5)', $dvdTester->getDisplay());
-        $this->assertStringNotContainsString('45.0 (5)', $dvdTester->getDisplay());
+        $this->assertStringContainsString('180.0% (5)', $dvdTester->getDisplay());
+        $this->assertStringNotContainsString('9.0 (5)', $dvdTester->getDisplay());
     }
 
     private function createSqliteConnection(): \PDO
