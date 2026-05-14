@@ -219,6 +219,31 @@ class CommentCleanupTest extends TestCase
         $this->assertStringContainsString('"object_title": "Playlist Seven"', $output);
     }
 
+    public function testListCountIgnoresPaginationLimit(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES
+                (10, 1, 0, 1, 0, 'First', 1, 0),
+                (11, 1, 0, 1, 0, 'Second', 1, 0),
+                (12, 1, 0, 1, 0, 'Third', 1, 0)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--limit' => 2,
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('3', trim($tester->getDisplay()));
+    }
+
     private function createCommand(\PDO $db): CommentCommand
     {
         return new class ($this->createConfig(), $db) extends CommentCommand {

@@ -77,11 +77,6 @@ EOT
             return self::FAILURE;
         }
 
-        // Check required tools
-        if (!$this->checkRequiredTools()) {
-            return self::FAILURE;
-        }
-
         // Determine output file
         $outputFile = $this->getStringOption($input, 'output') ?? $this->generateOutputPath($targetConfig);
 
@@ -92,6 +87,11 @@ EOT
             'Compression: zstd level ' . $compressionLevel,
         ]);
         $this->io()->newLine();
+
+        // Check required tools after showing the resolved package plan.
+        if (!$this->checkRequiredTools()) {
+            return self::FAILURE;
+        }
 
         // Create temp directory
         $tempDir = sys_get_temp_dir() . '/kvs-package-' . uniqid();

@@ -217,6 +217,23 @@ HELP
             $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
             $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_COMMENT_LIMIT);
 
+            if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+                $countSql = "
+                    SELECT COUNT(*)
+                    FROM {$this->table('comments')} c
+                    WHERE $whereClause
+                ";
+
+                $countStmt = $db->prepare($countSql);
+                foreach ($params as $key => $value) {
+                    $countStmt->bindValue(':' . $key, $value);
+                }
+                $countStmt->execute();
+
+                $this->io()->writeln((string) (int) $countStmt->fetchColumn());
+                return self::SUCCESS;
+            }
+
             $sql = "
                 SELECT c.*,
                        u.username,

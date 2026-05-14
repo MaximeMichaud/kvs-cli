@@ -105,7 +105,7 @@ class StatusCommandTest extends TestCase
 
         // Should show disk information
         $this->assertStringContainsString('Disk', $output);
-        $this->assertMatchesRegularExpression('/\d+(\.\d+)?\s*(GB|MB)/', $output); // Should show size
+        $this->assertMatchesRegularExpression('/\d+(\.\d+)?\s*(TB|GB|MB)/', $output); // Should show size
 
         $this->assertEquals(0, $this->tester->getStatusCode());
     }

@@ -15,14 +15,19 @@ class IntegrationTest extends TestCase
     private string $tempDir;
     private Application $app;
     private ApplicationTester $tester;
+    private ?string $oldKvsPath = null;
 
     protected function setUp(): void
     {
         // Create mock KVS installation
         $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
         $this->createMockKvsInstallation($this->tempDir);
+        $oldKvsPath = getenv('KVS_PATH');
+        $this->oldKvsPath = is_string($oldKvsPath) ? $oldKvsPath : null;
+        putenv('KVS_PATH=' . $this->tempDir);
 
         $this->app = new Application();
+        $this->app->setAutoExit(false);
         $this->tester = new ApplicationTester($this->app);
     }
 
@@ -30,6 +35,12 @@ class IntegrationTest extends TestCase
     {
         if (is_dir($this->tempDir)) {
             exec('rm -rf ' . escapeshellarg($this->tempDir));
+        }
+
+        if ($this->oldKvsPath === null) {
+            putenv('KVS_PATH');
+        } else {
+            putenv('KVS_PATH=' . $this->oldKvsPath);
         }
     }
 
@@ -62,7 +73,7 @@ class IntegrationTest extends TestCase
         // Enable maintenance mode
         $this->tester->run([
             'command' => 'maintenance',
-            'mode' => 'on',
+            'action' => 'on',
             '--path' => $this->tempDir
         ]);
 
@@ -73,7 +84,7 @@ class IntegrationTest extends TestCase
         // Check status
         $this->tester->run([
             'command' => 'maintenance',
-            'mode' => 'status',
+            'action' => 'status',
             '--path' => $this->tempDir
         ]);
 
@@ -83,7 +94,7 @@ class IntegrationTest extends TestCase
         // Disable maintenance mode
         $this->tester->run([
             'command' => 'maintenance',
-            'mode' => 'off',
+            'action' => 'off',
             '--path' => $this->tempDir
         ]);
 
@@ -114,22 +125,22 @@ class IntegrationTest extends TestCase
         // Get cache info
         $this->tester->run([
             'command' => 'system:cache',
-            'action' => 'info',
+            '--stats' => true,
             '--path' => $this->tempDir
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Cache Information', $output);
+        $this->assertStringContainsString('Engine cache', $output);
 
         // Clear cache
         $this->tester->run([
             'command' => 'system:cache',
-            'action' => 'clear',
+            '--clear' => true,
             '--path' => $this->tempDir
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Cache cleared', $output);
+        $this->assertStringContainsString('Cache cleared successfully', $output);
 
         // Verify files are gone
         $this->assertFileDoesNotExist($this->tempDir . '/admin/data/engine/cache.dat');
@@ -147,14 +158,14 @@ class IntegrationTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('KVS Configuration', $output);
-        $this->assertStringContainsString('project_version', $output);
+        $this->assertStringContainsString('Version', $output);
         $this->assertStringContainsString('6.3.2', $output);
 
         // Get specific value
         $this->tester->run([
             'command' => 'config',
             'action' => 'get',
-            'key' => 'project_version',
+            'key' => 'main.project_version',
             '--path' => $this->tempDir
         ]);
 
@@ -169,6 +180,7 @@ class IntegrationTest extends TestCase
         chdir($this->tempDir);
 
         $app = new Application();
+        $app->setAutoExit(false);
         $tester = new ApplicationTester($app);
 
         $tester->run(['command' => 'list']);

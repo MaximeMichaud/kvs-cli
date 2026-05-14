@@ -82,7 +82,7 @@ HELP
             return self::FAILURE;
         }
 
-        $screenshotsPath = "$screenshotsBasePath/$videoId";
+        $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
 
         if (!is_dir($screenshotsPath)) {
             $this->io()->warning("Screenshots directory not found: $screenshotsPath");
@@ -94,12 +94,7 @@ HELP
         $extensions = ['jpg', 'jpeg', 'png', 'webp'];
         $files = [];
 
-        foreach ($extensions as $ext) {
-            $matches = glob("$screenshotsPath/*.$ext");
-            if ($matches !== false && $matches !== []) {
-                $files = array_merge($files, $matches);
-            }
-        }
+        $files = $this->findImageFiles($screenshotsPath, $extensions);
 
         if ($files === []) {
             $this->io()->warning('No screenshot files found in directory');
@@ -109,7 +104,7 @@ HELP
 
         $screenshots = [];
         foreach ($files as $file) {
-            $filename = basename($file);
+            $filename = $this->getRelativePath($screenshotsPath, $file);
             $filesize = filesize($file);
 
             // Try to get image dimensions
@@ -165,8 +160,8 @@ HELP
             return self::FAILURE;
         }
 
-        $videoPath = "$videoSourcesPath/$videoId";
-        $screenshotsPath = "$screenshotsBasePath/$videoId";
+        $videoPath = $this->getVideoContentDir($videoSourcesPath, $videoId);
+        $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
 
         // Find video source file
         $videoFile = $this->findVideoFile($videoPath);
@@ -251,7 +246,7 @@ HELP
             return self::FAILURE;
         }
 
-        $screenshotsPath = "$screenshotsBasePath/$videoId";
+        $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
 
         // Delete existing screenshots
         if (is_dir($screenshotsPath)) {
@@ -260,14 +255,10 @@ HELP
             $extensions = ['jpg', 'jpeg', 'png', 'webp'];
             $deleted = 0;
 
-            foreach ($extensions as $ext) {
-                $files = glob("$screenshotsPath/*.$ext");
-                if ($files !== false && $files !== []) {
-                    foreach ($files as $file) {
-                        if (unlink($file)) {
-                            $deleted++;
-                        }
-                    }
+            $files = $this->findImageFiles($screenshotsPath, $extensions);
+            foreach ($files as $file) {
+                if (unlink($file)) {
+                    $deleted++;
                 }
             }
 
@@ -302,6 +293,57 @@ HELP
         }
 
         return null;
+    }
+
+    private function getVideoContentDir(string $basePath, string $videoId): string
+    {
+        return $basePath . '/' . $this->getDirById($videoId) . '/' . $videoId;
+    }
+
+    private function getDirById(string $id): int
+    {
+        return (int) floor((int) $id / 1000) * 1000;
+    }
+
+    /**
+     * @param list<string> $extensions
+     * @return list<string>
+     */
+    private function findImageFiles(string $path, array $extensions): array
+    {
+        if (!is_dir($path)) {
+            return [];
+        }
+
+        $allowed = array_flip(array_map('strtolower', $extensions));
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file instanceof \SplFileInfo || !$file->isFile()) {
+                continue;
+            }
+
+            $extension = strtolower($file->getExtension());
+            if (!isset($allowed[$extension])) {
+                continue;
+            }
+
+            $realPath = $file->getRealPath();
+            if (is_string($realPath)) {
+                $files[] = $realPath;
+            }
+        }
+
+        return $files;
+    }
+
+    private function getRelativePath(string $basePath, string $file): string
+    {
+        $relative = substr($file, strlen(rtrim($basePath, '/')) + 1);
+        return $relative !== '' ? $relative : basename($file);
     }
 
     /**

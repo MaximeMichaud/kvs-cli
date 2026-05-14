@@ -198,7 +198,7 @@ HELP
      */
     private function formatDate(string $date, string $format = 'Y-m-d H:i:s', string $fallback = 'Never'): string
     {
-        if ($date === '') {
+        if ($date === '' || $date === '0000-00-00' || $date === '0000-00-00 00:00:00') {
             return $fallback;
         }
         $timestamp = strtotime($date);
