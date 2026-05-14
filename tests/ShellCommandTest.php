@@ -109,6 +109,8 @@ class ShellCommandTest extends TestCase
 
         $this->assertTrue($command->mysqliRequested);
         $this->assertIsArray($variables);
+        $this->assertArrayHasKey('config', $variables);
+        $this->assertSame($this->config, $variables['config']);
         $this->assertArrayNotHasKey('db', $variables);
     }
 

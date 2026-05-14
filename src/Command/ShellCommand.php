@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Command;
 
+use KVS\CLI\Command\Traits\EvalSecurityTrait;
 use KVS\CLI\Service\TempFileManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -17,6 +18,8 @@ use Psy\Shell;
 )]
 class ShellCommand extends BaseCommand
 {
+    use EvalSecurityTrait;
+
     protected function configure(): void
     {
         $this
@@ -32,6 +35,7 @@ The <info>shell</info> command starts an interactive PHP shell (REPL) with the K
 <comment>Available in shell:</comment>
   $config    - KVS configuration object
   $db        - Database connection
+  sql()      - KVS native SQL helper
   DB::       - Database helper class
   Video::    - Video model
   User::     - User model
@@ -81,6 +85,7 @@ HELP
 
         // Initialize database connections if available
         if ($db !== null) {
+            $GLOBALS['kvs_db'] = $db;
             if (class_exists('\\Model')) {
                 \Model::setDb($db);
             }
@@ -112,118 +117,24 @@ HELP
     private function createBootstrap(InputInterface $input): string
     {
         $kvsPath = $this->config->getKvsPath();
-        $prefix = $this->config->getTablePrefix();
         $bootstrap = $this->getStringOption($input, 'bootstrap');
+        $setupPath = $kvsPath . '/admin/include/setup.php';
+        $evalBootstrap = $this->getEvalBootstrapCode($this->config->getTablePrefix());
+        $exportedKvsPath = var_export($kvsPath, true);
+        $exportedSetupPath = var_export($setupPath, true);
 
         $code = <<<PHP
 <?php
 // KVS Shell Bootstrap
+\$kvsPath = {$exportedKvsPath};
 
 // Load KVS configuration if available
-if (file_exists('$kvsPath/admin/include/setup.php')) {
+if (file_exists({$exportedSetupPath})) {
     \$config = [];
-    @include '$kvsPath/admin/include/setup.php';
+    @include {$exportedSetupPath};
 }
 
-// Simple model classes for convenience
-class Model {
-    protected static \$table;
-    protected static \$idColumn = 'id';
-    protected static \$db;
-
-    public static function setDb(\$connection) {
-        self::\$db = \$connection;
-    }
-
-    public static function find(\$id) {
-        if (!self::\$db || !static::\$table) return null;
-        \$result = mysqli_query(self::\$db, "SELECT * FROM " . static::\$table . " WHERE " . static::\$idColumn . " = " . (int)\$id);
-        return \$result ? mysqli_fetch_assoc(\$result) : null;
-    }
-
-    public static function all(\$limit = 10) {
-        if (!self::\$db || !static::\$table) return [];
-        \$result = mysqli_query(self::\$db, "SELECT * FROM " . static::\$table . " LIMIT " . (int)\$limit);
-        \$data = [];
-        while (\$row = mysqli_fetch_assoc(\$result)) {
-            \$data[] = \$row;
-        }
-        return \$data;
-    }
-
-    public static function count(\$where = '') {
-        if (!self::\$db || !static::\$table) return 0;
-        \$sql = "SELECT COUNT(*) as total FROM " . static::\$table;
-        if (\$where) \$sql .= " WHERE \$where";
-        \$result = mysqli_query(self::\$db, \$sql);
-        \$row = mysqli_fetch_assoc(\$result);
-        return (int)\$row['total'];
-    }
-
-    public static function where(\$field, \$value, \$limit = 10) {
-        if (!self::\$db || !static::\$table) return [];
-        \$sql = sprintf(
-            "SELECT * FROM %s WHERE %s = '%s' LIMIT %d",
-            static::\$table,
-            mysqli_real_escape_string(self::\$db, \$field),
-            mysqli_real_escape_string(self::\$db, \$value),
-            (int)\$limit
-        );
-        \$result = mysqli_query(self::\$db, \$sql);
-        \$data = [];
-        while (\$row = mysqli_fetch_assoc(\$result)) {
-            \$data[] = \$row;
-        }
-        return \$data;
-    }
-}
-
-class Video extends Model { protected static \$table = '{$prefix}videos'; protected static \$idColumn = 'video_id'; }
-class User extends Model { protected static \$table = '{$prefix}users'; protected static \$idColumn = 'user_id'; }
-class Album extends Model { protected static \$table = '{$prefix}albums'; protected static \$idColumn = 'album_id'; }
-class Category extends Model { protected static \$table = '{$prefix}categories'; protected static \$idColumn = 'category_id'; }
-class Tag extends Model { protected static \$table = '{$prefix}tags'; protected static \$idColumn = 'tag_id'; }
-class DVD extends Model { protected static \$table = '{$prefix}dvds'; protected static \$idColumn = 'dvd_id'; }
-class Model_ extends Model { protected static \$table = '{$prefix}models'; protected static \$idColumn = 'model_id'; }
-
-// Database helper
-class DB {
-    private static \$connection;
-
-    public static function setConnection(\$db) {
-        self::\$connection = \$db;
-    }
-
-    public static function query(\$sql) {
-        if (!self::\$connection) {
-            echo "No database connection\n";
-            return false;
-        }
-        \$result = mysqli_query(self::\$connection, \$sql);
-        if (\$result === false) {
-            echo "Query error: " . mysqli_error(self::\$connection) . "\n";
-            return false;
-        }
-        if (\$result === true) {
-            return true;
-        }
-        \$data = [];
-        while (\$row = mysqli_fetch_assoc(\$result)) {
-            \$data[] = \$row;
-        }
-        return \$data;
-    }
-
-    public static function escape(\$value) {
-        if (!self::\$connection) return \$value;
-        return mysqli_real_escape_string(self::\$connection, \$value);
-    }
-
-    public static function lastId() {
-        if (!self::\$connection) return null;
-        return mysqli_insert_id(self::\$connection);
-    }
-}
+{$evalBootstrap}
 
 // Helper functions
 if (!function_exists('dd')) {
@@ -261,6 +172,7 @@ PHP;
     private function getShellVariables(): array
     {
         $vars = [
+            'config' => $this->config,
             'kvsConfig' => $this->config,
             'kvsPath' => $this->config->getKvsPath(),
         ];
@@ -287,6 +199,7 @@ Variables:
 
 Classes:
   Video, User, Album, Category, Tag, DVD
+  sql(), sql_pr(), mr2array(), mr2number()
   DB::query() - Run SQL queries
 
 Type 'help' for PsySH help

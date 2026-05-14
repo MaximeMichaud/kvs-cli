@@ -168,6 +168,21 @@ class EvalSecurityTraitTest extends TestCase
         $this->assertStringContainsString('public static function lastId', $code);
     }
 
+    public function testBootstrapCodeContainsKvsSqlHelpers(): void
+    {
+        $code = $this->helper->testGetEvalBootstrapCode('ktvs_');
+
+        $this->assertStringContainsString('function sql(', $code);
+        $this->assertStringContainsString('function sql_pr()', $code);
+        $this->assertStringContainsString('function sql_escape(', $code);
+        $this->assertStringContainsString('function mr2array(', $code);
+        $this->assertStringContainsString('function mr2array_single(', $code);
+        $this->assertStringContainsString('function mr2array_list(', $code);
+        $this->assertStringContainsString('function mr2number(', $code);
+        $this->assertStringContainsString('function mr2float(', $code);
+        $this->assertStringContainsString('function mr2string(', $code);
+    }
+
     public function testBootstrapCodeContainsModelMethods(): void
     {
         $code = $this->helper->testGetEvalBootstrapCode('ktvs_');
@@ -175,6 +190,7 @@ class EvalSecurityTraitTest extends TestCase
         $this->assertStringContainsString('public static function find(', $code);
         $this->assertStringContainsString('public static function all(', $code);
         $this->assertStringContainsString('public static function count(', $code);
+        $this->assertStringContainsString('public static function where(', $code);
         $this->assertStringContainsString('public static function setDb(', $code);
     }
 

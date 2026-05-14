@@ -45,7 +45,8 @@ trait EvalSecurityTrait
      * Get mysqli-based bootstrap code that defines Model and DB helper classes.
      *
      * This code is eval'd to provide convenient database access in eval commands.
-     * It defines: Video, User, Album, Category, Tag, DVD, Model_ classes and DB helper.
+     * It defines: Video, User, Album, Category, Tag, DVD, Model_ classes, DB helper,
+     * and lightweight KVS-native SQL helpers.
      */
     private function getEvalBootstrapCode(string $tablePrefix): string
     {
@@ -97,6 +98,27 @@ if (!class_exists('Model')) {
             }
             $row = mysqli_fetch_assoc($result);
             return (int)($row['total'] ?? 0);
+        }
+
+        public static function where($field, $value, $limit = 10) {
+            if (!self::$db || !static::$table) return [];
+            $sql = sprintf(
+                "SELECT * FROM %s WHERE %s = '%s' LIMIT %d",
+                static::$table,
+                mysqli_real_escape_string(self::$db, (string)$field),
+                mysqli_real_escape_string(self::$db, (string)$value),
+                (int)$limit
+            );
+            $result = mysqli_query(self::$db, $sql);
+            if ($result === false) {
+                echo "Query error: " . mysqli_error(self::$db) . "\n";
+                return [];
+            }
+            $data = [];
+            while ($row = mysqli_fetch_assoc($result)) {
+                $data[] = $row;
+            }
+            return $data;
         }
 
         // Helper to get primary key column name
@@ -237,8 +259,193 @@ if (!class_exists('DB')) {
     }
 }
 
+// KVS-native SQL helpers for compatibility with snippets copied from KVS admin code.
+if (!function_exists('sql')) {
+    function sql($sql, $log_error = true) {
+        $db = $GLOBALS['kvs_db'] ?? null;
+        if (!$db instanceof \mysqli) {
+            echo "No database connection\n";
+            return false;
+        }
+
+        $result = mysqli_query($db, $sql);
+        if ($result === false && $log_error) {
+            echo "Query error: " . mysqli_error($db) . "\n";
+        }
+
+        return $result;
+    }
+}
+
+if (!function_exists('sql_escape')) {
+    function sql_escape($string) {
+        $db = $GLOBALS['kvs_db'] ?? null;
+        if (!$db instanceof \mysqli) {
+            return '';
+        }
+
+        return mysqli_real_escape_string($db, (string)$string);
+    }
+}
+
+if (!function_exists('sql_pr')) {
+    function sql_pr() {
+        $args = func_get_args();
+        $query = array_shift($args);
+        $db = $GLOBALS['kvs_db'] ?? null;
+        if (!$db instanceof \mysqli || !is_string($query)) {
+            return false;
+        }
+
+        $stmt = mysqli_prepare($db, $query);
+        if ($stmt === false) {
+            echo "Query error: " . mysqli_error($db) . "\n";
+            return false;
+        }
+
+        if ($args !== []) {
+            $types = '';
+            $values = [];
+            foreach ($args as $arg) {
+                if (is_int($arg)) {
+                    $types .= 'i';
+                } elseif (is_float($arg)) {
+                    $types .= 'd';
+                } else {
+                    $types .= 's';
+                }
+                $values[] = $arg;
+            }
+
+            $refs = [];
+            foreach ($values as $key => $value) {
+                $refs[$key] = &$values[$key];
+            }
+
+            if (!mysqli_stmt_bind_param($stmt, $types, ...$refs)) {
+                echo "Query error: " . mysqli_stmt_error($stmt) . "\n";
+                return false;
+            }
+        }
+
+        if (!mysqli_stmt_execute($stmt)) {
+            echo "Query error: " . mysqli_stmt_error($stmt) . "\n";
+            return false;
+        }
+
+        $result = mysqli_stmt_get_result($stmt);
+        return $result !== false ? $result : mysqli_stmt_affected_rows($stmt);
+    }
+}
+
+if (!function_exists('sql_affected_rows')) {
+    function sql_affected_rows() {
+        $db = $GLOBALS['kvs_db'] ?? null;
+        return $db instanceof \mysqli ? mysqli_affected_rows($db) : 0;
+    }
+}
+
+if (!function_exists('sql_insert_id')) {
+    function sql_insert_id() {
+        $db = $GLOBALS['kvs_db'] ?? null;
+        return $db instanceof \mysqli ? mysqli_insert_id($db) : 0;
+    }
+}
+
+if (!function_exists('sql_error_code')) {
+    function sql_error_code() {
+        $db = $GLOBALS['kvs_db'] ?? null;
+        return $db instanceof \mysqli ? mysqli_errno($db) : 0;
+    }
+}
+
+if (!function_exists('sql_error_message')) {
+    function sql_error_message() {
+        $db = $GLOBALS['kvs_db'] ?? null;
+        return $db instanceof \mysqli ? mysqli_error($db) : '';
+    }
+}
+
+if (!function_exists('mr2array')) {
+    function mr2array($result) {
+        $ret = [];
+        if ($result instanceof \mysqli_result) {
+            while ($row = mysqli_fetch_assoc($result)) {
+                $ret[] = $row;
+            }
+        }
+
+        return $ret;
+    }
+}
+
+if (!function_exists('mr2array_single')) {
+    function mr2array_single($result) {
+        if ($result instanceof \mysqli_result) {
+            return mysqli_fetch_assoc($result) ?: null;
+        }
+
+        return null;
+    }
+}
+
+if (!function_exists('mr2array_list')) {
+    function mr2array_list($result) {
+        $ret = [];
+        if ($result instanceof \mysqli_result) {
+            while ($row = mysqli_fetch_assoc($result)) {
+                foreach ($row as $value) {
+                    $ret[] = $value;
+                }
+            }
+        }
+
+        return $ret;
+    }
+}
+
+if (!function_exists('mr2rows')) {
+    function mr2rows($result) {
+        return $result instanceof \mysqli_result ? mysqli_num_rows($result) : 0;
+    }
+}
+
+if (!function_exists('mr2number')) {
+    function mr2number($result) {
+        if ($result instanceof \mysqli_result) {
+            $row = mysqli_fetch_row($result);
+            return (int)($row[0] ?? 0);
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('mr2float')) {
+    function mr2float($result) {
+        if ($result instanceof \mysqli_result) {
+            $row = mysqli_fetch_row($result);
+            return (float)($row[0] ?? 0);
+        }
+
+        return 0;
+    }
+}
+
+if (!function_exists('mr2string')) {
+    function mr2string($result) {
+        if ($result instanceof \mysqli_result) {
+            $row = mysqli_fetch_row($result);
+            return trim((string)($row[0] ?? ''));
+        }
+
+        return '';
+    }
+}
+
 // Auto-initialize if $db variable is available
 if (isset($db) && $db) {
+    $GLOBALS['kvs_db'] = $db;
     Model::setDb($db);
     DB::setConnection($db);
 }
