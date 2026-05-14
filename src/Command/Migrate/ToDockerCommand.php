@@ -105,8 +105,8 @@ EOT
             return self::FAILURE;
         }
 
-        // Step 2: Check basic requirements
-        if (!$this->checkRequirements()) {
+        // Step 2: Check basic requirements. Dry-run only renders the plan.
+        if (!$dryRun && !$this->checkRequirements()) {
             return self::FAILURE;
         }
 
