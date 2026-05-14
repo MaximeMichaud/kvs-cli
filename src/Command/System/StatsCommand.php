@@ -100,8 +100,13 @@ class StatsCommand extends BaseCommand
         $topOption = $input->getOption('top');
         $top = is_numeric($topOption) ? (int) $topOption : 10;
 
-        /** @var string $period */
-        $period = $input->getOption('period');
+        /** @var string $periodOption */
+        $periodOption = $input->getOption('period');
+        $period = strtolower($periodOption);
+        if (!in_array($period, ['today', 'week', 'month', 'year', 'all'], true)) {
+            $this->io()->error('Invalid period. Use: today, week, month, year, all');
+            return self::FAILURE;
+        }
 
         // If no specific section requested, show overview
         $showOverview = !$showVideos && !$showAlbums && !$showUsers && !$showCategories
@@ -109,8 +114,8 @@ class StatsCommand extends BaseCommand
 
         if ($showOverview) {
             $this->showOverview($db, $period);
-            $this->showTopVideos($db, $top);
-            $this->showTopAlbums($db, min($top, 5));
+            $this->showTopVideos($db, $top, $period);
+            $this->showTopAlbums($db, min($top, 5), $period);
             $this->showRecentActivity($db);
         }
 
@@ -127,19 +132,19 @@ class StatsCommand extends BaseCommand
         }
 
         if ($showCategories) {
-            $this->showCategoryStats($db, $top);
+            $this->showCategoryStats($db, $top, $period);
         }
 
         if ($showTags) {
-            $this->showTagStats($db, $top);
+            $this->showTagStats($db, $top, $period);
         }
 
         if ($showModels) {
-            $this->showModelStats($db, $top);
+            $this->showModelStats($db, $top, $period);
         }
 
         if ($showDvds) {
-            $this->showDvdStats($db, $top);
+            $this->showDvdStats($db, $top, $period);
         }
 
         return self::SUCCESS;
@@ -153,6 +158,10 @@ class StatsCommand extends BaseCommand
         $this->io()->section('Overview');
 
         $prefix = $this->config->getTablePrefix();
+        $videoPeriodCondition = $this->getPeriodCondition($db, $period);
+        $albumPeriodCondition = $this->getPeriodCondition($db, $period);
+        $userPeriodCondition = $this->getPeriodCondition($db, $period);
+        $commentPeriodCondition = $this->getPeriodCondition($db, $period);
 
         // Get totals
         $totals = [];
@@ -163,7 +172,7 @@ class StatsCommand extends BaseCommand
             SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active,
             SUM(video_viewed) as total_views,
             SUM(rating_amount) as total_ratings
-            FROM {$prefix}videos WHERE 1=1");
+            FROM {$prefix}videos WHERE 1=1{$videoPeriodCondition}");
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (is_array($row)) {
@@ -177,7 +186,7 @@ class StatsCommand extends BaseCommand
             SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active,
             SUM(album_viewed) as total_views,
             SUM(rating_amount) as total_ratings
-            FROM {$prefix}albums WHERE 1=1");
+            FROM {$prefix}albums WHERE 1=1{$albumPeriodCondition}");
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (is_array($row)) {
@@ -190,7 +199,7 @@ class StatsCommand extends BaseCommand
             COUNT(*) as total,
             SUM(CASE WHEN status_id = 2 THEN 1 ELSE 0 END) as active,
             SUM(CASE WHEN status_id = 3 THEN 1 ELSE 0 END) as premium
-            FROM {$prefix}users");
+            FROM {$prefix}users WHERE 1=1{$userPeriodCondition}");
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (is_array($row)) {
@@ -199,7 +208,7 @@ class StatsCommand extends BaseCommand
         }
 
         // Comments
-        $stmt = $db->query("SELECT COUNT(*) as total FROM {$prefix}comments WHERE 1=1");
+        $stmt = $db->query("SELECT COUNT(*) as total FROM {$prefix}comments WHERE 1=1{$commentPeriodCondition}");
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (is_array($row)) {
@@ -276,18 +285,20 @@ class StatsCommand extends BaseCommand
     /**
      * Show top videos by views
      */
-    private function showTopVideos(\PDO $db, int $limit): void
+    private function showTopVideos(\PDO $db, int $limit, string $period = 'all'): void
     {
         $this->io()->section('Top Videos (by views)');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         $stmt = $db->prepare("SELECT
             video_id, title, dir, video_viewed,
             CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
             rating_amount, duration
             FROM {$prefix}videos
-            WHERE status_id = 1             ORDER BY video_viewed DESC
+            WHERE status_id = 1{$periodCondition}
+            ORDER BY video_viewed DESC
             LIMIT {$limit}");
         $stmt->execute();
         $videos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -333,18 +344,20 @@ class StatsCommand extends BaseCommand
     /**
      * Show top albums by views
      */
-    private function showTopAlbums(\PDO $db, int $limit): void
+    private function showTopAlbums(\PDO $db, int $limit, string $period = 'all'): void
     {
         $this->io()->section('Top Albums (by views)');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         $stmt = $db->prepare("SELECT
             album_id, title, album_viewed,
             CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
             rating_amount, photos_amount
             FROM {$prefix}albums
-            WHERE status_id = 1             ORDER BY album_viewed DESC
+            WHERE status_id = 1{$periodCondition}
+            ORDER BY album_viewed DESC
             LIMIT {$limit}");
         $stmt->execute();
         $albums = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -453,6 +466,7 @@ class StatsCommand extends BaseCommand
         $this->io()->section('Video Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         // Summary
         $stmt = $db->query("SELECT
@@ -470,7 +484,7 @@ class StatsCommand extends BaseCommand
             SUM(favourites_count) as total_favourites,
             AVG(duration) as avg_duration,
             SUM(duration) as total_duration
-            FROM {$prefix}videos WHERE 1=1");
+            FROM {$prefix}videos WHERE 1=1{$periodCondition}");
 
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -502,14 +516,14 @@ class StatsCommand extends BaseCommand
         // Top by views
         $this->io()->text('');
         $this->io()->text('<info>Top by Views:</info>');
-        $this->showTopVideos($db, $limit);
+        $this->showTopVideos($db, $limit, $period);
 
         // Top by rating
         $this->io()->text('<info>Top by Rating %:</info>');
         $stmt = $db->prepare("SELECT
             video_id, title, video_viewed, rating / rating_amount as avg_rating, rating_amount
             FROM {$prefix}videos
-            WHERE status_id = 1  AND rating_amount >= 5
+            WHERE status_id = 1{$periodCondition} AND rating_amount >= 5
             ORDER BY rating / rating_amount DESC, rating_amount DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -547,6 +561,7 @@ class StatsCommand extends BaseCommand
         $this->io()->section('Album Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         $stmt = $db->query("SELECT
             COUNT(*) as total,
@@ -557,7 +572,7 @@ class StatsCommand extends BaseCommand
             AVG(CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END) as avg_rating,
             SUM(photos_amount) as total_photos,
             AVG(photos_amount) as avg_photos
-            FROM {$prefix}albums WHERE 1=1");
+            FROM {$prefix}albums WHERE 1=1{$periodCondition}");
 
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -580,7 +595,7 @@ class StatsCommand extends BaseCommand
             }
         }
 
-        $this->showTopAlbums($db, $limit);
+        $this->showTopAlbums($db, $limit, $period);
     }
 
     /**
@@ -591,6 +606,8 @@ class StatsCommand extends BaseCommand
         $this->io()->section('User Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
+        $userPeriodCondition = $this->getPeriodCondition($db, $period, 'u.added_date');
 
         $stmt = $db->query("SELECT
             COUNT(*) as total,
@@ -606,7 +623,7 @@ class StatsCommand extends BaseCommand
             SUM(comments_total_count) as total_comments,
             SUM(profile_viewed) as total_profile_views,
             AVG(logins_count) as avg_logins
-            FROM {$prefix}users");
+            FROM {$prefix}users WHERE 1=1{$periodCondition}");
 
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -640,7 +657,7 @@ class StatsCommand extends BaseCommand
             u.user_id, u.username, u.total_videos_count, u.total_albums_count,
             (SELECT SUM(video_viewed) FROM {$prefix}videos v WHERE v.user_id = u.user_id AND v.status_id = 1) as total_views
             FROM {$prefix}users u
-            WHERE u.total_videos_count > 0 OR u.total_albums_count > 0
+            WHERE (u.total_videos_count > 0 OR u.total_albums_count > 0){$userPeriodCondition}
             ORDER BY (u.total_videos_count + u.total_albums_count) DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -697,16 +714,17 @@ class StatsCommand extends BaseCommand
     /**
      * Show category statistics
      */
-    private function showCategoryStats(\PDO $db, int $limit): void
+    private function showCategoryStats(\PDO $db, int $limit, string $period): void
     {
         $this->io()->section('Category Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         $stmt = $db->prepare("SELECT
             category_id, title, total_videos, today_videos, total_albums, today_albums
             FROM {$prefix}categories
-            WHERE status_id = 1
+            WHERE status_id = 1{$periodCondition}
             ORDER BY total_videos DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -739,17 +757,18 @@ class StatsCommand extends BaseCommand
     /**
      * Show tag statistics
      */
-    private function showTagStats(\PDO $db, int $limit): void
+    private function showTagStats(\PDO $db, int $limit, string $period): void
     {
         $this->io()->section('Tag Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         // Summary
         $stmt = $db->query("SELECT
             COUNT(*) as total,
             SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active
-            FROM {$prefix}tags");
+            FROM {$prefix}tags WHERE 1=1{$periodCondition}");
 
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -769,7 +788,7 @@ class StatsCommand extends BaseCommand
         $stmt = $db->prepare("SELECT
             tag_id, tag, total_videos
             FROM {$prefix}tags
-            WHERE status_id = 1
+            WHERE status_id = 1{$periodCondition}
             ORDER BY total_videos DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -800,11 +819,12 @@ class StatsCommand extends BaseCommand
     /**
      * Show model/performer statistics
      */
-    private function showModelStats(\PDO $db, int $limit): void
+    private function showModelStats(\PDO $db, int $limit, string $period): void
     {
         $this->io()->section('Model/Performer Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         // Summary
         $stmt = $db->query("SELECT
@@ -812,7 +832,7 @@ class StatsCommand extends BaseCommand
             SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as active,
             SUM(model_viewed) as total_views,
             SUM(rating_amount) as total_ratings
-            FROM {$prefix}models WHERE 1=1");
+            FROM {$prefix}models WHERE 1=1{$periodCondition}");
 
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -836,7 +856,7 @@ class StatsCommand extends BaseCommand
             CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
             rating_amount
             FROM {$prefix}models
-            WHERE status_id = 1
+            WHERE status_id = 1{$periodCondition}
             ORDER BY total_videos DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -883,7 +903,7 @@ class StatsCommand extends BaseCommand
         $stmt = $db->prepare("SELECT
             model_id, title, model_viewed, total_videos
             FROM {$prefix}models
-            WHERE status_id = 1 AND model_viewed > 0
+            WHERE status_id = 1{$periodCondition} AND model_viewed > 0
             ORDER BY model_viewed DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -918,11 +938,12 @@ class StatsCommand extends BaseCommand
     /**
      * Show DVD/channel statistics
      */
-    private function showDvdStats(\PDO $db, int $limit): void
+    private function showDvdStats(\PDO $db, int $limit, string $period): void
     {
         $this->io()->section('DVD/Channel Statistics');
 
         $prefix = $this->config->getTablePrefix();
+        $periodCondition = $this->getPeriodCondition($db, $period);
 
         // Summary
         $stmt = $db->query("SELECT
@@ -931,7 +952,7 @@ class StatsCommand extends BaseCommand
             SUM(dvd_viewed) as total_views,
             SUM(rating_amount) as total_ratings,
             SUM(total_videos) as total_videos
-            FROM {$prefix}dvds WHERE 1=1");
+            FROM {$prefix}dvds WHERE 1=1{$periodCondition}");
 
         if ($stmt !== false) {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -956,7 +977,7 @@ class StatsCommand extends BaseCommand
             CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
             rating_amount
             FROM {$prefix}dvds
-            WHERE status_id = 1
+            WHERE status_id = 1{$periodCondition}
             ORDER BY total_videos DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -1002,7 +1023,7 @@ class StatsCommand extends BaseCommand
         $stmt = $db->prepare("SELECT
             dvd_id, title, dvd_viewed, total_videos
             FROM {$prefix}dvds
-            WHERE status_id = 1 AND dvd_viewed > 0
+            WHERE status_id = 1{$periodCondition} AND dvd_viewed > 0
             ORDER BY dvd_viewed DESC
             LIMIT {$limit}");
         $stmt->execute();
@@ -1058,6 +1079,27 @@ class StatsCommand extends BaseCommand
         }
 
         return sprintf('%.2f%%', (float) $rating * 20);
+    }
+
+    private function getPeriodCondition(\PDO $db, string $period, string $column = 'added_date'): string
+    {
+        $startDate = $this->getPeriodStartDate($period);
+        if ($startDate === null) {
+            return '';
+        }
+
+        return " AND {$column} >= " . $db->quote($startDate);
+    }
+
+    private function getPeriodStartDate(string $period): ?string
+    {
+        return match ($period) {
+            'today' => date('Y-m-d 00:00:00'),
+            'week' => date('Y-m-d H:i:s', strtotime('-7 days')),
+            'month' => date('Y-m-d H:i:s', strtotime('-30 days')),
+            'year' => date('Y-m-d H:i:s', strtotime('-365 days')),
+            default => null,
+        };
     }
 
     /**

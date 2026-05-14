@@ -135,6 +135,46 @@ class StatsCommandTest extends TestCase
         $this->assertStringNotContainsString('9.0 (5)', $dvdTester->getDisplay());
     }
 
+    public function testVideoStatsPeriodFiltersByAddedDate(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, has_errors INTEGER, ' .
+            'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'comments_count INTEGER, favourites_count INTEGER, duration INTEGER, added_date TEXT)'
+        );
+
+        $today = date('Y-m-d H:i:s');
+        $old = date('Y-m-d H:i:s', strtotime('-40 days'));
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(1, 'Today Video', 'today', 1, 0, 200, 20, 45, 5, 0, 0, 120, " . $db->quote($today) . "), " .
+            "(2, 'Old Video', 'old', 1, 0, 100, 10, 80, 20, 0, 0, 60, " . $db->quote($old) . ")"
+        );
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--videos' => true, '--period' => 'today', '--top' => '2']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('Total Videos', $output);
+        $this->assertStringContainsString('Today Video', $output);
+        $this->assertStringNotContainsString('Old Video', $output);
+        $this->assertStringContainsString('180.0% (5)', $output);
+        $this->assertStringNotContainsString('80.0% (20)', $output);
+    }
+
+    public function testStatsRejectsInvalidPeriod(): void
+    {
+        $tester = new CommandTester($this->createStatsCommand($this->createSqliteConnection()));
+        $tester->execute(['--period' => 'yesterday']);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid period', $tester->getDisplay());
+    }
+
     private function createSqliteConnection(): \PDO
     {
         $db = new \PDO('sqlite::memory:');
