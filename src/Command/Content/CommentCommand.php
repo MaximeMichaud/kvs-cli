@@ -260,6 +260,7 @@ HELP
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
                     'username' => $comment['username'] ?? '',
+                    'object_id' => $comment['object_id'] ?? 0,
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'comment' => $comment['comment'] ?? '',

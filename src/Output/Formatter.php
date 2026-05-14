@@ -30,6 +30,11 @@ class Formatter
         'videos' => ['total_videos', 'video_count'],
         'albums' => ['total_albums', 'album_count'],
         'user' => ['username'],
+        'type' => ['object_type'],
+        'content' => ['object_id'],
+        'content_title' => ['object_title'],
+        'filesize' => ['file_size'],
+        'favourites' => ['favourites_count'],
         'date' => ['post_date', 'added_date'],
     ];
 

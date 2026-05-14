@@ -204,10 +204,7 @@ HELP
         try {
             $stmt = $db->prepare("
                 SELECT t.*,
-                       (SELECT COUNT(*) FROM {$this->table('tags')}_videos
-                        WHERE tag_id = t.tag_id) as video_count,
-                       (SELECT COUNT(*) FROM {$this->table('tags')}_albums
-                        WHERE tag_id = t.tag_id) as album_count
+                       {$this->getTagUsageSelectors()}
                 FROM {$this->table('tags')} t
                 WHERE t.tag_id = :id
             ");
@@ -223,10 +220,7 @@ HELP
             $tagName = is_string($tag['tag'] ?? null) ? $tag['tag'] : '';
             $this->io()->section("Tag: $tagName");
 
-            $videoCountRaw = $tag['video_count'] ?? 0;
-            $videoCount = is_numeric($videoCountRaw) ? (int) $videoCountRaw : 0;
-            $albumCountRaw = $tag['album_count'] ?? 0;
-            $albumCount = is_numeric($albumCountRaw) ? (int) $albumCountRaw : 0;
+            $counts = $this->extractTagUsageCounts($tag);
             $statusIdRaw = $tag['status_id'] ?? 0;
             $statusId = is_numeric($statusIdRaw) ? (int) $statusIdRaw : 0;
             $tagIdRaw = $tag['tag_id'] ?? 0;
@@ -239,11 +233,14 @@ HELP
                 ['Name', $tagName],
                 ['Slug', $tagDir],
                 ['Status', StatusFormatter::tag($statusId)],
-                ['Videos', (string) $videoCount],
-                ['Albums', (string) $albumCount],
-                ['Total Usage', (string) ($videoCount + $albumCount)],
-                ['Added', $addedDate],
             ];
+
+            foreach ($this->getTagUsageLabels() as $suffix => $label) {
+                $info[] = [$label, (string) ($counts[$suffix] ?? 0)];
+            }
+
+            $info[] = ['Total Usage', (string) array_sum($counts)];
+            $info[] = ['Added', $addedDate];
 
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
@@ -395,6 +392,23 @@ HELP
     }
 
     /**
+     * @return array<string, string>
+     */
+    private function getTagUsageLabels(): array
+    {
+        return [
+            'videos' => 'Videos',
+            'albums' => 'Albums',
+            'posts' => 'Posts',
+            'playlists' => 'Playlists',
+            'content_sources' => 'Content sources',
+            'models' => 'Models',
+            'dvds' => 'DVDs',
+            'dvds_groups' => 'DVD groups',
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $tag
      * @return array<string, int>
      */
@@ -524,18 +538,8 @@ HELP
      */
     private function formatUsageCounts(array $usage): array
     {
-        $labels = [
-            'videos' => 'Videos',
-            'albums' => 'Albums',
-            'posts' => 'Posts',
-            'playlists' => 'Playlists',
-            'content_sources' => 'Content sources',
-            'models' => 'Models',
-            'dvds' => 'DVDs',
-            'dvds_groups' => 'DVD groups',
-        ];
-
         $lines = [];
+        $labels = $this->getTagUsageLabels();
         foreach ($usage as $suffix => $count) {
             $label = $labels[$suffix] ?? $suffix;
             $lines[] = "$label: $count";
@@ -606,15 +610,15 @@ HELP
             }
 
             // Usage stats
-            $stmt = $db->query("
-                SELECT
-                    COUNT(DISTINCT tag_id) as used_tags
-                FROM (
-                    SELECT tag_id FROM {$this->table('tags')}_videos
-                    UNION
-                    SELECT tag_id FROM {$this->table('tags')}_albums
-                ) as used
-            ");
+            $usedTagSelects = [];
+            foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
+                $usedTagSelects[] = "SELECT tag_id FROM {$this->table('tags')}_{$suffix}";
+            }
+
+            $stmt = $db->query(sprintf(
+                "SELECT COUNT(DISTINCT tag_id) as used_tags FROM (%s) as used",
+                implode(' UNION ', $usedTagSelects)
+            ));
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to execute usage stats query');
             }
@@ -629,12 +633,14 @@ HELP
             $unusedTags = $totalTags - $usedTags;
 
             // Top tags
+            $usageSelectors = $this->getTagUsageSelectors();
+            $totalUsageExpression = $this->getTagTotalUsageExpression();
+
             $stmt = $db->query("
                 SELECT t.tag,
-                       (SELECT COUNT(*) FROM {$this->table('tags')}_videos WHERE tag_id = t.tag_id) as video_count,
-                       (SELECT COUNT(*) FROM {$this->table('tags')}_albums WHERE tag_id = t.tag_id) as album_count
+                       {$usageSelectors}
                 FROM {$this->table('tags')} t
-                ORDER BY (video_count + album_count) DESC
+                ORDER BY {$totalUsageExpression} DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
             if ($stmt === false) {
@@ -667,20 +673,22 @@ HELP
                     if (!is_array($tag)) {
                         continue;
                     }
+                    /** @var array<string, mixed> $tag */
                     $tagName = $tag['tag'] ?? '';
-                    $videoCountVal = $tag['video_count'] ?? 0;
-                    $albumCountVal = $tag['album_count'] ?? 0;
-                    $videoCount = is_numeric($videoCountVal) ? (int) $videoCountVal : 0;
-                    $albumCount = is_numeric($albumCountVal) ? (int) $albumCountVal : 0;
-                    $total = $videoCount + $albumCount;
+                    $counts = $this->extractTagUsageCounts($tag);
+                    $videoCount = $counts['videos'];
+                    $albumCount = $counts['albums'];
+                    $total = array_sum($counts);
+                    $otherCount = $total - $videoCount - $albumCount;
                     $rows[] = [
                         is_scalar($tagName) ? (string) $tagName : '',
                         $videoCount,
                         $albumCount,
+                        $otherCount,
                         $total,
                     ];
                 }
-                $this->renderTable(['Tag', 'Videos', 'Albums', 'Total'], $rows);
+                $this->renderTable(['Tag', 'Videos', 'Albums', 'Other', 'Total'], $rows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());

@@ -72,6 +72,10 @@ HELP
     {
         $action = $this->getStringArgument($input, 'action');
 
+        if ($this->getBoolOption($input, 'stats')) {
+            return $this->showStats();
+        }
+
         return match ($action) {
             'list' => $this->listVideos($input),
             'show' => $this->showVideo($this->getStringArgument($input, 'id')),
@@ -149,6 +153,10 @@ HELP
                 $video['id'] = $video['video_id'];
                 $statusId = isset($video['status_id']) && is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
                 $video['status'] = StatusFormatter::video($statusId, false);
+                $resolutionType = isset($video['resolution_type']) && is_numeric($video['resolution_type'])
+                    ? (int) $video['resolution_type']
+                    : 0;
+                $video['resolution'] = $this->formatResolutionType($resolutionType, false);
 
                 // Calculate rating (rating / rating_amount gives 0-5 scale)
                 $ratingAmount = isset($video['rating_amount']) && is_numeric($video['rating_amount']) ? (int) $video['rating_amount'] : 0;
@@ -206,16 +214,11 @@ HELP
             $info = [
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
-                ['Resolution', match ($video['resolution_type']) {
-                    1 => '<fg=green>HD</>',
-                    2 => '<fg=cyan>FHD</>',
-                    3 => '<fg=magenta>4K</>',
-                    default => '<fg=gray>SD</>',
-                }],
+                ['Resolution', $this->formatResolutionType($video['resolution_type'])],
                 ['Private', $video['is_private'] > 0 ? '<fg=yellow>Yes</>' : '<fg=gray>No</>'],
                 ['Duration', $this->formatDuration($video['duration'])],
                 ['File Size', format_bytes($video['file_size'])],
-                ['Resolution', $video['file_dimensions']],
+                ['Dimensions', $video['file_dimensions']],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
                 [
                     'Rating',
@@ -455,5 +458,28 @@ HELP
         }
 
         return sprintf('%d:%02d', $minutes, $seconds);
+    }
+
+    private function formatResolutionType(int $resolutionType, bool $withColor = true): string
+    {
+        $label = match ($resolutionType) {
+            1 => 'HD',
+            2 => 'FHD',
+            3 => '4K',
+            default => 'SD',
+        };
+
+        if (!$withColor) {
+            return $label;
+        }
+
+        $color = match ($resolutionType) {
+            1 => 'green',
+            2 => 'cyan',
+            3 => 'magenta',
+            default => 'gray',
+        };
+
+        return sprintf('<fg=%s>%s</>', $color, $label);
     }
 }
