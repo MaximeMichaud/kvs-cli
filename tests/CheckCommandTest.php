@@ -216,6 +216,41 @@ class CheckCommandTest extends TestCase
         $this->assertTrue($hasVersionInfo, 'Should show version information');
     }
 
+    public function testCheckCronUsesNativeKvsAdminProcessesSchema(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+        $db->exec('CREATE TABLE ktvs_admin_processes (
+            pid TEXT PRIMARY KEY,
+            last_exec_date TEXT,
+            last_exec_duration INTEGER,
+            exec_interval INTEGER,
+            exec_tod INTEGER,
+            status_data TEXT
+        )');
+
+        $now = date('Y-m-d H:i:s');
+        foreach (['main', 'cron_optimize', 'cron_conversion', 'cron_check_db'] as $pid) {
+            $quotedPid = $db->quote($pid);
+            $quotedNow = $db->quote($now);
+            $db->exec(
+                "INSERT INTO ktvs_admin_processes
+                    (pid, last_exec_date, last_exec_duration, exec_interval, exec_tod, status_data)
+                 VALUES ({$quotedPid}, {$quotedNow}, 1, 60, 0, 'a:0:{}')"
+            );
+        }
+
+        $tester = new CommandTester($this->createCheckCommand($db));
+        $tester->execute(['--json' => true]);
+
+        $data = json_decode($tester->getDisplay(), true);
+        $this->assertIsArray($data);
+        $this->assertSame('ok', $data['results']['cron']['status']);
+        $this->assertTrue($data['results']['cron']['processes']['main']['found']);
+        $this->assertStringNotContainsString('Could not query process table', $tester->getDisplay());
+    }
+
     public function testCheckFfmpegCodecs(): void
     {
         $this->tester->execute([]);
@@ -231,5 +266,21 @@ class CheckCommandTest extends TestCase
         } else {
             $this->assertTrue(true, 'FFmpeg not available, skipping codec test');
         }
+    }
+
+    private function createCheckCommand(\PDO $db): CheckCommand
+    {
+        return new class ($this->config, $db) extends CheckCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('system:check');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }

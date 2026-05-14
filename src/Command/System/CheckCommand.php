@@ -1094,12 +1094,11 @@ class CheckCommand extends BaseCommand
             return $result;
         }
 
-        $hasWarning = false;
         $hasError = false;
 
-        // Check main cron processes from admin_processes table
+        // Check main cron processes from KVS admin_processes table.
         $cronProcesses = [
-            'cron' => ['label' => 'Main Cron', 'critical' => true, 'max_age_minutes' => 5],
+            'main' => ['label' => 'Main Cron', 'critical' => true, 'max_age_minutes' => 5],
             'cron_optimize' => ['label' => 'Optimize', 'critical' => false, 'max_age_minutes' => 1440], // 24h
             'cron_conversion' => ['label' => 'Conversion', 'critical' => true, 'max_age_minutes' => 60],
             'cron_check_db' => ['label' => 'DB Check', 'critical' => false, 'max_age_minutes' => 1440],
@@ -1107,9 +1106,9 @@ class CheckCommand extends BaseCommand
 
         try {
             $stmt = $db->query("
-                SELECT process_name, process_data, status_id
+                SELECT pid, last_exec_date, last_exec_duration, exec_interval, status_data
                 FROM {$this->table('admin_processes')}
-                WHERE process_name IN ('cron', 'cron_optimize', 'cron_conversion', 'cron_check_db')
+                WHERE pid IN ('main', 'cron_optimize', 'cron_conversion', 'cron_check_db')
             ");
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to query admin_processes table');
@@ -1120,7 +1119,7 @@ class CheckCommand extends BaseCommand
             /** @var array<string, array<string, mixed>> $foundProcesses */
             $foundProcesses = [];
             foreach ($rows as $row) {
-                $processName = $row['process_name'] ?? null;
+                $processName = $row['pid'] ?? null;
                 if (is_string($processName)) {
                     $foundProcesses[$processName] = $row;
                 }
@@ -1150,34 +1149,16 @@ class CheckCommand extends BaseCommand
                     continue;
                 }
 
-                $processDataVal = $foundProcesses[$name]['process_data'] ?? null;
-                $processData = is_string($processDataVal) ? $processDataVal : null;
-                $statusIdVal = $foundProcesses[$name]['status_id'] ?? 0;
-                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
-
-                // Parse last run time from process_data (usually JSON or serialized)
                 $lastRun = null;
-                if ($processData !== null && $processData !== '') {
-                    // Try JSON first
-                    $data = @json_decode($processData, true);
-                    if (is_array($data) && isset($data['last_run']) && is_int($data['last_run'])) {
-                        $lastRun = $data['last_run'];
-                    } elseif (is_numeric($processData)) {
-                        $lastRun = (int) $processData;
-                    }
+                $lastExecDateVal = $foundProcesses[$name]['last_exec_date'] ?? null;
+                $lastExecDate = is_string($lastExecDateVal) ? $lastExecDateVal : '';
+                if ($lastExecDate !== '' && $lastExecDate !== '0000-00-00 00:00:00') {
+                    $timestamp = strtotime($lastExecDate);
+                    $lastRun = $timestamp !== false ? $timestamp : null;
                 }
 
                 $result['processes'][$name]['last_run'] = $lastRun;
-                $result['processes'][$name]['status_id'] = $statusId;
-
-                // Check if cron is stuck (status_id = 1 means running)
-                if ($statusId === 1 && $config['critical']) {
-                    $this->printStatus($config['label'], 'Currently running (or stuck)', 'warning');
-                    $this->warnings++;
-                    $hasWarning = true;
-                    $result['processes'][$name]['status'] = 'running';
-                    continue;
-                }
+                $result['processes'][$name]['last_exec_date'] = $lastExecDate !== '' ? $lastExecDate : null;
 
                 // Check last run age
                 if ($lastRun !== null) {
@@ -1211,7 +1192,7 @@ class CheckCommand extends BaseCommand
             return $result;
         }
 
-        $result['status'] = $hasError ? 'error' : ($hasWarning ? 'warning' : 'ok');
+        $result['status'] = $hasError ? 'error' : 'ok';
         return $result;
     }
 
