@@ -78,8 +78,31 @@ class PasswordHashPluginTest extends TestCase
      */
     private function loadPlugin(): void
     {
-        // Load the plugin file
-        require_once dirname(__DIR__, 2) . '/kvs/admin/plugins/password_hash/password_hash.php';
+        $pluginPath = $this->getPasswordHashPluginPath();
+        if ($pluginPath === null) {
+            $this->markTestSkipped('KVS password_hash plugin source not found.');
+        }
+
+        require_once $pluginPath;
+    }
+
+    private function getPasswordHashPluginPath(): ?string
+    {
+        $candidates = [];
+        $kvsSourcePath = getenv('KVS_SOURCE_PATH');
+        if (is_string($kvsSourcePath) && $kvsSourcePath !== '') {
+            $candidates[] = $kvsSourcePath . '/admin/plugins/password_hash/password_hash.php';
+        }
+
+        $candidates[] = dirname(__DIR__, 2) . '/kvs/admin/plugins/password_hash/password_hash.php';
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**
