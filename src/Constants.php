@@ -177,6 +177,9 @@ final class Constants
     /** Video source files directory */
     public const CONTENT_VIDEOS_SOURCES = 'videos_sources';
 
+    /** Converted video files directory */
+    public const CONTENT_VIDEOS = 'videos';
+
     /** Video screenshots directory */
     public const CONTENT_VIDEOS_SCREENSHOTS = 'videos_screenshots';
 

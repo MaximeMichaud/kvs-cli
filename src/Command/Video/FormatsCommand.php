@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Video;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -41,8 +42,8 @@ Manage video formats and check format availability.
   <fg=green>kvs video:formats list 123 --format=json</>
 
 <fg=yellow>NOTE:</>
-  This command scans the content directory for actual video files.
-  Requires read access to content/videos/ directory.
+  This command scans the KVS video storage directory for actual video files.
+  Requires read access to contents/videos/ directory or the local video storage server path.
 HELP
             );
     }
@@ -69,13 +70,11 @@ HELP
             return self::FAILURE;
         }
 
-        $videoSourcesPath = $this->config->getVideoSourcesPath();
-        if ($videoSourcesPath === '') {
-            $this->io()->error('Video sources path not configured');
+        $videoPath = $this->getVideoStorageDir($videoId);
+        if ($videoPath === null) {
+            $this->io()->error('Video storage path not configured');
             return self::FAILURE;
         }
-
-        $videoPath = "$videoSourcesPath/$videoId";
 
         if (!is_dir($videoPath)) {
             $this->io()->error("Video directory not found: $videoPath");
@@ -100,6 +99,16 @@ HELP
             return self::SUCCESS;
         }
 
+        $configuredFormats = $this->getFormatsFromDatabase(true);
+        $formatTitlesByPostfix = [];
+        foreach ($configuredFormats as $configuredFormat) {
+            $postfix = $configuredFormat['postfix'] ?? null;
+            $title = $configuredFormat['title'] ?? null;
+            if (is_string($postfix) && is_string($title)) {
+                $formatTitlesByPostfix[$postfix] = $title;
+            }
+        }
+
         $formats = [];
         foreach ($files as $file) {
             $filename = basename($file);
@@ -107,13 +116,17 @@ HELP
             if ($filesize === false) {
                 $filesize = 0;
             }
-            $format = pathinfo($filename, PATHINFO_FILENAME);
+            $postfix = $this->getFormatPostfixFromFilename($videoId, $filename);
+            $format = $postfix !== null && isset($formatTitlesByPostfix[$postfix])
+                ? $formatTitlesByPostfix[$postfix]
+                : ($postfix ?? pathinfo($filename, PATHINFO_FILENAME));
 
             // Try to get dimensions with ffprobe
             $dimensions = $this->getVideoDimensions($file);
 
             $formats[] = [
                 'format' => $format,
+                'postfix' => $postfix,
                 'file' => $filename,
                 'size' => format_bytes($filesize),
                 'dimensions' => $dimensions,
@@ -143,13 +156,11 @@ HELP
             return self::FAILURE;
         }
 
-        $videoSourcesPath = $this->config->getVideoSourcesPath();
-        if ($videoSourcesPath === '') {
-            $this->io()->error('Video sources path not configured');
+        $videoPath = $this->getVideoStorageDir($videoId);
+        if ($videoPath === null) {
+            $this->io()->error('Video storage path not configured');
             return self::FAILURE;
         }
-
-        $videoPath = "$videoSourcesPath/$videoId";
 
         if (!is_dir($videoPath)) {
             $this->io()->error("Video directory not found for video ID: $videoId");
@@ -176,9 +187,8 @@ HELP
             $formatName = isset($format['title']) && is_string($format['title']) ? $format['title'] : '';
             $postfix = isset($format['postfix']) && is_string($format['postfix']) ? $format['postfix'] : '';
 
-            // Build expected filename: formatName + postfix
-            // e.g. "720p" + ".mp4" = "720p.mp4"
-            $filename = $formatName . $postfix;
+            // KVS stores converted video files as {video_id}{postfix}, e.g. 123_720p.mp4.
+            $filename = $videoId . $postfix;
             $fullPath = "$videoPath/$filename";
 
             if (file_exists($fullPath)) {
@@ -243,21 +253,14 @@ HELP
      * Get video formats from KVS database
      * @return list<array<string, mixed>>
      */
-    private function getFormatsFromDatabase(): array
+    private function getFormatsFromDatabase(bool $quiet = false): array
     {
-        $db = $this->getDatabaseConnection();
+        $db = $this->getDatabaseConnection($quiet);
         if ($db === null) {
             return [];
         }
 
         try {
-            // Check if table exists
-            $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "formats_videos'");
-            if ($stmt === false || $stmt->fetch() === false) {
-                return [];
-            }
-
-            // Read formats from database
             $stmt = $db->query("
                 SELECT
                     format_video_id as format_id,
@@ -298,6 +301,98 @@ HELP
         } catch (\Exception $e) {
             return [];
         }
+    }
+
+    private function getVideoStorageDir(string $videoId): ?string
+    {
+        $basePath = $this->getVideoStorageBasePath($videoId);
+        if ($basePath === null || $basePath === '') {
+            return null;
+        }
+
+        return rtrim($basePath, '/') . '/' . $this->getDirById($videoId) . '/' . $videoId;
+    }
+
+    private function getVideoStorageBasePath(string $videoId): ?string
+    {
+        $db = $this->getDatabaseConnection(true);
+        if ($db !== null) {
+            $serverPath = $this->getLocalVideoServerPath($db, $videoId);
+            if ($serverPath !== null) {
+                return $serverPath;
+            }
+        }
+
+        $videosPath = $this->config->getContentPath() . '/' . Constants::CONTENT_VIDEOS;
+        if (is_dir($videosPath)) {
+            return $videosPath;
+        }
+
+        $sourcesPath = $this->config->getVideoSourcesPath();
+        if ($sourcesPath !== '') {
+            return dirname($sourcesPath) . '/' . Constants::CONTENT_VIDEOS;
+        }
+
+        return null;
+    }
+
+    private function getLocalVideoServerPath(\PDO $db, string $videoId): ?string
+    {
+        try {
+            $videoStmt = $db->prepare(
+                'SELECT server_group_id FROM ' . $this->table('videos') . ' WHERE video_id = :video_id'
+            );
+            if ($videoStmt === false) {
+                return null;
+            }
+            $videoStmt->execute(['video_id' => (int) $videoId]);
+            $video = $videoStmt->fetch();
+            if (!is_array($video)) {
+                return null;
+            }
+
+            $serverGroupId = $video['server_group_id'] ?? 0;
+            $serverGroupId = is_numeric($serverGroupId) ? (int) $serverGroupId : 0;
+
+            $query = 'SELECT path FROM ' . $this->table('admin_servers')
+                . ' WHERE content_type_id = 1 AND status_id = 1 AND is_remote = 0 AND path <> \'\'';
+            $params = [];
+            if ($serverGroupId > 0) {
+                $query .= ' AND group_id = :group_id';
+                $params['group_id'] = $serverGroupId;
+            }
+            $query .= ' ORDER BY server_id ASC LIMIT 1';
+
+            $serverStmt = $db->prepare($query);
+            if ($serverStmt === false) {
+                return null;
+            }
+            $serverStmt->execute($params);
+            $server = $serverStmt->fetch();
+            if (!is_array($server)) {
+                return null;
+            }
+
+            $path = $server['path'] ?? null;
+            return is_string($path) && $path !== '' ? $path : null;
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    private function getDirById(string $id): int
+    {
+        return (int) floor((int) $id / 1000) * 1000;
+    }
+
+    private function getFormatPostfixFromFilename(string $videoId, string $filename): ?string
+    {
+        if (!str_starts_with($filename, $videoId)) {
+            return null;
+        }
+
+        $postfix = substr($filename, strlen($videoId));
+        return $postfix !== '' ? $postfix : null;
     }
 
     /**
