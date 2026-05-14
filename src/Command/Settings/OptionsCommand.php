@@ -133,7 +133,14 @@ HELP
 
         // Filter by category
         $category = $this->getStringOption($input, 'category');
-        if ($category !== null && isset(self::CATEGORIES[$category])) {
+        if ($category !== null) {
+            $category = strtolower($category);
+            if (!isset(self::CATEGORIES[$category])) {
+                $this->io()->error(
+                    'Invalid value for --category (use: ' . implode(', ', array_keys(self::CATEGORIES)) . ')'
+                );
+                return self::FAILURE;
+            }
             $prefixes = self::CATEGORIES[$category];
             $conditions = [];
             foreach ($prefixes as $i => $catPrefix) {

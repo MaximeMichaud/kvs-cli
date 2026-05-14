@@ -114,48 +114,58 @@ HELP
 
         $params = [];
 
-        // Content type filter
-        $type = $input->getOption('type');
-        if (is_string($type) && $type !== '') {
-            $typeId = match (strtolower($type)) {
-                'video', 'videos' => 1,
-                'album', 'albums', 'image', 'images' => 2,
-                default => null,
-            };
-            if ($typeId !== null) {
-                $query .= " AND s.content_type_id = :type";
-                $params['type'] = $typeId;
+        $type = $this->getStringOption($input, 'type');
+        if ($type !== null) {
+            $typeMap = [
+                'video' => 1,
+                'videos' => 1,
+                'album' => 2,
+                'albums' => 2,
+                'image' => 2,
+                'images' => 2,
+            ];
+            $typeKey = strtolower($type);
+            if (!array_key_exists($typeKey, $typeMap)) {
+                $this->io()->error('Invalid value for --type (use: video or album)');
+                return self::FAILURE;
             }
+            $query .= " AND s.content_type_id = :type";
+            $params['type'] = $typeMap[$typeKey];
         }
 
-        // Status filter
-        $status = $input->getOption('status');
-        if (is_string($status) && $status !== '') {
-            $statusId = match (strtolower($status)) {
-                'active', '1' => 1,
-                'disabled', 'inactive', '0' => 0,
-                default => null,
-            };
-            if ($statusId !== null) {
-                $query .= " AND s.status_id = :status";
-                $params['status'] = $statusId;
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusMap = [
+                'active' => 1,
+                '1' => 1,
+                'disabled' => 0,
+                'inactive' => 0,
+                '0' => 0,
+            ];
+            $statusKey = strtolower($status);
+            if (!array_key_exists($statusKey, $statusMap)) {
+                $this->io()->error('Invalid value for --status (use: active or disabled)');
+                return self::FAILURE;
             }
+            $query .= " AND s.status_id = :status";
+            $params['status'] = $statusMap[$statusKey];
         }
 
-        // Connection type filter
-        $connection = $input->getOption('connection');
-        if (is_string($connection) && $connection !== '') {
-            $connId = match (strtolower($connection)) {
+        $connection = $this->getStringOption($input, 'connection');
+        if ($connection !== null) {
+            $connectionMap = [
                 'local' => 0,
                 'mount' => 1,
                 'ftp' => 2,
                 's3' => 3,
-                default => null,
-            };
-            if ($connId !== null) {
-                $query .= " AND s.connection_type_id = :connection";
-                $params['connection'] = $connId;
+            ];
+            $connectionKey = strtolower($connection);
+            if (!array_key_exists($connectionKey, $connectionMap)) {
+                $this->io()->error('Invalid value for --connection (use: local, mount, ftp, or s3)');
+                return self::FAILURE;
             }
+            $query .= " AND s.connection_type_id = :connection";
+            $params['connection'] = $connectionMap[$connectionKey];
         }
 
         // Group filter
@@ -177,7 +187,10 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $limit = $this->getIntOptionOrDefault($input, 'limit', 50);
+            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 50);
+            if ($limit === null) {
+                return self::FAILURE;
+            }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 

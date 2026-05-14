@@ -77,7 +77,7 @@ class QueueCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats|history)')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats|history)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Task ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (pending|processing|failed)')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by task type ID')
@@ -156,11 +156,17 @@ HELP
                 'pending' => StatusFormatter::TASK_PENDING,
                 'processing' => StatusFormatter::TASK_PROCESSING,
                 'failed' => StatusFormatter::TASK_FAILED,
+                '0' => StatusFormatter::TASK_PENDING,
+                '1' => StatusFormatter::TASK_PROCESSING,
+                '2' => StatusFormatter::TASK_FAILED,
             ];
-            if (isset($statusMap[$status])) {
-                $query .= " AND bt.status_id = :status";
-                $params['status'] = $statusMap[$status];
+            $statusKey = strtolower($status);
+            if (!array_key_exists($statusKey, $statusMap)) {
+                $this->io()->error('Invalid status "' . $status . '". Valid values: pending, processing, failed');
+                return self::FAILURE;
             }
+            $query .= " AND bt.status_id = :status";
+            $params['status'] = $statusMap[$statusKey];
         }
 
         $type = $this->getIntOption($input, 'type');
@@ -194,7 +200,10 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            if ($limit === null) {
+                return self::FAILURE;
+            }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
@@ -600,11 +609,16 @@ HELP
             $statusMap = [
                 'completed' => StatusFormatter::TASK_COMPLETED,
                 'deleted' => StatusFormatter::TASK_DELETED,
+                '3' => StatusFormatter::TASK_COMPLETED,
+                '4' => StatusFormatter::TASK_DELETED,
             ];
-            if (isset($statusMap[$status])) {
-                $query .= " AND status_id = :status";
-                $params['status'] = $statusMap[$status];
+            $statusKey = strtolower($status);
+            if (!array_key_exists($statusKey, $statusMap)) {
+                $this->io()->error('Invalid status "' . $status . '". Valid values: completed, deleted');
+                return self::FAILURE;
             }
+            $query .= " AND status_id = :status";
+            $params['status'] = $statusMap[$statusKey];
         }
 
         $type = $this->getIntOption($input, 'type');
@@ -626,7 +640,10 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
+            if ($limit === null) {
+                return self::FAILURE;
+            }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 

@@ -487,6 +487,21 @@ abstract class BaseCommand extends Command
         ));
     }
 
+    protected function getPositiveIntOptionOrDefault(InputInterface $input, string $name, int $default): ?int
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return $default;
+        }
+
+        if (preg_match('/^\d+$/', $value) !== 1 || (int) $value < 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 1)', $name));
+            return null;
+        }
+
+        return (int) $value;
+    }
+
     /**
      * Render a table with consistent box style
      *

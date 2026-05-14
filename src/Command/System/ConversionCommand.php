@@ -126,19 +126,25 @@ HELP
 
         $params = [];
 
-        // Status filter
-        $status = $input->getOption('status');
-        if (is_string($status) && $status !== '') {
-            $statusId = match (strtolower($status)) {
-                'active', '1' => 1,
-                'disabled', 'inactive', '0' => 0,
-                'init', 'initializing', '2' => 2,
-                default => null,
-            };
-            if ($statusId !== null) {
-                $query .= " AND s.status_id = :status";
-                $params['status'] = $statusId;
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusMap = [
+                'active' => 1,
+                '1' => 1,
+                'disabled' => 0,
+                'inactive' => 0,
+                '0' => 0,
+                'init' => 2,
+                'initializing' => 2,
+                '2' => 2,
+            ];
+            $statusKey = strtolower($status);
+            if (!array_key_exists($statusKey, $statusMap)) {
+                $this->io()->error('Invalid value for --status (use: active, disabled, or init)');
+                return self::FAILURE;
             }
+            $query .= " AND s.status_id = :status";
+            $params['status'] = $statusMap[$statusKey];
         }
 
         // Errors filter
@@ -153,7 +159,10 @@ HELP
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
-            $limit = $this->getIntOptionOrDefault($input, 'limit', 50);
+            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 50);
+            if ($limit === null) {
+                return self::FAILURE;
+            }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
