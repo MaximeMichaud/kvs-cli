@@ -283,7 +283,9 @@ class StatsCommand extends BaseCommand
         $prefix = $this->config->getTablePrefix();
 
         $stmt = $db->prepare("SELECT
-            video_id, title, dir, video_viewed, rating, rating_amount, duration
+            video_id, title, dir, video_viewed,
+            CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
+            rating_amount, duration
             FROM {$prefix}videos
             WHERE status_id = 1             ORDER BY video_viewed DESC
             LIMIT {$limit}");
@@ -308,11 +310,11 @@ class StatsCommand extends BaseCommand
             }
 
             $views = (int) ($video['video_viewed'] ?? 0);
-            $rating = (float) ($video['rating'] ?? 0);
+            $rating = $video['avg_rating'] ?? null;
             $ratingCount = (int) ($video['rating_amount'] ?? 0);
             $duration = (int) ($video['duration'] ?? 0);
 
-            $ratingStr = $ratingCount > 0 ? sprintf('%.1f (%d)', $rating, $ratingCount) : '-';
+            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
             $durationStr = $duration > 0 ? gmdate('H:i:s', $duration) : '-';
 
             $rows[] = [
@@ -338,7 +340,9 @@ class StatsCommand extends BaseCommand
         $prefix = $this->config->getTablePrefix();
 
         $stmt = $db->prepare("SELECT
-            album_id, title, album_viewed, rating, rating_amount, photos_amount
+            album_id, title, album_viewed,
+            CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
+            rating_amount, photos_amount
             FROM {$prefix}albums
             WHERE status_id = 1             ORDER BY album_viewed DESC
             LIMIT {$limit}");
@@ -363,11 +367,11 @@ class StatsCommand extends BaseCommand
             }
 
             $views = (int) ($album['album_viewed'] ?? 0);
-            $rating = (float) ($album['rating'] ?? 0);
+            $rating = $album['avg_rating'] ?? null;
             $ratingCount = (int) ($album['rating_amount'] ?? 0);
             $photos = (int) ($album['photos_amount'] ?? 0);
 
-            $ratingStr = $ratingCount > 0 ? sprintf('%.1f (%d)', $rating, $ratingCount) : '-';
+            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
 
             $rows[] = [
                 $rank,
@@ -461,7 +465,7 @@ class StatsCommand extends BaseCommand
             AVG(video_viewed) as avg_views,
             MAX(video_viewed) as max_views,
             SUM(rating_amount) as total_ratings,
-            AVG(CASE WHEN rating_amount > 0 THEN rating ELSE NULL END) as avg_rating,
+            AVG(CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END) as avg_rating,
             SUM(comments_count) as total_comments,
             SUM(favourites_count) as total_favourites,
             AVG(duration) as avg_duration,
@@ -503,10 +507,10 @@ class StatsCommand extends BaseCommand
         // Top by rating
         $this->io()->text('<info>Top by Rating:</info>');
         $stmt = $db->prepare("SELECT
-            video_id, title, video_viewed, rating, rating_amount
+            video_id, title, video_viewed, rating / rating_amount as avg_rating, rating_amount
             FROM {$prefix}videos
             WHERE status_id = 1  AND rating_amount >= 5
-            ORDER BY rating DESC, rating_amount DESC
+            ORDER BY rating / rating_amount DESC, rating_amount DESC
             LIMIT {$limit}");
         $stmt->execute();
         $videos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -525,7 +529,7 @@ class StatsCommand extends BaseCommand
                 $rows[] = [
                     $rank,
                     $title,
-                    sprintf('%.2f', (float) ($video['rating'] ?? 0)),
+                    sprintf('%.2f', (float) ($video['avg_rating'] ?? 0)),
                     (int) ($video['rating_amount'] ?? 0) . ' votes',
                     $this->formatNumber((int) ($video['video_viewed'] ?? 0)) . ' views',
                 ];
@@ -550,7 +554,7 @@ class StatsCommand extends BaseCommand
             SUM(album_viewed) as total_views,
             AVG(album_viewed) as avg_views,
             SUM(rating_amount) as total_ratings,
-            AVG(CASE WHEN rating_amount > 0 THEN rating ELSE NULL END) as avg_rating,
+            AVG(CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END) as avg_rating,
             SUM(photos_amount) as total_photos,
             AVG(photos_amount) as avg_photos
             FROM {$prefix}albums WHERE 1=1");
@@ -828,7 +832,9 @@ class StatsCommand extends BaseCommand
         $this->io()->text('<info>Top Models (by content):</info>');
 
         $stmt = $db->prepare("SELECT
-            model_id, title, total_videos, total_albums, model_viewed, rating, rating_amount
+            model_id, title, total_videos, total_albums, model_viewed,
+            CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
+            rating_amount
             FROM {$prefix}models
             WHERE status_id = 1
             ORDER BY total_videos DESC
@@ -853,9 +859,9 @@ class StatsCommand extends BaseCommand
                 $title = mb_substr($title, 0, 27) . '...';
             }
 
-            $rating = (float) ($model['rating'] ?? 0);
+            $rating = $model['avg_rating'] ?? null;
             $ratingCount = (int) ($model['rating_amount'] ?? 0);
-            $ratingStr = $ratingCount > 0 ? sprintf('%.1f (%d)', $rating, $ratingCount) : '-';
+            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
 
             $rows[] = [
                 $rank,
@@ -946,7 +952,9 @@ class StatsCommand extends BaseCommand
         $this->io()->text('<info>Top DVDs/Channels (by content):</info>');
 
         $stmt = $db->prepare("SELECT
-            dvd_id, title, total_videos, dvd_viewed, rating, rating_amount
+            dvd_id, title, total_videos, dvd_viewed,
+            CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END as avg_rating,
+            rating_amount
             FROM {$prefix}dvds
             WHERE status_id = 1
             ORDER BY total_videos DESC
@@ -971,9 +979,9 @@ class StatsCommand extends BaseCommand
                 $title = mb_substr($title, 0, 32) . '...';
             }
 
-            $rating = (float) ($dvd['rating'] ?? 0);
+            $rating = $dvd['avg_rating'] ?? null;
             $ratingCount = (int) ($dvd['rating_amount'] ?? 0);
-            $ratingStr = $ratingCount > 0 ? sprintf('%.1f (%d)', $rating, $ratingCount) : '-';
+            $ratingStr = $this->formatAverageRating($rating, $ratingCount);
 
             $rows[] = [
                 $rank,
@@ -1032,6 +1040,15 @@ class StatsCommand extends BaseCommand
     private function formatNumber(int $number): string
     {
         return number_format($number, 0, '.', ',');
+    }
+
+    private function formatAverageRating(mixed $rating, int $ratingCount): string
+    {
+        if ($ratingCount <= 0 || !is_numeric($rating)) {
+            return '-';
+        }
+
+        return sprintf('%.1f (%d)', (float) $rating, $ratingCount);
     }
 
     /**

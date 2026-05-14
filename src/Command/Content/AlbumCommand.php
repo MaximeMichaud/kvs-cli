@@ -190,13 +190,14 @@ HELP
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')}_images WHERE album_id = :id");
             $stmt->execute(['id' => $id]);
             $imageCount = $stmt->fetchColumn();
+            $imageCountValue = is_numeric($imageCount) ? (int) $imageCount : 0;
 
             $postTimestamp = strtotime($album['post_date']);
 
             $info = [
                 ['Title', $album['title']],
                 ['Status', StatusFormatter::album($album['status_id'])],
-                ['Images', is_int($imageCount) ? $imageCount : 0],
+                ['Images', $imageCountValue],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
                 ['Views', number_format($album['album_viewed'])],
                 [
