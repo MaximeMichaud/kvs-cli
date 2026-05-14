@@ -49,6 +49,12 @@ class CacheCommand extends BaseCommand
 
     private function clearCache(?string $type): int
     {
+        $type = $type !== null ? strtolower($type) : null;
+        if ($type !== null && $type !== '' && !in_array($type, ['file', 'db'], true)) {
+            $this->io()->error('Invalid value for --type (use: file or db)');
+            return self::FAILURE;
+        }
+
         if ($type === null || $type === '' || $type === 'file') {
             $this->clearFileCache();
         }

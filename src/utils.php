@@ -25,11 +25,20 @@ namespace KVS\CLI\Utils;
  */
 function truncate(string $string, int $length, string $suffix = '...'): string
 {
+    if ($length <= 0) {
+        return '';
+    }
+
     if (mb_strlen($string) <= $length) {
         return $string;
     }
 
-    return mb_substr($string, 0, $length - mb_strlen($suffix)) . $suffix;
+    $suffixLength = mb_strlen($suffix);
+    if ($suffixLength >= $length) {
+        return mb_substr($string, 0, $length);
+    }
+
+    return mb_substr($string, 0, $length - $suffixLength) . $suffix;
 }
 
 /**

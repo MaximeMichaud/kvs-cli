@@ -51,6 +51,8 @@ class UtilsTest extends TestCase
             'empty string' => ['', 10, '...', ''],
             'UTF-8 characters' => ['Héllo Wörld', 8, '...', 'Héllo...'],
             'emoji support' => ['Hello 👋 World', 10, '...', 'Hello 👋...'],
+            'limit shorter than suffix' => ['abcdef', 2, '...', 'ab'],
+            'zero length' => ['abcdef', 0, '...', ''],
         ];
     }
 

@@ -106,6 +106,12 @@ HELP
         }
 
         if ($typeFilter !== null && $typeFilter !== '') {
+            $typeFilter = strtolower($typeFilter);
+            if (!in_array($typeFilter, ['manual', 'cron'], true)) {
+                $this->io()->error('Invalid type "' . $typeFilter . '". Valid values: manual, cron');
+                return self::FAILURE;
+            }
+
             $plugins = array_filter($plugins, function (array $plugin) use ($typeFilter): bool {
                 $types = $plugin['types'] ?? [];
                 if (!is_array($types)) {

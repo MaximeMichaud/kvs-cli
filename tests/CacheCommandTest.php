@@ -84,6 +84,20 @@ class CacheCommandTest extends TestCase
         $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/cache/test.cache');
     }
 
+    public function testCacheClearInvalidTypeFailsWithoutDeletingFiles(): void
+    {
+        $this->tester->execute([
+            '--clear' => true,
+            '--type' => 'bogus'
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertStringContainsString('Invalid value for --type', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertFileExists($this->tempDir . '/admin/data/engine/cache_test.dat');
+    }
+
     public function testCacheStats(): void
     {
         $this->tester->execute(['--stats' => true]);

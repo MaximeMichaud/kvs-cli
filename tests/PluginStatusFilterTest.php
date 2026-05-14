@@ -47,4 +47,18 @@ class PluginStatusFilterTest extends TestCase
         $this->assertSame(1, $exitCode);
         $this->assertStringContainsString('Invalid status', $output);
     }
+
+    public function testListWithInvalidTypeFails(): void
+    {
+        $tester = new CommandTester(new PluginCommand(new Configuration(['path' => $this->tempDir])));
+        $exitCode = $tester->execute([
+            'action' => 'list',
+            '--type' => 'bogus',
+            '--format' => 'count',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('Invalid type', $output);
+    }
 }
