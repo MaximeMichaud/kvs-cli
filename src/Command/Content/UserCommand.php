@@ -117,6 +117,7 @@ HELP
                 'disabled' => StatusFormatter::USER_DISABLED,
                 'premium' => StatusFormatter::USER_PREMIUM,
                 'not-confirmed' => StatusFormatter::USER_NOT_CONFIRMED,
+                'unconfirmed' => StatusFormatter::USER_NOT_CONFIRMED,
                 'anonymous' => StatusFormatter::USER_ANONYMOUS,
                 'generated' => StatusFormatter::USER_GENERATED,
                 'webmaster' => StatusFormatter::USER_WEBMASTER,

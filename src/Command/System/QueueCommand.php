@@ -200,9 +200,18 @@ HELP
 
             /** @var list<array<string, mixed>> $tasks */
             $tasks = $stmt->fetchAll();
+            $format = $this->getStringOption($input, 'format') ?? 'table';
 
             if ($tasks === []) {
-                $this->io()->success('Queue is empty - no tasks found');
+                if ($format === 'table') {
+                    $this->io()->success('Queue is empty - no tasks found');
+                } else {
+                    $formatter = new Formatter(
+                        $input->getOptions(),
+                        ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error']
+                    );
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
@@ -231,8 +240,6 @@ HELP
             }, $tasks);
 
             // Format and display
-            $format = $this->getStringOption($input, 'format') ?? 'table';
-
             if ($format === 'table') {
                 $this->io()->title('Background Tasks Queue');
                 /** @var list<list<string|int|null>> $rows */
@@ -625,9 +632,18 @@ HELP
 
             /** @var list<array<string, mixed>> $tasks */
             $tasks = $stmt->fetchAll();
+            $format = $this->getStringOption($input, 'format') ?? 'table';
 
             if ($tasks === []) {
-                $this->io()->info('No history found');
+                if ($format === 'table') {
+                    $this->io()->info('No history found');
+                } else {
+                    $formatter = new Formatter(
+                        $input->getOptions(),
+                        ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date']
+                    );
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
@@ -649,8 +665,6 @@ HELP
                 $task['duration'] = $this->formatDuration($effectiveDuration);
                 return $task;
             }, $tasks);
-
-            $format = $this->getStringOption($input, 'format') ?? 'table';
 
             if ($format === 'table') {
                 $this->io()->title('Task History');

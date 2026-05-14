@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Command\Content\TagCommand;
+use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
@@ -154,6 +155,34 @@ class ContentStatusFilterTest extends TestCase
         $this->assertSame([1], $this->columnAsInts($this->decodeJsonRows($tester->getDisplay()), 'album_id'));
     }
 
+    public function testUserListAcceptsUnconfirmedStatusAlias(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_users (' .
+            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (user_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (user_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_users (user_id, username, display_name, email, status_id, added_date) VALUES " .
+            "(1, 'pending', 'Pending', 'pending@example.com', 1, '2024-01-01 00:00:00'), " .
+            "(2, 'active', 'Active', 'active@example.com', 2, '2024-01-02 00:00:00')"
+        );
+
+        $tester = new CommandTester($this->createUserCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'unconfirmed',
+            '--format' => 'json',
+            '--fields' => 'user_id,status_id',
+            '--limit' => '10',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame([1], $this->columnAsInts($this->decodeJsonRows($tester->getDisplay()), 'user_id'));
+    }
+
     private function createSqliteConnection(): \PDO
     {
         $db = new \PDO('sqlite::memory:');
@@ -239,6 +268,22 @@ class ContentStatusFilterTest extends TestCase
             {
                 parent::__construct($config);
                 $this->setName('content:album');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createUserCommand(\PDO $db): UserCommand
+    {
+        return new class ($this->createConfig(), $db) extends UserCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:user');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO

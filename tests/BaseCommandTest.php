@@ -253,4 +253,31 @@ class BaseCommandTest extends TestCase
         $this->assertStringContainsString('Flag: true', $display);
         $this->assertStringContainsString('Value: test', $display);
     }
+
+    public function testInvalidStatusFilterThrows(): void
+    {
+        $command = new class ($this->config) extends BaseCommand {
+            protected function configure(): void
+            {
+                $this->setName('test:status')
+                    ->addOption('status', null, \Symfony\Component\Console\Input\InputOption::VALUE_REQUIRED);
+            }
+
+            public function parseForTest(\Symfony\Component\Console\Input\ArrayInput $input): ?int
+            {
+                return $this->parseStatusFilter($input, ['active' => 1, 'disabled' => 0], [0, 1]);
+            }
+
+            protected function execute($input, $output): int
+            {
+                return self::SUCCESS;
+            }
+        };
+
+        $input = new ArrayInput(['--status' => 'bogus'], $command->getDefinition());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid status "bogus"');
+        $command->parseForTest($input);
+    }
 }

@@ -70,14 +70,27 @@ class Formatter
      */
     public function display(array $items, OutputInterface $output): void
     {
-        // Empty check
+        $format = $this->args['format'];
+        $field = $this->args['field'];
+        $hasSingleField = $field !== null && $field !== '' && $field !== false;
+
+        if (!is_string($format)) {
+            throw new \InvalidArgumentException('Format must be a string');
+        }
+
         if ($items === []) {
-            $output->writeln('<comment>No results found.</comment>');
-            return;
+            if ($hasSingleField) {
+                return;
+            }
+
+            if ($format === 'table') {
+                $output->writeln('<comment>No results found.</comment>');
+                return;
+            }
         }
 
         // Single field mode (--field=email)
-        if ($this->args['field'] !== null && $this->args['field'] !== '' && $this->args['field'] !== false) {
+        if ($hasSingleField) {
             $this->displaySingleField($items, $output);
             return;
         }

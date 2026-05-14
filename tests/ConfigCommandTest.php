@@ -76,6 +76,7 @@ $config["php_path"] = "/usr/bin/php";
 $config["ffmpeg_path"] = "/usr/bin/ffmpeg";
 $config["server_type"] = "nginx";
 $config["memcache_server"] = "127.0.0.1";
+$config["player_license_code"] = "secret-player-license";
 '
         );
 
@@ -115,6 +116,32 @@ $config["memcache_server"] = "127.0.0.1";
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('6.3.2', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConfigGetMasksMainLicenseCode(): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'key' => 'main.player_license_code',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('**********', $output);
+        $this->assertStringNotContainsString('secret-player-license', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConfigGetCanShowProtectedLicenseCode(): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'key' => 'main.player_license_code',
+            '--show-protected' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('secret-player-license', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 

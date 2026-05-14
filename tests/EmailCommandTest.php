@@ -206,4 +206,17 @@ class EmailCommandTest extends TestCase
         // Should succeed (may show templates or "not found")
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
+
+    public function testEmailTemplatesJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'templates',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertJson($output);
+        $this->assertIsArray(json_decode($output, true));
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
 }

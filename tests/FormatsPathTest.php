@@ -93,6 +93,24 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('Missing Formats', $output);
     }
 
+    public function testAvailableFormatsJsonDoesNotIncludeTableDecoration(): void
+    {
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'available',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertIsArray($decoded);
+        $this->assertSame('MP4 480p', $decoded[0]['title']);
+        $this->assertStringNotContainsString('Available Format Configurations', $output);
+        $this->assertStringNotContainsString('These formats are configured', $output);
+    }
+
     private function createCommand(): FormatsCommand
     {
         return new class (new Configuration(['path' => $this->tempDir]), $this->db) extends FormatsCommand {

@@ -86,7 +86,7 @@ class ConfigCommand extends BaseCommand
         }
 
         // Check if value is protected
-        if (isset($this->protectedKeys[$key]) && !$this->getBoolOption($input, 'show-protected')) {
+        if ($this->isProtectedKey($key) && !$this->getBoolOption($input, 'show-protected')) {
             $value = '**********';
         }
 
@@ -160,7 +160,7 @@ class ConfigCommand extends BaseCommand
         if ($json) {
             if (!$showProtected) {
                 foreach ($configs as $key => &$value) {
-                    if (isset($this->protectedKeys[$key])) {
+                    if ($this->isProtectedKey($key)) {
                         $value = '**********';
                     }
                 }
@@ -239,7 +239,7 @@ class ConfigCommand extends BaseCommand
             foreach ($dbConfigs as $key => $value) {
                 $fullKey = "db.$key";
                 $displayValue = $value;
-                if (isset($this->protectedKeys[$fullKey]) && !$showProtected) {
+                if ($this->isProtectedKey($fullKey) && !$showProtected) {
                     $displayValue = '**********';
                 }
                 $rows[] = [$key, $displayValue];
@@ -272,7 +272,7 @@ class ConfigCommand extends BaseCommand
 
                 // Check for protected values
                 $fullKey = "main.$configKey";
-                if (isset($this->protectedKeys[$fullKey]) && !$showProtected) {
+                if ($this->isProtectedKey($fullKey) && !$showProtected) {
                     $value = '**********';
                 }
 
@@ -473,6 +473,34 @@ class ConfigCommand extends BaseCommand
         }
 
         return $configs;
+    }
+
+    private function isProtectedKey(string $key): bool
+    {
+        if (isset($this->protectedKeys[$key])) {
+            return true;
+        }
+
+        $keyLower = strtolower($key);
+        $sensitiveMarkers = [
+            'password',
+            'pass',
+            'secret',
+            'license',
+            'api_key',
+            'access_key',
+            'private_key',
+            'security_key',
+            'token',
+        ];
+
+        foreach ($sensitiveMarkers as $marker) {
+            if (str_contains($keyLower, $marker)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function getConfigValue(string $key): ?string

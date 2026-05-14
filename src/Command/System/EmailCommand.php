@@ -99,7 +99,7 @@ HELP
             'test' => $this->testEmail($input),
             'set' => $this->setSettings($input),
             'log' => $this->showLog($input),
-            'templates' => $this->showTemplates(),
+            'templates' => $this->showTemplates($input),
             default => $this->showSettings($input),
         };
     }
@@ -555,12 +555,15 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showTemplates(): int
+    private function showTemplates(InputInterface $input): int
     {
         $kvsPath = $this->config->getKvsPath();
         $blocksPath = $kvsPath . '/blocks';
+        $format = $this->getStringOption($input, 'format') ?? 'table';
 
-        $this->io()->section('Email Templates');
+        if ($format === 'table') {
+            $this->io()->section('Email Templates');
+        }
 
         $templateDirs = [
             'signup' => 'User Registration',
@@ -569,6 +572,7 @@ HELP
         ];
 
         $found = false;
+        $templateRows = [];
         foreach ($templateDirs as $block => $description) {
             $emailsPath = $blocksPath . '/' . $block . '/emails';
             if (!is_dir($emailsPath)) {
@@ -581,7 +585,9 @@ HELP
             }
 
             $found = true;
-            $this->io()->text("<fg=cyan>$description</> ($block):");
+            if ($format === 'table') {
+                $this->io()->text("<fg=cyan>$description</> ($block):");
+            }
 
             foreach ($templates as $subjectFile) {
                 $name = basename($subjectFile, '_subject.txt');
@@ -593,9 +599,34 @@ HELP
                 $hasBody = file_exists($bodyFile);
                 $status = $hasBody ? '<fg=green>✓</>' : '<fg=red>✗ missing body</>';
 
-                $this->io()->text("  $status <fg=white>$name</>: $subjectPreview");
+                $templateRows[] = [
+                    'block' => $block,
+                    'description' => $description,
+                    'name' => $name,
+                    'subject' => $subjectPreview,
+                    'has_body' => $hasBody,
+                    'subject_file' => $subjectFile,
+                    'body_file' => $hasBody ? $bodyFile : null,
+                ];
+
+                if ($format === 'table') {
+                    $this->io()->text("  $status <fg=white>$name</>: $subjectPreview");
+                }
             }
-            $this->io()->newLine();
+
+            if ($format === 'table') {
+                $this->io()->newLine();
+            }
+        }
+
+        if ($format === 'json') {
+            $json = json_encode($templateRows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                $this->io()->error('Failed to encode templates as JSON: ' . json_last_error_msg());
+                return self::FAILURE;
+            }
+            $this->io()->writeln($json);
+            return self::SUCCESS;
         }
 
         if (!$found) {

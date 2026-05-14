@@ -475,7 +475,16 @@ abstract class BaseCommand extends Command
             }
         }
 
-        return null;
+        $validStatuses = array_keys($aliases);
+        foreach ($numericStatuses as $numericStatus) {
+            $validStatuses[] = (string) $numericStatus;
+        }
+
+        throw new \InvalidArgumentException(sprintf(
+            'Invalid status "%s". Valid values: %s',
+            $status,
+            implode(', ', array_values(array_unique($validStatuses)))
+        ));
     }
 
     /**

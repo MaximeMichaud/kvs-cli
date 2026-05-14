@@ -26,6 +26,22 @@ class FormatterTest extends TestCase
         $this->assertStringContainsString('No results found', $this->output->fetch());
     }
 
+    public function testDisplayEmptyCountFormat(): void
+    {
+        $formatter = new Formatter(['format' => 'count'], ['id', 'title']);
+        $formatter->display([], $this->output);
+
+        $this->assertSame("0\n", $this->output->fetch());
+    }
+
+    public function testDisplayEmptyJsonFormat(): void
+    {
+        $formatter = new Formatter(['format' => 'json'], ['id', 'title']);
+        $formatter->display([], $this->output);
+
+        $this->assertSame([], json_decode($this->output->fetch(), true, flags: JSON_THROW_ON_ERROR));
+    }
+
     public function testDisplayCountFormat(): void
     {
         $items = [

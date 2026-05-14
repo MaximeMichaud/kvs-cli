@@ -91,14 +91,17 @@ HELP
         $typeFilter = $this->getStringOption($input, 'type');
 
         if ($statusFilter !== null && $statusFilter !== 'all') {
+            if (!in_array($statusFilter, ['active', 'inactive'], true)) {
+                $this->io()->error('Invalid status "' . $statusFilter . '". Valid values: active, inactive, all');
+                return self::FAILURE;
+            }
+
             $plugins = array_filter($plugins, function (array $plugin) use ($statusFilter): bool {
                 $isEnabled = $plugin['is_enabled'] ?? false;
                 if ($statusFilter === 'active') {
                     return (bool)$isEnabled;
-                } elseif ($statusFilter === 'inactive') {
-                    return !(bool)$isEnabled;
                 }
-                return true;
+                return !(bool)$isEnabled;
             });
         }
 

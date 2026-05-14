@@ -224,7 +224,10 @@ HELP
 
     private function showAvailableFormats(InputInterface $input): int
     {
-        $this->io()->title('Available Format Configurations');
+        $format = $this->getStringOption($input, 'format') ?? 'table';
+        if ($format === 'table') {
+            $this->io()->title('Available Format Configurations');
+        }
 
         // Try to read from KVS database configuration
         $formats = $this->getFormatsFromDatabase();
@@ -243,8 +246,10 @@ HELP
         /** @var list<array<string, mixed>> $formats */
         $formatter->display($formats, $this->io());
 
-        $this->io()->newLine();
-        $this->io()->note('These formats are configured in KVS (table: ' . $this->table('formats_videos') . ')');
+        if ($format === 'table') {
+            $this->io()->newLine();
+            $this->io()->note('These formats are configured in KVS (table: ' . $this->table('formats_videos') . ')');
+        }
 
         return self::SUCCESS;
     }
