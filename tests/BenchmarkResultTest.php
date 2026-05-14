@@ -7,6 +7,7 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Benchmark\BenchmarkResult;
+use KVS\CLI\Benchmark\ExperimentResult;
 
 #[CoversClass(BenchmarkResult::class)]
 class BenchmarkResultTest extends TestCase
@@ -305,6 +306,31 @@ class BenchmarkResultTest extends TestCase
         $this->assertEquals(120.0, $result->getTotalTime());
         $this->assertEquals('imported', $result->getTag());
         $this->assertTrue($result->hasWarnings());
+    }
+
+    public function testFromArrayLoadsExperimentExport(): void
+    {
+        $this->result->setSystemInfo(['php_version' => '8.1.0']);
+        $this->result->setSystemMetrics(['load_1m' => 0.5]);
+        $this->result->recordCpu('md5_simple', 'MD5 Simple', [
+            'avg' => 1.0,
+            'min' => 1.0,
+            'max' => 1.0,
+            'p50' => 1.0,
+            'p95' => 1.0,
+            'p99' => 1.0,
+            'std_dev' => 0.0,
+            'ops_sec' => 12345.0,
+            'samples' => 1,
+        ]);
+
+        $export = (new ExperimentResult($this->result))->toArray();
+        $loaded = BenchmarkResult::fromArray($export);
+
+        $this->assertTrue($loaded->hasCpuResults());
+        $this->assertArrayHasKey('md5_simple', $loaded->getCpuResults());
+        $this->assertSame(['php_version' => '8.1.0'], $loaded->getSystemInfo());
+        $this->assertSame(['load_1m' => 0.5], $loaded->getSystemMetrics());
     }
 
     public function testFromArrayHandlesEmptyData(): void

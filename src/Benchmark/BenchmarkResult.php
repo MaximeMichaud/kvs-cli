@@ -562,6 +562,7 @@ class BenchmarkResult
     public static function fromArray(array $data): self
     {
         $result = new self();
+        $data = self::normalizeImportData($data);
 
         self::parseSystemInfo($result, $data);
         self::parseHttpResults($result, $data);
@@ -572,6 +573,51 @@ class BenchmarkResult
         self::parseMetadata($result, $data);
 
         return $result;
+    }
+
+    /**
+     * Accept both the raw BenchmarkResult export and the dashboard-ready ExperimentResult export.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function normalizeImportData(array $data): array
+    {
+        $results = $data['results'] ?? null;
+        if (!is_array($results)) {
+            return $data;
+        }
+
+        $map = [
+            'http_results' => 'http',
+            'db_results' => 'database',
+            'cache_results' => 'cache',
+            'fileio_results' => 'fileio',
+            'cpu_results' => 'cpu',
+        ];
+
+        foreach ($map as $targetKey => $sourceKey) {
+            if (isset($data[$targetKey]) && is_array($data[$targetKey]) && $data[$targetKey] !== []) {
+                continue;
+            }
+
+            $source = $results[$sourceKey] ?? null;
+            if (is_array($source)) {
+                $data[$targetKey] = $source;
+            }
+        }
+
+        $system = $data['system'] ?? null;
+        if (!isset($data['system_info']) && is_array($system)) {
+            $data['system_info'] = $system;
+        }
+
+        $metrics = $data['metrics'] ?? null;
+        if (!isset($data['system_metrics']) && is_array($metrics)) {
+            $data['system_metrics'] = $metrics;
+        }
+
+        return $data;
     }
 
     /**
