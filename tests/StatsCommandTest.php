@@ -58,9 +58,10 @@ class StatsCommandTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertStringContainsString('Avg Rating %', $output);
-        $this->assertStringContainsString('130.00%', $output);
-        $this->assertStringContainsString('180.0% (5)', $output);
+        $this->assertStringContainsString('100.00%', $output);
+        $this->assertStringContainsString('100.0% (5)', $output);
         $this->assertStringContainsString('80.0% (20)', $output);
+        $this->assertStringNotContainsString('180.0% (5)', $output);
 
         $ratingSectionStart = strpos($output, 'Top by Rating %:');
         $this->assertIsInt($ratingSectionStart);
@@ -93,9 +94,10 @@ class StatsCommandTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertStringContainsString('Avg Rating %', $output);
-        $this->assertStringContainsString('140.00%', $output);
-        $this->assertStringContainsString('180.0% (10)', $output);
+        $this->assertStringContainsString('100.00%', $output);
+        $this->assertStringContainsString('100.0% (10)', $output);
         $this->assertStringContainsString('100.0% (5)', $output);
+        $this->assertStringNotContainsString('180.0% (10)', $output);
     }
 
     public function testModelAndDvdStatsUseKvsRatingPercent(): void
@@ -127,12 +129,14 @@ class StatsCommandTest extends TestCase
         $dvdTester->execute(['--dvds' => true, '--top' => '1']);
 
         $this->assertSame(0, $modelTester->getStatusCode());
-        $this->assertStringContainsString('160.0% (10)', $modelTester->getDisplay());
+        $this->assertStringContainsString('100.0% (10)', $modelTester->getDisplay());
         $this->assertStringNotContainsString('8.0 (10)', $modelTester->getDisplay());
+        $this->assertStringNotContainsString('160.0% (10)', $modelTester->getDisplay());
 
         $this->assertSame(0, $dvdTester->getStatusCode());
-        $this->assertStringContainsString('180.0% (5)', $dvdTester->getDisplay());
+        $this->assertStringContainsString('100.0% (5)', $dvdTester->getDisplay());
         $this->assertStringNotContainsString('9.0 (5)', $dvdTester->getDisplay());
+        $this->assertStringNotContainsString('180.0% (5)', $dvdTester->getDisplay());
     }
 
     public function testVideoStatsPeriodFiltersByAddedDate(): void
@@ -162,8 +166,9 @@ class StatsCommandTest extends TestCase
         $this->assertStringContainsString('Total Videos', $output);
         $this->assertStringContainsString('Today Video', $output);
         $this->assertStringNotContainsString('Old Video', $output);
-        $this->assertStringContainsString('180.0% (5)', $output);
+        $this->assertStringContainsString('100.0% (5)', $output);
         $this->assertStringNotContainsString('80.0% (20)', $output);
+        $this->assertStringNotContainsString('180.0% (5)', $output);
     }
 
     public function testStatsRejectsInvalidPeriod(): void

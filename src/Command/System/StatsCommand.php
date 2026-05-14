@@ -1069,7 +1069,7 @@ class StatsCommand extends BaseCommand
             return '-';
         }
 
-        return sprintf('%.1f%% (%d)', (float) $rating * 20, $ratingCount);
+        return sprintf('%.1f%% (%d)', $this->ratingToPercent((float) $rating), $ratingCount);
     }
 
     private function formatAverageRatingPercent(mixed $rating): string
@@ -1078,7 +1078,12 @@ class StatsCommand extends BaseCommand
             return '0.00%';
         }
 
-        return sprintf('%.2f%%', (float) $rating * 20);
+        return sprintf('%.2f%%', $this->ratingToPercent((float) $rating));
+    }
+
+    private function ratingToPercent(float $rating): float
+    {
+        return max(0.0, min(100.0, $rating * 20));
     }
 
     private function getPeriodCondition(\PDO $db, string $period, string $column = 'added_date'): string
