@@ -67,6 +67,14 @@ class EvalCommandTest extends TestCase
         $this->assertStringContainsString($this->tempDir, $output);
     }
 
+    public function testEvalExposesKvsConfigArrayGlobally(): void
+    {
+        $this->tester->execute(['code' => 'global $config; echo $config["tables_prefix"];']);
+
+        $this->assertStringContainsString('ktvs_', $this->tester->getDisplay());
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
     public function testEvalUsesMysqliConnectionForKvsContext(): void
     {
         $command = new class ($this->config) extends EvalCommand {

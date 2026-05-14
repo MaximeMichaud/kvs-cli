@@ -404,6 +404,49 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * Build the KVS-style $config array exposed to eval, eval-file and shell user code.
+     *
+     * @return array<string, mixed>
+     */
+    protected function getKvsRuntimeConfig(): array
+    {
+        $config = $this->config->getProjectConfig();
+        $dbConfig = $this->config->getDatabaseConfig();
+        $tablePrefix = $this->config->getTablePrefix();
+        $multiTablePrefix = $this->config->getMultiTablePrefix();
+        $kvsVersion = $this->config->getKvsVersion();
+
+        $config['project_path'] ??= $this->config->getKvsPath();
+        $config['project_version'] ??= $kvsVersion !== '' ? $kvsVersion : 'unknown';
+        $config['tables_prefix'] ??= $tablePrefix;
+        $config['tables_prefix_multi'] ??= $multiTablePrefix;
+        $config['is_clone_db'] ??= $tablePrefix === $multiTablePrefix ? 'false' : 'true';
+
+        // Backward-compatible convenience keys previously exposed by eval.
+        $config['db_host'] ??= $dbConfig['host'] ?? null;
+        $config['db_name'] ??= $dbConfig['database'] ?? null;
+
+        return $config;
+    }
+
+    protected function defineKvsDatabaseConstantsForUserCode(): void
+    {
+        $dbConfig = $this->config->getDatabaseConfig();
+        $constants = [
+            'DB_HOST' => $dbConfig['host'] ?? null,
+            'DB_LOGIN' => $dbConfig['user'] ?? null,
+            'DB_PASS' => $dbConfig['password'] ?? null,
+            'DB_DEVICE' => $dbConfig['database'] ?? null,
+        ];
+
+        foreach ($constants as $name => $value) {
+            if (!defined($name) && is_string($value)) {
+                define($name, $value);
+            }
+        }
+    }
+
+    /**
      * Parse a status filter from --status, accepting both named aliases and KVS numeric status IDs.
      *
      * @param array<string, int> $aliases

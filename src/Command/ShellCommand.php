@@ -33,7 +33,8 @@ The <info>shell</info> command starts an interactive PHP shell (REPL) with the K
   kvs shell --includes=file.php  Include additional files
 
 <comment>Available in shell:</comment>
-  $config    - KVS configuration object
+  $config    - KVS CMS config array
+  $kvsConfig - KVS CLI configuration object
   $db        - Database connection
   sql()      - KVS native SQL helper
   DB::       - Database helper class
@@ -82,6 +83,8 @@ HELP
 
         // Include bootstrap
         require $tempBootstrap;
+        $this->defineKvsDatabaseConstantsForUserCode();
+        $GLOBALS['config'] = $this->getKvsRuntimeConfig();
 
         // Initialize database connections if available
         if ($db !== null) {
@@ -172,7 +175,7 @@ PHP;
     private function getShellVariables(): array
     {
         $vars = [
-            'config' => $this->config,
+            'config' => $this->getKvsRuntimeConfig(),
             'kvsConfig' => $this->config,
             'kvsPath' => $this->config->getKvsPath(),
         ];
@@ -194,8 +197,9 @@ PHP;
 PHP \PHP_VERSION on \PHP_OS
 
 Variables:
-  \$config - KVS configuration
-  \$db     - Database connection
+  \$config    - KVS CMS config array
+  \$kvsConfig - KVS CLI configuration object
+  \$db        - Database connection
 
 Classes:
   Video, User, Album, Category, Tag, DVD

@@ -42,7 +42,8 @@ The <info>eval-file</info> command executes a PHP file with the KVS context pre-
   kvs eval-file test.php --skip-kvs
 
 <comment>Available in script:</comment>
-  $kvsConfig - KVS configuration
+  $config    - KVS CMS config array
+  $kvsConfig - KVS CLI configuration object
   $kvsPath   - KVS installation path
   $db        - Database connection
   $argv      - Script arguments
@@ -115,7 +116,7 @@ HELP
             // Load KVS context
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;
-            $config = $this->config; // Alias for compatibility
+            $config = $this->getKvsRuntimeConfig();
 
             // Get mysqli connection for compatibility with KVS native snippets and helpers.
             $db = $this->getMysqliConnection();
@@ -126,6 +127,8 @@ HELP
             // Load bootstrap (this defines Model and DB classes with mysqli)
             $bootstrap = $this->getEvalBootstrapCode($this->config->getTablePrefix());
             eval($bootstrap);
+            $this->defineKvsDatabaseConstantsForUserCode();
+            $GLOBALS['config'] = $config;
         }
 
         // Execute the file

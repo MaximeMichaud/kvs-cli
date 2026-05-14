@@ -57,12 +57,23 @@ class EvalFileCommandTest extends TestCase
     {
         // Create a test PHP file that uses KVS context
         $testFile = $this->tempDir . '/test_context.php';
-        file_put_contents($testFile, '<?php echo "KVS Path: " . $config->getKvsPath();');
+        file_put_contents($testFile, '<?php echo "KVS Path: " . $kvsConfig->getKvsPath();');
 
         $this->tester->execute(['file' => $testFile]);
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('KVS Path: ' . $this->tempDir, $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testEvalFileExposesKvsConfigArrayGlobally(): void
+    {
+        $testFile = $this->tempDir . '/test_config.php';
+        file_put_contents($testFile, '<?php global $config; echo $config["tables_prefix"];');
+
+        $this->tester->execute(['file' => $testFile]);
+
+        $this->assertStringContainsString('ktvs_', $this->tester->getDisplay());
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 

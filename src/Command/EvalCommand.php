@@ -46,7 +46,8 @@ The <info>eval</info> command executes PHP code with the KVS context pre-loaded.
   kvs eval 'return ["videos" => Video::count(), "users" => User::count()];'
 
 <comment>Available variables:</comment>
-  $kvsConfig - KVS configuration
+  $config    - KVS CMS config array
+  $kvsConfig - KVS CLI configuration object
   $kvsPath   - KVS installation path
   $db        - Database connection
 
@@ -88,6 +89,7 @@ HELP
             // Prepare KVS context variables
             $kvsPath = $this->config->getKvsPath();
             $kvsConfig = $this->config;
+            $config = $this->getKvsRuntimeConfig();
 
             // Get mysqli connection for compatibility with KVS native snippets and helpers.
             $db = $this->getMysqliConnection();
@@ -95,18 +97,13 @@ HELP
                 $this->io()->warning('Database connection not available');
             }
 
-            // Get config array for easier access
             $dbConfig = $this->config->getDatabaseConfig();
-            $config = [
-                'project_path' => $kvsPath,
-                'project_version' => $this->config->get('project_version', 'unknown'),
-                'db_host' => $dbConfig['host'] ?? null,
-                'db_name' => $dbConfig['database'] ?? null,
-            ];
 
             // Load bootstrap (this defines Model and DB classes with mysqli)
             $bootstrap = $this->getEvalBootstrapCode($this->config->getTablePrefix());
             eval($bootstrap);
+            $this->defineKvsDatabaseConstantsForUserCode();
+            $GLOBALS['config'] = $config;
 
             // Initialize Model and DB helpers with mysqli connection
             // Must use global namespace since classes are defined in eval()

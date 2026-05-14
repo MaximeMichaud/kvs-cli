@@ -372,6 +372,14 @@ class Configuration
         return $this->config[$key] ?? $default;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function getProjectConfig(): array
+    {
+        return $this->config;
+    }
+
     public function isKvsInstalled(): bool
     {
         return $this->kvsPath !== '' && $this->dbConfig !== [];
