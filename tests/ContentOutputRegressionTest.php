@@ -106,6 +106,33 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertStringContainsString('Dimensions', $output);
     }
 
+    public function testVideoShowDisplaysPremiumPrivacyLabel(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, status_id INTEGER, resolution_type INTEGER, is_private INTEGER, ' .
+            'duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, rating REAL, ' .
+            'rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
+        $db->exec('CREATE TABLE ktvs_tags_videos (tag_id INTEGER, video_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(20, 'Premium news', 1, 2, 2, 120, 5050, '1280x720', '2024-01-02 00:00:00', 20, 5, 15, 7, '')"
+        );
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute(['action' => 'show', 'id' => '20']);
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Access\W+Premium/', $output);
+        $this->assertStringNotContainsString('Private    │ Yes', $output);
+    }
+
     public function testCommentListExposesDocumentedContentFields(): void
     {
         $db = $this->createSqliteConnection();

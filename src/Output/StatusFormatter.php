@@ -53,6 +53,11 @@ class StatusFormatter
     public const PLAYLIST_DISABLED = 0;
     public const PLAYLIST_ACTIVE = 1;
 
+    // Shared KVS content privacy constants
+    public const PRIVACY_PUBLIC = 0;
+    public const PRIVACY_PRIVATE = 1;
+    public const PRIVACY_PREMIUM = 2;
+
     // Video format status constants
     public const FORMAT_DISABLED = 0;
     public const FORMAT_REQUIRED = 1;
@@ -248,6 +253,24 @@ class StatusFormatter
         ];
 
         return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted KVS content privacy label.
+     *
+     * @param int $privacyId Privacy ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted privacy label
+     */
+    public static function contentPrivacy(int $privacyId, bool $withColor = true): string
+    {
+        $labels = [
+            self::PRIVACY_PUBLIC => ['text' => 'Public', 'color' => 'green'],
+            self::PRIVACY_PRIVATE => ['text' => 'Private', 'color' => 'yellow'],
+            self::PRIVACY_PREMIUM => ['text' => 'Premium', 'color' => 'cyan'],
+        ];
+
+        return self::format($privacyId, $labels, $withColor);
     }
 
     /**

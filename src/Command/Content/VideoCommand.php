@@ -215,7 +215,7 @@ HELP
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
                 ['Resolution', $this->formatResolutionType($video['resolution_type'])],
-                ['Private', $video['is_private'] > 0 ? '<fg=yellow>Yes</>' : '<fg=gray>No</>'],
+                ['Access', StatusFormatter::contentPrivacy($video['is_private'])],
                 ['Duration', $this->formatDuration($video['duration'])],
                 ['File Size', format_bytes($video['file_size'])],
                 ['Dimensions', $video['file_dimensions']],
