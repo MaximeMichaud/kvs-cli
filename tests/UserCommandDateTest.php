@@ -27,7 +27,6 @@ class UserCommandDateTest extends TestCase
     {
         $command = new UserCommand(new Configuration(['path' => $this->tempDir]));
         $method = new \ReflectionMethod($command, 'formatDate');
-        $method->setAccessible(true);
 
         $this->assertSame('Never', $method->invoke($command, '0000-00-00 00:00:00'));
         $this->assertSame('Unknown', $method->invoke($command, '0000-00-00', 'Y-m-d H:i:s', 'Unknown'));
