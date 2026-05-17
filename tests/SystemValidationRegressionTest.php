@@ -59,6 +59,28 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --limit', $tester->getDisplay());
     }
 
+    public function testQueueShowHistoryUsesConversionServerNameAndHistoryFields(): void
+    {
+        $this->createQueueTables();
+        $this->db->exec("INSERT INTO ktvs_admin_conversion_servers VALUES (1, 'Local')");
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks_history " .
+            "(task_id, status_id, type_id, video_id, album_id, server_id, error_code, priority, " .
+            "start_date, end_date, effective_duration) " .
+            "VALUES (10, 3, 2, 20, 0, 1, 0, 0, '2026-05-15 00:11:02', '2026-05-15 00:12:02', 60)"
+        );
+
+        $tester = new CommandTester($this->createQueueCommand());
+        $tester->execute(['action' => 'show', 'id' => '10']);
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Server\W+Local/', $output);
+        $this->assertStringNotContainsString('Server #1', $output);
+        $this->assertStringNotContainsString('Added', $output);
+        $this->assertStringNotContainsString('Restarts', $output);
+    }
+
     public function testOptionsRejectInvalidCategory(): void
     {
         $tester = new CommandTester($this->createOptionsCommand());
@@ -163,6 +185,10 @@ class SystemValidationRegressionTest extends TestCase
             type_id INTEGER,
             video_id INTEGER,
             album_id INTEGER,
+            server_id INTEGER,
+            error_code INTEGER,
+            priority INTEGER,
+            start_date TEXT,
             effective_duration INTEGER,
             end_date TEXT
         )');

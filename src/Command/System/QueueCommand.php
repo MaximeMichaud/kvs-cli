@@ -338,8 +338,11 @@ HELP
         }
 
         $stmt = $db->prepare("
-            SELECT * FROM {$this->table('background_tasks_history')}
-            WHERE task_id = :id
+            SELECT bh.*, cs.title as server_name
+            FROM {$this->table('background_tasks_history')} bh
+            LEFT JOIN {$this->table('admin_conversion_servers')} cs
+                ON bh.server_id = cs.server_id
+            WHERE bh.task_id = :id
         ");
         $stmt->execute(['id' => $id]);
         /** @var array<string, mixed>|false $task */
@@ -390,10 +393,25 @@ HELP
             $info[] = ['Message', $message];
         }
 
-        $timesRestarted = is_numeric($task['times_restarted'] ?? null) ? (int) $task['times_restarted'] : 0;
-        $addedDate = is_string($task['added_date'] ?? null) ? $task['added_date'] : '';
-        $info[] = ['Restarts', (string) $timesRestarted];
-        $info[] = ['Added', $addedDate];
+        $this->appendTaskLifecycleInfo($info, $task, $isHistory);
+
+        return $info;
+    }
+
+    /**
+     * @param list<list<string|int|null>> $info
+     * @param array<string, mixed> $task
+     */
+    private function appendTaskLifecycleInfo(array &$info, array $task, bool $isHistory): void
+    {
+        if (!$isHistory) {
+            $timesRestarted = is_numeric($task['times_restarted'] ?? null)
+                ? (int) $task['times_restarted']
+                : 0;
+            $addedDate = is_string($task['added_date'] ?? null) ? $task['added_date'] : '';
+            $info[] = ['Restarts', (string) $timesRestarted];
+            $info[] = ['Added', $addedDate];
+        }
 
         $startDate = is_string($task['start_date'] ?? null) ? $task['start_date'] : '';
         if ($startDate !== '' && $startDate !== '0000-00-00 00:00:00') {
@@ -402,7 +420,9 @@ HELP
 
         if ($isHistory) {
             $endDate = is_string($task['end_date'] ?? null) ? $task['end_date'] : '';
-            $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
+            $effectiveDuration = is_numeric($task['effective_duration'] ?? null)
+                ? (int) $task['effective_duration']
+                : 0;
             if ($endDate !== '') {
                 $info[] = ['Ended', $endDate];
             }
@@ -410,8 +430,6 @@ HELP
                 $info[] = ['Duration', $this->formatDuration($effectiveDuration)];
             }
         }
-
-        return $info;
     }
 
     /**

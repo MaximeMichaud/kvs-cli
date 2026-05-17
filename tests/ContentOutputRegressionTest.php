@@ -4,6 +4,7 @@ namespace KVS\CLI\Tests;
 
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Command\Content\TagCommand;
+use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
@@ -145,6 +146,83 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Daily news', $rows[0]['content_title']);
     }
 
+    public function testUserListExposesFormattedUserStatus(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_users (' .
+            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (user_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (user_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_users VALUES " .
+            "(1, 'member', 'Member', 'member@example.com', 2, '2024-01-01 00:00:00'), " .
+            "(2, 'anonymous', 'Anonymous', 'anonymous@example.com', 4, '2024-01-02 00:00:00')"
+        );
+
+        $tester = new CommandTester($this->createUserCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,username,status',
+            '--format' => 'json',
+            '--limit' => '2',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Anonymous', $rows[0]['status']);
+        $this->assertSame('Active', $rows[1]['status']);
+
+        $defaultTester = new CommandTester($this->createUserCommand($db));
+        $defaultTester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $defaultRows = $this->decodeJsonRows($defaultTester->getDisplay());
+
+        $this->assertSame(0, $defaultTester->getStatusCode());
+        $this->assertSame('Anonymous', $defaultRows[0]['status']);
+        $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
+    }
+
+    public function testUserShowUsesKvsGenderLabels(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_users (' .
+            'user_id INTEGER, username TEXT, email TEXT, display_name TEXT, status_id INTEGER, country_id TEXT, ' .
+            'gender_id INTEGER, birth_date TEXT, added_date TEXT, last_login_date TEXT, ip TEXT, ' .
+            'profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, ' .
+            'tokens_available INTEGER, tokens_required INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (user_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (user_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (user_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_users VALUES " .
+            "(1, 'unset', 'unset@example.com', 'Unset', 2, '', 0, '', " .
+            "'2024-01-01 00:00:00', '', '', 0, 0, 0, 0, 0), " .
+            "(2, 'couple', 'couple@example.com', 'Couple', 2, '', 3, '', " .
+            "'2024-01-01 00:00:00', '', '', 0, 0, 0, 0, 0), " .
+            "(3, 'transsexual', 'transsexual@example.com', 'Transsexual', 2, '', 4, '', " .
+            "'2024-01-01 00:00:00', '', '', 0, 0, 0, 0, 0)"
+        );
+
+        foreach ([1 => 'N/A', 2 => 'Couple', 3 => 'Transsexual'] as $userId => $expectedGender) {
+            $tester = new CommandTester($this->createUserCommand($db));
+            $tester->execute(['action' => 'show', 'id' => (string) $userId]);
+
+            $this->assertSame(0, $tester->getStatusCode());
+            $this->assertMatchesRegularExpression(
+                '/Gender\W+' . preg_quote($expectedGender, '/') . '/',
+                $tester->getDisplay()
+            );
+        }
+    }
+
     public function testTagShowCountsAllKvsTagRelations(): void
     {
         $db = $this->createSqliteConnection();
@@ -195,8 +273,12 @@ class ContentOutputRegressionTest extends TestCase
 
     private function createTagTables(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, added_date TEXT)');
-        foreach (['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'] as $suffix) {
+        $db->exec(
+            'CREATE TABLE ktvs_tags ' .
+            '(tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, added_date TEXT)'
+        );
+        $tagRelations = ['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'];
+        foreach ($tagRelations as $suffix) {
             $db->exec("CREATE TABLE ktvs_tags_{$suffix} (tag_id INTEGER)");
         }
     }
@@ -252,6 +334,22 @@ class ContentOutputRegressionTest extends TestCase
             {
                 parent::__construct($config);
                 $this->setName('content:tag');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createUserCommand(\PDO $db): UserCommand
+    {
+        return new class ($this->createConfig(), $db) extends UserCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:user');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO

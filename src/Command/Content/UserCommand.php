@@ -156,19 +156,27 @@ HELP
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
 
+            /** @var list<array<string, mixed>> $users */
             $users = $stmt->fetchAll();
+            $users = array_map(function (array $user): array {
+                $statusId = $this->getInt($user['status_id'] ?? null);
+                $user['id'] = $user['user_id'] ?? 0;
+                $user['status'] = StatusFormatter::user($statusId, false);
+                $user['gender'] = $this->formatGender($this->getInt($user['gender_id'] ?? null));
+
+                return $user;
+            }, $users);
 
             // Determine default fields based on filters
             // When filtering by removal-requested, include removal_reason
             if ($this->getBoolOption($input, 'removal-requested')) {
                 $defaultFields = ['user_id', 'username', 'email', 'removal_reason', 'added_date'];
             } else {
-                $defaultFields = ['user_id', 'username', 'display_name', 'email', 'status_id', 'added_date'];
+                $defaultFields = ['user_id', 'username', 'display_name', 'email', 'status', 'added_date'];
             }
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);
-            /** @var list<array<string, mixed>> $users */
             $formatter->display($users, $this->io());
 
             return self::SUCCESS;
@@ -212,9 +220,12 @@ HELP
     private function formatGender(int $genderId): string
     {
         return match ($genderId) {
+            0 => 'N/A',
             1 => 'Male',
             2 => 'Female',
-            default => 'Other',
+            3 => 'Couple',
+            4 => 'Transsexual',
+            default => 'Unknown',
         };
     }
 
