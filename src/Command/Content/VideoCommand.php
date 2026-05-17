@@ -50,7 +50,7 @@ Manage KVS videos.
   rating          Rating (out of 5)
   filesize        File size
   resolution      Resolution type (SD/HD/FHD/4K+)
-  is_private      Private flag (Yes/No)
+  is_private      Access level (Public/Private/Premium)
   favourites      Favourites count
 
 <fg=yellow>EXAMPLES:</>
@@ -153,6 +153,10 @@ HELP
                 $video['id'] = $video['video_id'];
                 $statusId = isset($video['status_id']) && is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
                 $video['status'] = StatusFormatter::video($statusId, false);
+                $privacyId = isset($video['is_private']) && is_numeric($video['is_private']) ? (int) $video['is_private'] : 0;
+                $privacy = StatusFormatter::contentPrivacy($privacyId, false);
+                $video['is_private'] = $privacy;
+                $video['access'] = $privacy;
                 $resolutionType = isset($video['resolution_type']) && is_numeric($video['resolution_type'])
                     ? (int) $video['resolution_type']
                     : 0;

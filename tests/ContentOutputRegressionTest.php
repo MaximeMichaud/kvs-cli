@@ -60,6 +60,36 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame(7, (int) $rows[0]['favourites']);
     }
 
+    public function testVideoListFormatsKvsPrivacyField(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, ' .
+            'video_viewed INTEGER, rating_amount INTEGER, rating REAL, resolution_type INTEGER, ' .
+            'is_private INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(20, 1, 1, 'Premium news', '2024-01-02 00:00:00', 15, 4, 16, 2, 2)"
+        );
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,title,is_private',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Premium', $rows[0]['is_private']);
+    }
+
     public function testVideoStatsFlagShowsStatsWithoutAction(): void
     {
         $db = $this->createSqliteConnection();
