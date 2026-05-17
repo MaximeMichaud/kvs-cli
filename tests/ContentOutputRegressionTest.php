@@ -322,6 +322,27 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/Total Usage\s*│\s*6/', $output);
     }
 
+    public function testTagListExposesFormattedStatus(): void
+    {
+        $db = $this->createSqliteConnection();
+        $this->createTagTables($db);
+        $db->exec("INSERT INTO ktvs_tags VALUES (39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00')");
+
+        $tester = new CommandTester($this->createTagCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,tag,status',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(39, (int) $rows[0]['id']);
+        $this->assertSame('Active', $rows[0]['status']);
+    }
+
     public function testTagStatsCountsTagsUsedOutsideVideosAndAlbums(): void
     {
         $db = $this->createSqliteConnection();

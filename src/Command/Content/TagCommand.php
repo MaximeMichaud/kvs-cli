@@ -163,13 +163,17 @@ HELP
             $transformedTags = [];
             foreach ($tags as $tag) {
                 $counts = $this->extractTagUsageCounts($tag);
+                $statusIdVal = $tag['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
                 $transformedTags[] = [
                     'tag_id' => $tag['tag_id'] ?? 0,
+                    'id' => $tag['tag_id'] ?? 0,
                     'tag' => $tag['tag'] ?? '',
                     'video_count' => $counts['videos'],
                     'album_count' => $counts['albums'],
                     'total_usage' => array_sum($counts),
-                    'status_id' => $tag['status_id'] ?? 0,
+                    'status_id' => $statusId,
+                    'status' => StatusFormatter::tag($statusId, false),
                     ...$counts,
                 ];
             }
@@ -177,7 +181,7 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['tag_id', 'tag', 'video_count', 'album_count', 'total_usage', 'status_id']
+                ['tag_id', 'tag', 'video_count', 'album_count', 'total_usage', 'status']
             );
             $formatter->display($transformedTags, $this->io());
         } catch (\Exception $e) {
