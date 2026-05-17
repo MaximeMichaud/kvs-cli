@@ -135,11 +135,19 @@ HELP
 
             /** @var list<array<string, mixed>> $categories */
             $categories = array_values($stmt->fetchAll(\PDO::FETCH_ASSOC));
+            $categories = array_map(function (array $category): array {
+                $statusIdVal = $category['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $category['id'] = $category['category_id'] ?? 0;
+                $category['status'] = StatusFormatter::category($statusId, false);
+
+                return $category;
+            }, $categories);
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['category_id', 'title', 'video_count', 'album_count', 'status_id']
+                ['category_id', 'title', 'video_count', 'album_count', 'status']
             );
             $formatter->display($categories, $this->io());
 

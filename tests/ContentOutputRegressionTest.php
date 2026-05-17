@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Tests;
 
+use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Command\Content\UserCommand;
@@ -280,6 +281,29 @@ class ContentOutputRegressionTest extends TestCase
         }
     }
 
+    public function testCategoryListExposesFormattedStatus(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_albums (category_id INTEGER)');
+        $db->exec("INSERT INTO ktvs_categories VALUES (31, 'Art', 1)");
+
+        $tester = new CommandTester($this->createCategoryCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,title,status',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(31, (int) $rows[0]['id']);
+        $this->assertSame('Active', $rows[0]['status']);
+    }
+
     public function testTagShowCountsAllKvsTagRelations(): void
     {
         $db = $this->createSqliteConnection();
@@ -391,6 +415,22 @@ class ContentOutputRegressionTest extends TestCase
             {
                 parent::__construct($config);
                 $this->setName('content:tag');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createCategoryCommand(\PDO $db): CategoryCommand
+    {
+        return new class ($this->createConfig(), $db) extends CategoryCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:category');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO
