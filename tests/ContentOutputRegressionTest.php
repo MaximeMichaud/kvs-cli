@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Tests;
 
+use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Command\Content\TagCommand;
@@ -162,6 +163,48 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertMatchesRegularExpression('/Access\W+Premium/', $output);
         $this->assertStringNotContainsString('Private    │ Yes', $output);
+    }
+
+    public function testAlbumListExposesFormattedPrivacyField(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_albums (' .
+            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_albums VALUES " .
+            "(4, 1, 'Weekend Outdoor Set', 1, 2, '2024-01-02 00:00:00', 15, 20, 5)"
+        );
+
+        $tester = new CommandTester($this->createAlbumCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,title,is_private',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(4, (int) $rows[0]['id']);
+        $this->assertSame('Premium', $rows[0]['is_private']);
+
+        $defaultTester = new CommandTester($this->createAlbumCommand($db));
+        $defaultTester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $defaultRows = $this->decodeJsonRows($defaultTester->getDisplay());
+
+        $this->assertSame(0, $defaultTester->getStatusCode());
+        $this->assertSame('Premium', $defaultRows[0]['is_private']);
     }
 
     public function testCommentListExposesDocumentedContentFields(): void
@@ -404,6 +447,22 @@ class ContentOutputRegressionTest extends TestCase
             {
                 parent::__construct($config);
                 $this->setName('content:video');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createAlbumCommand(\PDO $db): AlbumCommand
+    {
+        return new class ($this->createConfig(), $db) extends AlbumCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:album');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO

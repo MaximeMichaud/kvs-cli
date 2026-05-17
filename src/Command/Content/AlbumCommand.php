@@ -38,6 +38,7 @@ Manage KVS photo albums.
   title           Album title
   images          Number of images
   status          Album status (Active/Disabled)
+  is_private      Access level (Public/Private/Premium)
   user, username  Username
   date, post_date Posted date
   views           View count
@@ -131,6 +132,9 @@ HELP
 
                 $statusIdVal = $album['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $privacyIdVal = $album['is_private'] ?? 0;
+                $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
+                $privacy = StatusFormatter::contentPrivacy($privacyId, false);
 
                 return [
                     'album_id' => $album['album_id'] ?? 0,
@@ -140,6 +144,8 @@ HELP
                     'images' => $album['image_count'] ?? 0,  // Alias
                     'status_id' => $statusId,
                     'status' => StatusFormatter::album($statusId, false),  // Alias
+                    'is_private' => $privacy,
+                    'access' => $privacy,
                     'username' => $album['username'] ?? '',
                     'post_date' => $album['post_date'] ?? '',
                     'album_viewed' => $album['album_viewed'] ?? 0,
@@ -151,7 +157,7 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['album_id', 'title', 'image_count', 'status_id', 'username', 'post_date']
+                ['album_id', 'title', 'image_count', 'status_id', 'is_private', 'username', 'post_date']
             );
             $formatter->display($transformedAlbums, $this->io());
 
