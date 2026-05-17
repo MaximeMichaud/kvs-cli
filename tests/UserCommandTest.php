@@ -65,9 +65,15 @@ class UserCommandTest extends TestCase
     public function testUserListWithRemovalRequested(): void
     {
         // Create a test user with removal request
+        $this->db->exec("SET SESSION sql_mode = ''");
         $this->db->exec("
-            INSERT INTO ktvs_users (username, password, display_name, email, status_id, is_removal_requested, removal_reason, added_date)
-            VALUES ('test_removal_user', 'test_hash', 'Test Removal', 'test_removal@test.com', 2, 1, 'I want to delete my account', UNIX_TIMESTAMP())
+            INSERT INTO ktvs_users (
+                username, pass, display_name, email, status_id,
+                is_removal_requested, removal_reason, added_date
+            ) VALUES (
+                'test_removal_user', 'test_hash', 'Test Removal', 'test_removal@test.com', 2,
+                1, 'I want to delete my account', NOW()
+            )
             ON DUPLICATE KEY UPDATE is_removal_requested=1, removal_reason='I want to delete my account'
         ");
 

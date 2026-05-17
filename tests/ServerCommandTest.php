@@ -46,6 +46,7 @@ class ServerCommandTest extends TestCase
     public function testServerListBasic(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--limit' => 10
         ]);
@@ -56,6 +57,7 @@ class ServerCommandTest extends TestCase
     public function testServerListWithStatusFilter(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--status' => 'active',
             '--limit' => 10
@@ -67,6 +69,7 @@ class ServerCommandTest extends TestCase
     public function testServerListWithTypeFilter(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--type' => 'video',
             '--limit' => 10
@@ -78,6 +81,7 @@ class ServerCommandTest extends TestCase
     public function testServerListWithConnectionFilter(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--connection' => 'local',
             '--limit' => 10
@@ -89,6 +93,7 @@ class ServerCommandTest extends TestCase
     public function testServerListWithErrorsFilter(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--errors' => true,
             '--limit' => 10
@@ -101,6 +106,7 @@ class ServerCommandTest extends TestCase
     {
         $testerJson = new CommandTester($this->command);
         $testerJson->execute([
+            '--force' => true,
             'action' => 'list',
             '--limit' => 1,
             '--format' => 'json'
@@ -115,6 +121,7 @@ class ServerCommandTest extends TestCase
     {
         $testerCount = new CommandTester($this->command);
         $testerCount->execute([
+            '--force' => true,
             'action' => 'list',
             '--format' => 'count'
         ]);
@@ -134,6 +141,7 @@ class ServerCommandTest extends TestCase
         }
 
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show',
             'id' => $serverId
         ]);
@@ -147,6 +155,7 @@ class ServerCommandTest extends TestCase
     public function testServerShowNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show',
             'id' => 999999
         ]);
@@ -159,6 +168,7 @@ class ServerCommandTest extends TestCase
     public function testServerShowMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show'
         ]);
 
@@ -170,6 +180,7 @@ class ServerCommandTest extends TestCase
     public function testServerStats(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'stats'
         ]);
 
@@ -182,6 +193,7 @@ class ServerCommandTest extends TestCase
     public function testServerGroupList(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'group'
         ]);
 
@@ -198,6 +210,7 @@ class ServerCommandTest extends TestCase
         }
 
         $this->tester->execute([
+            '--force' => true,
             'action' => 'group',
             'id' => $groupId
         ]);
@@ -210,6 +223,7 @@ class ServerCommandTest extends TestCase
     public function testServerGroupShowNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'group',
             'id' => 999999
         ]);
@@ -231,7 +245,7 @@ class ServerCommandTest extends TestCase
 
     public function testServerDefaultAction(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         // Default action is list
         $this->assertEquals(0, $this->tester->getStatusCode());
@@ -240,6 +254,7 @@ class ServerCommandTest extends TestCase
     public function testServerEnableMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'enable'
         ]);
 
@@ -251,6 +266,7 @@ class ServerCommandTest extends TestCase
     public function testServerDisableMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'disable'
         ]);
 
@@ -262,6 +278,7 @@ class ServerCommandTest extends TestCase
     public function testServerEnableNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'enable',
             'id' => 999999
         ]);
@@ -274,6 +291,7 @@ class ServerCommandTest extends TestCase
     public function testServerDisableNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'disable',
             'id' => 999999
         ]);

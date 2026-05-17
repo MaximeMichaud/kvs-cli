@@ -46,6 +46,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionListBasic(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--limit' => 10
         ]);
@@ -56,6 +57,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionListWithStatusFilter(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--status' => 'active',
             '--limit' => 10
@@ -67,6 +69,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionListWithErrorsFilter(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'list',
             '--errors' => true,
             '--limit' => 10
@@ -79,6 +82,7 @@ class ConversionCommandTest extends TestCase
     {
         $testerJson = new CommandTester($this->command);
         $testerJson->execute([
+            '--force' => true,
             'action' => 'list',
             '--limit' => 1,
             '--format' => 'json'
@@ -93,6 +97,7 @@ class ConversionCommandTest extends TestCase
     {
         $testerCount = new CommandTester($this->command);
         $testerCount->execute([
+            '--force' => true,
             'action' => 'list',
             '--format' => 'count'
         ]);
@@ -112,6 +117,7 @@ class ConversionCommandTest extends TestCase
         }
 
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show',
             'id' => $serverId
         ]);
@@ -125,6 +131,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionShowNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show',
             'id' => 999999
         ]);
@@ -137,6 +144,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionShowMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show'
         ]);
 
@@ -148,6 +156,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionStats(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'stats'
         ]);
 
@@ -168,7 +177,7 @@ class ConversionCommandTest extends TestCase
 
     public function testConversionDefaultAction(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         // Default action is list
         $this->assertEquals(0, $this->tester->getStatusCode());
@@ -177,6 +186,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionEnableMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'enable'
         ]);
 
@@ -188,6 +198,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionDisableMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'disable'
         ]);
 
@@ -199,6 +210,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionEnableNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'enable',
             'id' => 999999
         ]);
@@ -211,6 +223,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionDebugOnMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'debug-on'
         ]);
 
@@ -222,6 +235,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionDebugOffMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'debug-off'
         ]);
 
@@ -233,6 +247,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionDebugOnNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'debug-on',
             'id' => 999999
         ]);
@@ -245,6 +260,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionLogMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'log'
         ]);
 
@@ -256,6 +272,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionLogNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'log',
             'id' => 999999
         ]);
@@ -268,6 +285,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionConfigMissingId(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'config'
         ]);
 
@@ -279,6 +297,7 @@ class ConversionCommandTest extends TestCase
     public function testConversionConfigNotFound(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'config',
             'id' => 999999
         ]);

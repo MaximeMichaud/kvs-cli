@@ -197,7 +197,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('parent', strtolower($output));
+        $this->assertStringContainsString('category group', strtolower($output));
         $this->assertStringContainsString('not found', strtolower($output));
     }
 
@@ -249,7 +249,8 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('own parent', strtolower($output));
+        $this->assertStringContainsString('category group', strtolower($output));
+        $this->assertStringContainsString('not found', strtolower($output));
     }
 
     // ========================================

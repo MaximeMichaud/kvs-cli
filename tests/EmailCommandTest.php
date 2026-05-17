@@ -46,6 +46,7 @@ class EmailCommandTest extends TestCase
     public function testEmailShowBasic(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show'
         ]);
 
@@ -55,6 +56,7 @@ class EmailCommandTest extends TestCase
     public function testEmailShowJsonFormat(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show',
             '--format' => 'json'
         ]);
@@ -66,7 +68,7 @@ class EmailCommandTest extends TestCase
 
     public function testEmailDefaultAction(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         // Default action is show
         $this->assertEquals(0, $this->tester->getStatusCode());
@@ -84,6 +86,7 @@ class EmailCommandTest extends TestCase
     public function testEmailTestMissingRecipient(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'test'
         ]);
 
@@ -95,6 +98,7 @@ class EmailCommandTest extends TestCase
     public function testEmailTestInvalidEmail(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'test',
             '--to' => 'invalid-email'
         ]);
@@ -107,6 +111,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetNoOptions(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set'
         ]);
 
@@ -118,6 +123,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetInvalidMailer(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--mailer' => 'invalid'
         ]);
@@ -130,6 +136,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetInvalidFromEmail(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--from-email' => 'not-an-email'
         ]);
@@ -142,6 +149,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetInvalidSmtpSecurity(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--smtp-security' => 'invalid'
         ]);
@@ -154,6 +162,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetInvalidSmtpPort(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--smtp-port' => '99999'
         ]);
@@ -166,6 +175,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetInvalidDebugLevel(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--debug' => '5'
         ]);
@@ -178,6 +188,7 @@ class EmailCommandTest extends TestCase
     public function testEmailSetInvalidSmtpTimeout(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--smtp-timeout' => '9999'
         ]);
@@ -190,6 +201,7 @@ class EmailCommandTest extends TestCase
     public function testEmailLogAction(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'log'
         ]);
 
@@ -200,6 +212,7 @@ class EmailCommandTest extends TestCase
     public function testEmailTemplatesAction(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'templates'
         ]);
 
@@ -210,6 +223,7 @@ class EmailCommandTest extends TestCase
     public function testEmailTemplatesJsonFormat(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'templates',
             '--format' => 'json',
         ]);

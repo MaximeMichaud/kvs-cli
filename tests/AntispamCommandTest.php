@@ -46,6 +46,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamShowBasic(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show'
         ]);
 
@@ -60,6 +61,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamShowJsonFormat(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'show',
             '--format' => 'json'
         ]);
@@ -77,7 +79,7 @@ class AntispamCommandTest extends TestCase
 
     public function testAntispamDefaultAction(): void
     {
-        $this->tester->execute([]);
+        $this->tester->execute(['--force' => true]);
 
         // Default action is show
         $output = $this->tester->getDisplay();
@@ -88,6 +90,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamBlacklistAction(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'blacklist'
         ]);
 
@@ -102,6 +105,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamBlacklistJsonFormat(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'blacklist',
             '--format' => 'json'
         ]);
@@ -129,6 +133,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamSetNoOptions(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set'
         ]);
 
@@ -140,6 +145,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamSetInvalidBlacklistAction(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--blacklist-action' => 'invalid'
         ]);
@@ -152,6 +158,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamSetInvalidWordsIgnore(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--words-ignore-feedbacks' => 'invalid'
         ]);
@@ -164,6 +171,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamSetInvalidDuplicatesComments(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--duplicates-comments' => 'invalid'
         ]);
@@ -176,6 +184,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamSetInvalidRuleFormat(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--comments-captcha' => 'invalid'
         ]);
@@ -188,6 +197,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamSetInvalidHistory(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'set',
             '--videos-history' => 'invalid'
         ]);
@@ -200,6 +210,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamAddNoOptions(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'add'
         ]);
 
@@ -211,6 +222,7 @@ class AntispamCommandTest extends TestCase
     public function testAntispamRemoveNoOptions(): void
     {
         $this->tester->execute([
+            '--force' => true,
             'action' => 'remove'
         ]);
 

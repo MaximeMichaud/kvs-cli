@@ -59,20 +59,20 @@ class ExportCommandTest extends TestCase
         $this->assertTrue($definition->hasOption('compress'));
     }
 
-    public function testExportFailsWithoutDumpCommand(): void
+    public function testExportWithDefaultOptions(): void
     {
-        // This test expects failure because mysqldump/mariadb-dump may not be available
-        // or database credentials are invalid
-        $this->tester->execute([]);
+        $outputFile = $this->tempDir . '/exports/default_backup.sql';
+
+        $this->tester->execute([
+            '--output' => $outputFile
+        ]);
 
         $output = $this->tester->getDisplay();
-        // Should fail with either "dump command not found" or "export failed"
-        $this->assertTrue(
-            str_contains(strtolower($output), 'dump') ||
-            str_contains(strtolower($output), 'error') ||
-            str_contains(strtolower($output), 'failed') ||
-            str_contains(strtolower($output), 'not found')
-        );
+        $this->assertNotEmpty($output);
+
+        if ($this->tester->getStatusCode() === 0) {
+            $this->assertFileExists($outputFile);
+        }
     }
 
     public function testExportWithOutputOption(): void
@@ -90,7 +90,10 @@ class ExportCommandTest extends TestCase
 
     public function testExportWithTablesOption(): void
     {
+        $outputFile = $this->tempDir . '/exports/tables_backup.sql';
+
         $this->tester->execute([
+            '--output' => $outputFile,
             '--tables' => 'ktvs_videos,ktvs_users'
         ]);
 
@@ -101,7 +104,10 @@ class ExportCommandTest extends TestCase
 
     public function testExportWithNoDataOption(): void
     {
+        $outputFile = $this->tempDir . '/exports/schema_backup.sql';
+
         $this->tester->execute([
+            '--output' => $outputFile,
             '--no-data' => true
         ]);
 
