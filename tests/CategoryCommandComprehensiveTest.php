@@ -30,7 +30,10 @@ class CategoryCommandComprehensiveTest extends TestCase
     {
         // Use real KVS installation path for integration testing
         // Try multiple methods to find KVS path (no hardcoding)
-        $kvsPath = getenv('KVS_PATH') ?: null;
+        $kvsPath = getenv('KVS_TEST_PATH') ?: (getenv('KVS_PATH') ?: null);
+        if ($kvsPath && !is_dir($kvsPath . '/admin/include')) {
+            $kvsPath = null;
+        }
 
         // If not set, try to detect from current directory structure
         if (!$kvsPath) {
