@@ -71,24 +71,15 @@ HELP
         $currentPhar = $realPhar !== false ? $realPhar : $argvPath;
         $currentVersion = $this->getCurrentVersion();
 
-        // Check permissions
-        if (!is_writable($currentPhar)) {
-            $io->error(sprintf('%s is not writable by current user.', $currentPhar));
-            $io->text('Try running with sudo: sudo kvs self-update');
-            return Command::FAILURE;
-        }
-
-        if (!is_writable(dirname($currentPhar))) {
-            $io->error(sprintf('Directory %s is not writable by current user.', dirname($currentPhar)));
-            return Command::FAILURE;
-        }
-
         $io->text(sprintf('Current version: <info>%s</info>', $currentVersion));
 
         // Handle --dev option (download from nightly.link)
         /** @var bool $devOption */
         $devOption = $input->getOption('dev');
         if ($devOption) {
+            if (!$this->ensurePharIsWritable($currentPhar, $io)) {
+                return Command::FAILURE;
+            }
             return $this->updateFromDev($io, $input, $currentPhar);
         }
 
@@ -135,6 +126,10 @@ HELP
             $io->newLine();
             $io->text('Run <info>kvs self-update</info> to install the update.');
             return Command::SUCCESS;
+        }
+
+        if (!$this->ensurePharIsWritable($currentPhar, $io)) {
+            return Command::FAILURE;
         }
 
         // Confirm update
@@ -199,12 +194,12 @@ HELP
         return Command::SUCCESS;
     }
 
-    private function isRunningAsPhar(): bool
+    protected function isRunningAsPhar(): bool
     {
         return strlen(\Phar::running()) > 0;
     }
 
-    private function getCurrentVersion(): string
+    protected function getCurrentVersion(): string
     {
         // Try to get version from Application
         if (defined('KVS_CLI_VERSION')) {
@@ -217,10 +212,26 @@ HELP
         return '0.0.0';
     }
 
+    private function ensurePharIsWritable(string $currentPhar, SymfonyStyle $io): bool
+    {
+        if (!is_writable($currentPhar)) {
+            $io->error(sprintf('%s is not writable by current user.', $currentPhar));
+            $io->text('Try running with sudo: sudo kvs self-update');
+            return false;
+        }
+
+        if (!is_writable(dirname($currentPhar))) {
+            $io->error(sprintf('Directory %s is not writable by current user.', dirname($currentPhar)));
+            return false;
+        }
+
+        return true;
+    }
+
     /**
      * @return array<array{tag_name: string, prerelease: bool, assets: array<array{name: string, browser_download_url: string}>}>|null
      */
-    private function getGitHubReleases(SymfonyStyle $io, bool $includePrerelease): ?array
+    protected function getGitHubReleases(SymfonyStyle $io, bool $includePrerelease): ?array
     {
         $url = sprintf('%s/repos/%s/releases', Constants::GITHUB_API_URL, Constants::GITHUB_REPO);
 

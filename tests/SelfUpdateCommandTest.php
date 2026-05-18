@@ -8,6 +8,7 @@ use KVS\CLI\Command\SelfUpdateCommand;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 class SelfUpdateCommandTest extends TestCase
 {
@@ -95,6 +96,60 @@ class SelfUpdateCommandTest extends TestCase
         // Should still fail because not running as PHAR
         $this->assertStringContainsString('PHAR', $output);
         $this->assertEquals(1, $this->commandTester->getStatusCode());
+    }
+
+    public function testCheckOptionDoesNotRequireWritablePhar(): void
+    {
+        $pharPath = tempnam(sys_get_temp_dir(), 'kvs-readonly-');
+        $this->assertIsString($pharPath);
+        file_put_contents($pharPath, 'phar');
+        chmod($pharPath, 0555);
+
+        $previousArgv = $_SERVER['argv'] ?? null;
+        $_SERVER['argv'] = [$pharPath];
+
+        $command = new class extends SelfUpdateCommand {
+            protected function isRunningAsPhar(): bool
+            {
+                return true;
+            }
+
+            protected function getCurrentVersion(): string
+            {
+                return '1.0.0';
+            }
+
+            /**
+             * @return array<array{tag_name: string, prerelease: bool, assets: array<array{name: string, browser_download_url: string}>}>
+             */
+            protected function getGitHubReleases(SymfonyStyle $io, bool $includePrerelease): ?array
+            {
+                return [[
+                    'tag_name' => 'v1.1.0',
+                    'prerelease' => false,
+                    'assets' => [],
+                ]];
+            }
+        };
+
+        try {
+            $tester = new CommandTester($command);
+            $tester->execute(['--check' => true]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(0, $tester->getStatusCode());
+            $this->assertStringContainsString('New version available', $output);
+            $this->assertStringNotContainsString('not writable', $output);
+        } finally {
+            if ($previousArgv === null) {
+                unset($_SERVER['argv']);
+            } else {
+                $_SERVER['argv'] = $previousArgv;
+            }
+
+            chmod($pharPath, 0644);
+            unlink($pharPath);
+        }
     }
 
     public function testHelpOutput(): void
