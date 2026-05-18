@@ -193,12 +193,16 @@ $config["player_license_code"] = "secret-player-license";
     {
         $this->tester->execute([
             'action' => 'set',
-            'key' => 'main.test_key',
-            'value' => 'test_value'
+            'key' => 'main.project_name',
+            'value' => 'Updated KVS'
         ]);
 
-        // Either success or not implemented - both are acceptable
-        $this->assertContains($this->tester->getStatusCode(), [0, 1]);
+        $output = $this->tester->getDisplay();
+        $setupContent = (string) file_get_contents($this->tempDir . '/admin/include/setup.php');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Configuration updated: main.project_name = Updated KVS', $output);
+        $this->assertStringContainsString("\$config['project_name'] = 'Updated KVS';", $setupContent);
     }
 
     public function testConfigDatabaseListShowsInfo(): void
@@ -474,10 +478,12 @@ $config["player_license_code"] = "secret-player-license";
             'value' => '127.0.0.1'
         ]);
 
-        // Should either succeed or show it's updating
         $output = $this->tester->getDisplay();
-        // Just verify it attempted to process the request
-        $this->assertNotEmpty($output);
+        $dbContent = (string) file_get_contents($this->tempDir . '/admin/include/setup_db.php');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Configuration updated: db.host = 127.0.0.1', $output);
+        $this->assertStringContainsString("define('DB_HOST','127.0.0.1')", $dbContent);
     }
 
     public function testConfigListWithShowProtected(): void

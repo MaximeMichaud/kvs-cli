@@ -87,11 +87,15 @@ class ApplicationComprehensiveTest extends TestCase
 
         // Change to temp dir without KVS
         $oldCwd = getcwd();
-        chdir(sys_get_temp_dir());
-
-        $exitCode = $this->app->run($input, $output);
-
-        chdir($oldCwd);
+        $exitCode = 1;
+        try {
+            chdir(sys_get_temp_dir());
+            $exitCode = $this->app->run($input, $output);
+        } finally {
+            if ($oldCwd !== false) {
+                chdir($oldCwd);
+            }
+        }
 
         $this->assertEquals(0, $exitCode);
 
@@ -207,6 +211,7 @@ class ApplicationComprehensiveTest extends TestCase
     // Test 12: KVS_PATH environment variable works
     public function testKvsPathEnvironmentVariable(): void
     {
+        $oldKvsPath = getenv('KVS_PATH');
         putenv('KVS_PATH=' . $this->tempKvsDir);
 
         $app = new Application();
@@ -215,9 +220,16 @@ class ApplicationComprehensiveTest extends TestCase
         $input->setInteractive(false);
         $output = new BufferedOutput();
 
-        $exitCode = $app->run($input, $output);
-
-        putenv('KVS_PATH='); // Clean up
+        $exitCode = 1;
+        try {
+            $exitCode = $app->run($input, $output);
+        } finally {
+            if ($oldKvsPath === false) {
+                putenv('KVS_PATH');
+            } else {
+                putenv('KVS_PATH=' . $oldKvsPath);
+            }
+        }
 
         $this->assertEquals(0, $exitCode);
 

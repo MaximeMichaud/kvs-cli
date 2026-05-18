@@ -165,10 +165,14 @@ class ApplicationTest extends TestCase
         $output = new BufferedOutput();
 
         $oldCwd = getcwd();
-        chdir(sys_get_temp_dir());
-        $exitCode = $this->app->run($input, $output);
-        if ($oldCwd !== false) {
-            chdir($oldCwd);
+        $exitCode = 1;
+        try {
+            chdir(sys_get_temp_dir());
+            $exitCode = $this->app->run($input, $output);
+        } finally {
+            if ($oldCwd !== false) {
+                chdir($oldCwd);
+            }
         }
 
         $display = $output->fetch();
