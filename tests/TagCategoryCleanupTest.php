@@ -14,7 +14,7 @@ class TagCategoryCleanupTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/contents/categories', 0755, true);
         file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');

@@ -6,8 +6,8 @@
          failOnRisky="true"
          failOnWarning="true"
          cacheDirectory=".phpunit.cache"
+         defaultTestSuite="KVS-CLI Test Suite"
          beStrictAboutOutputDuringTests="true"
-         beStrictAboutTodoAnnotatedTests="true"
          displayDetailsOnTestsThatTriggerWarnings="true"
          displayDetailsOnTestsThatTriggerErrors="true"
          displayDetailsOnTestsThatTriggerDeprecations="true">

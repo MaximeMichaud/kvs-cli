@@ -24,7 +24,7 @@ class PasswordHashPluginTest extends TestCase
         parent::setUpBeforeClass();
 
         // Create temporary directory for tests
-        self::$tempDir = sys_get_temp_dir() . '/kvs_plugin_test_' . uniqid();
+        self::$tempDir = TestHelper::createTempDir('kvs_plugin_test_');
         mkdir(self::$tempDir . '/admin/data/plugins/password_hash', 0777, true);
     }
 

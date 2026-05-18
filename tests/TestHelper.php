@@ -207,7 +207,7 @@ PHP;
      */
     public static function createTempDir(string $prefix = 'kvs-test-'): string
     {
-        $dir = self::getProjectTempDir() . '/' . $prefix . uniqid();
+        $dir = self::getProjectTempDir() . '/' . $prefix . bin2hex(random_bytes(8));
         mkdir($dir, 0755, true);
         return $dir;
     }

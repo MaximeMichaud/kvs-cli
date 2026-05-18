@@ -19,7 +19,7 @@ class ScanCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-scan-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-scan-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data', 0755, true);
         mkdir($this->tempDir . '/content/videos/sources', 0755, true);

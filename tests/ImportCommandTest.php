@@ -54,7 +54,7 @@ class ImportCommandTest extends TestCase
 
     public function testImportCommandWithInvalidExtension(): void
     {
-        $tempFile = sys_get_temp_dir() . '/test-package-' . uniqid() . '.zip';
+        $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.zip';
         touch($tempFile);
 
         try {

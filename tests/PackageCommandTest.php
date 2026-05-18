@@ -17,7 +17,7 @@ class PackageCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-package-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-package-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data', 0755, true);
         mkdir($this->tempDir . '/contents/videos_sources', 0755, true);
@@ -53,7 +53,7 @@ class PackageCommandTest extends TestCase
     public function testPackageCommandShowsTitle(): void
     {
         // This test will fail if zstd/mysqldump not available, which is expected in CI
-        $this->tester->execute(['--no-content' => true, '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst', '--force' => true]);
+        $this->tester->execute(['--no-content' => true, '-o' => $this->packagePath(), '--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -69,7 +69,7 @@ class PackageCommandTest extends TestCase
 
     public function testPackageCommandShowsSource(): void
     {
-        $this->tester->execute(['--no-content' => true, '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst', '--force' => true]);
+        $this->tester->execute(['--no-content' => true, '-o' => $this->packagePath(), '--force' => true]);
 
         $output = $this->tester->getDisplay();
 
@@ -81,7 +81,7 @@ class PackageCommandTest extends TestCase
     {
         $this->tester->execute([
             '--no-content' => true,
-            '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst',
+            '-o' => $this->packagePath(),
             '-c' => '5',
             '--force' => true,
         ]);
@@ -95,7 +95,7 @@ class PackageCommandTest extends TestCase
     {
         $this->tester->execute([
             '--no-content' => true,
-            '-o' => '/tmp/test-pkg-' . uniqid() . '.tar.zst',
+            '-o' => $this->packagePath(),
             '-c' => '25',
             '--force' => true,
         ]);
@@ -104,5 +104,10 @@ class PackageCommandTest extends TestCase
 
         $this->assertStringContainsString('Compression level must be between 1 and 19', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    private function packagePath(): string
+    {
+        return $this->tempDir . '/test-pkg-' . bin2hex(random_bytes(8)) . '.tar.zst';
     }
 }

@@ -583,7 +583,7 @@ class PluginCommandTest extends TestCase
     public function testHandlesEmptyPluginDirectoryGracefully(): void
     {
         // Create a temporary KVS structure with no plugins
-        $tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($tempDir . '/admin/include', 0755, true);
         mkdir($tempDir . '/admin/plugins', 0755, true);
 

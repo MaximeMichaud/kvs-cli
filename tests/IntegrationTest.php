@@ -20,7 +20,7 @@ class IntegrationTest extends TestCase
     protected function setUp(): void
     {
         // Create mock KVS installation
-        $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-test-');
         $this->createMockKvsInstallation($this->tempDir);
         $oldKvsPath = getenv('KVS_PATH');
         $this->oldKvsPath = is_string($oldKvsPath) ? $oldKvsPath : null;

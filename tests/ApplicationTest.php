@@ -37,7 +37,7 @@ class ApplicationTest extends TestCase
 
     public function testComposerBinEntrypointUsesComposerAutoloadProxy(): void
     {
-        $tempDir = sys_get_temp_dir() . '/kvs-composer-bin-' . uniqid();
+        $tempDir = TestHelper::createTempDir('kvs-composer-bin-');
         mkdir($tempDir . '/vendor/kvs/cli/bin', 0755, true);
         copy(__DIR__ . '/../bin/kvs', $tempDir . '/vendor/kvs/cli/bin/kvs');
 

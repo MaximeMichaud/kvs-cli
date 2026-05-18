@@ -17,7 +17,7 @@ class ToDockerCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-to-docker-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-to-docker-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data', 0755, true);
         mkdir($this->tempDir . '/contents', 0755, true);

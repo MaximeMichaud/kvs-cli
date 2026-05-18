@@ -13,7 +13,7 @@ class PluginStatusFilterTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-plugin-status-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-plugin-status-test-');
         TestHelper::createMockKvsInstallation($this->tempDir);
 
         $pluginDir = $this->tempDir . '/admin/plugins/demo_plugin';

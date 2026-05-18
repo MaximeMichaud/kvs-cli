@@ -13,7 +13,7 @@ class ScreenshotsPathTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-screenshots-path-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-screenshots-path-test-');
         TestHelper::createMockKvsInstallation($this->tempDir);
     }
 

@@ -14,7 +14,7 @@ class FormatsPathTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-formats-path-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-formats-path-test-');
         TestHelper::createMockKvsInstallation($this->tempDir);
 
         $videoDir = $this->tempDir . '/contents/videos/1000/1234';

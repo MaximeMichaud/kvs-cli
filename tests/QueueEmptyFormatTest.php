@@ -14,7 +14,7 @@ class QueueEmptyFormatTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-queue-empty-format-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-queue-empty-format-test-');
         TestHelper::createMockKvsInstallation($this->tempDir);
 
         $this->db = new \PDO('sqlite::memory:');

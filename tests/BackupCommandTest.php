@@ -10,6 +10,7 @@ use Symfony\Component\Console\Application;
 
 class BackupCommandTest extends TestCase
 {
+    private string $rootDir;
     private string $tempDir;
     private Configuration $config;
     private BackupCommand $command;
@@ -18,7 +19,8 @@ class BackupCommandTest extends TestCase
     protected function setUp(): void
     {
         // Create mock KVS installation
-        $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->rootDir = TestHelper::createTempDir('kvs-backup-test-');
+        $this->tempDir = $this->rootDir . '/kvs';
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data', 0755, true);
         mkdir($this->tempDir . '/backups', 0755, true);
@@ -37,8 +39,8 @@ class BackupCommandTest extends TestCase
 
     protected function tearDown(): void
     {
-        if (is_dir($this->tempDir)) {
-            exec('rm -rf ' . escapeshellarg($this->tempDir));
+        if (is_dir($this->rootDir)) {
+            TestHelper::removeDir($this->rootDir);
         }
     }
 

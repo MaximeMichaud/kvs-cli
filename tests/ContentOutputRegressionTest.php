@@ -21,7 +21,7 @@ class ContentOutputRegressionTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-content-output-regression-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-content-output-regression-');
         TestHelper::createMockKvsInstallation($this->tempDir);
     }
 

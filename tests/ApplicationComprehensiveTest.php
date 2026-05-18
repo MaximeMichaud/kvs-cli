@@ -18,7 +18,7 @@ class ApplicationComprehensiveTest extends TestCase
         $this->app->setAutoExit(false);
 
         // Create temp KVS installation for testing
-        $this->tempKvsDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->tempKvsDir = TestHelper::createTempDir('kvs-test-');
         $this->createMockKvsInstallation($this->tempKvsDir);
     }
 

@@ -18,7 +18,7 @@ class CacheCommandTest extends TestCase
     protected function setUp(): void
     {
         // Create mock KVS installation with cache directories
-        $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data/engine', 0755, true);
         mkdir($this->tempDir . '/admin/smarty/cache', 0755, true);

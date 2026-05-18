@@ -13,7 +13,7 @@ class EmailLogPathTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-email-log-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-email-log-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data/logs', 0755, true);
         file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');

@@ -17,7 +17,7 @@ class SystemValidationRegressionTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-system-validation-regression-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-system-validation-regression-');
         TestHelper::createMockKvsInstallation($this->tempDir);
         $this->db = $this->createSqliteConnection();
     }

@@ -12,7 +12,7 @@ class UserCommandDateTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->tempDir = sys_get_temp_dir() . '/kvs-user-date-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-user-date-test-');
         TestHelper::createMockKvsInstallation($this->tempDir);
     }
 

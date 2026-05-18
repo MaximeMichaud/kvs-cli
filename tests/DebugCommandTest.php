@@ -18,7 +18,7 @@ class DebugCommandTest extends TestCase
     protected function setUp(): void
     {
         // Create mock KVS installation
-        $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/logs', 0755, true);
 

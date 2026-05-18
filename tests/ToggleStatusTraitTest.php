@@ -38,7 +38,7 @@ class ToggleStatusTraitTest extends TestCase
         $this->io = new SymfonyStyle($input, $this->output);
 
         // Create mock KVS installation
-        $tempDir = sys_get_temp_dir() . '/kvs-test-toggle-' . uniqid();
+        $tempDir = TestHelper::createTempDir('kvs-test-toggle-');
         mkdir($tempDir . '/admin/include', 0755, true);
 
         TestHelper::createMockDbConfig($tempDir);
@@ -108,7 +108,7 @@ class ToggleStatusTraitTest extends TestCase
     public function testDatabaseConnectionFailureReturnsFailure(): void
     {
         // Force database connection to fail by using invalid credentials
-        $tempDir = sys_get_temp_dir() . '/kvs-test-toggle-invalid-' . uniqid();
+        $tempDir = TestHelper::createTempDir('kvs-test-toggle-invalid-');
         mkdir($tempDir . '/admin/include', 0755, true);
 
         file_put_contents(
