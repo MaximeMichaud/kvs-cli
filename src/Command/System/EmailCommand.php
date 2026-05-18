@@ -493,12 +493,21 @@ HELP
 
     private function showLog(InputInterface $input): int
     {
-        $kvsPath = $this->config->getKvsPath();
-        $logPath = $kvsPath . '/admin/logs';
+        $logDirs = [
+            $this->config->getAdminPath() . '/logs',
+            $this->config->getAdminPath() . '/data/logs',
+        ];
 
         // Find email log file
-        $logFiles = glob($logPath . '/email_*.txt');
-        if ($logFiles === false || $logFiles === []) {
+        $logFiles = [];
+        foreach ($logDirs as $logDir) {
+            $files = glob($logDir . '/email_*.txt');
+            if ($files !== false) {
+                $logFiles = array_merge($logFiles, $files);
+            }
+        }
+
+        if ($logFiles === []) {
             $this->io()->warning('No email log files found');
             $this->io()->text('Email logging is only enabled when debug level > 0');
             $this->io()->text('Enable it with: kvs email set --debug=1');
