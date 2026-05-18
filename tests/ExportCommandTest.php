@@ -88,6 +88,55 @@ class ExportCommandTest extends TestCase
         $this->assertNotEmpty($output);
     }
 
+    public function testExportUsesDatabasePortEnvironmentOverride(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 8.0.35'\n");
+        chmod($mysql, 0755);
+
+        $argsFile = $this->tempDir . '/mysqldump.args';
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents(
+            $mysqldump,
+            '#!/bin/sh' . "\n"
+            . 'for arg in "$@"; do echo "$arg"; done > ' . escapeshellarg($argsFile) . "\n"
+            . "echo 'SQL dump'\n"
+        );
+        chmod($mysqldump, 0755);
+
+        $previousPath = getenv('PATH');
+        $previousPort = getenv('KVS_DB_PORT');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        putenv('KVS_DB_PORT=3308');
+
+        try {
+            $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+            $tester->execute([
+                '--output' => $this->tempDir . '/exports/port_backup.sql',
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $args = file($argsFile, FILE_IGNORE_NEW_LINES);
+            $this->assertIsArray($args);
+            $this->assertContains('-P', $args);
+            $this->assertContains('3308', $args);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            if ($previousPort === false) {
+                putenv('KVS_DB_PORT');
+            } else {
+                putenv('KVS_DB_PORT=' . $previousPort);
+            }
+        }
+    }
+
     public function testExportWithTablesOption(): void
     {
         $outputFile = $this->tempDir . '/exports/tables_backup.sql';

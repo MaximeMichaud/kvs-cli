@@ -72,6 +72,31 @@ class ConfigurationTest extends TestCase
         TestHelper::removeDir($tempDir);
     }
 
+    public function testDatabasePortEnvironmentOverrideIsAppliedToHost(): void
+    {
+        $tempDir = TestHelper::createTempDir();
+        TestHelper::createMockDbConfig($tempDir, ['host' => '127.0.0.1']);
+        file_put_contents($tempDir . '/admin/include/setup.php', '<?php $config = [];');
+
+        $previousPort = getenv('KVS_DB_PORT');
+        putenv('KVS_DB_PORT=3308');
+
+        try {
+            $config = new Configuration(['path' => $tempDir]);
+            $dbConfig = $config->getDatabaseConfig();
+
+            $this->assertSame('127.0.0.1:3308', $dbConfig['host'] ?? null);
+            $this->assertSame('3308', $dbConfig['port'] ?? null);
+        } finally {
+            if ($previousPort === false) {
+                putenv('KVS_DB_PORT');
+            } else {
+                putenv('KVS_DB_PORT=' . $previousPort);
+            }
+            TestHelper::removeDir($tempDir);
+        }
+    }
+
     public function testGetTablePrefixReturnsDefault(): void
     {
         $tempDir = TestHelper::createTempDir();

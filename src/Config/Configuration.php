@@ -143,6 +143,15 @@ class Configuration
         if ($envDb !== false && $envDb !== '') {
             $this->dbConfig['database'] = $envDb;
         }
+        $envPort = getenv('KVS_DB_PORT');
+        if ($envPort !== false && $envPort !== '') {
+            $this->dbConfig['port'] = $envPort;
+            $host = $this->dbConfig['host'] ?? '';
+            if ($host !== '') {
+                $hostWithoutPort = str_contains($host, ':') ? explode(':', $host, 2)[0] : $host;
+                $this->dbConfig['host'] = $hostWithoutPort . ':' . $envPort;
+            }
+        }
 
         // Smart fallback: if hostname doesn't resolve, try alternatives
         $this->applyHostnameFallback();
@@ -157,6 +166,11 @@ class Configuration
         $host = $this->dbConfig['host'] ?? '';
         // Extract host without port for comparison
         $hostWithoutPort = str_contains($host, ':') ? explode(':', $host, 2)[0] : $host;
+        $portSuffix = '';
+        if (str_contains($host, ':')) {
+            [, $port] = explode(':', $host, 2);
+            $portSuffix = ':' . $port;
+        }
         if ($host === '' || $hostWithoutPort === '127.0.0.1' || $hostWithoutPort === 'localhost') {
             return; // Already using localhost, no fallback needed
         }
@@ -182,7 +196,7 @@ class Configuration
 
         foreach ($fallbacks as $fallback) {
             if ($this->hostnameResolves($fallback)) {
-                $this->dbConfig['host'] = $fallback;
+                $this->dbConfig['host'] = $fallback . $portSuffix;
                 $this->dbConfig['_fallback_used'] = '1';
                 $this->dbConfig['_original_host'] = $host;
                 return;
