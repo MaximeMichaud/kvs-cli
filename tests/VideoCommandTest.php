@@ -17,13 +17,7 @@ class VideoCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        // Use real KVS installation with test database
-        // Detect KVS path: env var, or relative to test directory
-        $kvsPath = getenv('KVS_TEST_PATH') ?: __DIR__ . '/../../kvs';
-
-        if (!is_dir($kvsPath)) {
-            $this->markTestSkipped('KVS installation not found at ' . $kvsPath);
-        }
+        $kvsPath = TestHelper::createTestKvsInstallation();
 
         $this->config = new Configuration(['path' => $kvsPath]);
         $this->command = new VideoCommand($this->config);
@@ -37,7 +31,7 @@ class VideoCommandTest extends TestCase
         try {
             $this->db = TestHelper::getPDO();
         } catch (\PDOException $e) {
-            $this->markTestSkipped('Cannot connect to test database: ' . $e->getMessage());
+            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
         }
     }
 

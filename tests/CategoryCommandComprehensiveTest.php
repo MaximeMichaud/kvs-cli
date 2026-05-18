@@ -28,49 +28,15 @@ class CategoryCommandComprehensiveTest extends TestCase
 
     protected function setUp(): void
     {
-        // Use real KVS installation path for integration testing
-        // Try multiple methods to find KVS path (no hardcoding)
-        $kvsPath = getenv('KVS_TEST_PATH') ?: (getenv('KVS_PATH') ?: null);
-        if ($kvsPath && !is_dir($kvsPath . '/admin/include')) {
-            $kvsPath = null;
-        }
-
-        // If not set, try to detect from current directory structure
-        if (!$kvsPath) {
-            // Assume we're in kvs-cli/tests and KVS is in ../kvs
-            $possiblePath = dirname(__DIR__, 2) . '/kvs';
-            if (is_dir($possiblePath . '/admin/include')) {
-                $kvsPath = $possiblePath;
-            }
-        }
-
-        // Fallback to getcwd() if it's a KVS directory
-        if (!$kvsPath) {
-            $cwd = getcwd();
-            if (is_dir($cwd . '/admin/include')) {
-                $kvsPath = $cwd;
-            }
-        }
-
-        // If still not found, skip tests that require real KVS
-        if (!$kvsPath) {
-            $this->markTestSkipped('KVS installation not found. Set KVS_PATH environment variable.');
-        }
+        $kvsPath = TestHelper::createTestKvsInstallation();
 
         $this->config = new Configuration(['path' => $kvsPath]);
 
         // Check database connectivity - skip if not available
-        $dbConfig = $this->config->getDatabaseConfig();
-        if (!empty($dbConfig)) {
-            try {
-                $dsn = sprintf('mysql:host=%s;dbname=%s', $dbConfig['host'] ?? '127.0.0.1', $dbConfig['database'] ?? '');
-                $pdo = new \PDO($dsn, $dbConfig['user'] ?? '', $dbConfig['password'] ?? '', [
-                    \PDO::ATTR_TIMEOUT => 2,
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                ]);
-            } catch (\PDOException $e) {
-                $this->markTestSkipped('Database not available: ' . $e->getMessage());
-            }
+        try {
+            TestHelper::getPDO();
+        } catch (\PDOException $e) {
+            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
         }
 
         $this->command = new CategoryCommand($this->config);

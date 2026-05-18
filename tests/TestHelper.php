@@ -12,6 +12,17 @@ use PDO;
  */
 class TestHelper
 {
+    /** @var list<string> */
+    private const REQUIRED_TEST_TABLES = [
+        'albums',
+        'categories',
+        'comments',
+        'settings',
+        'tags',
+        'users',
+        'videos',
+    ];
+
     /**
      * Get database configuration from environment variables
      *
@@ -46,13 +57,13 @@ class TestHelper
         $config = self::getDbConfig();
 
         $dsn = sprintf(
-            'mysql:host=%s;port=%d;dbname=%s',
+            'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
             $config['host'],
             $config['port'],
             $config['database']
         );
 
-        return new PDO(
+        $pdo = new PDO(
             $dsn,
             $config['user'],
             $config['pass'],
@@ -62,6 +73,22 @@ class TestHelper
                 PDO::ATTR_TIMEOUT => 1,
             ]
         );
+
+        self::assertRequiredTestTablesExist($pdo);
+
+        return $pdo;
+    }
+
+    private static function assertRequiredTestTablesExist(PDO $pdo): void
+    {
+        foreach (self::REQUIRED_TEST_TABLES as $table) {
+            $tableName = self::table($table);
+            try {
+                $pdo->query("SELECT 1 FROM {$tableName} LIMIT 1");
+            } catch (\PDOException $e) {
+                throw new \PDOException("Test database schema is missing required table: {$tableName}", 0, $e);
+            }
+        }
     }
 
     /**
@@ -71,7 +98,7 @@ class TestHelper
      * with valid database configuration.
      *
      * @param string $dir Directory where to create admin/include/setup_db.php
-     * @param array{host?: string, user?: string, password?: string, database?: string} $overrides Optional config overrides
+     * @param array{host?: string, port?: int, user?: string, password?: string, database?: string} $overrides Optional config overrides
      * @return void
      */
     public static function createMockDbConfig(string $dir, array $overrides = []): void
@@ -161,6 +188,11 @@ PHP;
             '/admin/logs',
             '/admin/plugins',
             '/content',
+            '/contents',
+            '/contents/albums/sources',
+            '/contents/categories',
+            '/contents/videos_screenshots',
+            '/contents/videos_sources',
         ];
 
         foreach ($dirs as $subdir) {
@@ -178,6 +210,49 @@ PHP;
         file_put_contents(
             $dir . '/admin/include/version.php',
             '<?php define("KVS_VERSION", "6.3.2");'
+        );
+    }
+
+    /**
+     * Create a disposable KVS installation wired to the configured test database.
+     */
+    public static function createTestKvsInstallation(array $setupConfig = []): string
+    {
+        $dir = self::createTempDir('kvs-db-test-');
+        register_shutdown_function([self::class, 'removeDir'], $dir);
+
+        self::createMockKvsInstallation($dir, array_merge([
+            'project_path' => $dir,
+            'tables_prefix' => self::getTablePrefix(),
+            'tables_prefix_multi' => self::getTablePrefix(),
+            'php_path' => PHP_BINARY,
+            'content_path_albums_sources' => $dir . '/contents/albums/sources',
+            'content_path_categories' => $dir . '/contents/categories',
+            'content_path_videos_screenshots' => $dir . '/contents/videos_screenshots',
+            'content_path_videos_sources' => $dir . '/contents/videos_sources',
+        ], $setupConfig));
+
+        return $dir;
+    }
+
+    public static function databaseSkipMessage(\Throwable $e, string $context = 'Test database not available'): string
+    {
+        $config = self::getDbConfig();
+        $summary = 'connection failed';
+
+        if (str_starts_with($e->getMessage(), 'Test database schema is missing required table:')) {
+            $summary = $e->getMessage();
+        } elseif (preg_match('/SQLSTATE\[[^\]]+\](?: \[\d+\])?/', $e->getMessage(), $matches) === 1) {
+            $summary = $matches[0];
+        }
+
+        return sprintf(
+            '%s at %s:%d/%s: %s',
+            $context,
+            $config['host'],
+            $config['port'],
+            $config['database'],
+            $summary
         );
     }
 

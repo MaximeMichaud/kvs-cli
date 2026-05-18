@@ -29,6 +29,7 @@ class ToggleStatusTraitTest extends TestCase
     private TestCommandWithToggleTrait $command;
     private SymfonyStyle $io;
     private BufferedOutput $output;
+    private string $tempDir;
 
     protected function setUp(): void
     {
@@ -38,13 +39,13 @@ class ToggleStatusTraitTest extends TestCase
         $this->io = new SymfonyStyle($input, $this->output);
 
         // Create mock KVS installation
-        $tempDir = TestHelper::createTempDir('kvs-test-toggle-');
-        mkdir($tempDir . '/admin/include', 0755, true);
+        $this->tempDir = TestHelper::createTempDir('kvs-test-toggle-');
+        mkdir($this->tempDir . '/admin/include', 0755, true);
 
-        TestHelper::createMockDbConfig($tempDir);
-        file_put_contents($tempDir . '/admin/include/setup.php', '<?php');
+        TestHelper::createMockDbConfig($this->tempDir);
+        file_put_contents($this->tempDir . '/admin/include/setup.php', '<?php');
 
-        $config = new Configuration(['path' => $tempDir]);
+        $config = new Configuration(['path' => $this->tempDir]);
 
         // Create test command instance
         $this->command = new TestCommandWithToggleTrait($config);
@@ -53,9 +54,7 @@ class ToggleStatusTraitTest extends TestCase
 
     protected function tearDown(): void
     {
-        // Cleanup temp directory
-        $tempDir = sys_get_temp_dir();
-        exec('rm -rf ' . escapeshellarg($tempDir . '/kvs-test-toggle-*'));
+        TestHelper::removeDir($this->tempDir);
     }
 
     /**
@@ -137,8 +136,7 @@ class ToggleStatusTraitTest extends TestCase
 
         $this->assertEquals(Command::FAILURE, $result);
 
-        // Cleanup
-        exec('rm -rf ' . escapeshellarg($tempDir));
+        TestHelper::removeDir($tempDir);
     }
 
     /**

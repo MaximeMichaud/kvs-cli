@@ -60,8 +60,12 @@
         <!-- Environment variables for testing -->
         <env name="KVS_CLI_TEST" value="1"/>
         <env name="KVS_PATH" value="/tmp/kvs-test"/>
-        <!-- Use localhost for DB to avoid DNS timeout on 'mariadb' hostname -->
-        <env name="KVS_DB_HOST" value="127.0.0.1"/>
+        <!-- Dedicated test DB defaults. Override KVS_TEST_DB_* locally when needed. -->
+        <env name="KVS_TEST_DB_HOST" value="127.0.0.1"/>
+        <env name="KVS_TEST_DB_PORT" value="3306"/>
+        <env name="KVS_TEST_DB_USER" value="kvs_user"/>
+        <env name="KVS_TEST_DB_PASS" value="kvs_pass"/>
+        <env name="KVS_TEST_DB_NAME" value="kvs_test"/>
     </php>
 
     <!-- Logging -->

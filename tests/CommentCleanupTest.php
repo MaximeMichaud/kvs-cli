@@ -15,15 +15,13 @@ class CommentCleanupTest extends TestCase
     {
         $this->tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
-        file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');
+        TestHelper::createMockDbConfig($this->tempDir);
         file_put_contents($this->tempDir . '/admin/include/setup.php', '<?php $config = ["tables_prefix" => "ktvs_"];');
     }
 
     protected function tearDown(): void
     {
-        if (is_dir($this->tempDir)) {
-            exec('rm -rf ' . escapeshellarg($this->tempDir));
-        }
+        TestHelper::removeDir($this->tempDir);
     }
 
     public function testRejectCommentUpdatesAlbumImageCountsAndAuditLog(): void

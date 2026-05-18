@@ -20,11 +20,7 @@ class ModelCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $kvsPath = getenv('KVS_TEST_PATH') ?: __DIR__ . '/../../kvs';
-
-        if (!is_dir($kvsPath)) {
-            $this->markTestSkipped('KVS installation not found at ' . $kvsPath);
-        }
+        $kvsPath = TestHelper::createTestKvsInstallation();
 
         $this->config = new Configuration(['path' => $kvsPath]);
         $this->command = new ModelCommand($this->config);
@@ -41,7 +37,7 @@ class ModelCommandTest extends TestCase
             $this->db->query("SELECT 1 FROM {$prefix}models LIMIT 1");
             $this->db->query("SELECT 1 FROM {$prefix}models_albums LIMIT 1");
         } catch (\PDOException $e) {
-            $this->markTestSkipped('Cannot connect to test database or required tables missing: ' . $e->getMessage());
+            $this->markTestSkipped(TestHelper::databaseSkipMessage($e, 'Test database schema not available'));
         }
     }
 

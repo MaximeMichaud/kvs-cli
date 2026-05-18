@@ -20,11 +20,7 @@ class DvdCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $kvsPath = getenv('KVS_TEST_PATH') ?: __DIR__ . '/../../kvs';
-
-        if (!is_dir($kvsPath)) {
-            $this->markTestSkipped('KVS installation not found at ' . $kvsPath);
-        }
+        $kvsPath = TestHelper::createTestKvsInstallation();
 
         $this->config = new Configuration(['path' => $kvsPath]);
         $this->command = new DvdCommand($this->config);
@@ -37,7 +33,7 @@ class DvdCommandTest extends TestCase
         try {
             $this->db = TestHelper::getPDO();
         } catch (\PDOException $e) {
-            $this->markTestSkipped('Cannot connect to test database: ' . $e->getMessage());
+            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
         }
     }
 
