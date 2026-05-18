@@ -95,6 +95,11 @@ SH
 
     public function testDatabaseBackupSplitsHostPortForDumpCommand(): void
     {
+        $previousHost = getenv('KVS_DB_HOST');
+        $previousPort = getenv('KVS_DB_PORT');
+        putenv('KVS_DB_HOST');
+        putenv('KVS_DB_PORT');
+
         TestHelper::createMockDbConfig($this->tempDir, [
             'host' => '127.0.0.1',
             'port' => 3308,
@@ -138,6 +143,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousHost === false) {
+                putenv('KVS_DB_HOST');
+            } else {
+                putenv('KVS_DB_HOST=' . $previousHost);
+            }
+            if ($previousPort === false) {
+                putenv('KVS_DB_PORT');
+            } else {
+                putenv('KVS_DB_PORT=' . $previousPort);
             }
         }
     }

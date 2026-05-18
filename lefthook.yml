@@ -76,4 +76,4 @@ pre-push:
     phpunit:
       name: PHPUnit
       glob: "*.php"
-      run: ./vendor/bin/phpunit --no-progress
+      run: ./vendor/bin/phpunit --configuration phpunit.xml.dist --no-progress
