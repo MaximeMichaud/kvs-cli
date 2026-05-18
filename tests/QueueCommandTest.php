@@ -21,13 +21,17 @@ class QueueCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new QueueCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         // Setup test database connection using TestHelper
         try {

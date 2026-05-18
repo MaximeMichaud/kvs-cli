@@ -22,13 +22,17 @@ class FormatsCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new FormatsCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         try {
             $this->db = TestHelper::getPDO();

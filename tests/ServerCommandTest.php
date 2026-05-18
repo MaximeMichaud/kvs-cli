@@ -19,13 +19,17 @@ class ServerCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new ServerCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         try {
             $this->db = TestHelper::getPDO();
@@ -129,7 +133,7 @@ class ServerCommandTest extends TestCase
 
     public function testServerShow(): void
     {
-        $stmt = $this->db->query("SELECT server_id FROM ktvs_admin_servers LIMIT 1");
+        $stmt = $this->db->query('SELECT server_id FROM ' . TestHelper::table('admin_servers') . ' LIMIT 1');
         $serverId = $stmt->fetchColumn();
 
         if (!$serverId) {
@@ -198,7 +202,9 @@ class ServerCommandTest extends TestCase
 
     public function testServerGroupShow(): void
     {
-        $stmt = $this->db->query("SELECT group_id FROM ktvs_admin_servers_groups LIMIT 1");
+        $stmt = $this->db->query(
+            'SELECT group_id FROM ' . TestHelper::table('admin_servers_groups') . ' LIMIT 1'
+        );
         $groupId = $stmt->fetchColumn();
 
         if (!$groupId) {

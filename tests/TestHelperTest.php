@@ -2,7 +2,6 @@
 
 namespace KVS\CLI\Tests;
 
-use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
 
 class TestHelperTest extends TestCase
@@ -23,7 +22,7 @@ class TestHelperTest extends TestCase
         $path = TestHelper::createTestKvsInstallation();
 
         try {
-            $config = new Configuration(['path' => $path]);
+            $config = TestHelper::createTestConfiguration($path);
             $dbConfig = $config->getDatabaseConfig();
 
             $this->assertSame($path, $config->getKvsPath());
@@ -33,6 +32,36 @@ class TestHelperTest extends TestCase
             $this->assertSame('kvs_test', $dbConfig['database']);
             $this->assertSame($path, $config->getProjectConfig()['project_path']);
             $this->assertSame('ktvs_', $config->getTablePrefix());
+        } finally {
+            TestHelper::removeDir($path);
+            $this->restoreEnv($previousEnv);
+        }
+    }
+
+    public function testCreateTestConfigurationIgnoresGlobalDatabaseOverrides(): void
+    {
+        $previousEnv = $this->setEnv([
+            'KVS_TEST_DB_HOST' => '127.0.0.1',
+            'KVS_TEST_DB_PORT' => '3306',
+            'KVS_TEST_DB_USER' => 'test_user',
+            'KVS_TEST_DB_PASS' => 'test_pass',
+            'KVS_TEST_DB_NAME' => 'test_database',
+            'KVS_DB_HOST' => 'production-host',
+            'KVS_DB_USER' => 'production_user',
+            'KVS_DB_PASS' => 'production_pass',
+            'KVS_DB_NAME' => 'production_database',
+        ]);
+
+        $path = TestHelper::createTestKvsInstallation();
+
+        try {
+            $config = TestHelper::createTestConfiguration($path);
+            $dbConfig = $config->getDatabaseConfig();
+
+            $this->assertSame('127.0.0.1', $dbConfig['host']);
+            $this->assertSame('test_user', $dbConfig['user']);
+            $this->assertSame('test_pass', $dbConfig['password']);
+            $this->assertSame('test_database', $dbConfig['database']);
         } finally {
             TestHelper::removeDir($path);
             $this->restoreEnv($previousEnv);

@@ -20,13 +20,17 @@ class UserCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new UserCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         // Setup test database connection using TestHelper
         try {
@@ -58,31 +62,35 @@ class UserCommandTest extends TestCase
 
     public function testUserListWithRemovalRequested(): void
     {
+        $usersTable = TestHelper::table('users');
+
         // Create a test user with removal request
         $this->db->exec("SET SESSION sql_mode = ''");
-        $this->db->exec("
-            INSERT INTO ktvs_users (
-                username, pass, display_name, email, status_id,
-                is_removal_requested, removal_reason, added_date
-            ) VALUES (
-                'test_removal_user', 'test_hash', 'Test Removal', 'test_removal@test.com', 2,
-                1, 'I want to delete my account', NOW()
-            )
-            ON DUPLICATE KEY UPDATE is_removal_requested=1, removal_reason='I want to delete my account'
-        ");
 
-        $this->tester->execute([
-            'action' => 'list',
-            '--removal-requested' => true,
-            '--limit' => 10
-        ]);
+        try {
+            $this->db->exec("
+                INSERT INTO {$usersTable} (
+                    username, pass, display_name, email, status_id,
+                    is_removal_requested, removal_reason, added_date
+                ) VALUES (
+                    'test_removal_user', 'test_hash', 'Test Removal', 'test_removal@test.com', 2,
+                    1, 'I want to delete my account', NOW()
+                )
+                ON DUPLICATE KEY UPDATE is_removal_requested=1, removal_reason='I want to delete my account'
+            ");
 
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Removal reason', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
+            $this->tester->execute([
+                'action' => 'list',
+                '--removal-requested' => true,
+                '--limit' => 10
+            ]);
 
-        // Cleanup
-        $this->db->exec("DELETE FROM ktvs_users WHERE username='test_removal_user'");
+            $output = $this->tester->getDisplay();
+            $this->assertStringContainsString('Removal reason', $output);
+            $this->assertEquals(0, $this->tester->getStatusCode());
+        } finally {
+            $this->db->exec("DELETE FROM {$usersTable} WHERE username='test_removal_user'");
+        }
     }
 
     public function testUserListFormats(): void
@@ -127,7 +135,7 @@ class UserCommandTest extends TestCase
     public function testUserShow(): void
     {
         // Get first user ID
-        $stmt = $this->db->query("SELECT user_id FROM ktvs_users LIMIT 1");
+        $stmt = $this->db->query('SELECT user_id FROM ' . TestHelper::table('users') . ' LIMIT 1');
         $userId = $stmt->fetchColumn();
 
         if (!$userId) {
@@ -147,41 +155,45 @@ class UserCommandTest extends TestCase
 
     public function testRemovalRequestedRequiresColumns(): void
     {
+        $usersTable = TestHelper::table('users');
+
         // Verify that is_removal_requested column exists
-        $stmt = $this->db->query("
+        $stmt = $this->db->prepare("
             SELECT COUNT(*) FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA='{$this->dbName}'
-            AND TABLE_NAME='ktvs_users'
-            AND COLUMN_NAME='is_removal_requested'
+            WHERE TABLE_SCHEMA = :schema
+            AND TABLE_NAME = :table
+            AND COLUMN_NAME = :column
         ");
+        $stmt->execute([
+            'schema' => $this->dbName,
+            'table' => $usersTable,
+            'column' => 'is_removal_requested',
+        ]);
 
-        $hasColumn = $stmt->fetchColumn();
-
-        if (!$hasColumn) {
-            $this->fail(
-                "Column 'is_removal_requested' does not exist in ktvs_users table. " .
-                "Run: ALTER TABLE ktvs_users ADD COLUMN is_removal_requested TINYINT(1) DEFAULT 0"
-            );
-        }
+        $hasRemovalRequestedColumn = (int) $stmt->fetchColumn() > 0;
+        $this->assertTrue(
+            $hasRemovalRequestedColumn,
+            "Column 'is_removal_requested' does not exist in {$usersTable} table."
+        );
 
         // Verify removal_reason column
-        $stmt = $this->db->query("
+        $stmt = $this->db->prepare("
             SELECT COUNT(*) FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA='{$this->dbName}'
-            AND TABLE_NAME='ktvs_users'
-            AND COLUMN_NAME='removal_reason'
+            WHERE TABLE_SCHEMA = :schema
+            AND TABLE_NAME = :table
+            AND COLUMN_NAME = :column
         ");
+        $stmt->execute([
+            'schema' => $this->dbName,
+            'table' => $usersTable,
+            'column' => 'removal_reason',
+        ]);
 
-        $hasColumn = $stmt->fetchColumn();
-
-        if (!$hasColumn) {
-            $this->fail(
-                "Column 'removal_reason' does not exist in ktvs_users table. " .
-                "Run: ALTER TABLE ktvs_users ADD COLUMN removal_reason TEXT NULL"
-            );
-        }
-
-        $this->assertTrue(true);
+        $hasRemovalReasonColumn = (int) $stmt->fetchColumn() > 0;
+        $this->assertTrue(
+            $hasRemovalReasonColumn,
+            "Column 'removal_reason' does not exist in {$usersTable} table."
+        );
     }
 
     public function testCommandMetadata(): void

@@ -19,13 +19,17 @@ class VideoCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new VideoCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         // Setup test database connection using TestHelper
         try {
@@ -55,7 +59,7 @@ class VideoCommandTest extends TestCase
     public function testVideoListWithStatus(): void
     {
         // Verify we have videos with different statuses
-        $stmt = $this->db->query("SELECT COUNT(*) FROM ktvs_videos WHERE status_id = 1");
+        $stmt = $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('videos') . ' WHERE status_id = 1');
         $activeCount = $stmt->fetchColumn();
 
         if ($activeCount == 0) {
@@ -115,7 +119,7 @@ class VideoCommandTest extends TestCase
     public function testVideoShow(): void
     {
         // Get first video ID
-        $stmt = $this->db->query("SELECT video_id FROM ktvs_videos LIMIT 1");
+        $stmt = $this->db->query('SELECT video_id FROM ' . TestHelper::table('videos') . ' LIMIT 1');
         $videoId = $stmt->fetchColumn();
 
         if (!$videoId) {

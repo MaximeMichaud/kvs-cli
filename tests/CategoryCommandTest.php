@@ -19,13 +19,17 @@ class CategoryCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new CategoryCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         // Setup test database connection using TestHelper
         try {
@@ -55,7 +59,7 @@ class CategoryCommandTest extends TestCase
     public function testCategoryListWithStatus(): void
     {
         // Verify we have categories with different statuses
-        $stmt = $this->db->query("SELECT COUNT(*) FROM ktvs_categories WHERE status_id = 1");
+        $stmt = $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE status_id = 1');
         $activeCount = $stmt->fetchColumn();
 
         if ($activeCount == 0) {
@@ -115,7 +119,7 @@ class CategoryCommandTest extends TestCase
     public function testCategoryShow(): void
     {
         // Get first category ID
-        $stmt = $this->db->query("SELECT category_id FROM ktvs_categories LIMIT 1");
+        $stmt = $this->db->query('SELECT category_id FROM ' . TestHelper::table('categories') . ' LIMIT 1');
         $categoryId = $stmt->fetchColumn();
 
         if (!$categoryId) {

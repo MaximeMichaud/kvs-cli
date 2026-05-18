@@ -97,6 +97,54 @@ class ConfigurationTest extends TestCase
         }
     }
 
+    public function testDatabaseEnvironmentOverridesCanBeDisabled(): void
+    {
+        $tempDir = TestHelper::createTempDir();
+        TestHelper::createMockDbConfig($tempDir, [
+            'host' => '127.0.0.1',
+            'user' => 'file_user',
+            'password' => 'file_pass',
+            'database' => 'file_database',
+        ]);
+        file_put_contents($tempDir . '/admin/include/setup.php', '<?php $config = [];');
+
+        $previousUser = getenv('KVS_DB_USER');
+        $previousPass = getenv('KVS_DB_PASS');
+        $previousDatabase = getenv('KVS_DB_NAME');
+        putenv('KVS_DB_USER=env_user');
+        putenv('KVS_DB_PASS=env_pass');
+        putenv('KVS_DB_NAME=env_database');
+
+        try {
+            $config = new Configuration([
+                'path' => $tempDir,
+                'disable_db_env_overrides' => true,
+            ]);
+            $dbConfig = $config->getDatabaseConfig();
+
+            $this->assertSame('file_user', $dbConfig['user']);
+            $this->assertSame('file_pass', $dbConfig['password']);
+            $this->assertSame('file_database', $dbConfig['database']);
+        } finally {
+            if ($previousUser === false) {
+                putenv('KVS_DB_USER');
+            } else {
+                putenv('KVS_DB_USER=' . $previousUser);
+            }
+            if ($previousPass === false) {
+                putenv('KVS_DB_PASS');
+            } else {
+                putenv('KVS_DB_PASS=' . $previousPass);
+            }
+            if ($previousDatabase === false) {
+                putenv('KVS_DB_NAME');
+            } else {
+                putenv('KVS_DB_NAME=' . $previousDatabase);
+            }
+            TestHelper::removeDir($tempDir);
+        }
+    }
+
     public function testGetTablePrefixReturnsDefault(): void
     {
         $tempDir = TestHelper::createTempDir();

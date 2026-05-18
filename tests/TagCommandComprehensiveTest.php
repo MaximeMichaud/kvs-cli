@@ -30,14 +30,7 @@ class TagCommandComprehensiveTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
-
-        // Check database connectivity - skip if not available
-        try {
-            TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
 
         $this->command = new TagCommand($this->config);
 
@@ -45,6 +38,17 @@ class TagCommandComprehensiveTest extends TestCase
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
+
+        // Check database connectivity - skip if not available
+        try {
+            TestHelper::getPDO();
+        } catch (\PDOException $e) {
+            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
+        }
     }
 
     // ========================================

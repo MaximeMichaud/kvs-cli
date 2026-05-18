@@ -19,13 +19,17 @@ class ConversionCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new ConversionCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         try {
             $this->db = TestHelper::getPDO();
@@ -105,7 +109,9 @@ class ConversionCommandTest extends TestCase
 
     public function testConversionShow(): void
     {
-        $stmt = $this->db->query("SELECT server_id FROM ktvs_admin_conversion_servers LIMIT 1");
+        $stmt = $this->db->query(
+            'SELECT server_id FROM ' . TestHelper::table('admin_conversion_servers') . ' LIMIT 1'
+        );
         $serverId = $stmt->fetchColumn();
 
         if (!$serverId) {

@@ -126,6 +126,11 @@ class Configuration
             }
         }
 
+        if (($this->options['disable_db_env_overrides'] ?? false) === true) {
+            $this->applyHostnameFallback();
+            return;
+        }
+
         // Environment variable overrides (highest priority)
         $envHost = getenv('KVS_DB_HOST');
         if ($envHost !== false && $envHost !== '') {

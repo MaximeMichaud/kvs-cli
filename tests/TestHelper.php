@@ -235,6 +235,41 @@ PHP;
         return $dir;
     }
 
+    public static function createTestConfiguration(string $kvsPath): \KVS\CLI\Config\Configuration
+    {
+        return new \KVS\CLI\Config\Configuration([
+            'path' => $kvsPath,
+            'disable_db_env_overrides' => true,
+        ]);
+    }
+
+    public static function isCommandDefinitionTest(string $testName): bool
+    {
+        return in_array($testName, [
+            'testAcceptsAllUpdateOptions',
+            'testAcceptsIdArgument',
+            'testAlbumCommandMetadata',
+            'testAllActionsAccessible',
+            'testAllActionsAreAccessible',
+            'testAntispamCommandMetadata',
+            'testCategoryCommandMetadata',
+            'testCommandHasAllOptions',
+            'testCommandHasExpectedAliases',
+            'testCommandHasExpectedOptions',
+            'testCommandMetadata',
+            'testConversionCommandMetadata',
+            'testCyclicParentPrevention',
+            'testEmailCommandMetadata',
+            'testHelpDocumentation',
+            'testParentIdValidation',
+            'testPlaylistCommandMetadata',
+            'testQueueCommandMetadata',
+            'testServerCommandMetadata',
+            'testUserCommandMetadata',
+            'testVideoCommandMetadata',
+        ], true);
+    }
+
     public static function databaseSkipMessage(\Throwable $e, string $context = 'Test database not available'): string
     {
         $config = self::getDbConfig();

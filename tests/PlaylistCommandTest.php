@@ -19,7 +19,7 @@ class PlaylistCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new PlaylistCommand($this->config);
 
         $app = new Application();
@@ -28,6 +28,10 @@ class PlaylistCommandTest extends TestCase
         $this->tester = new CommandTester($this->command);
 
         // Setup test database connection
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
+
         try {
             $this->db = TestHelper::getPDO();
         } catch (\PDOException $e) {
@@ -66,7 +70,7 @@ class PlaylistCommandTest extends TestCase
     public function testPlaylistListWithUserFilter(): void
     {
         // Get a user ID that exists
-        $stmt = $this->db->query("SELECT user_id FROM ktvs_users LIMIT 1");
+        $stmt = $this->db->query('SELECT user_id FROM ' . TestHelper::table('users') . ' LIMIT 1');
         $userId = $stmt->fetchColumn();
 
         if (!$userId) {
@@ -160,7 +164,7 @@ class PlaylistCommandTest extends TestCase
     public function testPlaylistShow(): void
     {
         // Get first playlist ID
-        $stmt = $this->db->query("SELECT playlist_id FROM ktvs_playlists LIMIT 1");
+        $stmt = $this->db->query('SELECT playlist_id FROM ' . TestHelper::table('playlists') . ' LIMIT 1');
         $playlistId = $stmt->fetchColumn();
 
         if (!$playlistId) {
@@ -263,7 +267,9 @@ class PlaylistCommandTest extends TestCase
 
     public function testPlaylistAddVideoNotFound(): void
     {
-        $stmt = $this->db->query("SELECT playlist_id FROM ktvs_playlists WHERE is_locked=0 LIMIT 1");
+        $stmt = $this->db->query(
+            'SELECT playlist_id FROM ' . TestHelper::table('playlists') . ' WHERE is_locked = 0 LIMIT 1'
+        );
         $playlistId = $stmt->fetchColumn();
 
         if ($playlistId === false) {
@@ -320,7 +326,9 @@ class PlaylistCommandTest extends TestCase
 
     public function testPlaylistRemoveVideoNotFound(): void
     {
-        $stmt = $this->db->query("SELECT playlist_id FROM ktvs_playlists WHERE is_locked=0 LIMIT 1");
+        $stmt = $this->db->query(
+            'SELECT playlist_id FROM ' . TestHelper::table('playlists') . ' WHERE is_locked = 0 LIMIT 1'
+        );
         $playlistId = $stmt->fetchColumn();
 
         if ($playlistId === false) {

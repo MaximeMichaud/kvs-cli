@@ -19,13 +19,17 @@ class AlbumCommandTest extends TestCase
     {
         $kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = TestHelper::createTestConfiguration($kvsPath);
         $this->command = new AlbumCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+
+        if (TestHelper::isCommandDefinitionTest($this->name())) {
+            return;
+        }
 
         // Setup test database connection using TestHelper
         try {
@@ -55,7 +59,7 @@ class AlbumCommandTest extends TestCase
     public function testAlbumListWithStatus(): void
     {
         // Verify we have albums with different statuses
-        $stmt = $this->db->query("SELECT COUNT(*) FROM ktvs_albums WHERE status_id = 1");
+        $stmt = $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('albums') . ' WHERE status_id = 1');
         $activeCount = $stmt->fetchColumn();
 
         if ($activeCount == 0) {
@@ -115,7 +119,7 @@ class AlbumCommandTest extends TestCase
     public function testAlbumShow(): void
     {
         // Get first album ID
-        $stmt = $this->db->query("SELECT album_id FROM ktvs_albums LIMIT 1");
+        $stmt = $this->db->query('SELECT album_id FROM ' . TestHelper::table('albums') . ' LIMIT 1');
         $albumId = $stmt->fetchColumn();
 
         if (!$albumId) {
