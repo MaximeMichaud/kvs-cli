@@ -135,6 +135,42 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('These formats are configured', $output);
     }
 
+    public function testListUsesConfiguredFfprobePath(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+        $ffprobe = $toolsDir . '/ffprobe';
+        file_put_contents($ffprobe, "#!/bin/sh\necho '640,360'\n");
+        chmod($ffprobe, 0755);
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . '/empty');
+
+        try {
+            $tester = new CommandTester($this->createCommand());
+            $tester->execute([
+                'action' => 'list',
+                'video_id' => '1234',
+                '--fields' => 'dimensions',
+                '--format' => 'json',
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame(0, $tester->getStatusCode());
+            $this->assertSame('640x360', $rows[0]['dimensions'] ?? null);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     private function createCommand(): FormatsCommand
     {
         return new class (new Configuration(['path' => $this->tempDir]), $this->db) extends FormatsCommand {

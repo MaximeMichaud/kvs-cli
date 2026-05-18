@@ -405,18 +405,11 @@ HELP
      */
     private function getVideoDimensions(string $file): string
     {
-        // Check if ffprobe is available
-        $ffprobeResult = shell_exec('which ffprobe 2>/dev/null');
-        if ($ffprobeResult === null || $ffprobeResult === false) {
-            return 'Unknown';
-        }
-        $ffprobe = trim($ffprobeResult);
-        if ($ffprobe === '') {
-            return 'Unknown';
-        }
+        $ffprobe = $this->config->getFfprobePath();
 
         $cmd = sprintf(
-            'ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 %s 2>/dev/null',
+            '%s -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 %s 2>/dev/null',
+            escapeshellarg($ffprobe),
             escapeshellarg($file)
         );
 

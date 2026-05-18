@@ -74,4 +74,66 @@ class ScreenshotsPathTest extends TestCase
         );
         $this->assertStringNotContainsString('/stale/videos_screenshots', $output);
     }
+
+    public function testGenerateUsesConfiguredFfmpegAndFfprobePaths(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+
+        $ffprobe = $toolsDir . '/ffprobe';
+        file_put_contents($ffprobe, "#!/bin/sh\necho '12.0'\n");
+        chmod($ffprobe, 0755);
+
+        $ffmpeg = $toolsDir . '/ffmpeg';
+        file_put_contents(
+            $ffmpeg,
+            <<<'SH'
+#!/bin/sh
+previous=''
+for arg in "$@"; do
+  if [ "$arg" = '-y' ]; then
+    printf 'jpg' > "$previous"
+    exit 0
+  fi
+  previous="$arg"
+done
+exit 1
+SH
+        );
+        chmod($ffmpeg, 0755);
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
+        mkdir($sourcesPath . '/1000/1234', 0755, true);
+        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $screenshotsPath,
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . '/empty');
+
+        try {
+            $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+            $tester = new CommandTester($command);
+            $tester->execute([
+                'action' => 'generate',
+                'video_id' => '1234',
+                '--count' => '1',
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertFileExists($screenshotsPath . '/1000/1234/001.jpg');
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
 }

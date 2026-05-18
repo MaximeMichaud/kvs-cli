@@ -367,6 +367,26 @@ class Configuration
         );
     }
 
+    public function getFfmpegPath(): string
+    {
+        return $this->getConfiguredExecutablePath('ffmpeg_path', 'ffmpeg');
+    }
+
+    public function getFfprobePath(): string
+    {
+        $configuredPath = $this->getConfiguredExecutablePath('ffprobe_path', '');
+        if ($configuredPath !== '') {
+            return $configuredPath;
+        }
+
+        $ffmpegPath = $this->getFfmpegPath();
+        if ($ffmpegPath !== 'ffmpeg' && basename($ffmpegPath) === 'ffmpeg') {
+            return dirname($ffmpegPath) . '/ffprobe';
+        }
+
+        return 'ffprobe';
+    }
+
     private function getConfiguredContentSubPath(string $configKey, string $subPath): string
     {
         $configuredPath = $this->config[$configKey] ?? null;
@@ -379,6 +399,16 @@ class Configuration
         }
 
         return $fallbackPath;
+    }
+
+    private function getConfiguredExecutablePath(string $configKey, string $default): string
+    {
+        $configuredPath = $this->config[$configKey] ?? null;
+        if (is_string($configuredPath) && trim($configuredPath) !== '') {
+            return trim($configuredPath);
+        }
+
+        return $default;
     }
 
     /**

@@ -140,8 +140,11 @@ HELP
             return self::FAILURE;
         }
 
+        $ffmpegPath = $this->config->getFfmpegPath();
+        $ffprobePath = $this->config->getFfprobePath();
+
         // Check if ffmpeg is available
-        if (!$this->checkFfmpegAvailable()) {
+        if (!$this->checkFfmpegAvailable($ffmpegPath)) {
             $this->io()->error('ffmpeg is not installed or not accessible');
             $this->io()->text('Screenshot generation requires ffmpeg.');
             $this->io()->newLine();
@@ -181,7 +184,7 @@ HELP
         }
 
         // Get video duration
-        $duration = $this->getVideoDuration($videoFile);
+        $duration = $this->getVideoDuration($videoFile, $ffprobePath);
         if ($duration === null) {
             $this->io()->error("Failed to get video duration for: $videoFile");
             return self::FAILURE;
@@ -201,7 +204,8 @@ HELP
             $outputFile = "$screenshotsPath/$filename";
 
             $cmd = sprintf(
-                'ffmpeg -ss %.2f -i %s -vframes 1 -q:v 2 %s -y 2>&1',
+                '%s -ss %.2f -i %s -vframes 1 -q:v 2 %s -y 2>&1',
+                escapeshellarg($ffmpegPath),
                 $timestamp,
                 escapeshellarg($videoFile),
                 escapeshellarg($outputFile)
@@ -349,10 +353,11 @@ HELP
     /**
      * Get video duration using ffprobe
      */
-    private function getVideoDuration(string $file): ?float
+    private function getVideoDuration(string $file, string $ffprobePath): ?float
     {
         $cmd = sprintf(
-            'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s 2>&1',
+            '%s -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s 2>&1',
+            escapeshellarg($ffprobePath),
             escapeshellarg($file)
         );
 
@@ -368,8 +373,12 @@ HELP
     /**
      * Check if ffmpeg is available
      */
-    private function checkFfmpegAvailable(): bool
+    private function checkFfmpegAvailable(string $ffmpegPath): bool
     {
+        if ($ffmpegPath !== 'ffmpeg') {
+            return is_file($ffmpegPath) && is_executable($ffmpegPath);
+        }
+
         // Try common paths
         $paths = [
             '/usr/bin/ffmpeg',
@@ -384,7 +393,7 @@ HELP
         }
 
         // Try exec to check if it's in PATH
-        exec('ffmpeg -version 2>&1', $output, $returnCode);
+        exec(escapeshellarg($ffmpegPath) . ' -version 2>&1', $output, $returnCode);
         return $returnCode === 0;
     }
 
