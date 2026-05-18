@@ -36,6 +36,7 @@ class CheckCommand extends BaseCommand
     // PHP version requirements per KVS version (min, max)
     // Note: 6.2.1 introduced PHP 8.1 support, 6.2.0 was PHP 7.x only
     private const KVS_PHP_REQUIREMENTS = [
+        '7.0' => ['min' => '8.1', 'max' => '8.4.99'],
         '6.4' => ['min' => '8.1', 'max' => '8.4.99'],
         '6.3' => ['min' => '8.1', 'max' => '8.4.99'],
         '6.2.1' => ['min' => '8.1', 'max' => '8.4.99'],  // 6.2.1+ supports PHP 8.1

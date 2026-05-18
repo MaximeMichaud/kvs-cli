@@ -117,7 +117,7 @@ KVS Configuration
 Project Configuration
 ---------------------
  Project Name      My Video Site
- Version           6.3.2
+ Version           7.0.0
  Installation Path /var/www/kvs
  Project URL       https://example.com
 

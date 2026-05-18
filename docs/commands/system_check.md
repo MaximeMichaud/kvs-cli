@@ -120,7 +120,7 @@ KVS System Check
 
 Check                    Status  Details
 ─────────────────────────────────────────────────────
-KVS Update              ✓ OK    Version 6.3.2 is current
+KVS Update              ✓ OK    Version 7.0.0 is current
 PHP Version             ✓ OK    PHP 8.2.15
 PHP Extensions          ✓ OK    All required extensions loaded
 FFmpeg                  ✓ OK    6.0.0 at /usr/bin/ffmpeg
@@ -149,7 +149,7 @@ kvs check --json
     {
       "name": "KVS Update",
       "status": "ok",
-      "message": "Version 6.3.2 is current"
+      "message": "Version 7.0.0 is current"
     },
     {
       "name": "PHP Version",

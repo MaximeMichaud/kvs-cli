@@ -45,7 +45,7 @@ Environment
 KVS
 ---
  Path            /var/www/kvs
- Version         6.3.2
+ Version         7.0.0
  Config Loaded   Yes
 
 Database

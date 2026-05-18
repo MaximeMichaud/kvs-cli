@@ -82,7 +82,7 @@ $mockConfig = new class extends Configuration {
 
     public function getKvsVersion(): string
     {
-        return '6.3.2';
+        return '7.0.0';
     }
 };
 

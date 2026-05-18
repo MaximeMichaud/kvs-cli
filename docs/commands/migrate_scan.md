@@ -71,7 +71,7 @@ KVS Installation Scan
 Installation
 ------------
  Path          /var/www/kvs
- Version       6.3.2
+ Version       7.0.0
  Type          Standalone
 
 Database

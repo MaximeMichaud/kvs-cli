@@ -303,7 +303,7 @@ class FileIOBench
         return [
             'project_path' => '/var/www/kvs',
             'project_url' => 'https://example.com',
-            'project_version' => '6.3.2',
+            'project_version' => '7.0.0',
             'content_url_videos_sources' => 'https://cdn.example.com/videos',
             'cv' => md5('test_key'),
             'locale' => 'english',

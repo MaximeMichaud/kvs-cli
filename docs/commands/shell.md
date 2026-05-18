@@ -144,7 +144,7 @@ kvs>>> array_column($users, 'username')
 
 ```php
 kvs>>> $kvsConfig->get('project_version')
-=> "6.3.2"
+=> "7.0.0"
 
 kvs>>> $kvsConfig->getKvsPath()
 => "/var/www/kvs"

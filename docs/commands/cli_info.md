@@ -56,7 +56,7 @@ KVS CLI root:    /usr/local/bin/kvs.phar
 KVS CLI PHAR:    /usr/local/bin/kvs
 KVS CLI version: 1.0.0
 KVS path:        /var/www/html/kvs
-KVS version:     6.3.2
+KVS version:     7.0.0
 ```
 
 ### Output as JSON
@@ -79,7 +79,7 @@ Output:
     "kvs_cli_phar_path": "/usr/local/bin/kvs",
     "kvs_cli_version": "1.0.0",
     "kvs_path": "/var/www/html/kvs",
-    "kvs_version": "6.3.2"
+    "kvs_version": "7.0.0"
 }
 ```
 

@@ -24,7 +24,7 @@ Installation
  KVS Path      /var/www/kvs
  Admin Path    /var/www/kvs/admin
  Content Path  /var/www/kvs/contents
- KVS Version   6.3.2
+ KVS Version   7.0.0
 ```
 
 ### Database

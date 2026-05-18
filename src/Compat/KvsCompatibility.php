@@ -26,7 +26,7 @@ class KvsCompatibility
      * Versions newer than this trigger a warning - we can't guarantee compatibility.
      * Update this constant after testing with new KVS releases.
      */
-    public const MAX_TESTED_VERSION = '6.4.0';
+    public const MAX_TESTED_VERSION = '7.0.0';
 
     /**
      * Known configuration keys for each config type.
@@ -108,7 +108,7 @@ class KvsCompatibility
      */
     private static array $keyMappings = [
         'stats_params' => [
-            // Example: if KVS 6.5 renames 'collect_traffic_stats' to 'enable_traffic_stats'
+            // Example: if KVS 7.1 renames 'collect_traffic_stats' to 'enable_traffic_stats'
             // 'collect_traffic_stats' => 'enable_traffic_stats',
         ],
         'antispam' => [

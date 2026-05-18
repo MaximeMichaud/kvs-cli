@@ -281,7 +281,7 @@ function runCpuBenchmarks(int \$iterations): array {
     \$configData = [
         'project_path' => '/var/www/kvs',
         'project_url' => 'https://example.com',
-        'version' => '6.3.2',
+        'version' => '7.0.0',
         'categories' => array_map(fn(\$i) => ['id' => \$i, 'title' => "Cat \$i"], range(1, 50)),
     ];
 

@@ -136,7 +136,7 @@ PHP
         // Create setup.php
         file_put_contents($dir . '/admin/include/setup.php', <<<'PHP'
 <?php
-$config['project_version'] = '6.3.2';
+$config['project_version'] = '7.0.0';
 $config['project_path'] = __DIR__ . '/../..';
 $config['tables_prefix'] = 'ktvs_';
 PHP
