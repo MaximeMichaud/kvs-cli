@@ -356,6 +356,17 @@ class Configuration
         );
     }
 
+    /**
+     * Get path for category files
+     */
+    public function getCategoriesPath(): string
+    {
+        return $this->getConfiguredContentSubPath(
+            'content_path_categories',
+            Constants::CONTENT_CATEGORIES
+        );
+    }
+
     private function getConfiguredContentSubPath(string $configKey, string $subPath): string
     {
         $configuredPath = $this->config[$configKey] ?? null;

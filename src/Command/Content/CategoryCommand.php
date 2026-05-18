@@ -491,11 +491,7 @@ HELP
 
     private function deleteCategoryFiles(string $categoryId): void
     {
-        $contentPath = $this->config->get('content_path_categories');
-        if (!is_string($contentPath) || $contentPath === '') {
-            $contentPath = $this->config->getContentPath() . '/categories';
-        }
-
+        $contentPath = $this->config->getCategoriesPath();
         $path = rtrim($contentPath, '/') . '/' . $categoryId;
         if (!is_dir($path)) {
             return;

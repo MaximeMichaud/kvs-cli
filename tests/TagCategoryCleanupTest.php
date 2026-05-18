@@ -83,6 +83,28 @@ class TagCategoryCleanupTest extends TestCase
         );
     }
 
+    public function testCategoryDeleteFallsBackFromStaleConfiguredCategoryPath(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config = ["tables_prefix" => "ktvs_", "content_path_categories" => "'
+            . $this->tempDir . '/old/contents/categories"];'
+        );
+
+        $db = $this->createDatabase();
+        $this->createCategorySchema($db);
+        $db->exec("INSERT INTO ktvs_categories (category_id, title, category_group_id) VALUES (1, 'Delete', 0)");
+
+        mkdir($this->tempDir . '/contents/categories/1', 0755, true);
+        file_put_contents($this->tempDir . '/contents/categories/1/avatar.jpg', 'test');
+
+        $tester = new CommandTester($this->createCategoryCommand($db));
+        $tester->execute(['action' => 'delete', 'id' => '1']);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertDirectoryDoesNotExist($this->tempDir . '/contents/categories/1');
+    }
+
     public function testTagDeleteCleansAllKvsAssociationTables(): void
     {
         $db = $this->createDatabase();
