@@ -163,7 +163,7 @@ HELP
             }, $models);
 
             // Default fields
-            $defaultFields = ['model_id', 'title', 'status_id', 'video_count'];
+            $defaultFields = ['model_id', 'title', 'status', 'video_count'];
 
             // Format and display using Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);

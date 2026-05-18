@@ -192,7 +192,7 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['playlist_id', 'title', 'status_id', 'is_private', 'total_videos', 'username', 'added_date']
+                ['playlist_id', 'title', 'status', 'type', 'total_videos', 'username', 'added_date']
             );
             $formatter->display($transformedPlaylists, $this->io());
 

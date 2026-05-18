@@ -151,7 +151,7 @@ HELP
             }, $dvds);
 
             // Default fields
-            $defaultFields = ['dvd_id', 'title', 'status_id', 'total_videos'];
+            $defaultFields = ['dvd_id', 'title', 'status', 'total_videos'];
 
             // Format and display using Formatter
             $formatter = new Formatter($input->getOptions(), $defaultFields);

@@ -5,6 +5,9 @@ namespace KVS\CLI\Tests;
 use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Command\Content\CommentCommand;
+use KVS\CLI\Command\Content\DvdCommand;
+use KVS\CLI\Command\Content\ModelCommand;
+use KVS\CLI\Command\Content\PlaylistCommand;
 use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\VideoCommand;
@@ -237,6 +240,91 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Active', $defaultRows[0]['status']);
         $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
         $this->assertSame('Premium', $defaultRows[0]['is_private']);
+    }
+
+    public function testModelListDefaultFieldsExposeFormattedStatus(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_models (' .
+            'model_id INTEGER, title TEXT, status_id INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'model_viewed INTEGER, country TEXT, birth_date TEXT, measurements TEXT, ' .
+            'height TEXT, weight TEXT, rank INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_models_videos (model_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_models_albums (model_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_list_countries (country_code TEXT, language_code TEXT, title TEXT)');
+        $db->exec("INSERT INTO ktvs_models VALUES (7, 'Lina Moreau', 1, 50, 10, 100, '', '', '', '', '', 0)");
+
+        $tester = new CommandTester($this->createModelCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Active', $rows[0]['status']);
+        $this->assertArrayNotHasKey('status_id', $rows[0]);
+    }
+
+    public function testDvdListDefaultFieldsExposeFormattedStatus(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_dvds (' .
+            'dvd_id INTEGER, title TEXT, status_id INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'dvd_viewed INTEGER, release_year INTEGER, subscribers_count INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (dvd_id INTEGER, duration INTEGER)');
+        $db->exec("INSERT INTO ktvs_dvds VALUES (4, 'Fitness Basics', 1, 50, 10, 100, 2026, 0)");
+
+        $tester = new CommandTester($this->createDvdCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Active', $rows[0]['status']);
+        $this->assertArrayNotHasKey('status_id', $rows[0]);
+    }
+
+    public function testPlaylistListDefaultFieldsExposeFormattedStatusAndType(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_playlists (' .
+            'playlist_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT, description TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_playlists VALUES " .
+            "(3, 1, 'Best Tutorials', 1, 0, 50, 10, 100, '2024-01-02 00:00:00', '')"
+        );
+
+        $tester = new CommandTester($this->createPlaylistCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Active', $rows[0]['status']);
+        $this->assertSame('Public', $rows[0]['type']);
+        $this->assertArrayNotHasKey('status_id', $rows[0]);
+        $this->assertArrayNotHasKey('is_private', $rows[0]);
     }
 
     public function testCommentListExposesDocumentedContentFields(): void
@@ -495,6 +583,54 @@ class ContentOutputRegressionTest extends TestCase
             {
                 parent::__construct($config);
                 $this->setName('content:album');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createModelCommand(\PDO $db): ModelCommand
+    {
+        return new class ($this->createConfig(), $db) extends ModelCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:model');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createDvdCommand(\PDO $db): DvdCommand
+    {
+        return new class ($this->createConfig(), $db) extends DvdCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:dvd');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createPlaylistCommand(\PDO $db): PlaylistCommand
+    {
+        return new class ($this->createConfig(), $db) extends PlaylistCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:playlist');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO
