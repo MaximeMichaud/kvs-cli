@@ -186,7 +186,7 @@ abstract class BaseCommand extends Command
             return null;
         }
 
-        $command = 'php ' . escapeshellarg($scriptPath);
+        $command = escapeshellarg($this->config->getPhpPath()) . ' ' . escapeshellarg($scriptPath);
         foreach ($args as $arg) {
             $command .= ' ' . escapeshellarg($arg);
         }

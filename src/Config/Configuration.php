@@ -387,6 +387,11 @@ class Configuration
         return 'ffprobe';
     }
 
+    public function getPhpPath(): string
+    {
+        return $this->getConfiguredExecutablePath('php_path', PHP_BINARY);
+    }
+
     private function getConfiguredContentSubPath(string $configKey, string $subPath): string
     {
         $configuredPath = $this->config[$configKey] ?? null;

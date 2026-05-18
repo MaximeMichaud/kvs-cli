@@ -63,6 +63,44 @@ class CronCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testCronUsesConfiguredPhpPathWhenPhpIsNotInPath(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+        $phpPath = $toolsDir . '/custom-php';
+        file_put_contents(
+            $phpPath,
+            <<<'SH'
+#!/bin/sh
+echo configured php used: "${1##*/}"
+SH
+        );
+        chmod($phpPath, 0755);
+
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config = ["php_path" => "' . addslashes($phpPath) . '"];'
+        );
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . '/empty');
+
+        try {
+            $tester = new CommandTester(new CronCommand(new Configuration(['path' => $this->tempDir])));
+            $tester->execute(['task' => 'conversion']);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(0, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString('configured php used: cron_conversion.php', $output);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testCronList(): void
     {
         $this->tester->execute(['--list' => true]);
