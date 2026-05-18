@@ -27,6 +27,14 @@ class ApplicationTest extends TestCase
         $this->assertEquals($expectedVersion, $this->app->getVersion());
     }
 
+    public function testComposerBinEntrypointExistsAndIsExecutable(): void
+    {
+        $binPath = __DIR__ . '/../bin/kvs';
+
+        $this->assertFileExists($binPath);
+        $this->assertTrue(is_executable($binPath));
+    }
+
     public function testApplicationHasDefaultCommands(): void
     {
         $commands = $this->app->all();
