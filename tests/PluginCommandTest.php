@@ -25,45 +25,51 @@ class PluginCommandTest extends TestCase
     private Configuration $config;
     private PluginCommand $command;
     private CommandTester $tester;
+    private string $tempDir;
 
     protected function setUp(): void
     {
-        // Use real KVS installation path for integration testing
-        // Try multiple methods to find KVS path (no hardcoding)
-        $kvsPath = getenv('KVS_PATH') ?: null;
-        if ($kvsPath && !is_dir($kvsPath . '/admin/include')) {
-            $kvsPath = null;
-        }
+        $this->tempDir = TestHelper::createTempDir('kvs-plugin-test-');
+        TestHelper::createMockKvsInstallation($this->tempDir, ['project_version' => '6.3.2']);
+        $this->createPluginFixture(
+            'backup',
+            'Backup',
+            'Kernel Team',
+            '1.0.0',
+            '6.0.0',
+            'manual,cron',
+            'Backup plugin',
+            'Create and restore backups.'
+        );
+        $this->createPluginFixture(
+            'analytics',
+            'Analytics',
+            'Kernel Team',
+            '1.1.0',
+            '6.0.0',
+            'manual',
+            'Analytics plugin',
+            'Track internal statistics.',
+            true
+        );
 
-        // If not set, try to detect from current directory structure
-        if (!$kvsPath) {
-            // Assume we're in kvs-cli/tests and KVS is in ../kvs
-            $possiblePath = dirname(__DIR__, 2) . '/kvs';
-            if (is_dir($possiblePath . '/admin/include')) {
-                $kvsPath = $possiblePath;
-            }
-        }
-
-        // Fallback to getcwd() if it's a KVS directory
-        if (!$kvsPath) {
-            $cwd = getcwd();
-            if (is_dir($cwd . '/admin/include')) {
-                $kvsPath = $cwd;
-            }
-        }
-
-        // If still not found, skip tests that require real KVS
-        if (!$kvsPath) {
-            $this->markTestSkipped('KVS installation not found. Set KVS_PATH environment variable.');
-        }
-
-        $this->config = new Configuration(['path' => $kvsPath]);
+        $this->config = new Configuration([
+            'path' => $this->tempDir,
+            'disable_db_env_overrides' => true,
+        ]);
         $this->command = new PluginCommand($this->config);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
+    }
+
+    protected function tearDown(): void
+    {
+        if (isset($this->tempDir)) {
+            TestHelper::removeDir($this->tempDir);
+        }
     }
 
     // ========================================
@@ -436,10 +442,10 @@ class PluginCommandTest extends TestCase
 
         $this->assertEquals(0, $exitCode);
 
-        // Table format should have headers and borders (hyphens/spaces used by Symfony Console)
+        // Table format should have headers and borders.
         $this->assertStringContainsString('Id', $output);
         $this->assertStringContainsString('Name', $output);
-        $this->assertMatchesRegularExpression('/[-\s]{10,}/', $output, 'Should contain table formatting');
+        $this->assertStringContainsString('┌', $output, 'Should contain table formatting');
     }
 
     public function testCSVFormat(): void
@@ -462,7 +468,7 @@ class PluginCommandTest extends TestCase
         $this->assertGreaterThan(0, count($lines), 'Should have CSV lines');
 
         // First line should be headers
-        $headers = str_getcsv($lines[0]);
+        $headers = str_getcsv($lines[0], ',', '"', '\\');
         $this->assertContains('id', $headers);
         $this->assertContains('name', $headers);
         $this->assertContains('version', $headers);
@@ -560,39 +566,35 @@ class PluginCommandTest extends TestCase
     // INTEGRATION TESTS (3 tests)
     // ========================================
 
-    public function testIntegrationWithRealKVS(): void
+    public function testCanReadFixturePlugins(): void
     {
-        // Verify we can read real KVS plugins
         $pluginsDir = $this->config->getAdminPath() . '/plugins';
         $this->assertDirectoryExists($pluginsDir, 'KVS plugins directory should exist');
 
         $exitCode = $this->tester->execute(['action' => 'list']);
         $output = $this->tester->getDisplay();
 
-        $this->assertEquals(0, $exitCode, 'Should successfully read real plugins');
+        $this->assertEquals(0, $exitCode, 'Should successfully read fixture plugins');
         $this->assertStringContainsString('Name', $output);
 
-        // Should find known plugins
+        // Should find known fixture plugins
         $exitCode = $this->tester->execute([
             'action' => 'show',
             'id' => 'backup'
         ]);
-        $this->assertEquals(0, $exitCode, 'Should find backup plugin in real KVS');
+        $this->assertEquals(0, $exitCode, 'Should find backup plugin fixture');
     }
 
     public function testHandlesEmptyPluginDirectoryGracefully(): void
     {
-        // Create a temporary KVS structure with no plugins
         $tempDir = TestHelper::createTempDir('kvs-test-');
-        mkdir($tempDir . '/admin/include', 0755, true);
-        mkdir($tempDir . '/admin/plugins', 0755, true);
-
-        // Create required files for valid KVS installation
-        TestHelper::createMockDbConfig($tempDir);
-        file_put_contents($tempDir . '/admin/include/setup.php', '<?php');
+        TestHelper::createMockKvsInstallation($tempDir);
 
         try {
-            $tempConfig = new Configuration(['path' => $tempDir]);
+            $tempConfig = new Configuration([
+                'path' => $tempDir,
+                'disable_db_env_overrides' => true,
+            ]);
             $tempCommand = new PluginCommand($tempConfig);
 
             $app = new Application();
@@ -605,10 +607,7 @@ class PluginCommandTest extends TestCase
             $this->assertEquals(0, $exitCode, 'Should handle empty plugins directory gracefully');
             $this->assertStringContainsString('No plugins found', $output);
         } finally {
-            // Cleanup
-            if (is_dir($tempDir)) {
-                exec('rm -rf ' . escapeshellarg($tempDir));
-            }
+            TestHelper::removeDir($tempDir);
         }
     }
 
@@ -738,5 +737,53 @@ class PluginCommandTest extends TestCase
             'action' => 'list',
             '--format' => 'invalid_format'
         ]);
+    }
+
+    private function createPluginFixture(
+        string $id,
+        string $name,
+        string $author,
+        string $version,
+        string $kvsVersion,
+        string $types,
+        string $title,
+        string $description,
+        bool $disabled = false
+    ): void {
+        $pluginDir = $this->tempDir . '/admin/plugins/' . $id;
+        mkdir($pluginDir . '/langs', 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.dat',
+            <<<XML
+<plugin>
+    <plugin_name>{$name}</plugin_name>
+    <author>{$author}</author>
+    <version>{$version}</version>
+    <kvs_version>{$kvsVersion}</kvs_version>
+    <plugin_types>{$types}</plugin_types>
+</plugin>
+XML
+        );
+
+        $enabledFunction = '';
+        if ($disabled) {
+            $enabledFunction = "\nfunction {$id}IsEnabled(): bool\n{\n    return false;\n}\n";
+        }
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.php',
+            "<?php\nfunction {$id}Show(): void\n{\n}\n" . $enabledFunction
+        );
+        file_put_contents($pluginDir . '/' . $id . '.tpl', '');
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['{$id}']['title'] = '{$title}';
+\$lang['plugins']['{$id}']['description'] = '{$description}';
+
+PHP
+        );
     }
 }

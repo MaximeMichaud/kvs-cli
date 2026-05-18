@@ -16,13 +16,10 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * Tests all scenarios:
  * - Missing ID parameter
  * - Database connection failure
- * - Entity not found (requires DB, skipped if unavailable)
- * - Entity already at target status (requires DB, skipped if unavailable)
- * - Successful status toggle (requires DB, skipped if unavailable)
+ * - Entity not found
+ * - Entity already at target status
+ * - Successful status toggle
  * - Database exception during update
- *
- * Note: Some tests require a real database connection and are skipped if DB is unavailable.
- *       In the future, these could be refactored to use database mocking (PDO mock or similar).
  */
 class ToggleStatusTraitTest extends TestCase
 {
@@ -30,6 +27,7 @@ class ToggleStatusTraitTest extends TestCase
     private SymfonyStyle $io;
     private BufferedOutput $output;
     private string $tempDir;
+    private \PDO $db;
 
     protected function setUp(): void
     {
@@ -42,13 +40,20 @@ class ToggleStatusTraitTest extends TestCase
         $this->tempDir = TestHelper::createTempDir('kvs-test-toggle-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
 
-        TestHelper::createMockDbConfig($this->tempDir);
-        file_put_contents($this->tempDir . '/admin/include/setup.php', '<?php');
+        TestHelper::createMockKvsInstallation($this->tempDir);
 
-        $config = new Configuration(['path' => $this->tempDir]);
+        $config = new Configuration([
+            'path' => $this->tempDir,
+            'disable_db_env_overrides' => true,
+        ]);
+        $this->db = new \PDO('sqlite::memory:');
+        $this->db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->db->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
+        $this->db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER PRIMARY KEY, tag TEXT, status_id INTEGER)');
+        $this->db->exec("INSERT INTO ktvs_tags VALUES (1, 'HD', 1), (2, 'Inactive', 0)");
 
         // Create test command instance
-        $this->command = new TestCommandWithToggleTrait($config);
+        $this->command = new TestCommandWithToggleTrait($config, $this->db);
         $this->command->setIo($this->io);
     }
 
@@ -106,21 +111,10 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testDatabaseConnectionFailureReturnsFailure(): void
     {
-        // Force database connection to fail by using invalid credentials
-        $tempDir = TestHelper::createTempDir('kvs-test-toggle-invalid-');
-        mkdir($tempDir . '/admin/include', 0755, true);
-
-        file_put_contents(
-            $tempDir . '/admin/include/setup_db.php',
-            "<?php\n" .
-            "define('DB_HOST', 'invalid_host');\n" .
-            "define('DB_LOGIN', 'invalid');\n" .
-            "define('DB_PASS', 'invalid');\n" .
-            "define('DB_DEVICE', 'invalid');"
-        );
-        file_put_contents($tempDir . '/admin/include/setup.php', '<?php');
-
-        $config = new Configuration(['path' => $tempDir]);
+        $config = new Configuration([
+            'path' => $this->tempDir,
+            'disable_db_env_overrides' => true,
+        ]);
         $command = new TestCommandWithToggleTrait($config);
         $command->setIo($this->io);
 
@@ -135,8 +129,6 @@ class ToggleStatusTraitTest extends TestCase
         );
 
         $this->assertEquals(Command::FAILURE, $result);
-
-        TestHelper::removeDir($tempDir);
     }
 
     /**
@@ -144,10 +136,6 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testEntityNotFoundReturnsFailure(): void
     {
-        if (!$this->isDatabaseAvailable()) {
-            $this->markTestSkipped('Database connection not available');
-        }
-
         // Try to toggle a non-existent tag
         $result = $this->command->testToggleStatus(
             entityName: 'Tag',
@@ -168,10 +156,6 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testEntityAlreadyAtTargetStatus(): void
     {
-        if (!$this->isDatabaseAvailable()) {
-            $this->markTestSkipped('Database connection not available');
-        }
-
         // Tag ID 1 (HD) is already active (status_id=1)
         $result = $this->command->testToggleStatus(
             entityName: 'Tag',
@@ -192,10 +176,6 @@ class ToggleStatusTraitTest extends TestCase
      */
     public function testSuccessfulStatusToggle(): void
     {
-        if (!$this->isDatabaseAvailable()) {
-            $this->markTestSkipped('Database connection not available');
-        }
-
         // Disable tag ID 1 (HD) which is currently active
         $result = $this->command->testToggleStatus(
             entityName: 'Tag',
@@ -210,17 +190,8 @@ class ToggleStatusTraitTest extends TestCase
         $this->assertEquals(Command::SUCCESS, $result);
         $output = $this->output->fetch();
         $this->assertStringContainsString('disabled', $output);
-
-        // Re-enable to restore original state
-        $this->command->testToggleStatus(
-            entityName: 'Tag',
-            tableName: TestHelper::table('tags'),
-            idColumn: 'tag_id',
-            nameColumn: 'tag',
-            id: '1',
-            status: 1,
-            commandName: 'content:tag'
-        );
+        $status = $this->db->query('SELECT status_id FROM ktvs_tags WHERE tag_id = 1')->fetchColumn();
+        $this->assertSame(0, (int) $status);
     }
 
     /**
@@ -358,35 +329,6 @@ class ToggleStatusTraitTest extends TestCase
         $this->assertStringContainsString('CustomEntity ID is required', $output3);
     }
 
-    /**
-     * Check if database connection is available
-     *
-     * @return bool
-     */
-    private function isDatabaseAvailable(): bool
-    {
-        try {
-            $dbConfig = TestHelper::getDbConfig();
-            $dsn = sprintf(
-                'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
-                $dbConfig['host'],
-                $dbConfig['port'],
-                $dbConfig['database']
-            );
-            $pdo = new \PDO(
-                $dsn,
-                $dbConfig['user'],
-                $dbConfig['pass'],
-                [
-                    \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                    \PDO::ATTR_TIMEOUT => 2,
-                ]
-            );
-            return true;
-        } catch (\PDOException $e) {
-            return false;
-        }
-    }
 }
 
 /**
@@ -398,7 +340,7 @@ class TestCommandWithToggleTrait extends \KVS\CLI\Command\BaseCommand
 
     private SymfonyStyle $testIo;
 
-    public function __construct(Configuration $config)
+    public function __construct(Configuration $config, private ?\PDO $testDb = null)
     {
         parent::__construct($config);
     }
@@ -435,6 +377,11 @@ class TestCommandWithToggleTrait extends \KVS\CLI\Command\BaseCommand
     protected function configure(): void
     {
         $this->setName('test:toggle');
+    }
+
+    protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+    {
+        return $this->testDb;
     }
 
     protected function execute($input, $output): int
