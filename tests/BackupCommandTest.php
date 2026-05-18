@@ -93,6 +93,55 @@ SH
         }
     }
 
+    public function testDatabaseBackupSplitsHostPortForDumpCommand(): void
+    {
+        TestHelper::createMockDbConfig($this->tempDir, [
+            'host' => '127.0.0.1',
+            'port' => 3308,
+        ]);
+        $this->config = new Configuration(['path' => $this->tempDir]);
+        $this->command = new BackupCommand($this->config);
+        $this->tester = new CommandTester($this->command);
+
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+        $argsFile = $this->tempDir . '/mysqldump.args';
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents(
+            $mysqldump,
+            '#!/bin/sh' . "\n"
+            . 'for arg in "$@"; do echo "$arg"; done > ' . escapeshellarg($argsFile) . "\n"
+            . "echo 'SQL dump'\n"
+        );
+        chmod($mysqldump, 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'db',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $args = file($argsFile, FILE_IGNORE_NEW_LINES);
+            $this->assertIsArray($args);
+            $this->assertContains('-h', $args);
+            $this->assertContains('127.0.0.1', $args);
+            $this->assertContains('-P', $args);
+            $this->assertContains('3308', $args);
+            $this->assertNotContains('127.0.0.1:3308', $args);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testBackupList(): void
     {
         // BackupCommand looks in dirname(kvsPath)/backups

@@ -101,10 +101,16 @@ class BackupCommand extends BaseCommand
         }
 
         $dumpFile = "$outputDir/{$backupName}_db.sql";
+        $host = $dbConfig['host'];
+        $port = $dbConfig['port'] ?? (string) Constants::DEFAULT_MYSQL_PORT;
+        if (str_contains($host, ':')) {
+            [$host, $port] = explode(':', $host, 2);
+        }
 
         $command = [
             'mysqldump',
-            '-h', $dbConfig['host'],
+            '-h', $host,
+            '-P', $port,
             '-u', $dbConfig['user'],
             '-p' . $dbConfig['password'],
             '--single-transaction',
