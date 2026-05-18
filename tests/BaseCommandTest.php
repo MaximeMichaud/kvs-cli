@@ -17,7 +17,7 @@ class BaseCommandTest extends TestCase
     protected function setUp(): void
     {
         // Create mock KVS installation
-        $this->tempDir = sys_get_temp_dir() . '/kvs-test-' . uniqid();
+        $this->tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');
         file_put_contents($this->tempDir . '/admin/include/setup.php', '<?php');
@@ -74,6 +74,71 @@ class BaseCommandTest extends TestCase
 
         $display = $output->fetch();
         $this->assertStringContainsString('KVS Path: ' . $this->tempDir, $display);
+    }
+
+    public function testRuntimeConfigUsesActualKvsPathOverConfiguredProjectPath(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config = ["project_path" => "/var/www/html", "tables_prefix" => "ktvs_"];'
+        );
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config) extends BaseCommand {
+            protected function configure(): void
+            {
+                $this->setName('test:runtime-config');
+            }
+
+            protected function execute($input, $output): int
+            {
+                return self::SUCCESS;
+            }
+
+            public function runtimeConfig(): array
+            {
+                return $this->getKvsRuntimeConfig();
+            }
+        };
+
+        $runtimeConfig = $command->runtimeConfig();
+
+        $this->assertSame($this->tempDir, $runtimeConfig['project_path']);
+        $this->assertSame('ktvs_', $runtimeConfig['tables_prefix']);
+    }
+
+    public function testKvsAdminContextUsesActualKvsPathOverConfiguredProjectPath(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config = ["project_path" => "/var/www/html", "tables_prefix" => "ktvs_"];'
+        );
+        file_put_contents($this->tempDir . '/admin/include/functions_base.php', '<?php');
+        file_put_contents($this->tempDir . '/admin/include/functions.php', '<?php');
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config) extends BaseCommand {
+            protected function configure(): void
+            {
+                $this->setName('test:kvs-admin-context');
+            }
+
+            protected function execute($input, $output): int
+            {
+                return self::SUCCESS;
+            }
+
+            public function runInContext(): string
+            {
+                return $this->runWithKvsAdminContext(static function (): string {
+                    global $config;
+
+                    return (string) ($config['project_path'] ?? '');
+                });
+            }
+        };
+
+        $this->assertSame($this->tempDir, $command->runInContext());
     }
 
     public function testBaseCommandInitializeMethod(): void

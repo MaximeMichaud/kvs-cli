@@ -235,6 +235,7 @@ abstract class BaseCommand extends Command
 
             global $config;
             include $includePath . '/setup.php';
+            $config = array_replace(is_array($config ?? null) ? $config : [], $this->getKvsRuntimeConfig());
 
             $files = array_values(array_unique(array_merge([
                 'setup_db.php',
@@ -416,7 +417,7 @@ abstract class BaseCommand extends Command
         $multiTablePrefix = $this->config->getMultiTablePrefix();
         $kvsVersion = $this->config->getKvsVersion();
 
-        $config['project_path'] ??= $this->config->getKvsPath();
+        $config['project_path'] = $this->config->getKvsPath();
         $config['project_version'] ??= $kvsVersion !== '' ? $kvsVersion : 'unknown';
         $config['tables_prefix'] ??= $tablePrefix;
         $config['tables_prefix_multi'] ??= $multiTablePrefix;
