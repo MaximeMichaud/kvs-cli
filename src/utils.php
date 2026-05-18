@@ -11,6 +11,8 @@
 
 namespace KVS\CLI\Utils;
 
+use KVS\CLI\Constants;
+
 // ============================================================================
 // STRING MANIPULATION
 // ============================================================================
@@ -224,6 +226,39 @@ function format_duration(int $seconds): string
     }
 
     return implode(' ', $parts);
+}
+
+/**
+ * Calculate KVS average rating for display.
+ *
+ * KVS stores rating as a cumulative score and rating_amount as vote count.
+ * Imported or demo data can contain out-of-range cumulative scores, so display
+ * values must be clamped to the visible rating scale.
+ */
+function calculate_kvs_rating(mixed $rating, mixed $ratingAmount, int $scale = Constants::RATING_SCALE): float
+{
+    if (!is_numeric($rating) || !is_numeric($ratingAmount)) {
+        return 0.0;
+    }
+
+    $amount = (int) $ratingAmount;
+    if ($amount <= 0) {
+        return 0.0;
+    }
+
+    $average = (float) $rating / $amount;
+    return round(max(0.0, min((float) $scale, $average)), 1);
+}
+
+function format_kvs_rating(mixed $rating, mixed $ratingAmount, int $scale = Constants::RATING_SCALE): string
+{
+    if (!is_numeric($ratingAmount) || (int) $ratingAmount <= 0) {
+        return 'No ratings yet';
+    }
+
+    $amount = (int) $ratingAmount;
+
+    return sprintf('%.1f/%d (%d votes)', calculate_kvs_rating($rating, $amount, $scale), $scale, $amount);
 }
 
 /**

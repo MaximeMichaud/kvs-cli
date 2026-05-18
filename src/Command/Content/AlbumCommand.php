@@ -12,6 +12,9 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
+use function KVS\CLI\Utils\calculate_kvs_rating;
+use function KVS\CLI\Utils\format_kvs_rating;
+
 #[AsCommand(
     name: 'content:album',
     description: 'Manage KVS photo albums',
@@ -121,14 +124,7 @@ HELP
 
             // Transform albums for display (field aliases and calculated values)
             $transformedAlbums = array_map(function (array $album): array {
-                // Calculate rating (rating / rating_amount gives 0-5 scale)
-                $ratingAmountVal = $album['rating_amount'] ?? 0;
-                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
-                $ratingVal = $album['rating'] ?? 0;
-                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
-                $calculatedRating = $ratingAmount > 0
-                    ? round($rating / $ratingAmount, 1)
-                    : 0;
+                $calculatedRating = calculate_kvs_rating($album['rating'] ?? 0, $album['rating_amount'] ?? 0);
 
                 $statusIdVal = $album['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
@@ -208,9 +204,7 @@ HELP
                 ['Views', number_format($album['album_viewed'])],
                 [
                     'Rating',
-                    $album['rating_amount'] > 0
-                        ? sprintf('%.1f/%d (%d votes)', $album['rating'] / $album['rating_amount'], Constants::RATING_SCALE, $album['rating_amount'])
-                        : 'No ratings yet'
+                    format_kvs_rating($album['rating'], $album['rating_amount'])
                 ],
             ];
 

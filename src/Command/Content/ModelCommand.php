@@ -11,6 +11,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 
+use function KVS\CLI\Utils\calculate_kvs_rating;
+use function KVS\CLI\Utils\format_kvs_rating;
+
 #[AsCommand(
     name: 'content:model',
     description: 'Manage KVS models (performers)',
@@ -128,12 +131,7 @@ HELP
 
             // Transform models for display (field aliases)
             $transformedModels = array_map(function (array $model): array {
-                // Calculate rating
-                $ratingAmountVal = $model['rating_amount'] ?? 0;
-                $ratingVal = $model['rating'] ?? 0;
-                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
-                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
-                $calculatedRating = $ratingAmount > 0 ? round($rating / $ratingAmount, 1) : 0;
+                $calculatedRating = calculate_kvs_rating($model['rating'] ?? 0, $model['rating_amount'] ?? 0);
 
                 $statusIdVal = $model['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
@@ -237,8 +235,7 @@ HELP
             $ratingVal = $model['rating'] ?? 0;
             $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
             if ($ratingAmount > 0) {
-                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
-                $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', $rating / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
+                $info[] = ['Rating', format_kvs_rating($ratingVal, $ratingAmount)];
             }
 
             // Rank

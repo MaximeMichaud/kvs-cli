@@ -14,6 +14,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 use function KVS\CLI\Utils\truncate;
 use function KVS\CLI\Utils\format_bytes;
+use function KVS\CLI\Utils\calculate_kvs_rating;
+use function KVS\CLI\Utils\format_kvs_rating;
 
 #[AsCommand(
     name: 'content:video',
@@ -162,12 +164,7 @@ HELP
                     : 0;
                 $video['resolution'] = $this->formatResolutionType($resolutionType, false);
 
-                // Calculate rating (rating / rating_amount gives 0-5 scale)
-                $ratingAmount = isset($video['rating_amount']) && is_numeric($video['rating_amount']) ? (int) $video['rating_amount'] : 0;
-                $rating = isset($video['rating']) && is_numeric($video['rating']) ? (float) $video['rating'] : 0.0;
-                $video['rating'] = $ratingAmount > 0
-                    ? round($rating / $ratingAmount, 1)
-                    : 0;
+                $video['rating'] = calculate_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
                 return $video;
             }, $videos);
@@ -212,9 +209,6 @@ HELP
             $this->io()->section("Video #$id");
 
             $postTimestamp = strtotime($video['post_date']);
-            $ratingAmount = $video['rating_amount'];
-            $rating = $video['rating'];
-
             $info = [
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
@@ -226,14 +220,7 @@ HELP
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
                 [
                     'Rating',
-                    $ratingAmount > 0
-                        ? sprintf(
-                            '%.1f/%d (%d votes)',
-                            $rating / $ratingAmount,
-                            Constants::RATING_SCALE,
-                            $ratingAmount
-                        )
-                        : 'No ratings yet'
+                    format_kvs_rating($video['rating'], $video['rating_amount'])
                 ],
                 ['Views', number_format($video['video_viewed'])],
                 ['Favourites', number_format($video['favourites_count'])],
@@ -376,7 +363,9 @@ HELP
                     $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
                     $displayValue = $this->formatDuration($intVal);
                 } elseif ($label === 'Average Rating') {
-                    $displayValue = is_numeric($rawValue) ? sprintf('%.1f/%d', (float) $rawValue, Constants::RATING_SCALE) : 'N/A';
+                    $displayValue = is_numeric($rawValue)
+                        ? sprintf('%.1f/%d', calculate_kvs_rating($rawValue, 1), Constants::RATING_SCALE)
+                        : 'N/A';
                 } elseif ($label === 'Total Size') {
                     $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
                     $displayValue = format_bytes($intVal);

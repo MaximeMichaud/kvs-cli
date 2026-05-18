@@ -16,6 +16,8 @@ use function KVS\CLI\Utils\pick_fields;
 use function KVS\CLI\Utils\group_by;
 use function KVS\CLI\Utils\format_bytes;
 use function KVS\CLI\Utils\format_duration;
+use function KVS\CLI\Utils\calculate_kvs_rating;
+use function KVS\CLI\Utils\format_kvs_rating;
 use function KVS\CLI\Utils\format_date;
 use function KVS\CLI\Utils\report_batch_operation_results;
 use function KVS\CLI\Utils\build_where_clause;
@@ -246,6 +248,20 @@ class UtilsTest extends TestCase
             'full format' => [3661, '1h 1m 1s'],
             'hours only' => [7200, '2h'],
         ];
+    }
+
+    public function testCalculateKvsRatingClampsOutOfRangeValues(): void
+    {
+        $this->assertSame(5.0, calculate_kvs_rating(70, 5));
+        $this->assertSame(0.0, calculate_kvs_rating(-10, 2));
+        $this->assertSame(4.0, calculate_kvs_rating(16, 4));
+        $this->assertSame(0.0, calculate_kvs_rating(16, 0));
+    }
+
+    public function testFormatKvsRatingClampsOutOfRangeValues(): void
+    {
+        $this->assertSame('5.0/5 (5 votes)', format_kvs_rating(70, 5));
+        $this->assertSame('No ratings yet', format_kvs_rating(70, 0));
     }
 
     public function testFormatDateJustNow(): void

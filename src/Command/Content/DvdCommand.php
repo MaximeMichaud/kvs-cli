@@ -11,6 +11,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 
+use function KVS\CLI\Utils\calculate_kvs_rating;
+use function KVS\CLI\Utils\format_kvs_rating;
+
 #[AsCommand(
     name: 'content:dvd',
     description: 'Manage KVS DVDs (channels/series)',
@@ -121,12 +124,7 @@ HELP
 
             // Transform DVDs for display (field aliases)
             $transformedDvds = array_map(function (array $dvd): array {
-                // Calculate rating
-                $ratingAmountVal = $dvd['rating_amount'] ?? 0;
-                $ratingVal = $dvd['rating'] ?? 0;
-                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
-                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
-                $calculatedRating = $ratingAmount > 0 ? round($rating / $ratingAmount, 1) : 0;
+                $calculatedRating = calculate_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0);
 
                 $statusIdVal = $dvd['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
@@ -233,9 +231,8 @@ HELP
             $ratingAmountVal = $dvd['rating_amount'] ?? 0;
             $ratingVal = $dvd['rating'] ?? 0;
             $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
-            $ratingFloat = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
             if ($ratingAmount > 0) {
-                $info[] = ['Rating', sprintf('%.1f/%d (%d votes)', $ratingFloat / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)];
+                $info[] = ['Rating', format_kvs_rating($ratingVal, $ratingAmount)];
             }
 
             // Subscribers

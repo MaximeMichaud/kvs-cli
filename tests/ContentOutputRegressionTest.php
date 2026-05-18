@@ -144,6 +144,42 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertStringNotContainsString('Available actions', $output);
     }
 
+    public function testVideoListAndStatsClampRatingToScale(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, ' .
+            'video_viewed INTEGER, rating_amount INTEGER, rating REAL, resolution_type INTEGER, ' .
+            'is_private INTEGER, duration INTEGER, file_size INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(20, 1, 1, 'Imported rating', '2024-01-02 00:00:00', 15, 5, 70, 2, 0, 120, 5050)"
+        );
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,rating',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $statsTester = new CommandTester($this->createVideoCommand($db));
+        $statsTester->execute(['action' => 'stats']);
+        $statsOutput = $statsTester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(5.0, (float) $rows[0]['rating']);
+        $this->assertSame(0, $statsTester->getStatusCode());
+        $this->assertStringContainsString('5.0/5', $statsOutput);
+        $this->assertStringNotContainsString('14.0/5', $statsOutput);
+    }
+
     public function testVideoShowLabelsDimensionsSeparatelyFromResolution(): void
     {
         $db = $this->createSqliteConnection();
@@ -242,6 +278,42 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Premium', $defaultRows[0]['is_private']);
     }
 
+    public function testAlbumListAndShowClampRatingToScale(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_albums (' .
+            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_albums VALUES " .
+            "(4, 1, 'Imported rating', 1, 0, '2024-01-02 00:00:00', 15, 70, 4)"
+        );
+
+        $tester = new CommandTester($this->createAlbumCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,rating',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $showTester = new CommandTester($this->createAlbumCommand($db));
+        $showTester->execute(['action' => 'show', 'id' => '4']);
+        $showOutput = $showTester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(5.0, (float) $rows[0]['rating']);
+        $this->assertSame(0, $showTester->getStatusCode());
+        $this->assertStringContainsString('5.0/5 (4 votes)', $showOutput);
+        $this->assertStringNotContainsString('17.5/5', $showOutput);
+    }
+
     public function testModelListDefaultFieldsExposeFormattedStatus(): void
     {
         $db = $this->createSqliteConnection();
@@ -254,7 +326,7 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec('CREATE TABLE ktvs_models_videos (model_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_models_albums (model_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_list_countries (country_code TEXT, language_code TEXT, title TEXT)');
-        $db->exec("INSERT INTO ktvs_models VALUES (7, 'Lina Moreau', 1, 50, 10, 100, '', '', '', '', '', 0)");
+        $db->exec("INSERT INTO ktvs_models VALUES (7, 'Lina Moreau', 1, 70, 5, 100, '', '', '', '', '', 0)");
 
         $tester = new CommandTester($this->createModelCommand($db));
         $tester->execute([
@@ -268,6 +340,18 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame('Active', $rows[0]['status']);
         $this->assertArrayNotHasKey('status_id', $rows[0]);
+
+        $ratingTester = new CommandTester($this->createModelCommand($db));
+        $ratingTester->execute([
+            'action' => 'list',
+            '--fields' => 'id,rating',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $ratingRows = $this->decodeJsonRows($ratingTester->getDisplay());
+
+        $this->assertSame(0, $ratingTester->getStatusCode());
+        $this->assertSame(5.0, (float) $ratingRows[0]['rating']);
     }
 
     public function testDvdListDefaultFieldsExposeFormattedStatus(): void
@@ -279,7 +363,7 @@ class ContentOutputRegressionTest extends TestCase
             'dvd_viewed INTEGER, release_year INTEGER, subscribers_count INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_videos (dvd_id INTEGER, duration INTEGER)');
-        $db->exec("INSERT INTO ktvs_dvds VALUES (4, 'Fitness Basics', 1, 50, 10, 100, 2026, 0)");
+        $db->exec("INSERT INTO ktvs_dvds VALUES (4, 'Fitness Basics', 1, 70, 5, 100, 2026, 0)");
 
         $tester = new CommandTester($this->createDvdCommand($db));
         $tester->execute([
@@ -293,6 +377,18 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame('Active', $rows[0]['status']);
         $this->assertArrayNotHasKey('status_id', $rows[0]);
+
+        $ratingTester = new CommandTester($this->createDvdCommand($db));
+        $ratingTester->execute([
+            'action' => 'list',
+            '--fields' => 'id,rating',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $ratingRows = $this->decodeJsonRows($ratingTester->getDisplay());
+
+        $this->assertSame(0, $ratingTester->getStatusCode());
+        $this->assertSame(5.0, (float) $ratingRows[0]['rating']);
     }
 
     public function testPlaylistListDefaultFieldsExposeFormattedStatusAndType(): void
@@ -308,7 +404,7 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_playlists VALUES " .
-            "(3, 1, 'Best Tutorials', 1, 0, 50, 10, 100, '2024-01-02 00:00:00', '')"
+            "(3, 1, 'Best Tutorials', 1, 0, 70, 5, 100, '2024-01-02 00:00:00', '')"
         );
 
         $tester = new CommandTester($this->createPlaylistCommand($db));
@@ -325,6 +421,18 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Public', $rows[0]['type']);
         $this->assertArrayNotHasKey('status_id', $rows[0]);
         $this->assertArrayNotHasKey('is_private', $rows[0]);
+
+        $ratingTester = new CommandTester($this->createPlaylistCommand($db));
+        $ratingTester->execute([
+            'action' => 'list',
+            '--fields' => 'id,rating',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $ratingRows = $this->decodeJsonRows($ratingTester->getDisplay());
+
+        $this->assertSame(0, $ratingTester->getStatusCode());
+        $this->assertSame(5.0, (float) $ratingRows[0]['rating']);
     }
 
     public function testCommentListExposesDocumentedContentFields(): void

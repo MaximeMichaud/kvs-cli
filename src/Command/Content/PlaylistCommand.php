@@ -12,6 +12,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
+use function KVS\CLI\Utils\calculate_kvs_rating;
+use function KVS\CLI\Utils\format_kvs_rating;
+
 #[AsCommand(
     name: 'content:playlist',
     description: 'Manage KVS playlists',
@@ -154,14 +157,7 @@ HELP
 
             // Transform playlists for display
             $transformedPlaylists = array_map(function (array $playlist): array {
-                // Calculate rating (rating / rating_amount gives 0-5 scale)
-                $ratingAmountVal = $playlist['rating_amount'] ?? 0;
-                $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
-                $ratingVal = $playlist['rating'] ?? 0;
-                $rating = is_numeric($ratingVal) ? (float) $ratingVal : 0.0;
-                $calculatedRating = $ratingAmount > 0
-                    ? round($rating / $ratingAmount, 1)
-                    : 0;
+                $calculatedRating = calculate_kvs_rating($playlist['rating'] ?? 0, $playlist['rating_amount'] ?? 0);
 
                 $statusIdVal = $playlist['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
@@ -245,12 +241,7 @@ HELP
             $ratingAmount = isset($playlist['rating_amount']) && is_numeric($playlist['rating_amount'])
                 ? (int) $playlist['rating_amount']
                 : 0;
-            $rating = isset($playlist['rating']) && is_numeric($playlist['rating'])
-                ? (float) $playlist['rating']
-                : 0.0;
-            $ratingDisplay = $ratingAmount > 0
-                ? sprintf('%.1f/%d (%d votes)', $rating / $ratingAmount, Constants::RATING_SCALE, $ratingAmount)
-                : 'No ratings yet';
+            $ratingDisplay = format_kvs_rating($playlist['rating'] ?? 0, $ratingAmount);
 
             // Status
             $statusId = isset($playlist['status_id']) && is_numeric($playlist['status_id'])
