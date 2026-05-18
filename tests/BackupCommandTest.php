@@ -135,6 +135,19 @@ SH
         }
     }
 
+    public function testBackupRestoreConfirmedFailsUntilImplemented(): void
+    {
+        $backupFile = $this->tempDir . '/backups/test.tar.gz';
+        file_put_contents($backupFile, 'test');
+
+        $this->tester->setInputs(['yes']);
+        $this->tester->execute(['--restore' => $backupFile]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('not implemented', strtolower($output));
+    }
+
     public function testBackupNoAction(): void
     {
         // Running without any option shows help

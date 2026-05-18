@@ -250,8 +250,9 @@ class BackupCommand extends BaseCommand
         }
 
         $this->io()->info('Restoring from backup: ' . basename($backupFile));
+        $this->io()->error('Backup restore is not implemented yet.');
 
-        return self::SUCCESS;
+        return self::FAILURE;
     }
 
     private function listBackups(): int
