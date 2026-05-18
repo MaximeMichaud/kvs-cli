@@ -82,6 +82,24 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('Import database', $output);
     }
 
+    public function testToDockerDryRunNoContentDoesNotShowContentCopy(): void
+    {
+        $this->tester->execute([
+            '--domain' => 'test.local',
+            '--email' => 'test@test.com',
+            '--dry-run' => true,
+            '--no-content' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Include Content', $output);
+        $this->assertStringNotContainsString('Copy content', $output);
+        $this->assertStringNotContainsString('rsync -av', $output);
+    }
+
     public function testToDockerCommandShowsMigrationPlan(): void
     {
         $this->tester->execute([

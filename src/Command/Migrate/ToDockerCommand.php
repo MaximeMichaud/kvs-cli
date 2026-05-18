@@ -201,7 +201,7 @@ EOT
 
         if ($dryRun) {
             $this->io()->note('Dry run mode - no changes will be made');
-            $this->showDryRunSteps($sourceConfig, $targetDir, $domain, $sslChoice, $dbChoice);
+            $this->showDryRunSteps($sourceConfig, $targetDir, $domain, $sslChoice, $dbChoice, $noContent);
             return self::SUCCESS;
         }
 
@@ -360,7 +360,8 @@ EOT
         string $targetDir,
         string $domain,
         string $sslChoice,
-        string $dbChoice
+        string $dbChoice,
+        bool $noContent
     ): void {
         $this->io()->section('Dry Run - Commands that would be executed:');
 
@@ -388,7 +389,7 @@ EOT
         $this->io()->text("docker exec -i kvs-{$domain}-mariadb mariadb kvs < /tmp/kvs-migration.sql");
         $this->io()->newLine();
 
-        if (is_dir($config->getContentPath())) {
+        if (!$noContent && is_dir($config->getContentPath())) {
             $this->io()->text('<comment># 5. Copy content</comment>');
             $this->io()->text("rsync -av {$config->getContentPath()}/ /var/www/{$domain}/contents/");
         }
