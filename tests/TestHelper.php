@@ -208,11 +208,11 @@ PHP;
         self::createMockDbConfig($dir);
         self::createMockSetupConfig($dir, $setupConfig);
 
-        // Create version file matching setup.php
+        // Create version file matching real KVS format
         $version = $setupConfig['project_version'] ?? self::DEFAULT_MOCK_VERSION;
         file_put_contents(
             $dir . '/admin/include/version.php',
-            '<?php define("KVS_VERSION", "' . $version . '");'
+            '<?php $config[\'project_version\'] = "' . $version . '";'
         );
     }
 

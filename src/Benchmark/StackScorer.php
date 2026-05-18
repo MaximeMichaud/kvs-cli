@@ -109,8 +109,8 @@ class StackScorer
     /**
      * Score PHP version
      *
-     * KVS 6.x only supports PHP 8.1, so we consider 8.1 as "optimal for KVS"
-     * even though it may be EOL from PHP's perspective.
+     * PHP 8.1 is the minimum supported version across all KVS releases (6.3-7.0).
+     * Don't penalize users on 8.1 even if it reaches EOL from PHP's perspective.
      *
      * @return array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string}
      */
@@ -119,8 +119,8 @@ class StackScorer
         $version = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
         $eolData = $this->fetchEolData('php');
 
-        // KVS 6.x only supports PHP 8.1 - this is the best users can do
-        // Don't penalize users for using the only supported version
+        // PHP 8.1 is the minimum for all supported KVS versions
+        // Don't penalize users on the minimum supported version
         if ($version === '8.1') {
             return [
                 'version' => $version,
