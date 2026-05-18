@@ -157,7 +157,7 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['album_id', 'title', 'image_count', 'status_id', 'is_private', 'username', 'post_date']
+                ['album_id', 'title', 'image_count', 'status', 'is_private', 'username', 'post_date']
             );
             $formatter->display($transformedAlbums, $this->io());
 

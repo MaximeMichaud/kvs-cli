@@ -175,7 +175,7 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['video_id', 'title', 'status_id', 'views', 'username', 'post_date']
+                ['video_id', 'title', 'status', 'views', 'username', 'post_date']
             );
             $formatter->display($videos, $this->io());
 

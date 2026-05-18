@@ -92,6 +92,36 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Premium', $rows[0]['is_private']);
     }
 
+    public function testVideoListDefaultFieldsExposeFormattedStatus(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, ' .
+            'video_viewed INTEGER, rating_amount INTEGER, rating REAL, resolution_type INTEGER, ' .
+            'is_private INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(20, 1, 1, 'Active news', '2024-01-02 00:00:00', 15, 4, 16, 2, 0)"
+        );
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Active', $rows[0]['status']);
+        $this->assertArrayNotHasKey('status_id', $rows[0]);
+    }
+
     public function testVideoStatsFlagShowsStatsWithoutAction(): void
     {
         $db = $this->createSqliteConnection();
@@ -204,6 +234,8 @@ class ContentOutputRegressionTest extends TestCase
         $defaultRows = $this->decodeJsonRows($defaultTester->getDisplay());
 
         $this->assertSame(0, $defaultTester->getStatusCode());
+        $this->assertSame('Active', $defaultRows[0]['status']);
+        $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
         $this->assertSame('Premium', $defaultRows[0]['is_private']);
     }
 
