@@ -102,9 +102,9 @@ class ScanCommand extends BaseCommand
 Scan a KVS installation to analyze its structure, content, and readiness for migration.
 
 <info>Examples:</info>
-  kvs migrate:scan /var/www/maximemichaud.ca    # Scan specific installation
-  kvs migrate:scan                               # Scan current installation
-  kvs migrate:scan /var/www/site --json          # Output as JSON for scripting
+  kvs migrate:scan /var/www/site        # Scan specific installation
+  kvs migrate:scan                      # Scan current installation
+  kvs migrate:scan /srv/kvs --json      # Output as JSON for scripting
 
 <info>Output includes:</info>
   • KVS version and installation type (Docker/Standalone)
