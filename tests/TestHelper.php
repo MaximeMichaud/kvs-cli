@@ -12,6 +12,8 @@ use PDO;
  */
 class TestHelper
 {
+    public const DEFAULT_MOCK_VERSION = '6.3.2';
+
     /** @var list<string> */
     private const REQUIRED_TEST_TABLES = [
         'albums',
@@ -150,7 +152,7 @@ PHP;
         }
 
         $defaults = [
-            'project_version' => '6.3.2',
+            'project_version' => self::DEFAULT_MOCK_VERSION,
             'project_name' => 'Test KVS',
             'memcache_server' => '127.0.0.1',
             'memcache_port' => '11211',
@@ -206,10 +208,11 @@ PHP;
         self::createMockDbConfig($dir);
         self::createMockSetupConfig($dir, $setupConfig);
 
-        // Create version file
+        // Create version file matching setup.php
+        $version = $setupConfig['project_version'] ?? self::DEFAULT_MOCK_VERSION;
         file_put_contents(
             $dir . '/admin/include/version.php',
-            '<?php define("KVS_VERSION", "6.3.2");'
+            '<?php define("KVS_VERSION", "' . $version . '");'
         );
     }
 

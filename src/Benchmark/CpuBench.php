@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Benchmark;
 
+use KVS\CLI\Compat\KvsCompatibility;
 use KVS\CLI\Service\TempFileManager;
 
 /**
@@ -140,7 +141,7 @@ class CpuBench
         $configData = [
             'project_path' => '/var/www/kvs',
             'project_url' => 'https://example.com',
-            'version' => '7.0.0',
+            'version' => KvsCompatibility::MAX_TESTED_VERSION,
             'settings' => [
                 'videos_per_page' => 20,
                 'cache_ttl' => 300,
