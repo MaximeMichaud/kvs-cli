@@ -379,7 +379,7 @@ HELP
             }
 
             $path = $server['path'] ?? null;
-            return is_string($path) && $path !== '' ? $path : null;
+            return is_string($path) && $path !== '' && is_dir($path) ? $path : null;
         } catch (\Exception) {
             return null;
         }

@@ -79,6 +79,30 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('videos_sources', $output);
     }
 
+    public function testListFallsBackWhenLocalStorageServerPathIsStale(): void
+    {
+        $this->db->exec("UPDATE ktvs_admin_servers SET path = '/stale/contents/videos'");
+
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--fields' => 'file,path',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('1234.mp4', $output);
+        $this->assertSame(
+            $this->tempDir . '/contents/videos/1000/1234/1234.mp4',
+            $rows[0]['path'] ?? null
+        );
+        $this->assertStringNotContainsString('/stale/contents/videos', $output);
+    }
+
     public function testCheckUsesKvsVideoIdPostfixFilename(): void
     {
         $tester = new CommandTester($this->createCommand());

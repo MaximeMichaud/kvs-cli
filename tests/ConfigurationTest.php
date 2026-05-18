@@ -206,6 +206,26 @@ class ConfigurationTest extends TestCase
         TestHelper::removeDir($tempDir);
     }
 
+    public function testGetVideoSourcesPathFallsBackWhenConfiguredPathIsStale(): void
+    {
+        $tempDir = TestHelper::createTempDir();
+        TestHelper::createMockDbConfig($tempDir);
+        mkdir($tempDir . '/' . Constants::CONTENT_DIR . '/' . Constants::CONTENT_VIDEOS_SOURCES, 0755, true);
+        file_put_contents(
+            $tempDir . '/admin/include/setup.php',
+            '<?php $config = ["content_path_videos_sources" => "/stale/videos_sources"];'
+        );
+
+        $config = new Configuration(['path' => $tempDir]);
+
+        $this->assertEquals(
+            $tempDir . '/' . Constants::CONTENT_DIR . '/' . Constants::CONTENT_VIDEOS_SOURCES,
+            $config->getVideoSourcesPath()
+        );
+
+        TestHelper::removeDir($tempDir);
+    }
+
     public function testGetVideoScreenshotsPath(): void
     {
         $tempDir = TestHelper::createTempDir();
@@ -232,6 +252,26 @@ class ConfigurationTest extends TestCase
         $config = new Configuration(['path' => $tempDir]);
 
         $this->assertEquals('/custom/videos/screenshots', $config->getVideoScreenshotsPath());
+
+        TestHelper::removeDir($tempDir);
+    }
+
+    public function testGetVideoScreenshotsPathFallsBackWhenConfiguredPathIsStale(): void
+    {
+        $tempDir = TestHelper::createTempDir();
+        TestHelper::createMockDbConfig($tempDir);
+        mkdir($tempDir . '/' . Constants::CONTENT_DIR . '/' . Constants::CONTENT_VIDEOS_SCREENSHOTS, 0755, true);
+        file_put_contents(
+            $tempDir . '/admin/include/setup.php',
+            '<?php $config = ["content_path_videos_screenshots" => "/stale/videos_screenshots"];'
+        );
+
+        $config = new Configuration(['path' => $tempDir]);
+
+        $this->assertEquals(
+            $tempDir . '/' . Constants::CONTENT_DIR . '/' . Constants::CONTENT_VIDEOS_SCREENSHOTS,
+            $config->getVideoScreenshotsPath()
+        );
 
         TestHelper::removeDir($tempDir);
     }

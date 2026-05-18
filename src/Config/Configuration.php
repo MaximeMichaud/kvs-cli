@@ -328,11 +328,10 @@ class Configuration
      */
     public function getVideoSourcesPath(): string
     {
-        $path = $this->config['content_path_videos_sources'] ?? null;
-        if (is_string($path)) {
-            return $path;
-        }
-        return $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SOURCES;
+        return $this->getConfiguredContentSubPath(
+            'content_path_videos_sources',
+            Constants::CONTENT_VIDEOS_SOURCES
+        );
     }
 
     /**
@@ -340,11 +339,10 @@ class Configuration
      */
     public function getVideoScreenshotsPath(): string
     {
-        $path = $this->config['content_path_videos_screenshots'] ?? null;
-        if (is_string($path)) {
-            return $path;
-        }
-        return $this->getContentPath() . '/' . Constants::CONTENT_VIDEOS_SCREENSHOTS;
+        return $this->getConfiguredContentSubPath(
+            'content_path_videos_screenshots',
+            Constants::CONTENT_VIDEOS_SCREENSHOTS
+        );
     }
 
     /**
@@ -352,11 +350,24 @@ class Configuration
      */
     public function getAlbumSourcesPath(): string
     {
-        $path = $this->config['content_path_albums_sources'] ?? null;
-        if (is_string($path)) {
-            return $path;
+        return $this->getConfiguredContentSubPath(
+            'content_path_albums_sources',
+            Constants::CONTENT_ALBUMS_SOURCES
+        );
+    }
+
+    private function getConfiguredContentSubPath(string $configKey, string $subPath): string
+    {
+        $configuredPath = $this->config[$configKey] ?? null;
+        $fallbackPath = $this->getContentPath() . '/' . $subPath;
+
+        if (is_string($configuredPath) && $configuredPath !== '') {
+            if (is_dir($configuredPath) || !is_dir($fallbackPath)) {
+                return $configuredPath;
+            }
         }
-        return $this->getContentPath() . '/' . Constants::CONTENT_ALBUMS_SOURCES;
+
+        return $fallbackPath;
     }
 
     /**
