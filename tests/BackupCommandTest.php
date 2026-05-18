@@ -55,6 +55,44 @@ class BackupCommandTest extends TestCase
         }
     }
 
+    public function testDatabaseBackupFailsWhenDumpCommandFails(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents(
+            $mysqldump,
+            <<<'SH'
+#!/bin/sh
+echo dump failed >&2
+exit 1
+SH
+        );
+        chmod($mysqldump, 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir);
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'db',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Database backup failed', $output);
+            $this->assertStringNotContainsString('Backup created', $output);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testBackupList(): void
     {
         // BackupCommand looks in dirname(kvsPath)/backups

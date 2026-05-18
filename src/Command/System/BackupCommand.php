@@ -69,30 +69,35 @@ class BackupCommand extends BaseCommand
 
         $timestamp = date('Y-m-d_H-i-s');
         $backupName = "kvs_backup_{$type}_{$timestamp}";
+        $success = true;
 
         if ($type === 'full' || $type === 'db') {
-            $this->createDatabaseBackup($outputDir, $backupName);
+            $success = $this->createDatabaseBackup($outputDir, $backupName);
         }
 
         if ($type === 'full' || $type === 'files') {
-            $this->createFilesBackup($outputDir, $backupName);
+            $success = $this->createFilesBackup($outputDir, $backupName) && $success;
         }
 
-        if ($type === 'full') {
-            $this->createFullArchive($outputDir, $backupName);
+        if ($type === 'full' && $success) {
+            $success = $this->createFullArchive($outputDir, $backupName);
+        }
+
+        if (!$success) {
+            return self::FAILURE;
         }
 
         $this->io()->success("Backup created: $outputDir/$backupName");
         return self::SUCCESS;
     }
 
-    private function createDatabaseBackup(string $outputDir, string $backupName): void
+    private function createDatabaseBackup(string $outputDir, string $backupName): bool
     {
         $dbConfig = $this->config->getDatabaseConfig();
 
         if ($dbConfig === []) {
             $this->io()->error('Database configuration not found');
-            return;
+            return false;
         }
 
         $dumpFile = "$outputDir/{$backupName}_db.sql";
@@ -117,20 +122,23 @@ class BackupCommand extends BaseCommand
         $process->run();
 
         if ($process->isSuccessful()) {
-            file_put_contents($dumpFile, $process->getOutput());
+            if (file_put_contents($dumpFile, $process->getOutput()) === false) {
+                $this->io()->error('Failed to write SQL dump file');
+                return false;
+            }
 
             $gzFile = "$dumpFile.gz";
             $fp = gzopen($gzFile, 'w9');
             if ($fp === false) {
                 $this->io()->error('Failed to create compressed backup file');
-                return;
+                return false;
             }
 
             $sqlContent = file_get_contents($dumpFile);
             if ($sqlContent === false) {
                 gzclose($fp);
                 $this->io()->error('Failed to read SQL dump file');
-                return;
+                return false;
             }
 
             gzwrite($fp, $sqlContent);
@@ -138,12 +146,14 @@ class BackupCommand extends BaseCommand
             unlink($dumpFile);
 
             $this->io()->info('Database backup created: ' . basename($gzFile));
+            return true;
         } else {
             $this->io()->error('Database backup failed: ' . $process->getErrorOutput());
+            return false;
         }
     }
 
-    private function createFilesBackup(string $outputDir, string $backupName): void
+    private function createFilesBackup(string $outputDir, string $backupName): bool
     {
         $kvsPath = $this->config->getKvsPath();
         $contentPath = $this->config->getContentPath();
@@ -178,12 +188,14 @@ class BackupCommand extends BaseCommand
 
         if ($process->isSuccessful()) {
             $this->io()->info('Files backup created: ' . basename($tarFile));
+            return true;
         } else {
             $this->io()->error('Files backup failed: ' . $process->getErrorOutput());
+            return false;
         }
     }
 
-    private function createFullArchive(string $outputDir, string $backupName): void
+    private function createFullArchive(string $outputDir, string $backupName): bool
     {
         $dbFile = "$outputDir/{$backupName}_db.sql.gz";
         $filesFile = "$outputDir/{$backupName}_files.tar.gz";
@@ -207,10 +219,21 @@ class BackupCommand extends BaseCommand
                 $gzCommand = ['gzip', '-9', $fullFile];
                 $gzProcess = new Process($gzCommand);
                 $gzProcess->run();
+                if (!$gzProcess->isSuccessful()) {
+                    $this->io()->error('Full backup compression failed: ' . $gzProcess->getErrorOutput());
+                    return false;
+                }
 
                 $this->io()->info('Full backup archive created: ' . basename("$fullFile.gz"));
+                return true;
             }
+
+            $this->io()->error('Full backup archive failed: ' . $process->getErrorOutput());
+            return false;
         }
+
+        $this->io()->error('Full backup archive failed: database or files backup is missing');
+        return false;
     }
 
     private function restoreBackup(string $backupFile): int
