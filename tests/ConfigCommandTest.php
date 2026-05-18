@@ -145,6 +145,38 @@ $config["player_license_code"] = "secret-player-license";
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testConfigEditValidatesFilePathWithSpaces(): void
+    {
+        $tempDir = sys_get_temp_dir() . '/kvs test ' . uniqid();
+        mkdir($tempDir . '/admin/include', 0755, true);
+        TestHelper::createMockDbConfig($tempDir);
+        file_put_contents($tempDir . '/admin/include/setup.php', '<?php $config = [];');
+
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=true');
+
+        try {
+            $tester = new CommandTester(new ConfigCommand(new Configuration(['path' => $tempDir])));
+            $tester->setInputs(['yes']);
+            $tester->execute(['action' => 'edit', '--file' => 'main']);
+
+            $output = $tester->getDisplay();
+            $this->assertEquals(0, $tester->getStatusCode());
+            $this->assertStringContainsString('Configuration file edited successfully', $output);
+            $this->assertStringNotContainsString('Syntax error in configuration file', $output);
+        } finally {
+            if ($previousEditor === false) {
+                putenv('EDITOR');
+            } else {
+                putenv('EDITOR=' . $previousEditor);
+            }
+
+            if (is_dir($tempDir)) {
+                exec('rm -rf ' . escapeshellarg($tempDir));
+            }
+        }
+    }
+
     public function testConfigGetNonExistent(): void
     {
         $this->tester->execute([

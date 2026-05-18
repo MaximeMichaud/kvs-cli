@@ -347,7 +347,7 @@ class ConfigCommand extends BaseCommand
             $this->io()->success('Configuration file edited successfully');
 
             // Validate syntax
-            $result = shell_exec("php -l $filePath 2>&1");
+            $result = shell_exec(sprintf('%s -l %s 2>&1', escapeshellarg(PHP_BINARY), escapeshellarg($filePath)));
             if ($result === null || $result === false || strpos($result, 'No syntax errors') === false) {
                 $this->io()->error('Syntax error in configuration file!');
                 if (is_string($result)) {
