@@ -35,6 +35,37 @@ class ApplicationTest extends TestCase
         $this->assertTrue(is_executable($binPath));
     }
 
+    public function testComposerBinEntrypointUsesComposerAutoloadProxy(): void
+    {
+        $tempDir = sys_get_temp_dir() . '/kvs-composer-bin-' . uniqid();
+        mkdir($tempDir . '/vendor/kvs/cli/bin', 0755, true);
+        copy(__DIR__ . '/../bin/kvs', $tempDir . '/vendor/kvs/cli/bin/kvs');
+
+        $proxy = $tempDir . '/vendor/bin/kvs';
+        mkdir(dirname($proxy), 0755, true);
+        file_put_contents(
+            $proxy,
+            '<?php' . PHP_EOL
+            . '$_composer_autoload_path = ' . var_export(__DIR__ . '/../vendor/autoload.php', true) . ';' . PHP_EOL
+            . '$_SERVER["argv"] = [__FILE__, "--version"];' . PHP_EOL
+            . '$_SERVER["argc"] = 2;' . PHP_EOL
+            . 'include ' . var_export($tempDir . '/vendor/kvs/cli/bin/kvs', true) . ';' . PHP_EOL
+        );
+
+        try {
+            $output = [];
+            $returnCode = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($proxy) . ' 2>&1', $output, $returnCode);
+
+            $this->assertSame(0, $returnCode, implode("\n", $output));
+            $this->assertStringContainsString('KVS CLI version', implode("\n", $output));
+        } finally {
+            if (is_dir($tempDir)) {
+                exec('rm -rf ' . escapeshellarg($tempDir));
+            }
+        }
+    }
+
     public function testApplicationHasDefaultCommands(): void
     {
         $commands = $this->app->all();
