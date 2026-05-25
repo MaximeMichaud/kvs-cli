@@ -69,15 +69,26 @@ pre-commit:
       run: composer validate --strict --no-interaction
 
 # ─────────────────────────────────────────────
-#  pre-push — slower checks before pushing
+#  pre-push — CI-aligned checks before pushing
 # ─────────────────────────────────────────────
 pre-push:
   commands:
+    composer-validate:
+      name: Composer Validate
+      run: composer validate --strict --no-interaction
+
     composer-audit:
       name: Composer Audit
       run: composer audit --no-interaction
 
+    phpcs:
+      name: PHP_CodeSniffer
+      run: ./vendor/bin/phpcs --standard=phpcs.xml -n
+
+    phpstan:
+      name: PHPStan
+      run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+
     phpunit:
       name: PHPUnit
-      glob: "*.php"
       run: ./vendor/bin/phpunit --configuration phpunit.xml.dist --no-progress
