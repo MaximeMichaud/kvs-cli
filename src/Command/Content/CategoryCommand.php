@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\RelationUsageTrait;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
@@ -20,6 +21,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 class CategoryCommand extends BaseCommand
 {
+    use RelationUsageTrait;
     use ToggleStatusTrait;
 
     /** @var array<string, string> */
@@ -54,6 +56,8 @@ Manage KVS categories with full CRUD operations.
 
 <info>EXAMPLES:</info>
   <comment>kvs category list</comment>
+  <comment>kvs category list --search=Canada</comment>
+  <comment>kvs category list --group=0 --unused</comment>
   <comment>kvs category tree</comment>
   <comment>kvs category create "New Category" --group=5</comment>
   <comment>kvs category update 3 --title="Renamed" --status=inactive</comment>
@@ -79,6 +83,8 @@ HELP
             ->addOption('parent', null, InputOption::VALUE_REQUIRED, 'Deprecated alias for --group')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Status (active|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in category titles')
+            ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused categories')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -128,13 +134,33 @@ HELP
                 $params['status'] = $statusId;
             }
 
+            $search = $this->getStringOption($input, 'search');
+            if ($search !== null) {
+                $conditions[] = 'c.title LIKE :search';
+                $params['search'] = '%' . $search . '%';
+            }
+
+            $groupId = $this->getStringOption($input, 'group');
+            if ($groupId !== null) {
+                if (!ctype_digit($groupId)) {
+                    $this->io()->error('Category group ID must be numeric');
+                    return self::FAILURE;
+                }
+                $conditions[] = 'c.category_group_id = :group';
+                $params['group'] = (int) $groupId;
+            }
+
+            $usageSelectors = $this->getCategoryUsageSelectors();
+            if ($this->getBoolOption($input, 'unused')) {
+                $conditions[] = $this->getCategoryTotalUsageCondition() . ' = 0';
+            }
+
             $whereClause = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
             $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
 
             $sql = "
                 SELECT c.*,
-                       (SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = c.category_id) as video_count,
-                       (SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = c.category_id) as album_count
+                       {$usageSelectors}
                 FROM {$this->table('categories')} c
                 $whereClause
                 ORDER BY c.title
@@ -143,7 +169,7 @@ HELP
 
             $stmt = $db->prepare($sql);
             foreach ($params as $key => $value) {
-                $stmt->bindValue(':' . $key, $value, \PDO::PARAM_INT);
+                $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
@@ -151,18 +177,25 @@ HELP
             /** @var list<array<string, mixed>> $categories */
             $categories = array_values($stmt->fetchAll(\PDO::FETCH_ASSOC));
             $categories = array_map(function (array $category): array {
+                $counts = $this->extractCategoryUsageCounts($category);
                 $statusIdVal = $category['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
                 $category['id'] = $category['category_id'] ?? 0;
+                $category['video_count'] = $counts['videos'];
+                $category['album_count'] = $counts['albums'];
+                $category['total_usage'] = array_sum($counts);
                 $category['status'] = StatusFormatter::category($statusId, false);
 
-                return $category;
+                return [
+                    ...$category,
+                    ...$counts,
+                ];
             }, $categories);
 
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['category_id', 'title', 'video_count', 'album_count', 'status']
+                ['category_id', 'title', 'video_count', 'album_count', 'total_usage', 'status']
             );
             $formatter->display($categories, $this->io());
 
@@ -443,16 +476,45 @@ HELP
      */
     private function getCategoryUsageCounts(\PDO $db, string $categoryId): array
     {
-        $usage = [];
-        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
-            $table = $this->table('categories') . '_' . $suffix;
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE category_id = :id");
-            $stmt->execute(['id' => $categoryId]);
-            $count = $stmt->fetchColumn();
-            $usage[$suffix] = is_numeric($count) ? (int) $count : 0;
-        }
+        return $this->getRelationUsageCounts(
+            $db,
+            'categories',
+            'category_id',
+            $categoryId,
+            self::CATEGORY_RELATION_TABLES
+        );
+    }
 
-        return $usage;
+    private function getCategoryUsageSelectors(): string
+    {
+        return $this->getRelationUsageSelectors('categories', 'c', 'category_id', self::CATEGORY_RELATION_TABLES);
+    }
+
+    private function getCategoryTotalUsageCondition(): string
+    {
+        return $this->getRelationTotalUsageSubqueryExpression(
+            'categories',
+            'c',
+            'category_id',
+            self::CATEGORY_RELATION_TABLES
+        );
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getCategoryUsageLabels(): array
+    {
+        return $this->getRelationUsageLabels(self::CATEGORY_RELATION_TABLES);
+    }
+
+    /**
+     * @param array<string, mixed> $category
+     * @return array<string, int>
+     */
+    private function extractCategoryUsageCounts(array $category): array
+    {
+        return $this->extractRelationUsageCounts($category, self::CATEGORY_RELATION_TABLES);
     }
 
     /**
@@ -461,18 +523,8 @@ HELP
      */
     private function formatUsageCounts(array $usage): array
     {
-        $labels = [
-            'videos' => 'Videos',
-            'content_sources' => 'Content sources',
-            'albums' => 'Albums',
-            'posts' => 'Posts',
-            'playlists' => 'Playlists',
-            'dvds' => 'DVDs',
-            'dvds_groups' => 'DVD groups',
-            'models' => 'Models',
-        ];
-
         $lines = [];
+        $labels = $this->getCategoryUsageLabels();
         foreach ($usage as $suffix => $count) {
             $label = $labels[$suffix] ?? $suffix;
             $lines[] = "$label: $count";

@@ -44,8 +44,7 @@ class ContentStatusFilterTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT, status_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_categories_albums (category_id INTEGER)');
+        $this->createCategoryRelationTables($db);
         $db->exec(
             "INSERT INTO ktvs_categories (category_id, title, status_id) VALUES " .
             "(1, 'Active', 1), (2, 'Inactive', 0)"
@@ -190,6 +189,13 @@ class ContentStatusFilterTest extends TestCase
         $db->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
 
         return $db;
+    }
+
+    private function createCategoryRelationTables(\PDO $db): void
+    {
+        foreach (['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'] as $suffix) {
+            $db->exec("CREATE TABLE ktvs_categories_{$suffix} (category_id INTEGER)");
+        }
     }
 
     /**

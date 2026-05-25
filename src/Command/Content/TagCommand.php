@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\RelationUsageTrait;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
@@ -20,6 +21,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 class TagCommand extends BaseCommand
 {
+    use RelationUsageTrait;
     use ToggleStatusTrait;
 
     /** @var array<string, string> */
@@ -133,7 +135,7 @@ HELP
             $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
 
             $usageSelectors = $this->getTagUsageSelectors();
-            $totalUsageExpression = $this->getTagTotalUsageExpression();
+            $totalUsageCondition = $this->getTagTotalUsageCondition();
 
             $sql = "
                 SELECT t.*,
@@ -144,7 +146,7 @@ HELP
 
             // Unused filter
             if ($this->getBoolOption($input, 'unused')) {
-                $sql .= " HAVING {$totalUsageExpression} = 0";
+                $sql .= " AND {$totalUsageCondition} = 0";
             }
 
             $sql .= " ORDER BY t.tag LIMIT :limit";
@@ -373,26 +375,17 @@ HELP
 
     private function getTagUsageSelectors(): string
     {
-        $selectors = [];
-        foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
-            $alias = $this->getTagUsageAlias($suffix);
-            $selectors[] = "(SELECT COUNT(*) FROM {$this->table('tags')}_{$suffix} WHERE tag_id = t.tag_id) as {$alias}";
-        }
-
-        return implode(",\n                       ", $selectors);
+        return $this->getRelationUsageSelectors('tags', 't', 'tag_id', self::TAG_RELATION_TABLES);
     }
 
     private function getTagTotalUsageExpression(): string
     {
-        return implode(' + ', array_map(
-            fn(string $suffix): string => $this->getTagUsageAlias($suffix),
-            array_keys(self::TAG_RELATION_TABLES)
-        ));
+        return $this->getRelationTotalUsageAliasExpression(self::TAG_RELATION_TABLES);
     }
 
-    private function getTagUsageAlias(string $suffix): string
+    private function getTagTotalUsageCondition(): string
     {
-        return $suffix . '_count';
+        return $this->getRelationTotalUsageSubqueryExpression('tags', 't', 'tag_id', self::TAG_RELATION_TABLES);
     }
 
     /**
@@ -400,16 +393,7 @@ HELP
      */
     private function getTagUsageLabels(): array
     {
-        return [
-            'videos' => 'Videos',
-            'albums' => 'Albums',
-            'posts' => 'Posts',
-            'playlists' => 'Playlists',
-            'content_sources' => 'Content sources',
-            'models' => 'Models',
-            'dvds' => 'DVDs',
-            'dvds_groups' => 'DVD groups',
-        ];
+        return $this->getRelationUsageLabels(self::TAG_RELATION_TABLES);
     }
 
     /**
@@ -418,13 +402,7 @@ HELP
      */
     private function extractTagUsageCounts(array $tag): array
     {
-        $counts = [];
-        foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
-            $value = $tag[$this->getTagUsageAlias($suffix)] ?? 0;
-            $counts[$suffix] = is_numeric($value) ? (int) $value : 0;
-        }
-
-        return $counts;
+        return $this->extractRelationUsageCounts($tag, self::TAG_RELATION_TABLES);
     }
 
     private function mergeTags(?string $sourceId, ?string $targetId): int
@@ -524,16 +502,7 @@ HELP
      */
     private function getTagUsageCounts(\PDO $db, string $tagId): array
     {
-        $usage = [];
-        foreach (self::TAG_RELATION_TABLES as $suffix => $objectColumn) {
-            $table = $this->table('tags') . '_' . $suffix;
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE tag_id = :id");
-            $stmt->execute(['id' => $tagId]);
-            $count = $stmt->fetchColumn();
-            $usage[$suffix] = is_numeric($count) ? (int) $count : 0;
-        }
-
-        return $usage;
+        return $this->getRelationUsageCounts($db, 'tags', 'tag_id', $tagId, self::TAG_RELATION_TABLES);
     }
 
     /**

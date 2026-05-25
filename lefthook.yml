@@ -73,6 +73,10 @@ pre-commit:
 # ─────────────────────────────────────────────
 pre-push:
   commands:
+    composer-audit:
+      name: Composer Audit
+      run: composer audit --no-interaction
+
     phpunit:
       name: PHPUnit
       glob: "*.php"

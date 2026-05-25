@@ -556,8 +556,7 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT, status_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_categories_albums (category_id INTEGER)');
+        $this->createCategoryRelationTables($db);
         $db->exec("INSERT INTO ktvs_categories VALUES (31, 'Art', 1)");
 
         $tester = new CommandTester($this->createCategoryCommand($db));
@@ -653,6 +652,13 @@ class ContentOutputRegressionTest extends TestCase
         $tagRelations = ['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'];
         foreach ($tagRelations as $suffix) {
             $db->exec("CREATE TABLE ktvs_tags_{$suffix} (tag_id INTEGER)");
+        }
+    }
+
+    private function createCategoryRelationTables(\PDO $db): void
+    {
+        foreach (['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'] as $suffix) {
+            $db->exec("CREATE TABLE ktvs_categories_{$suffix} (category_id INTEGER)");
         }
     }
 
