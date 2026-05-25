@@ -22,16 +22,16 @@ class CategoryCommand extends BaseCommand
 {
     use ToggleStatusTrait;
 
-    /** @var list<string> */
+    /** @var array<string, string> */
     private const CATEGORY_RELATION_TABLES = [
-        'videos',
-        'content_sources',
-        'albums',
-        'posts',
-        'playlists',
-        'dvds',
-        'dvds_groups',
-        'models',
+        'videos' => 'video_id',
+        'content_sources' => 'content_source_id',
+        'albums' => 'album_id',
+        'posts' => 'post_id',
+        'playlists' => 'playlist_id',
+        'dvds' => 'dvd_id',
+        'dvds_groups' => 'dvd_group_id',
+        'models' => 'model_id',
     ];
 
     protected function configure(): void
@@ -49,19 +49,30 @@ Manage KVS categories with full CRUD operations.
   update <id>       Update category properties
   enable <id>       Enable category
   disable <id>      Disable category
+  merge <id> <target>           Merge source category into target
+  assign-group <group> <ids>    Bulk-assign categories to a group
 
 <info>EXAMPLES:</info>
   <comment>kvs category list</comment>
   <comment>kvs category tree</comment>
   <comment>kvs category create "New Category" --group=5</comment>
   <comment>kvs category update 3 --title="Renamed" --status=inactive</comment>
+  <comment>kvs category merge 12 15</comment>
+  <comment>kvs category assign-group 5 12,15,18</comment>
+  <comment>kvs category assign-group 5 12 15 18 --dry-run</comment>
   <comment>kvs category delete 3</comment>
   <comment>kvs category enable 2</comment>
   <comment>kvs category disable 2</comment>
 HELP
             )
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list, tree, show, create, delete, update, enable, disable', 'list')
-            ->addArgument('id', InputArgument::OPTIONAL, 'Category ID or title')
+            ->addArgument(
+                'action',
+                InputArgument::OPTIONAL,
+                'Action: list, tree, show, create, delete, update, enable, disable, merge, assign-group',
+                'list'
+            )
+            ->addArgument('id', InputArgument::OPTIONAL, 'Category ID, title, source ID, or group ID')
+            ->addArgument('values', InputArgument::IS_ARRAY | InputArgument::OPTIONAL, 'Target category ID or category IDs')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Category title')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Category description')
             ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Category group ID')
@@ -71,6 +82,7 @@ HELP
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview assign-group changes without writing')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields');
     }
 
@@ -78,6 +90,7 @@ HELP
     {
         $action = $this->getStringArgument($input, 'action');
         $id = $this->getStringArgument($input, 'id');
+        $values = $this->getStringArrayArgument($input, 'values');
 
         return match ($action) {
             'list' => $this->listCategories($input),
@@ -88,6 +101,8 @@ HELP
             'update' => $this->updateCategory($id, $input),
             'enable' => $this->toggleStatus($id, 1),
             'disable' => $this->toggleStatus($id, 0),
+            'merge' => $this->mergeCategory($id, $values[0] ?? null, $input),
+            'assign-group' => $this->assignCategoriesToGroup($id, $values, $input),
             default => $this->listCategories($input),
         };
     }
@@ -429,7 +444,7 @@ HELP
     private function getCategoryUsageCounts(\PDO $db, string $categoryId): array
     {
         $usage = [];
-        foreach (self::CATEGORY_RELATION_TABLES as $suffix) {
+        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
             $table = $this->table('categories') . '_' . $suffix;
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE category_id = :id");
             $stmt->execute(['id' => $categoryId]);
@@ -468,10 +483,345 @@ HELP
 
     private function deleteCategoryRelations(\PDO $db, string $categoryId): void
     {
-        foreach (self::CATEGORY_RELATION_TABLES as $suffix) {
+        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
             $table = $this->table('categories') . '_' . $suffix;
             $db->prepare("DELETE FROM {$table} WHERE category_id = :id")->execute(['id' => $categoryId]);
         }
+    }
+
+    private function mergeCategory(?string $sourceId, ?string $targetId, InputInterface $input): int
+    {
+        if ($sourceId === null || $sourceId === '' || $targetId === null || $targetId === '') {
+            $this->io()->error('Both source and target category IDs are required');
+            $this->io()->text('Usage: kvs content:category merge <source_category_id> <target_category_id>');
+            return self::FAILURE;
+        }
+        if (!ctype_digit($sourceId) || !ctype_digit($targetId)) {
+            $this->io()->error('Source and target category IDs must be numeric');
+            return self::FAILURE;
+        }
+        if ($sourceId === $targetId) {
+            $this->io()->error('Source and target categories must be different');
+            return self::FAILURE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $stmt = $db->prepare("
+                SELECT category_id, title, category_group_id
+                FROM {$this->table('categories')}
+                WHERE category_id IN (:source, :target)
+            ");
+            $stmt->execute(['source' => $sourceId, 'target' => $targetId]);
+            /** @var list<array<string, mixed>> $categories */
+            $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (count($categories) !== 2) {
+                $this->io()->error('One or both categories not found');
+                return self::FAILURE;
+            }
+
+            $sourceCategory = null;
+            $targetCategory = null;
+            foreach ($categories as $category) {
+                $categoryId = $category['category_id'] ?? null;
+                $categoryIdString = is_scalar($categoryId) ? (string) $categoryId : '';
+                if ($categoryIdString === $sourceId) {
+                    $sourceCategory = $category;
+                }
+                if ($categoryIdString === $targetId) {
+                    $targetCategory = $category;
+                }
+            }
+
+            if ($sourceCategory === null || $targetCategory === null) {
+                $this->io()->error('One or both categories not found');
+                return self::FAILURE;
+            }
+
+            $sourceTitle = $this->stringValue($sourceCategory['title'] ?? '');
+            $targetTitle = $this->stringValue($targetCategory['title'] ?? '');
+
+            $this->io()->section('Merge Operation');
+            $this->io()->text("Source: $sourceTitle (ID: $sourceId)");
+            $this->io()->text("Target: $targetTitle (ID: $targetId)");
+            $this->io()->newLine();
+            $this->io()->warning('All associations will be moved to the target category, then source category will be deleted.');
+
+            if ($input->isInteractive() && $this->io()->confirm('Continue with merge?', false) !== true) {
+                $this->io()->info('Operation cancelled');
+                return self::SUCCESS;
+            }
+
+            $db->beginTransaction();
+
+            $this->mergeCategoryRelations($db, $sourceId, $targetId);
+            $this->moveCategoryReferences($db, $sourceId, $targetId);
+            // TODO: Replace 180 if KVS exposes a merge-specific audit action.
+            $this->writeAdminAuditLog(
+                $db,
+                180,
+                (int) $sourceId,
+                Constants::OBJECT_TYPE_CATEGORY,
+                "Merged into category {$targetId}"
+            );
+            $db->prepare("DELETE FROM {$this->table('categories')} WHERE category_id = :id")->execute(['id' => $sourceId]);
+
+            $db->commit();
+
+            $this->io()->success('Categories merged successfully!');
+            $this->io()->text("'$sourceTitle' has been merged into '$targetTitle'");
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            $this->io()->error('Failed to merge categories: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function mergeCategoryRelations(\PDO $db, string $sourceId, string $targetId): void
+    {
+        foreach (self::CATEGORY_RELATION_TABLES as $suffix => $objectColumn) {
+            $table = $this->table('categories') . '_' . $suffix;
+
+            try {
+                $stmt = $db->prepare("
+                    SELECT src.{$objectColumn}
+                    FROM {$table} src
+                    INNER JOIN {$table} dst ON dst.{$objectColumn} = src.{$objectColumn}
+                    WHERE src.category_id = :source AND dst.category_id = :target
+                ");
+                $stmt->execute(['source' => $sourceId, 'target' => $targetId]);
+                $duplicates = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+                $deleteStmt = $db->prepare("
+                    DELETE FROM {$table}
+                    WHERE category_id = :source AND {$objectColumn} = :object_id
+                ");
+                foreach ($duplicates as $duplicate) {
+                    if (is_scalar($duplicate)) {
+                        $deleteStmt->execute(['source' => $sourceId, 'object_id' => $duplicate]);
+                    }
+                }
+
+                $updateStmt = $db->prepare("UPDATE {$table} SET category_id = :target WHERE category_id = :source");
+                $updateStmt->execute(['target' => $targetId, 'source' => $sourceId]);
+            } catch (\PDOException $e) {
+                throw new \RuntimeException("Failed to merge category relation table {$table}: " . $e->getMessage(), 0, $e);
+            }
+        }
+    }
+
+    private function moveCategoryReferences(\PDO $db, string $sourceId, string $targetId): void
+    {
+        $usersTable = $this->table('users');
+        $stmt = $db->prepare("
+            UPDATE {$usersTable}
+            SET favourite_category_id = :target
+            WHERE favourite_category_id = :source
+        ");
+        $stmt->execute(['target' => $targetId, 'source' => $sourceId]);
+
+        $table = $this->multiTable('stats_referers_list');
+        $stmt = $db->prepare("UPDATE {$table} SET category_id = :target WHERE category_id = :source");
+        $stmt->execute(['target' => $targetId, 'source' => $sourceId]);
+    }
+
+    /**
+     * @param list<string> $categoryIdInputs
+     */
+    private function assignCategoriesToGroup(?string $groupId, array $categoryIdInputs, InputInterface $input): int
+    {
+        if ($groupId === null || $groupId === '') {
+            $this->io()->error('Category group ID is required');
+            $this->io()->text('Usage: kvs content:category assign-group <group_id> <category_ids...>');
+            return self::FAILURE;
+        }
+        if (!ctype_digit($groupId)) {
+            $this->io()->error('Category group ID must be numeric');
+            return self::FAILURE;
+        }
+
+        try {
+            $categoryIds = $this->parseCategoryIds($categoryIdInputs);
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
+        }
+
+        if ($categoryIds === []) {
+            $this->io()->error('At least one category ID is required');
+            $this->io()->text('Usage: kvs content:category assign-group <group_id> <category_ids...>');
+            return self::FAILURE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            if ($groupId !== '0') {
+                $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
+                $stmt->execute(['id' => $groupId]);
+                if ($stmt->fetch() === false) {
+                    $this->io()->error("Category group not found: $groupId");
+                    return self::FAILURE;
+                }
+            }
+
+            $categories = $this->fetchCategoriesByIds($db, $categoryIds);
+            $foundIds = array_map(
+                static fn(array $category): string => is_scalar($category['category_id'] ?? null) ? (string) $category['category_id'] : '',
+                $categories
+            );
+            $missingIds = array_values(array_diff($categoryIds, $foundIds));
+            if ($missingIds !== []) {
+                $this->io()->error('Category not found: ' . implode(', ', $missingIds));
+                return self::FAILURE;
+            }
+
+            $rows = [];
+            foreach ($categories as $category) {
+                $categoryId = $this->stringValue($category['category_id'] ?? '');
+                $title = $this->stringValue($category['title'] ?? '');
+                $oldGroupId = $this->stringValue($category['category_group_id'] ?? 0);
+                $rows[] = [$categoryId, $title, $oldGroupId, $groupId];
+            }
+
+            $this->renderTable(['ID', 'Title', 'Old group', 'New group'], $rows);
+
+            if ($this->getBoolOption($input, 'dry-run')) {
+                $this->io()->info('Dry run only, no changes written.');
+                return self::SUCCESS;
+            }
+
+            $db->beginTransaction();
+            $params = ['group_id' => (int) $groupId];
+            $placeholders = $this->buildIdPlaceholders($categoryIds, $params);
+            $stmt = $db->prepare("
+                UPDATE {$this->table('categories')}
+                SET category_group_id = :group_id
+                WHERE category_id IN ({$placeholders})
+            ");
+            $stmt->execute($params);
+            $db->commit();
+
+            $this->io()->success('Categories assigned to group successfully!');
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            $this->io()->error('Failed to assign categories to group: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * @param list<string> $inputs
+     * @return list<string>
+     */
+    private function parseCategoryIds(array $inputs): array
+    {
+        $ids = [];
+        foreach ($inputs as $input) {
+            foreach (explode(',', $input) as $value) {
+                $id = trim($value);
+                if ($id === '') {
+                    continue;
+                }
+                if (!ctype_digit($id)) {
+                    throw new \InvalidArgumentException("Category ID must be numeric: $id");
+                }
+                if (!in_array($id, $ids, true)) {
+                    $ids[] = $id;
+                }
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param list<string> $ids
+     * @return list<array<string, mixed>>
+     */
+    private function fetchCategoriesByIds(\PDO $db, array $ids): array
+    {
+        $params = [];
+        $placeholders = $this->buildIdPlaceholders($ids, $params);
+        $stmt = $db->prepare("
+            SELECT category_id, title, category_group_id
+            FROM {$this->table('categories')}
+            WHERE category_id IN ({$placeholders})
+        ");
+        $stmt->execute($params);
+
+        /** @var list<array<string, mixed>> $categories */
+        $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $positions = array_flip($ids);
+        usort($categories, static function (array $left, array $right) use ($positions): int {
+            $leftId = is_scalar($left['category_id'] ?? null) ? (string) $left['category_id'] : '';
+            $rightId = is_scalar($right['category_id'] ?? null) ? (string) $right['category_id'] : '';
+            $leftPosition = $positions[$leftId] ?? PHP_INT_MAX;
+            $rightPosition = $positions[$rightId] ?? PHP_INT_MAX;
+            return $leftPosition <=> $rightPosition;
+        });
+
+        return $categories;
+    }
+
+    /**
+     * @param list<string> $ids
+     * @param array<string, int> $params
+     */
+    private function buildIdPlaceholders(array $ids, array &$params): string
+    {
+        $placeholders = [];
+        foreach ($ids as $index => $id) {
+            $name = 'id_' . $index;
+            $placeholders[] = ':' . $name;
+            $params[$name] = (int) $id;
+        }
+
+        return implode(', ', $placeholders);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getStringArrayArgument(InputInterface $input, string $name): array
+    {
+        $value = $input->getArgument($name);
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($value as $item) {
+            if (is_string($item)) {
+                $values[] = $item;
+            } elseif (is_scalar($item)) {
+                $values[] = (string) $item;
+            }
+        }
+
+        return $values;
+    }
+
+    private function stringValue(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     private function resetCategoryReferences(\PDO $db, string $categoryId): void

@@ -5,7 +5,7 @@ Manage categories in your KVS installation.
 ## Synopsis
 
 ```bash
-kvs category <action> [<id>] [options]
+kvs category <action> [<id>] [<values>...] [options]
 ```
 
 ## Description
@@ -63,6 +63,32 @@ Disable a category (set status to 0).
 kvs category disable <id>
 ```
 
+### merge
+
+Merge a source category into a target category.
+
+```bash
+kvs category merge <source_id> <target_id>
+```
+
+The command moves category associations to the target, drops duplicate associations, updates category references, and deletes the source category.
+
+### assign-group
+
+Bulk-assign categories to a category group.
+
+```bash
+kvs category assign-group <group_id> <category_ids...>
+```
+
+Use comma-separated IDs or repeated arguments. Group `0` clears the category group.
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--dry-run` | false | Print the planned reassignment without writing changes |
+
 ## Default Fields
 
 - `category_id` - Category ID
@@ -100,6 +126,19 @@ kvs category enable 5
 
 # Disable a category
 kvs category disable 5
+```
+
+### Consolidating Categories
+
+```bash
+# Merge one duplicate category into another
+kvs category merge 12 15
+
+# Assign country categories to the Countries group
+kvs category assign-group 5 12,15,18
+
+# Preview a repeated-argument group assignment
+kvs category assign-group 5 12 15 18 --dry-run
 ```
 
 ### Output Formats
