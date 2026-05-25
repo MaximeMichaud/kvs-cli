@@ -30,8 +30,10 @@ class AlbumCommand extends BaseCommand
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
-            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
             ->setHelp(<<<'HELP'
 Manage KVS photo albums.
@@ -51,7 +53,10 @@ Manage KVS photo albums.
   <fg=green>kvs album list</>
   <fg=green>kvs album list --no-truncate</>
   <fg=green>kvs album list --fields=id,title,images,user</>
+  <fg=green>kvs album list --field=title</>
+  <fg=green>kvs album list --search="Outdoor"</>
   <fg=green>kvs album list --format=csv</>
+  <fg=green>kvs album list --format=ids</>
   <fg=green>kvs album list --status=1 --format=json</>
   <fg=green>kvs album list --format=count</>
 
@@ -106,6 +111,12 @@ HELP
         if ($user !== null) {
             $query .= " AND a.user_id = :user";
             $params['user'] = $user;
+        }
+
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
+            $query .= " AND a.title LIKE :search";
+            $params['search'] = '%' . $search . '%';
         }
 
         $query .= " ORDER BY a.post_date DESC LIMIT :limit";

@@ -34,7 +34,8 @@ class PlaylistCommand extends BaseCommand
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles and descriptions')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
-            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Video ID (required for add/remove actions)')
             ->setHelp(<<<'HELP'
@@ -57,7 +58,9 @@ Manage KVS playlists.
   <fg=green>kvs playlist list --private --user=5</>
   <fg=green>kvs playlist list --status=active --limit=50</>
   <fg=green>kvs playlist list --search="favorites"</>
+  <fg=green>kvs playlist list --field=title</>
   <fg=green>kvs playlist list --format=json</>
+  <fg=green>kvs playlist list --format=ids</>
   <fg=green>kvs playlist list --format=count</>
   <fg=green>kvs playlist show 1</>
   <fg=green>kvs playlist add 1 --video=42</>

@@ -125,6 +125,43 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertArrayNotHasKey('status_id', $rows[0]);
     }
 
+    public function testVideoListSupportsSingleFieldAndIdsFormat(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, ' .
+            'video_viewed INTEGER, rating_amount INTEGER, rating REAL, resolution_type INTEGER, ' .
+            'is_private INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(20, 1, 1, 'First video', '2024-01-01 00:00:00', 15, 4, 16, 2, 0), " .
+            "(21, 1, 1, 'Second video', '2024-01-02 00:00:00', 20, 5, 20, 2, 0)"
+        );
+
+        $fieldTester = new CommandTester($this->createVideoCommand($db));
+        $fieldTester->execute([
+            'action' => 'list',
+            '--field' => 'title',
+            '--limit' => '2',
+        ]);
+
+        $idsTester = new CommandTester($this->createVideoCommand($db));
+        $idsTester->execute([
+            'action' => 'list',
+            '--format' => 'ids',
+            '--limit' => '2',
+        ]);
+
+        $this->assertSame(0, $fieldTester->getStatusCode());
+        $this->assertSame("Second video\nFirst video", trim($fieldTester->getDisplay()));
+        $this->assertSame(0, $idsTester->getStatusCode());
+        $this->assertSame('21 20', trim($idsTester->getDisplay()));
+    }
+
     public function testVideoStatsFlagShowsStatsWithoutAction(): void
     {
         $db = $this->createSqliteConnection();
@@ -276,6 +313,57 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Active', $defaultRows[0]['status']);
         $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
         $this->assertSame('Premium', $defaultRows[0]['is_private']);
+    }
+
+    public function testAlbumListSearchSupportsSingleFieldAndIdsFormat(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_albums (' .
+            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_albums VALUES " .
+            "(4, 1, 'Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5), " .
+            "(5, 1, 'Indoor Set', 1, 0, '2024-01-03 00:00:00', 20, 20, 5)"
+        );
+
+        $searchTester = new CommandTester($this->createAlbumCommand($db));
+        $searchTester->execute([
+            'action' => 'list',
+            '--search' => 'Outdoor',
+            '--fields' => 'id,title',
+            '--format' => 'json',
+            '--limit' => '10',
+        ]);
+        $rows = $this->decodeJsonRows($searchTester->getDisplay());
+
+        $fieldTester = new CommandTester($this->createAlbumCommand($db));
+        $fieldTester->execute([
+            'action' => 'list',
+            '--field' => 'title',
+            '--limit' => '2',
+        ]);
+
+        $idsTester = new CommandTester($this->createAlbumCommand($db));
+        $idsTester->execute([
+            'action' => 'list',
+            '--format' => 'ids',
+            '--limit' => '2',
+        ]);
+
+        $this->assertSame(0, $searchTester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(4, (int) $rows[0]['id']);
+        $this->assertSame('Outdoor Set', $rows[0]['title']);
+        $this->assertSame(0, $fieldTester->getStatusCode());
+        $this->assertSame("Indoor Set\nOutdoor Set", trim($fieldTester->getDisplay()));
+        $this->assertSame(0, $idsTester->getStatusCode());
+        $this->assertSame('5 4', trim($idsTester->getDisplay()));
     }
 
     public function testAlbumListAndShowClampRatingToScale(): void
@@ -433,6 +521,43 @@ class ContentOutputRegressionTest extends TestCase
 
         $this->assertSame(0, $ratingTester->getStatusCode());
         $this->assertSame(5.0, (float) $ratingRows[0]['rating']);
+    }
+
+    public function testPlaylistListSupportsSingleFieldAndIdsFormat(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_playlists (' .
+            'playlist_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT, description TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_playlists VALUES " .
+            "(3, 1, 'Tutorial Picks', 1, 0, 70, 5, 100, '2024-01-02 00:00:00', ''), " .
+            "(4, 1, 'Lecture Picks', 1, 0, 70, 5, 120, '2024-01-03 00:00:00', '')"
+        );
+
+        $fieldTester = new CommandTester($this->createPlaylistCommand($db));
+        $fieldTester->execute([
+            'action' => 'list',
+            '--field' => 'title',
+            '--limit' => '2',
+        ]);
+
+        $idsTester = new CommandTester($this->createPlaylistCommand($db));
+        $idsTester->execute([
+            'action' => 'list',
+            '--format' => 'ids',
+            '--limit' => '2',
+        ]);
+
+        $this->assertSame(0, $fieldTester->getStatusCode());
+        $this->assertSame("Lecture Picks\nTutorial Picks", trim($fieldTester->getDisplay()));
+        $this->assertSame(0, $idsTester->getStatusCode());
+        $this->assertSame('4 3', trim($idsTester->getDisplay()));
     }
 
     public function testCommentListExposesDocumentedContentFields(): void

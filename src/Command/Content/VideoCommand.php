@@ -36,7 +36,8 @@ class VideoCommand extends BaseCommand
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
             ->addOption('stats', null, InputOption::VALUE_NONE, 'Show video statistics')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
-            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
             ->setHelp(<<<'HELP'
 Manage KVS videos.
@@ -59,7 +60,9 @@ Manage KVS videos.
   <fg=green>kvs video list</>
   <fg=green>kvs video list --no-truncate</>
   <fg=green>kvs video list --fields=id,title,views,user</>
+  <fg=green>kvs video list --field=title</>
   <fg=green>kvs video list --format=csv</>
+  <fg=green>kvs video list --format=ids</>
   <fg=green>kvs video list --status=active --format=json</>
   <fg=green>kvs video list --format=count</>
 
