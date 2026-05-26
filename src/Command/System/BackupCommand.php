@@ -192,7 +192,18 @@ class BackupCommand extends BaseCommand
 
         $process->run();
 
-        if ($process->isSuccessful()) {
+        $tarFileSize = is_file($tarFile) ? filesize($tarFile) : false;
+        $tarWarningWithArchive = $process->getExitCode() === 1 && $tarFileSize !== false && $tarFileSize > 0;
+
+        if ($process->isSuccessful() || $tarWarningWithArchive) {
+            if ($tarWarningWithArchive) {
+                $this->io()->warning('Some files changed during archival; continuing with the created archive.');
+                $errorOutput = trim($process->getErrorOutput());
+                if ($errorOutput !== '') {
+                    $this->io()->text($errorOutput);
+                }
+            }
+
             $this->io()->info('Files backup created: ' . basename($tarFile));
             return true;
         } else {

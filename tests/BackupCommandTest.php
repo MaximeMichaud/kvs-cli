@@ -159,6 +159,46 @@ SH
         }
     }
 
+    public function testFilesBackupTreatsTarExitOneWithArchiveAsWarning(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+        $tar = $toolsDir . '/tar';
+        file_put_contents(
+            $tar,
+            <<<'SH'
+#!/bin/sh
+printf 'archive' > "$2"
+echo 'tar: kvs: file changed as we read it' >&2
+exit 1
+SH
+        );
+        chmod($tar, 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'files',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(0, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Some files changed during archival', $output);
+            $this->assertStringContainsString('Files backup created', $output);
+            $this->assertNotFalse(glob($this->tempDir . '/backups/*_files.tar.gz'));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testBackupList(): void
     {
         // BackupCommand looks in dirname(kvsPath)/backups
