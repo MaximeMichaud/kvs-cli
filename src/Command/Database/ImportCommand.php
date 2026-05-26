@@ -80,7 +80,12 @@ EOT
 
         if ($compressionFormat !== null && $compressionFormat !== '') {
             $this->io()->info("Decompressing file ($compressionFormat)...");
-            $sqlContent = $this->decompressFile($file, $compressionFormat);
+            try {
+                $sqlContent = $this->decompressFile($file, $compressionFormat);
+            } catch (\RuntimeException $e) {
+                $this->io()->error($e->getMessage());
+                return self::FAILURE;
+            }
 
             if ($sqlContent === false) {
                 $this->io()->error("Failed to decompress file");
@@ -179,6 +184,7 @@ EOT
 
             case 'zstd':
                 // Use zstd command-line tool
+                $this->requireDecompressionCommand('zstd', 'zstd');
                 $process = new Process(['zstd', '-d', '-c', $file]);
                 $process->run();
                 if (!$process->isSuccessful()) {
@@ -188,6 +194,7 @@ EOT
 
             case 'xz':
                 // Use xz command-line tool
+                $this->requireDecompressionCommand('xz', 'xz-utils');
                 $process = new Process(['xz', '-d', '-c', $file]);
                 $process->run();
                 if (!$process->isSuccessful()) {
@@ -197,6 +204,7 @@ EOT
 
             case 'bzip2':
                 // Use bzip2 command-line tool
+                $this->requireDecompressionCommand('bzip2', 'bzip2');
                 $process = new Process(['bzip2', '-d', '-c', $file]);
                 $process->run();
                 if (!$process->isSuccessful()) {
@@ -206,6 +214,18 @@ EOT
 
             default:
                 return false;
+        }
+    }
+
+    private function requireDecompressionCommand(string $command, string $package): void
+    {
+        $path = shell_exec('command -v ' . escapeshellarg($command) . ' 2>/dev/null');
+        if (!is_string($path) || trim($path) === '') {
+            throw new \RuntimeException(sprintf(
+                "Required decompression tool '%s' was not found in PATH. Install %s and try again.",
+                $command,
+                $package
+            ));
         }
     }
 }

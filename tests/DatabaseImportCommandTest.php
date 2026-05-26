@@ -40,4 +40,38 @@ class DatabaseImportCommandTest extends TestCase
         $this->assertStringContainsString('cancelled in non-interactive mode', $tester->getDisplay());
         $this->assertStringNotContainsString('Database imported successfully', $tester->getDisplay());
     }
+
+    public function testMissingZstdReportsActionableError(): void
+    {
+        $zstdFile = $this->tempDir . '/import.sql.zstd';
+        file_put_contents($zstdFile, 'not really zstd');
+
+        $emptyBin = $this->tempDir . '/empty-bin';
+        mkdir($emptyBin);
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $emptyBin);
+
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+            $tester->setInputs(['yes']);
+
+            $tester->execute(['file' => $zstdFile]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString("Required decompression tool 'zstd'", $display);
+            $this->assertStringContainsString('Install zstd', $display);
+            $this->assertStringNotContainsString('Database imported successfully', $display);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
 }
