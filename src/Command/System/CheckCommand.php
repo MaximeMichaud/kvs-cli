@@ -69,12 +69,19 @@ class CheckCommand extends BaseCommand
     {
         $this
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output as JSON')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, json', 'table')
             ->addOption('quiet-ok', null, InputOption::VALUE_NONE, 'Only show warnings and errors');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $jsonOutput = $this->getBoolOption($input, 'json');
+        $format = strtolower($this->getStringOptionOrDefault($input, 'format', 'table'));
+        if (!in_array($format, ['table', 'json'], true)) {
+            $this->io()->error('Invalid value for --format (use: table or json)');
+            return self::FAILURE;
+        }
+
+        $jsonOutput = $this->getBoolOption($input, 'json') || $format === 'json';
         $quietOk = $this->getBoolOption($input, 'quiet-ok');
 
         // For JSON output, suppress all visual output

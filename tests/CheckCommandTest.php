@@ -83,6 +83,7 @@ class CheckCommandTest extends TestCase
         $definition = $this->command->getDefinition();
 
         $this->assertTrue($definition->hasOption('json'));
+        $this->assertTrue($definition->hasOption('format'));
         $this->assertTrue($definition->hasOption('quiet-ok'));
     }
 
@@ -106,6 +107,25 @@ class CheckCommandTest extends TestCase
         // Summary should have error/warning counts
         $this->assertArrayHasKey('errors', $data['summary']);
         $this->assertArrayHasKey('warnings', $data['summary']);
+    }
+
+    public function testCheckCommandFormatJsonOutput(): void
+    {
+        $this->tester->execute(['--format' => 'json']);
+
+        $data = json_decode($this->tester->getDisplay(), true);
+
+        $this->assertIsArray($data);
+        $this->assertArrayHasKey('results', $data);
+        $this->assertArrayHasKey('summary', $data);
+    }
+
+    public function testCheckCommandRejectsInvalidFormat(): void
+    {
+        $this->tester->execute(['--format' => 'xml']);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --format', $this->tester->getDisplay());
     }
 
     public function testCheckCommandQuietOkOption(): void
