@@ -98,6 +98,47 @@ class StatusCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testStatusSecurityReadsMaintenanceFlagFromWebsiteParams(): void
+    {
+        mkdir($this->tempDir . '/admin/data/system', 0755, true);
+        file_put_contents(
+            $this->tempDir . '/admin/data/system/website_ui_params.dat',
+            serialize(['DISABLE_WEBSITE' => 1])
+        );
+
+        $this->tester->execute([]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Maintenance mode ENABLED', $this->normalizeStatusOutput($display));
+    }
+
+    public function testStatusSecurityReadsDebugContextsFile(): void
+    {
+        mkdir($this->tempDir . '/admin/data/system', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/system/debug.dat', 'cron');
+
+        $this->tester->execute([]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Debug mode ENABLED', $this->normalizeStatusOutput($display));
+    }
+
+    public function testStatusSecurityReadsSetupDebugFlags(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            "<?php\n\$config['project_version']='6.3.2';\n\$config['enable_debug']='true';\n"
+        );
+
+        $this->tester->execute([]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Debug mode ENABLED', $this->normalizeStatusOutput($display));
+    }
+
     public function testCheckCommandEscapesCommandName(): void
     {
         $marker = $this->tempDir . '/status-command-injection';
@@ -337,5 +378,13 @@ PHP
         }
 
         $this->fail('Redis test server did not start');
+    }
+
+    private function normalizeStatusOutput(string $output): string
+    {
+        $normalized = preg_replace('/[^\w.]+/u', ' ', $output);
+        $this->assertIsString($normalized);
+
+        return $normalized;
     }
 }

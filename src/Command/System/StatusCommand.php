@@ -1002,29 +1002,16 @@ HELP
 
         $security = [];
 
-        // Check if setup.php exists for config reading
-        $setupFile = $this->config->getAdminPath() . '/include/setup.php';
-        if (file_exists($setupFile)) {
-            $setupContent = file_get_contents($setupFile);
+        if ($this->isMaintenanceModeEnabled()) {
+            $security[] = ['⚠', 'Maintenance mode', 'ENABLED'];
+        } else {
+            $security[] = ['✓', 'Maintenance mode', 'DISABLED'];
+        }
 
-            if ($setupContent !== false) {
-                // Check maintenance mode
-                if (preg_match('/\$config\[\'is_clone\'\]\s*=\s*1/', $setupContent) === 1) {
-                    $security[] = ['⚠', 'Maintenance mode', 'ENABLED'];
-                } else {
-                    $security[] = ['✓', 'Maintenance mode', 'DISABLED'];
-                }
-
-                // Check debug mode
-                if (
-                    preg_match('/\$config\[\'debug_mode\'\]\s*=\s*[\'"]true[\'"]/i', $setupContent) === 1 ||
-                    preg_match('/\$config\[\'debug_mode\'\]\s*=\s*1/', $setupContent) === 1
-                ) {
-                    $security[] = ['⚠', 'Debug mode', 'ENABLED (should be disabled in production)'];
-                } else {
-                    $security[] = ['✓', 'Debug mode', 'DISABLED'];
-                }
-            }
+        if ($this->isDebugModeEnabled()) {
+            $security[] = ['⚠', 'Debug mode', 'ENABLED (should be disabled in production)'];
+        } else {
+            $security[] = ['✓', 'Debug mode', 'DISABLED'];
         }
 
         // Check for recent database backups
@@ -1075,6 +1062,99 @@ HELP
         }
 
         $this->renderTable(['Status', 'Item', 'Details'], $security);
+    }
+
+    private function isMaintenanceModeEnabled(): bool
+    {
+        $settings = $this->loadSerializedArray($this->config->getKvsPath() . '/admin/data/system/website_ui_params.dat');
+        $value = $settings['DISABLE_WEBSITE'] ?? false;
+
+        return $this->isTruthyConfigValue($value);
+    }
+
+    private function isDebugModeEnabled(): bool
+    {
+        $debugFile = $this->config->getKvsPath() . '/admin/data/system/debug.dat';
+        if (is_file($debugFile)) {
+            $content = file_get_contents($debugFile);
+            if ($content !== false && trim($content) !== '') {
+                return true;
+            }
+        }
+
+        foreach (['enable_debug', 'enable_debug_get_file', 'debug_mode'] as $key) {
+            if ($this->isTruthyConfigValue($this->config->get($key))) {
+                return true;
+            }
+
+            if ($this->isSetupConfigFlagEnabled($key)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadSerializedArray(string $file): array
+    {
+        if (!is_file($file)) {
+            return [];
+        }
+
+        $content = file_get_contents($file);
+        if ($content === false || $content === '') {
+            return [];
+        }
+
+        $result = @unserialize($content, ['allowed_classes' => false]);
+        if (!is_array($result)) {
+            return [];
+        }
+
+        /** @var array<string, mixed> $result */
+        return $result;
+    }
+
+    private function isSetupConfigFlagEnabled(string $key): bool
+    {
+        $setupFile = $this->config->getAdminPath() . '/include/setup.php';
+        if (!is_file($setupFile)) {
+            return false;
+        }
+
+        $content = file_get_contents($setupFile);
+        if ($content === false || $content === '') {
+            return false;
+        }
+
+        $pattern = '/\$config\[\s*[\'"]'
+            . preg_quote($key, '/')
+            . '[\'"]\s*\]\s*=\s*([\'"]?(?:true|false|1|0)[\'"]?)/i';
+        if (preg_match($pattern, $content, $matches) !== 1) {
+            return false;
+        }
+
+        return $this->isTruthyConfigValue(trim($matches[1], '\'"'));
+    }
+
+    private function isTruthyConfigValue(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int) $value === 1;
+        }
+
+        if (is_string($value)) {
+            return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
+        }
+
+        return false;
     }
 
     private function getStatusDatabaseConnection(bool $quiet = false): ?\PDO
