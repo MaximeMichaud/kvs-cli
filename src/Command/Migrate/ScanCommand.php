@@ -13,6 +13,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 use function KVS\CLI\Utils\format_bytes;
 
@@ -92,6 +93,11 @@ class ScanCommand extends BaseCommand
 
     private ?Configuration $targetConfig = null;
     private ?DockerDetector $targetDocker = null;
+
+    protected function initialize(InputInterface $input, OutputInterface $output): void
+    {
+        $this->io = new SymfonyStyle($input, $output);
+    }
 
     protected function configure(): void
     {

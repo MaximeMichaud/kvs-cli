@@ -193,4 +193,45 @@ class ApplicationTest extends TestCase
         $this->assertSame(0, $exitCode);
         $this->assertSame('ok', trim($display));
     }
+
+    public function testMigrateScanJsonInvalidPathWorksWithoutKvs(): void
+    {
+        $this->app->setAutoExit(false);
+
+        $missingPath = sys_get_temp_dir() . '/kvs-scan-missing-' . bin2hex(random_bytes(4));
+        $input = new ArrayInput([
+            'command' => 'migrate:scan',
+            'path' => $missingPath,
+            '--json' => true,
+            '--force' => true,
+        ]);
+        $input->setInteractive(false);
+        $output = new BufferedOutput();
+
+        $oldCwd = getcwd();
+        $oldKvsPath = getenv('KVS_PATH');
+        try {
+            putenv('KVS_PATH');
+            chdir(sys_get_temp_dir());
+            $exitCode = $this->app->run($input, $output);
+        } finally {
+            if ($oldCwd !== false) {
+                chdir($oldCwd);
+            }
+            if ($oldKvsPath === false) {
+                putenv('KVS_PATH');
+            } else {
+                putenv('KVS_PATH=' . $oldKvsPath);
+            }
+        }
+
+        $display = $output->fetch();
+        $data = json_decode($display, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertIsArray($data);
+        $this->assertTrue($data['error']);
+        $this->assertStringContainsString('does not contain a valid KVS installation', $data['message']);
+        $this->assertStringNotContainsString('[ERROR]', $display);
+    }
 }

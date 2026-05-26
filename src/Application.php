@@ -367,9 +367,15 @@ class Application extends BaseApplication
 
     public function registerStandaloneEvalCommands(Configuration $config): void
     {
+        $this->registerStandaloneContextCommands($config);
+    }
+
+    public function registerStandaloneContextCommands(Configuration $config): void
+    {
         $this->addCommands([
             new EvalCommand($config),
             new EvalFileCommand($config),
+            new ScanCommand($config),
         ]);
     }
 
