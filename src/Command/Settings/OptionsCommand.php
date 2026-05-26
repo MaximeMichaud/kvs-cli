@@ -29,6 +29,7 @@ class OptionsCommand extends BaseCommand
             'ALBUM_', 'ALBUMS_', 'VIDEO_', 'VIDEOS_', 'SCREENSHOTS_',
             'CATEGORY_', 'TAG_', 'TAGS_', 'MODEL_', 'MODELS_',
             'DVD_', 'CS_', 'POST_', 'ROTATOR_', 'DEFAULT_',
+            'USE_POST_DATE_RANDOMIZATION',
         ],
         'memberzone' => [
             'USER_', 'TOKENS_', 'PREMIUM_', 'PRIVATE_', 'PUBLIC_',
@@ -42,7 +43,7 @@ class OptionsCommand extends BaseCommand
         ],
         'system' => [
             'ENABLE_', 'SYSTEM_', 'API_', 'DIRECTORIES_',
-            'ANTI_HOTLINK_', 'REFERER_', 'USE_',
+            'ANTI_HOTLINK_', 'REFERER_',
         ],
     ];
 

@@ -95,6 +95,43 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --category', $tester->getDisplay());
     }
 
+    public function testOptionsSystemCategoryDoesNotMatchUserPrefix(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('ENABLE_FEATURE', '1')");
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('USER_AVATAR_SIZE', '200')");
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('USE_POST_DATE_RANDOMIZATION', '1')");
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--category' => 'system',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $systemRows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $systemVariables = array_column($systemRows, 'variable');
+        $this->assertContains('ENABLE_FEATURE', $systemVariables);
+        $this->assertNotContains('USER_AVATAR_SIZE', $systemVariables);
+        $this->assertNotContains('USE_POST_DATE_RANDOMIZATION', $systemVariables);
+
+        $websiteTester = new CommandTester($this->createOptionsCommand());
+        $websiteTester->execute([
+            'action' => 'list',
+            '--category' => 'website',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $websiteTester->getStatusCode(), $websiteTester->getDisplay());
+        $websiteRows = json_decode($websiteTester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $websiteVariables = array_column($websiteRows, 'variable');
+        $this->assertNotContains('USER_AVATAR_SIZE', $websiteVariables);
+        $this->assertContains('USE_POST_DATE_RANDOMIZATION', $websiteVariables);
+    }
+
     public function testServerRejectsInvalidTypeStatusAndConnection(): void
     {
         foreach (['type', 'status', 'connection'] as $option) {
