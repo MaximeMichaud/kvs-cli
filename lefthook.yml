@@ -87,8 +87,12 @@ pre-push:
 
     phpstan:
       name: PHPStan
+      env:
+        XDEBUG_MODE: "off"
       run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
     phpunit:
       name: PHPUnit
+      env:
+        XDEBUG_MODE: "off"
       run: ./vendor/bin/phpunit --configuration phpunit.xml.dist --no-progress
