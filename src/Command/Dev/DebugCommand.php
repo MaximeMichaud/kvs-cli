@@ -156,8 +156,10 @@ class DebugCommand extends BaseCommand
         // Note: ini_get() can return false, but PHPDoc says string|numeric-string
         /** @phpstan-ignore-next-line */
         $memoryLimitValue = @ini_get('memory_limit') ?: 'Unknown';
-        /** @phpstan-ignore-next-line */
-        $maxExecTimeValue = @ini_get('max_execution_time') ?: 'Unknown';
+        $maxExecTimeRaw = @ini_get('max_execution_time');
+        $maxExecTimeValue = $maxExecTimeRaw === '0'
+            ? '0 (unlimited)'
+            : $maxExecTimeRaw . 's';
         /** @phpstan-ignore-next-line */
         $displayErrorsRaw = @ini_get('display_errors') ?: '0';
         /** @phpstan-ignore-next-line */

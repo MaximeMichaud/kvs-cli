@@ -65,6 +65,26 @@ class DebugCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testDebugInfoShowsZeroMaxExecutionTimeAsUnlimited(): void
+    {
+        $previousValue = ini_get('max_execution_time');
+        ini_set('max_execution_time', '0');
+
+        try {
+            $this->tester->execute(['--info' => true]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertStringContainsString('Max Execution Time', $output);
+            $this->assertStringContainsString('0 (unlimited)', $output);
+            $this->assertStringNotContainsString('Unknown', $output);
+            $this->assertEquals(0, $this->tester->getStatusCode());
+        } finally {
+            if ($previousValue !== false) {
+                ini_set('max_execution_time', $previousValue);
+            }
+        }
+    }
+
     public function testDebugCheck(): void
     {
         $this->tester->execute(['--check' => true]);
