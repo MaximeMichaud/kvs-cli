@@ -74,6 +74,18 @@ class QueueEmptyFormatTest extends TestCase
         $this->assertSame("0\n", $tester->getDisplay());
     }
 
+    public function testEmptyQueueDefaultActionShowsEmptyMessage(): void
+    {
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([]);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('Queue is empty', $output);
+        $this->assertStringNotContainsString('Background Tasks Queue', $output);
+    }
+
     public function testEmptyQueueHistoryJsonIsValidArray(): void
     {
         $tester = new CommandTester($this->createCommand());

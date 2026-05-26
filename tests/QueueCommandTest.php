@@ -238,7 +238,10 @@ class QueueCommandTest extends TestCase
         $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Background Tasks Queue', $output);
+        $this->assertTrue(
+            str_contains($output, 'Background Tasks Queue')
+            || str_contains($output, 'Queue is empty')
+        );
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
