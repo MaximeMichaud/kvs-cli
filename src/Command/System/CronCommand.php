@@ -21,8 +21,7 @@ class CronCommand extends BaseCommand
         $this
             ->addArgument('task', InputArgument::OPTIONAL, 'Specific cron task to run')
             ->addOption('list', null, InputOption::VALUE_NONE, 'List available cron tasks')
-            ->addOption('status', null, InputOption::VALUE_NONE, 'Show cron status')
-            ->addOption('force', null, InputOption::VALUE_NONE, 'Force run even if recently executed');
+            ->addOption('status', null, InputOption::VALUE_NONE, 'Show cron status');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -37,10 +36,10 @@ class CronCommand extends BaseCommand
 
         $task = $this->getStringArgument($input, 'task');
         if ($task !== null) {
-            return $this->runSpecificTask($task, $this->getBoolOption($input, 'force'));
+            return $this->runSpecificTask($task);
         }
 
-        return $this->runAllCronTasks($this->getBoolOption($input, 'force'));
+        return $this->runAllCronTasks();
     }
 
     private function listCronTasks(): int
@@ -124,7 +123,7 @@ class CronCommand extends BaseCommand
         return self::SUCCESS;
     }
 
-    private function runSpecificTask(string $task, bool $force): int
+    private function runSpecificTask(string $task): int
     {
         $cronScripts = [
             'main' => 'cron.php',
@@ -153,7 +152,7 @@ class CronCommand extends BaseCommand
 
         $this->io()->info("Running cron task: $task");
 
-        $output = $this->executePhpScript($scriptPath, $force ? ['--force'] : []);
+        $output = $this->executePhpScript($scriptPath);
 
         if ($output !== null) {
             $this->io()->success("Cron task '$task' completed successfully");
@@ -166,7 +165,7 @@ class CronCommand extends BaseCommand
         return self::FAILURE;
     }
 
-    private function runAllCronTasks(bool $force): int
+    private function runAllCronTasks(): int
     {
         $cronScript = $this->config->getAdminPath() . '/include/cron.php';
 
@@ -177,7 +176,7 @@ class CronCommand extends BaseCommand
 
         $this->io()->info('Running all cron tasks...');
 
-        $output = $this->executePhpScript($cronScript, $force ? ['--force'] : []);
+        $output = $this->executePhpScript($cronScript);
 
         if ($output !== null) {
             $this->io()->success('All cron tasks completed successfully');

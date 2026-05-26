@@ -7,6 +7,7 @@ use KVS\CLI\Command\System\CronCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Exception\InvalidOptionException;
 
 class CronCommandTest extends TestCase
 {
@@ -110,6 +111,21 @@ SH
         $this->assertStringContainsString('cron_conversion.php', $output);
         $this->assertStringContainsString('cron_optimize.php', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testCronHelpDoesNotExposeUnsupportedForceOption(): void
+    {
+        $this->tester->execute(['--help' => true]);
+
+        $this->assertStringNotContainsString('--force', $this->tester->getDisplay());
+    }
+
+    public function testCronRejectsUnsupportedForceOption(): void
+    {
+        $this->expectException(InvalidOptionException::class);
+        $this->expectExceptionMessage('The "--force" option does not exist');
+
+        $this->tester->execute(['task' => 'conversion', '--force' => true]);
     }
 
     public function testCronStatus(): void
