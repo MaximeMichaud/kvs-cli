@@ -14,9 +14,16 @@ class EvalCommandTest extends TestCase
     private Configuration $config;
     private EvalCommand $command;
     private CommandTester $tester;
+    private string|false $originalKvsEnv;
+    private string|false $originalAllowEval;
 
     protected function setUp(): void
     {
+        $this->originalKvsEnv = getenv('KVS_ENV');
+        $this->originalAllowEval = getenv('KVS_ALLOW_EVAL');
+        putenv('KVS_ENV=dev');
+        putenv('KVS_ALLOW_EVAL');
+
         // Create mock KVS installation
         $this->tempDir = TestHelper::createTempDir('kvs-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
@@ -37,6 +44,18 @@ class EvalCommandTest extends TestCase
     {
         if (is_dir($this->tempDir)) {
             exec('rm -rf ' . escapeshellarg($this->tempDir));
+        }
+
+        if ($this->originalKvsEnv === false) {
+            putenv('KVS_ENV');
+        } else {
+            putenv('KVS_ENV=' . $this->originalKvsEnv);
+        }
+
+        if ($this->originalAllowEval === false) {
+            putenv('KVS_ALLOW_EVAL');
+        } else {
+            putenv('KVS_ALLOW_EVAL=' . $this->originalAllowEval);
         }
     }
 

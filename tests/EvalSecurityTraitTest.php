@@ -63,10 +63,9 @@ class EvalSecurityTraitTest extends TestCase
     // isEvalAllowed Tests
     // =========================================================================
 
-    public function testIsEvalAllowedDefaultsToTrue(): void
+    public function testIsEvalAllowedDefaultsToFalse(): void
     {
-        // No environment variables set - should default to allow
-        $this->assertTrue($this->helper->testIsEvalAllowed());
+        $this->assertFalse($this->helper->testIsEvalAllowed());
     }
 
     #[DataProvider('provideAllowedEnvironments')]
@@ -132,11 +131,11 @@ class EvalSecurityTraitTest extends TestCase
         $this->assertFalse($this->helper->testIsEvalAllowed());
     }
 
-    public function testEmptyEnvironmentAllowsEval(): void
+    public function testEmptyEnvironmentBlocksEval(): void
     {
         putenv('KVS_ENV=');
 
-        $this->assertTrue($this->helper->testIsEvalAllowed());
+        $this->assertFalse($this->helper->testIsEvalAllowed());
     }
 
     // =========================================================================

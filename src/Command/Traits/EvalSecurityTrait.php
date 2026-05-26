@@ -16,10 +16,10 @@ trait EvalSecurityTrait
      * Check if eval is allowed in the current environment.
      *
      * Returns true if:
-     * - KVS_ENV is 'dev', 'development', 'test', or not set (defaults to dev)
+     * - KVS_ENV is 'dev', 'development', 'test', 'testing', or 'local'
      * - OR KVS_ALLOW_EVAL is explicitly set to 'true' or '1'
      *
-     * This prevents accidental execution in production environments.
+     * Empty or unset KVS_ENV blocks eval unless explicitly overridden.
      */
     private function isEvalAllowed(): bool
     {
@@ -29,11 +29,10 @@ trait EvalSecurityTrait
             return true;
         }
 
-        // Check environment - default to allowing (dev mode)
+        // Check environment. Missing environment is treated as unsafe.
         $env = getenv('KVS_ENV');
         if ($env === false || $env === '') {
-            // No environment set - assume dev, allow eval
-            return true;
+            return false;
         }
 
         // Allow in dev/test environments

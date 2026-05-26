@@ -165,13 +165,27 @@ class ApplicationTest extends TestCase
         $output = new BufferedOutput();
 
         $oldCwd = getcwd();
+        $oldKvsEnv = getenv('KVS_ENV');
+        $oldAllowEval = getenv('KVS_ALLOW_EVAL');
         $exitCode = 1;
         try {
+            putenv('KVS_ENV=dev');
+            putenv('KVS_ALLOW_EVAL');
             chdir(sys_get_temp_dir());
             $exitCode = $this->app->run($input, $output);
         } finally {
             if ($oldCwd !== false) {
                 chdir($oldCwd);
+            }
+            if ($oldKvsEnv === false) {
+                putenv('KVS_ENV');
+            } else {
+                putenv('KVS_ENV=' . $oldKvsEnv);
+            }
+            if ($oldAllowEval === false) {
+                putenv('KVS_ALLOW_EVAL');
+            } else {
+                putenv('KVS_ALLOW_EVAL=' . $oldAllowEval);
             }
         }
 
