@@ -39,6 +39,12 @@ class AntispamCommand extends BaseCommand
         'error' => 'ERROR',
     ];
 
+    /** @var array<string, true> */
+    private const DELETE_ERROR_ONLY_SECTIONS = [
+        'messages' => true,
+        'feedbacks' => true,
+    ];
+
     protected function configure(): void
     {
         $this
@@ -234,7 +240,7 @@ HELP
                     $section = [
                         'analyze_history' => ($rows[$prefix . '_ANALYZE_HISTORY'] ?? '0') === '0' ? 'all' : 'user',
                     ];
-                    foreach (self::ACTIONS as $actionName => $actionKey) {
+                    foreach ($this->getActionsForSection($name) as $actionName => $actionKey) {
                         $ruleValue = $rows[$prefix . '_' . $actionKey] ?? '0/0';
                         $section[$actionName] = $ruleValue;
                     }
@@ -287,8 +293,9 @@ HELP
             $tableData = [];
             foreach (self::SECTIONS as $name => $prefix) {
                 $history = ($rows[$prefix . '_ANALYZE_HISTORY'] ?? '0') === '0' ? 'All' : 'User';
-                $captcha = $this->formatRule($rows[$prefix . '_FORCE_CAPTCHA'] ?? '0/0');
-                $disable = $this->formatRule($rows[$prefix . '_FORCE_DISABLED'] ?? '0/0');
+                $actions = $this->getActionsForSection($name);
+                $captcha = isset($actions['captcha']) ? $this->formatRule($rows[$prefix . '_FORCE_CAPTCHA'] ?? '0/0') : 'N/A';
+                $disable = isset($actions['disable']) ? $this->formatRule($rows[$prefix . '_FORCE_DISABLED'] ?? '0/0') : 'N/A';
                 $delete = $this->formatRule($rows[$prefix . '_AUTODELETE'] ?? '0/0');
                 $error = $this->formatRule($rows[$prefix . '_ERROR'] ?? '0/0');
 
@@ -500,13 +507,7 @@ HELP
                     $changes[] = ucfirst($section) . " analyze history: $history";
                 }
 
-                // Rules - messages and feedbacks only have delete/error
-                $availableActions = self::ACTIONS;
-                if (in_array($section, ['messages', 'feedbacks'], true)) {
-                    $availableActions = ['delete' => 'AUTODELETE', 'error' => 'ERROR'];
-                }
-
-                foreach ($availableActions as $actionName => $actionKey) {
+                foreach ($this->getActionsForSection($section) as $actionName => $actionKey) {
                     $rule = $this->getStringOption($input, "$section-$actionName");
                     if ($rule !== null) {
                         if (!$this->validateRule($rule)) {
@@ -595,6 +596,21 @@ HELP
 
         $parts = explode('/', $rule);
         return (int) $parts[0] >= 0 && (int) $parts[1] >= 0;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getActionsForSection(string $section): array
+    {
+        if (isset(self::DELETE_ERROR_ONLY_SECTIONS[$section])) {
+            return [
+                'delete' => 'AUTODELETE',
+                'error' => 'ERROR',
+            ];
+        }
+
+        return self::ACTIONS;
     }
 
     private function formatRule(string $rule): string
