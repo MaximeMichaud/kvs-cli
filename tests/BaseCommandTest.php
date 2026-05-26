@@ -141,6 +141,32 @@ class BaseCommandTest extends TestCase
         $this->assertSame($this->tempDir, $command->runInContext());
     }
 
+    public function testDatabaseConnectionDoesNotAppendLocalhostFallbacks(): void
+    {
+        $command = new class ($this->config) extends BaseCommand {
+            protected function configure(): void
+            {
+                $this->setName('test:database-hosts');
+            }
+
+            protected function execute($input, $output): int
+            {
+                return self::SUCCESS;
+            }
+
+            /**
+             * @return list<string>
+             */
+            public function hostsFor(string $host): array
+            {
+                return $this->getDatabaseHostsToTry($host);
+            }
+        };
+
+        $this->assertSame(['mariadb'], $command->hostsFor('mariadb'));
+        $this->assertSame(['mariadb:3307'], $command->hostsFor('mariadb:3307'));
+    }
+
     public function testBaseCommandInitializeMethod(): void
     {
         $initializeCalled = false;

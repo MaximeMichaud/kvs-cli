@@ -767,12 +767,7 @@ EOT
             return null;
         }
 
-        $hostsToTry = [$dbConfig['host']];
-        $originalHost = $dbConfig['host'];
-        if (!str_contains($originalHost, '.') && $originalHost !== 'localhost' && $originalHost !== '127.0.0.1') {
-            $hostsToTry[] = '127.0.0.1';
-            $hostsToTry[] = 'localhost';
-        }
+        $hostsToTry = $this->getDatabaseHostsToTry($dbConfig['host']);
 
         foreach ($hostsToTry as $host) {
             try {

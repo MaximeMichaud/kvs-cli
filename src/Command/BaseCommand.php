@@ -293,15 +293,7 @@ abstract class BaseCommand extends Command
             return null;
         }
 
-        // Try original host first, then fallback to localhost/127.0.0.1 for Docker scenarios
-        $hostsToTry = [$dbConfig['host']];
-
-        // If host looks like a Docker hostname (no dots, not localhost/127.0.0.1), add fallbacks
-        $originalHost = $dbConfig['host'];
-        if (!str_contains($originalHost, '.') && $originalHost !== 'localhost' && $originalHost !== '127.0.0.1') {
-            $hostsToTry[] = '127.0.0.1';
-            $hostsToTry[] = 'localhost';
-        }
+        $hostsToTry = $this->getDatabaseHostsToTry($dbConfig['host']);
 
         $lastError = null;
         foreach ($hostsToTry as $host) {
@@ -364,12 +356,7 @@ abstract class BaseCommand extends Command
             return null;
         }
 
-        $hostsToTry = [$dbConfig['host']];
-        $originalHost = $dbConfig['host'];
-        if (!str_contains($originalHost, '.') && $originalHost !== 'localhost' && $originalHost !== '127.0.0.1') {
-            $hostsToTry[] = '127.0.0.1';
-            $hostsToTry[] = 'localhost';
-        }
+        $hostsToTry = $this->getDatabaseHostsToTry($dbConfig['host']);
 
         $lastError = 'unknown error';
         mysqli_report(MYSQLI_REPORT_OFF);
@@ -402,6 +389,17 @@ abstract class BaseCommand extends Command
             $this->io()->error('Database connection failed: ' . $lastError);
         }
         return null;
+    }
+
+    /**
+     * Database host fallback is handled while loading Configuration, where it can
+     * be based on DNS resolution instead of failed authentication attempts.
+     *
+     * @return list<string>
+     */
+    protected function getDatabaseHostsToTry(string $configuredHost): array
+    {
+        return [$configuredHost];
     }
 
     /**
