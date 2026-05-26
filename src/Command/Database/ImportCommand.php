@@ -63,6 +63,13 @@ EOT
         $this->io()->warning('This will overwrite existing data in the database!');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+            if (!$input->isInteractive()) {
+                $this->io()->error('Database import cancelled in non-interactive mode.');
+                $this->io()->text('Run the command interactively to confirm the destructive import.');
+                return self::FAILURE;
+            }
+
+            $this->io()->info('Database import cancelled.');
             return self::SUCCESS;
         }
 
