@@ -2,58 +2,36 @@
 
 namespace KVS\CLI\Tests;
 
-use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Console\Application;
 
-/**
- * Comprehensive tests for TagCommand covering all functionality:
- * - list (with filters: --search, --status, --unused, --limit)
- * - create
- * - update (--name, --status)
- * - delete
- * - enable/disable
- * - merge (duplicate tag consolidation)
- * - stats
- *
- * Based on the 22 manual tests documented in TEST_REPORT_TAG_CATEGORY.md
- */
+#[CoversClass(TagCommand::class)]
 class TagCommandComprehensiveTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private TagCommand $command;
     private CommandTester $tester;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-
-        $this->command = new TagCommand($this->config);
-
-        $app = new Application();
-        $app->add($this->command);
-
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        // Check database connectivity - skip if not available
-        try {
-            TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
-    // ========================================
-    // STRUCTURE AND METADATA TESTS
-    // ========================================
+    protected function tearDown(): void
+    {
+        TestHelper::removeDir($this->kvsPath);
+    }
 
     public function testCommandMetadata(): void
     {
@@ -69,14 +47,9 @@ class TagCommandComprehensiveTest extends TestCase
     {
         $definition = $this->command->getDefinition();
 
-        // List filters
-        $this->assertTrue($definition->hasOption('search'));
-        $this->assertTrue($definition->hasOption('status'));
-        $this->assertTrue($definition->hasOption('unused'));
-        $this->assertTrue($definition->hasOption('limit'));
-
-        // Update options
-        $this->assertTrue($definition->hasOption('name'));
+        foreach (['search', 'status', 'unused', 'limit', 'name'] as $option) {
+            $this->assertTrue($definition->hasOption($option));
+        }
 
         $this->assertStringContainsString('show', $definition->getArgument('action')->getDescription());
     }
@@ -85,25 +58,13 @@ class TagCommandComprehensiveTest extends TestCase
     {
         $help = $this->command->getHelp();
 
-        // Verify all actions are documented
-        $this->assertStringContainsString('list', $help);
-        $this->assertStringContainsString('show <id>', $help);
-        $this->assertStringContainsString('create', $help);
-        $this->assertStringContainsString('delete', $help);
-        $this->assertStringContainsString('update', $help);
-        $this->assertStringContainsString('enable', $help);
-        $this->assertStringContainsString('disable', $help);
-        $this->assertStringContainsString('merge', $help);
-        $this->assertStringContainsString('stats', $help);
+        foreach (['list', 'show <id>', 'create', 'delete', 'update', 'enable', 'disable', 'merge', 'stats'] as $text) {
+            $this->assertStringContainsString($text, $help);
+        }
 
-        // Verify examples exist
         $this->assertStringContainsString('EXAMPLES', $help);
         $this->assertStringContainsString('kvs tag', $help);
     }
-
-    // ========================================
-    // LIST COMMAND TESTS (Tests 31-36)
-    // ========================================
 
     public function testListWithoutFilters(): void
     {
@@ -113,58 +74,89 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertEquals(0, $exitCode);
         $this->assertStringContainsString('Tag id', $output);
         $this->assertStringContainsString('Tag', $output);
+        $this->assertStringContainsString('4K', $output);
+        $this->assertStringContainsString('unused', $output);
     }
 
     public function testListWithLimit(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--limit' => '2'
+            '--limit' => '2',
+            '--format' => 'json',
         ]);
-        $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('Tag', $output);
-        // Should show limited results
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(2, $rows);
     }
 
     public function testListWithSearch(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--search' => '4K'
+            '--search' => '4K',
+            '--format' => 'json',
         ]);
-        $output = $this->tester->getDisplay();
 
-        // Should filter by search term
-        $this->assertStringContainsString('Tag', $output);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4K', $rows[0]['tag']);
     }
 
     public function testListWithStatusFilter(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--status' => 'active'
+            '--status' => 'inactive',
+            '--format' => 'json',
         ]);
-        $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('Tag', $output);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['tag_id']);
+        $this->assertSame('Inactive', $rows[0]['status']);
     }
 
     public function testListUnusedTags(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--unused' => true
+            '--unused' => true,
+            '--format' => 'json',
         ]);
-        $output = $this->tester->getDisplay();
 
-        // Should show tags with 0 videos and 0 albums
-        $this->assertStringContainsString('Tag', $output);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['tag_id']);
+        $this->assertSame('unused', $rows[0]['tag']);
+        $this->assertSame(0, (int) $rows[0]['total_usage']);
     }
 
-    // ========================================
-    // CREATE TESTS (Tests 37-39)
-    // ========================================
+    public function testShowTagDetails(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Tag: 4K', $output);
+        $this->assertStringContainsString('4k', $output);
+        $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Total Usage\W+3/', $output);
+    }
 
     public function testCreateWithoutName(): void
     {
@@ -172,33 +164,31 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Tag name is required', $output);
     }
 
-    // Note: Actual create test would create real data
-    // Requires cleanup or transaction rollback
     public function testCreateValidationExists(): void
     {
-        // Test that duplicate check exists by verifying command structure
-        $help = $this->command->getHelp();
-        $this->assertStringContainsString('create', $help);
-    }
-
-    // ========================================
-    // UPDATE TESTS (Tests 40-44)
-    // ========================================
-
-    public function testUpdateWithoutChanges(): void
-    {
-        // Test with non-existent ID to avoid modifying real data
         $exitCode = $this->tester->execute([
-            'action' => 'update',
-            'identifier' => '99999'
+            'action' => 'create',
+            'identifier' => '4K',
         ]);
         $output = $this->tester->getDisplay();
 
-        // Should either fail (tag not found) or warn about no changes
         $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Tag already exists: 4K', $output);
+    }
+
+    public function testUpdateWithoutChanges(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '10',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('No changes specified', $output);
     }
 
     public function testUpdateRequiresId(): void
@@ -207,12 +197,8 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Tag ID is required', $output);
     }
-
-    // ========================================
-    // ENABLE/DISABLE TESTS
-    // ========================================
 
     public function testEnableRequiresId(): void
     {
@@ -220,7 +206,7 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Tag ID is required', $output);
     }
 
     public function testDisableRequiresId(): void
@@ -229,24 +215,20 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Tag ID is required', $output);
     }
 
     public function testEnableNonExistentTag(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'enable',
-            'identifier' => '99999'
+            'identifier' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Tag not found: 99999', $output);
     }
-
-    // ========================================
-    // DELETE TESTS (Tests 45-46)
-    // ========================================
 
     public function testDeleteRequiresId(): void
     {
@@ -254,24 +236,20 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Tag ID is required', $output);
     }
 
     public function testDeleteNonExistentTag(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'delete',
-            'identifier' => '99999'
+            'identifier' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Tag not found: 99999', $output);
     }
-
-    // ========================================
-    // MERGE TESTS (Tests 48-51)
-    // ========================================
 
     public function testMergeRequiresBothIds(): void
     {
@@ -279,20 +257,20 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Both source and target tag IDs are required', $output);
     }
 
     public function testMergeSameIdRejected(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'merge',
-            'identifier' => '1',
-            'target' => '1'
+            'identifier' => '10',
+            'target' => '10',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('different', strtolower($output));
+        $this->assertStringContainsString('Source and target tags must be different', $output);
     }
 
     public function testMergeNonExistentSource(): void
@@ -300,30 +278,26 @@ class TagCommandComprehensiveTest extends TestCase
         $exitCode = $this->tester->execute([
             'action' => 'merge',
             'identifier' => '99999',
-            'target' => '1'
+            'target' => '10',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('One or both tags not found', $output);
     }
 
     public function testMergeNonExistentTarget(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'merge',
-            'identifier' => '1',
-            'target' => '99999'
+            'identifier' => '10',
+            'target' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('One or both tags not found', $output);
     }
-
-    // ========================================
-    // STATS TESTS (Test 52)
-    // ========================================
 
     public function testStatsCommand(): void
     {
@@ -331,11 +305,12 @@ class TagCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(0, $exitCode);
-
-        // Verify all expected statistics are shown
-        $this->assertStringContainsString('Total', $output);
-        $this->assertStringContainsString('Active', $output);
-        $this->assertStringContainsString('Inactive', $output);
+        $this->assertStringContainsString('Tag Statistics', $output);
+        $this->assertMatchesRegularExpression('/Total Tags\W+4/', $output);
+        $this->assertMatchesRegularExpression('/Active Tags\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Inactive Tags\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Used Tags\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Unused Tags\W+1/', $output);
     }
 
     public function testStatsShowsTop10(): void
@@ -343,44 +318,39 @@ class TagCommandComprehensiveTest extends TestCase
         $this->tester->execute(['action' => 'stats']);
         $output = $this->tester->getDisplay();
 
-        // Should show top 10 most used tags
-        $this->assertStringContainsString('Top', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Top 10 Most Used Tags', $output);
+        $this->assertStringContainsString('4K', $output);
+        $this->assertStringContainsString('tagged', $output);
     }
-
-    // ========================================
-    // ERROR HANDLING TESTS
-    // ========================================
 
     public function testInvalidAction(): void
     {
         $exitCode = $this->tester->execute(['action' => 'invalid_action']);
+        $output = $this->tester->getDisplay();
 
-        // Command should handle invalid action (default to list)
-        $this->assertEquals(0, $exitCode);
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Unknown tag action "invalid_action"', $output);
     }
 
     public function testNonNumericIdHandling(): void
     {
-        // Test with non-numeric ID
         $exitCode = $this->tester->execute([
             'action' => 'delete',
-            'identifier' => 'not_a_number'
+            'identifier' => 'not_a_number',
         ]);
+        $output = $this->tester->getDisplay();
 
-        // Should handle gracefully
-        $this->assertIsInt($exitCode);
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Tag ID must be numeric', $output);
     }
-
-    // ========================================
-    // OUTPUT FORMAT TESTS
-    // ========================================
 
     public function testListOutputFormat(): void
     {
         $this->tester->execute(['action' => 'list', '--limit' => '5']);
         $output = $this->tester->getDisplay();
 
-        // Verify table format
+        $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Tag id', $output);
         $this->assertStringContainsString('Tag', $output);
         $this->assertStringContainsString('Video count', $output);
@@ -394,34 +364,106 @@ class TagCommandComprehensiveTest extends TestCase
         $this->tester->execute(['action' => 'stats']);
         $output = $this->tester->getDisplay();
 
-        // Should show structured statistics
-        $this->assertStringContainsString('Statistics', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Tag Statistics', $output);
+        $this->assertStringContainsString('Overall Statistics', $output);
+        $this->assertStringContainsString('Top 10 Most Used Tags', $output);
     }
 
-    // ========================================
-    // INTEGRATION TESTS
-    // ========================================
-
-    public function testCommandIntegrationWithRealDB(): void
+    public function testCommandIntegrationWithHermeticDb(): void
     {
-        // This test verifies command works with real database
         $exitCode = $this->tester->execute(['action' => 'list', '--limit' => '1']);
 
         $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('Total: 1 result', $this->tester->getDisplay());
     }
 
     public function testAllActionsAreAccessible(): void
     {
         $actions = ['list', 'show', 'create', 'delete', 'update', 'enable', 'disable', 'merge', 'stats'];
+        $help = $this->command->getHelp();
 
         foreach ($actions as $action) {
-            // Verify help mentions the action
-            $help = $this->command->getHelp();
-            $this->assertStringContainsString(
-                $action,
-                strtolower($help),
-                "Action '$action' should be documented in help"
+            $this->assertStringContainsString($action, strtolower($help));
+        }
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
+            'tag_id INTEGER, tag TEXT, tag_dir TEXT, synonyms TEXT, status_id INTEGER, ' .
+            'added_date TEXT, last_content_date TEXT)'
+        );
+
+        foreach ($this->relationTables() as $suffix => $objectColumn) {
+            $db->exec(
+                'CREATE TABLE ' . TestHelper::table('tags_' . $suffix) . ' (' .
+                'tag_id INTEGER, ' . $objectColumn . ' INTEGER)'
             );
         }
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags') .
+            ' (tag_id, tag, tag_dir, synonyms, status_id, added_date, last_content_date) VALUES ' .
+            "(10, '4K', '4k', '', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00'), " .
+            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00'), " .
+            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00'), " .
+            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags_videos') .
+            ' (tag_id, video_id) VALUES (10, 100), (10, 101), (40, 102)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags_albums') .
+            ' (tag_id, album_id) VALUES (10, 200)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags_posts') .
+            ' (tag_id, post_id) VALUES (30, 300)'
+        );
+
+        return $db;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function relationTables(): array
+    {
+        return [
+            'videos' => 'video_id',
+            'albums' => 'album_id',
+            'posts' => 'post_id',
+            'playlists' => 'playlist_id',
+            'content_sources' => 'content_source_id',
+            'models' => 'model_id',
+            'dvds' => 'dvd_id',
+            'dvds_groups' => 'dvd_group_id',
+        ];
+    }
+
+    private function createCommand(PDO $db): TagCommand
+    {
+        return new class ($this->config, $db) extends TagCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:tag');
+                $this->setDescription('Manage KVS tags');
+                $this->setAliases(['tag', 'tags']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
