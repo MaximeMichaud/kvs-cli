@@ -171,31 +171,45 @@ HELP
      */
     private function loadStatsParams(bool $runCompatChecks = true): array
     {
+        $params = $this->loadRawStatsParams();
+        if ($params === []) {
+            $params = $this->getDefaultParams();
+        } else {
+            /** @var array<string, mixed> $params */
+            $params = array_merge($this->getDefaultParams(), $params);
+        }
+
+        // Run compatibility checks (skip for JSON output to ensure valid JSON)
+        if ($runCompatChecks) {
+            $this->runCompatibilityChecks($params);
+        }
+
+        return $params;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadRawStatsParams(): array
+    {
         $path = $this->getStatsParamsPath();
 
         if (!file_exists($path)) {
-            return $this->getDefaultParams();
+            return [];
         }
 
         $content = file_get_contents($path);
         if ($content === false) {
-            return $this->getDefaultParams();
+            return [];
         }
 
         $params = @unserialize($content, ['allowed_classes' => false]);
         if (!is_array($params)) {
-            return $this->getDefaultParams();
+            return [];
         }
 
-        /** @var array<string, mixed> $merged */
-        $merged = array_merge($this->getDefaultParams(), $params);
-
-        // Run compatibility checks (skip for JSON output to ensure valid JSON)
-        if ($runCompatChecks) {
-            $this->runCompatibilityChecks($merged);
-        }
-
-        return $merged;
+        /** @var array<string, mixed> $params */
+        return $params;
     }
 
     /**
@@ -320,6 +334,27 @@ HELP
         return $result !== false;
     }
 
+    /**
+     * Keep KVS's sparse stats_params.dat style: preserve existing keys and add only non-default values.
+     *
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $rawParams
+     * @return array<string, mixed>
+     */
+    private function prepareStatsParamsForSave(array $params, array $rawParams): array
+    {
+        $defaults = $this->getDefaultParams();
+        $paramsToSave = [];
+
+        foreach ($params as $key => $value) {
+            if (array_key_exists($key, $rawParams) || !array_key_exists($key, $defaults) || $value !== $defaults[$key]) {
+                $paramsToSave[$key] = $value;
+            }
+        }
+
+        return $paramsToSave;
+    }
+
     private function showSettings(InputInterface $input): int
     {
         $format = $this->getStringOption($input, 'format');
@@ -430,6 +465,7 @@ HELP
 
     private function setSettings(InputInterface $input): int
     {
+        $rawParams = $this->loadRawStatsParams();
         $params = $this->loadStatsParams();
         $changes = [];
 
@@ -463,7 +499,7 @@ HELP
             return self::SUCCESS;
         }
 
-        if (!$this->saveStatsParams($params)) {
+        if (!$this->saveStatsParams($this->prepareStatsParamsForSave($params, $rawParams))) {
             $this->io()->error('Failed to save stats settings. Check file permissions.');
             return self::FAILURE;
         }

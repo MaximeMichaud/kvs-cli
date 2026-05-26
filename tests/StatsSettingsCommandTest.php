@@ -77,6 +77,48 @@ class StatsSettingsCommandTest extends TestCase
         $this->assertSame(['US', 'CA'], $params['videos_stats_limit_countries'] ?? null);
     }
 
+    public function testSetDefaultValuePreservesSparseStatsParamsFile(): void
+    {
+        $this->writeStatsParams([
+            'collect_traffic_stats' => 1,
+            'videos_stats_limit_countries_option' => '',
+            'videos_stats_limit_countries' => [],
+        ]);
+        $before = $this->readStatsParams();
+
+        $this->tester->execute([
+            'action' => 'set',
+            '--performance' => '0',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame($before, $this->readStatsParams());
+    }
+
+    public function testSetNonDefaultValueAddsOnlyThatStatsParam(): void
+    {
+        $this->writeStatsParams([
+            'collect_traffic_stats' => 1,
+            'videos_stats_limit_countries_option' => '',
+            'videos_stats_limit_countries' => [],
+        ]);
+
+        $this->tester->execute([
+            'action' => 'set',
+            '--performance' => '1',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $params = $this->readStatsParams();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame(1, $params['collect_performance_stats'] ?? null);
+        $this->assertCount(4, $params);
+        $this->assertArrayNotHasKey('collect_player_stats', $params);
+    }
+
     /**
      * @param array<string, mixed> $params
      */
