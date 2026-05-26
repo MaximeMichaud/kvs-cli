@@ -95,7 +95,7 @@ EOT
                 return self::FAILURE;
             }
 
-            $fileExtension .= '.' . $compressFormat;
+            $fileExtension .= '.' . $compressor['extension'];
             $this->io()->comment("Compression: $compressFormat");
         }
 
@@ -272,15 +272,15 @@ EOT
     /**
      * Get compressor command and validate it's available
      *
-     * @return array{command: string, test: string}|null
+     * @return array{command: string, test: string, extension: string}|null
      */
     private function getCompressor(string $format): ?array
     {
         $compressors = [
-            'gzip' => ['command' => 'gzip', 'test' => 'gzip --version'],
-            'zstd' => ['command' => 'zstd', 'test' => 'zstd --version'],
-            'xz' => ['command' => 'xz', 'test' => 'xz --version'],
-            'bzip2' => ['command' => 'bzip2', 'test' => 'bzip2 --version'],
+            'gzip' => ['command' => 'gzip', 'test' => 'gzip --version', 'extension' => 'gz'],
+            'zstd' => ['command' => 'zstd', 'test' => 'zstd --version', 'extension' => 'zst'],
+            'xz' => ['command' => 'xz', 'test' => 'xz --version', 'extension' => 'xz'],
+            'bzip2' => ['command' => 'bzip2', 'test' => 'bzip2 --version', 'extension' => 'bz2'],
         ];
 
         if (!isset($compressors[$format])) {

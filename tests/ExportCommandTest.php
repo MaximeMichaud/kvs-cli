@@ -137,6 +137,47 @@ class ExportCommandTest extends TestCase
         }
     }
 
+    public function testExportUsesCanonicalExtensionForDefaultCompressedOutput(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-canonical-extension';
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 15.1 Distrib 10.11.0-MariaDB'\n");
+        chmod($mysql, 0755);
+
+        $mariadbDump = $toolsDir . '/mariadb-dump';
+        file_put_contents($mariadbDump, "#!/bin/sh\necho 'SQL dump'\n");
+        chmod($mariadbDump, 0755);
+
+        $gzip = $toolsDir . '/gzip';
+        file_put_contents($gzip, "#!/bin/sh\ncat\n");
+        chmod($gzip, 0755);
+
+        $previousPath = getenv('PATH');
+        $previousCwd = getcwd();
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        chdir($this->tempDir . '/exports');
+
+        try {
+            $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+            $tester->execute(['--compress' => 'gzip']);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertCount(1, glob($this->tempDir . '/exports/kvs_backup_*.sql.gz') ?: []);
+            $this->assertSame([], glob($this->tempDir . '/exports/kvs_backup_*.sql.gzip') ?: []);
+        } finally {
+            if (is_string($previousCwd)) {
+                chdir($previousCwd);
+            }
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testExportWithTablesOption(): void
     {
         $outputFile = $this->tempDir . '/exports/tables_backup.sql';
