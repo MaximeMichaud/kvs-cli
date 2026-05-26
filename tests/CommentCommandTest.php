@@ -46,6 +46,13 @@ class CommentCommandTest extends TestCase
         $this->db = null;
     }
 
+    public function testHelpDocumentation(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString('Output format: table, csv, json, yaml, count, ids', $help);
+    }
+
     public function testListCommentsDefault(): void
     {
         $this->tester->execute(['action' => 'list']);

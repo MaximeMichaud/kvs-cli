@@ -37,7 +37,7 @@ Manage KVS comments.
 
 <info>LIST OPTIONS:</info>
   --fields=<fields>     Comma-separated list of fields to display
-  --format=<format>     Output format: table, csv, json, yaml, count
+  --format=<format>     Output format: table, csv, json, yaml, count, ids
   --no-truncate         Disable truncation of long text fields
 
 <info>MODERATION:</info>
