@@ -88,7 +88,7 @@ HELP
         return match ($action) {
             'list' => $this->listVideos($input),
             'show' => $this->showVideo($this->getStringArgument($input, 'id')),
-            'delete' => $this->deleteVideo($this->getStringArgument($input, 'id')),
+            'delete' => $this->deleteVideo($this->getStringArgument($input, 'id'), $input),
             'update' => $this->updateVideo($this->getStringArgument($input, 'id'), $input),
             'stats' => $this->showStats(),
             default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'update', 'stats']),
@@ -312,7 +312,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function deleteVideo(?string $id): int
+    private function deleteVideo(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Video ID is required');
@@ -327,6 +327,12 @@ HELP
         $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+            if (!$input->isInteractive()) {
+                $this->io()->error('Video deletion cancelled because confirmation was not provided.');
+                return self::FAILURE;
+            }
+
+            $this->io()->warning('Video deletion cancelled');
             return self::SUCCESS;
         }
 
