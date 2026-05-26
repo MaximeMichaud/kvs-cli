@@ -388,7 +388,8 @@ EOT
 
         $this->io()->text('<comment># 4. Import database</comment>');
         $containerPrefix = 'kvs-' . str_replace('.', '-', $domain);
-        $this->io()->text("docker exec -i {$containerPrefix}-mariadb mariadb kvs < /tmp/kvs-migration.sql");
+        $database = str_replace(['.', '-'], '_', $domain);
+        $this->io()->text("docker exec -i {$containerPrefix}-mariadb mariadb {$database} < /tmp/kvs-migration.sql");
         $this->io()->newLine();
 
         if (!$noContent && is_dir($config->getContentPath())) {
