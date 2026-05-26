@@ -98,7 +98,7 @@ HELP
                 $this->getStringArgument($input, 'id'),
                 $this->getIntOption($input, 'video')
             ),
-            'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id')),
+            'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id'), $input),
             default => $this->failUnknownAction('playlist', $action, ['list', 'show', 'create', 'add', 'remove', 'delete']),
         };
     }
@@ -765,7 +765,7 @@ HELP
         }
     }
 
-    private function deletePlaylist(?string $id): int
+    private function deletePlaylist(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Playlist ID is required');
@@ -807,6 +807,12 @@ HELP
         $this->io()->text("Title: " . $playlist['title']);
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+            if (!$input->isInteractive()) {
+                $this->io()->error('Playlist deletion cancelled because confirmation was not provided.');
+                return self::FAILURE;
+            }
+
+            $this->io()->warning('Playlist deletion cancelled');
             return self::SUCCESS;
         }
 

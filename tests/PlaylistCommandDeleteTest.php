@@ -152,6 +152,45 @@ class PlaylistCommandDeleteTest extends TestCase
         $this->assertStringContainsString('locked', $tester->getDisplay());
     }
 
+    public function testDeletePlaylistNoInteractionFailsWithoutCleanup(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+        $db->exec("INSERT INTO ktvs_playlists (playlist_id, title, is_locked) VALUES (1, 'Test', 0)");
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends PlaylistCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:playlist');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deletePlaylistWithKvs(int $playlistId): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'delete',
+            'id' => '1',
+        ], ['interactive' => false]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('confirmation was not provided', $tester->getDisplay());
+    }
+
     private function createDeleteSchema(\PDO $db): void
     {
         $db->exec('CREATE TABLE ktvs_playlists (playlist_id INTEGER, title TEXT, is_locked INTEGER)');
