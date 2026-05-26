@@ -245,7 +245,7 @@ EOT
 
         // Build dump command
         $command = sprintf(
-            '%s --host=%s --port=%d --user=%s --password=%s %s 2>/dev/null | zstd -%d -o %s',
+            '%s --host=%s --port=%d --user=%s --password=%s %s | zstd -%d -o %s',
             $dumpCmd,
             escapeshellarg($host),
             $port,
@@ -268,7 +268,16 @@ EOT
         }
 
         $size = filesize($outputFile);
-        $this->io()->text('Database exported: ' . ($size !== false ? format_bytes($size) : 'unknown'));
+        if ($size === false || $size < 100) {
+            $this->io()->error('Database export produced an empty or invalid dump');
+            $errorOutput = trim($process->getErrorOutput());
+            if ($errorOutput !== '') {
+                $this->io()->text($errorOutput);
+            }
+            return null;
+        }
+
+        $this->io()->text('Database exported: ' . format_bytes($size));
 
         return $outputFile;
     }

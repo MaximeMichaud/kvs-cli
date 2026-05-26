@@ -106,6 +106,62 @@ class PackageCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testPackageCommandRejectsTinyDatabaseDump(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+
+        $dump = $toolsDir . '/mariadb-dump';
+        file_put_contents(
+            $dump,
+            <<<'SH'
+#!/bin/sh
+echo 'dump connection failed' >&2
+exit 1
+SH
+        );
+        chmod($dump, 0755);
+
+        $zstd = $toolsDir . '/zstd';
+        file_put_contents(
+            $zstd,
+            <<<'SH'
+#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+cat >/dev/null
+printf 'tiny-zstd' > "$out"
+SH
+        );
+        chmod($zstd, 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $package = $this->packagePath();
+
+        try {
+            $this->tester->execute(['--no-content' => true, '-o' => $package, '--force' => true]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('empty or invalid dump', $output);
+            $this->assertStringContainsString('dump connection failed', $output);
+            $this->assertFileDoesNotExist($package);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     private function packagePath(): string
     {
         return $this->tempDir . '/test-pkg-' . bin2hex(random_bytes(8)) . '.tar.zst';
