@@ -2,58 +2,36 @@
 
 namespace KVS\CLI\Tests;
 
-use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Console\Application;
 
-/**
- * Comprehensive tests for CategoryCommand covering all functionality:
- * - list
- * - tree (hierarchical view)
- * - show <id>
- * - create (with --parent, --description)
- * - update (--title, --description, --parent, --status)
- * - delete (with child protection, usage warnings)
- * - enable/disable
- *
- * Based on the 30 manual tests documented in TEST_REPORT_TAG_CATEGORY.md
- */
+#[CoversClass(CategoryCommand::class)]
 class CategoryCommandComprehensiveTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private CategoryCommand $command;
     private CommandTester $tester;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-
-        $this->command = new CategoryCommand($this->config);
-
-        $app = new Application();
-        $app->add($this->command);
-
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        // Check database connectivity - skip if not available
-        try {
-            TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
-    // ========================================
-    // STRUCTURE AND METADATA TESTS
-    // ========================================
+    protected function tearDown(): void
+    {
+        TestHelper::removeDir($this->kvsPath);
+    }
 
     public function testCommandMetadata(): void
     {
@@ -80,24 +58,13 @@ class CategoryCommandComprehensiveTest extends TestCase
     {
         $help = $this->command->getHelp();
 
-        // Verify all actions are documented
-        $this->assertStringContainsString('list', $help);
-        $this->assertStringContainsString('tree', $help);
-        $this->assertStringContainsString('show', $help);
-        $this->assertStringContainsString('create', $help);
-        $this->assertStringContainsString('delete', $help);
-        $this->assertStringContainsString('update', $help);
-        $this->assertStringContainsString('enable', $help);
-        $this->assertStringContainsString('disable', $help);
+        foreach (['list', 'tree', 'show', 'create', 'delete', 'update', 'enable', 'disable'] as $action) {
+            $this->assertStringContainsString($action, $help);
+        }
 
-        // Verify examples exist
         $this->assertStringContainsString('EXAMPLES', $help);
         $this->assertStringContainsString('kvs category', $help);
     }
-
-    // ========================================
-    // LIST AND TREE TESTS (Tests 1-2)
-    // ========================================
 
     public function testList(): void
     {
@@ -110,6 +77,8 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Video count', $output);
         $this->assertStringContainsString('Album count', $output);
         $this->assertStringContainsString('Status', $output);
+        $this->assertStringContainsString('Action', $output);
+        $this->assertStringContainsString('Drama', $output);
     }
 
     public function testTree(): void
@@ -119,11 +88,10 @@ class CategoryCommandComprehensiveTest extends TestCase
 
         $this->assertEquals(0, $exitCode);
         $this->assertStringContainsString('Category Tree', $output);
+        $this->assertStringContainsString('Action (2 videos)', $output);
+        $this->assertStringContainsString('Drama (1 videos)', $output);
+        $this->assertStringContainsString('[Inactive]', $output);
     }
-
-    // ========================================
-    // SHOW TESTS (Tests 3-5)
-    // ========================================
 
     public function testShowWithoutId(): void
     {
@@ -131,24 +99,20 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Category ID is required', $output);
     }
 
     public function testShowNonExistent(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'show',
-            'id' => '99999'
+            'id' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category not found: 99999', $output);
     }
-
-    // ========================================
-    // CREATE TESTS (Tests 6-11)
-    // ========================================
 
     public function testCreateWithoutTitle(): void
     {
@@ -156,27 +120,21 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Category title is required', $output);
     }
 
     public function testCreateWithInvalidParent(): void
     {
-        // Use a unique title to avoid duplicate issues
         $exitCode = $this->tester->execute([
             'action' => 'create',
-            'id' => 'Test Category ' . uniqid(),
-            '--parent' => '99999'
+            'id' => 'Test Category',
+            '--parent' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('category group', strtolower($output));
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category group not found: 99999', $output);
     }
-
-    // ========================================
-    // UPDATE TESTS (Tests 12-19)
-    // ========================================
 
     public function testUpdateWithoutId(): void
     {
@@ -184,7 +142,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Category ID is required', $output);
     }
 
     public function testUpdateNonExistent(): void
@@ -192,43 +150,38 @@ class CategoryCommandComprehensiveTest extends TestCase
         $exitCode = $this->tester->execute([
             'action' => 'update',
             'id' => '99999',
-            '--title' => 'New Title'
+            '--title' => 'New Title',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category not found: 99999', $output);
     }
 
     public function testUpdateWithoutChanges(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'update',
-            'id' => '1'
+            'id' => '10',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('no changes', strtolower($output));
+        $this->assertStringContainsString('No changes specified', $output);
     }
 
     public function testUpdateSelfAsParent(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'update',
-            'id' => '1',
-            '--parent' => '1'
+            'id' => '10',
+            '--parent' => '10',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('category group', strtolower($output));
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category group not found: 10', $output);
     }
-
-    // ========================================
-    // ENABLE/DISABLE TESTS (Tests 20-25)
-    // ========================================
 
     public function testEnableWithoutId(): void
     {
@@ -236,19 +189,19 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Category ID is required', $output);
     }
 
     public function testEnableNonExistent(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'enable',
-            'id' => '99999'
+            'id' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category not found: 99999', $output);
     }
 
     public function testDisableWithoutId(): void
@@ -257,24 +210,20 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Category ID is required', $output);
     }
 
     public function testDisableNonExistent(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'disable',
-            'id' => '99999'
+            'id' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category not found: 99999', $output);
     }
-
-    // ========================================
-    // DELETE TESTS (Tests 26-30)
-    // ========================================
 
     public function testDeleteWithoutId(): void
     {
@@ -282,50 +231,58 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('required', strtolower($output));
+        $this->assertStringContainsString('Category ID is required', $output);
     }
 
     public function testDeleteNonExistent(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'delete',
-            'id' => '99999'
+            'id' => '99999',
         ]);
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertStringContainsString('Category not found: 99999', $output);
     }
-
-    // ========================================
-    // PROTECTION AND VALIDATION TESTS
-    // ========================================
 
     public function testPreventsDuplicateTitles(): void
     {
-        // This is validated in the create logic
-        // Verify error message pattern exists in help
-        $help = $this->command->getHelp();
-        $this->assertStringContainsString('create', $help);
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Action',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category already exists: Action', $output);
     }
 
     public function testParentIdValidation(): void
     {
-        // Already tested in testCreateWithInvalidParent
-        // This ensures parent exists before assignment
-        $this->assertTrue(true);
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'New Category',
+            '--group' => '99999',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category group not found: 99999', $output);
     }
 
     public function testCyclicParentPrevention(): void
     {
-        // Already tested in testUpdateSelfAsParent
-        // This prevents category being its own parent
-        $this->assertTrue(true);
-    }
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--parent' => '10',
+        ]);
+        $output = $this->tester->getDisplay();
 
-    // ========================================
-    // OUTPUT FORMAT TESTS
-    // ========================================
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category group not found: 10', $output);
+    }
 
     public function testListOutputHasRequiredColumns(): void
     {
@@ -335,27 +292,23 @@ class CategoryCommandComprehensiveTest extends TestCase
         $requiredColumns = ['Category id', 'Title', 'Video count', 'Album count', 'Status'];
 
         foreach ($requiredColumns as $column) {
-            $this->assertStringContainsString(
-                $column,
-                $output,
-                "List output should contain '$column' column"
-            );
+            $this->assertStringContainsString($column, $output);
         }
     }
 
     public function testShowOutputHasDetails(): void
     {
-        // Test with category ID 1 (usually exists)
         $this->tester->execute([
             'action' => 'show',
-            'id' => '1'
+            'id' => '10',
         ]);
         $output = $this->tester->getDisplay();
 
-        // May fail if category 1 doesn't exist, but structure is important
-        if ($this->tester->getStatusCode() === 0) {
-            $this->assertStringContainsString('Category:', $output);
-        }
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Category: Action', $output);
+        $this->assertStringContainsString('High energy scenes', $output);
+        $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
     }
 
     public function testTreeShowsHierarchy(): void
@@ -363,57 +316,47 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->tester->execute(['action' => 'tree']);
         $output = $this->tester->getDisplay();
 
-        // Tree should show indentation for children
+        $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Category Tree', $output);
+        $this->assertStringContainsString('Action (2 videos)', $output);
     }
-
-    // ========================================
-    // ERROR HANDLING TESTS
-    // ========================================
 
     public function testHandlesInvalidAction(): void
     {
         $exitCode = $this->tester->execute(['action' => 'invalid_action']);
+        $output = $this->tester->getDisplay();
 
-        // Should default to list action
-        $this->assertEquals(0, $exitCode);
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Unknown category action "invalid_action"', $output);
     }
 
     public function testHandlesNonNumericId(): void
     {
         $exitCode = $this->tester->execute([
             'action' => 'show',
-            'id' => 'not_a_number'
+            'id' => 'not_a_number',
         ]);
+        $output = $this->tester->getDisplay();
 
-        // Should handle gracefully (may return not found)
-        $this->assertIsInt($exitCode);
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category not found: not_a_number', $output);
     }
 
-    // ========================================
-    // INTEGRATION TESTS
-    // ========================================
-
-    public function testCommandIntegrationWithRealDB(): void
+    public function testCommandIntegrationWithHermeticDb(): void
     {
-        // Verify command works with real database
         $exitCode = $this->tester->execute(['action' => 'list']);
 
         $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('Total: 3 results', $this->tester->getDisplay());
     }
 
     public function testAllActionsAccessible(): void
     {
         $actions = ['list', 'tree', 'show', 'create', 'delete', 'update', 'enable', 'disable'];
-
         $help = $this->command->getHelp();
 
         foreach ($actions as $action) {
-            $this->assertStringContainsString(
-                $action,
-                strtolower($help),
-                "Action '$action' should be documented in help"
-            );
+            $this->assertStringContainsString($action, strtolower($help));
         }
     }
 
@@ -422,14 +365,11 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->tester->execute(['action' => 'list']);
         $output = $this->tester->getDisplay();
 
-        // Should use colored output for status (Active/Inactive)
-        // The actual colors are in the raw output
+        $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Status', $output);
+        $this->assertStringContainsString('Active', $output);
+        $this->assertStringContainsString('Inactive', $output);
     }
-
-    // ========================================
-    // ARGUMENT AND OPTION TESTS
-    // ========================================
 
     public function testAcceptsIdArgument(): void
     {
@@ -443,27 +383,104 @@ class CategoryCommandComprehensiveTest extends TestCase
     {
         $definition = $this->command->getDefinition();
 
-        $requiredOptions = ['title', 'description', 'parent', 'status'];
-
-        foreach ($requiredOptions as $option) {
-            $this->assertTrue(
-                $definition->hasOption($option),
-                "Command should have --$option option"
-            );
+        foreach (['title', 'description', 'parent', 'status'] as $option) {
+            $this->assertTrue($definition->hasOption($option));
         }
     }
 
     public function testStatusOptionAcceptsValidValues(): void
     {
-        // Test with valid status value
         $exitCode = $this->tester->execute([
             'action' => 'update',
-            'id' => '1',
-            '--status' => 'active'
+            'id' => '10',
+            '--status' => 'active',
         ]);
-
-        // Should either succeed or fail for other reasons (not invalid status)
         $output = $this->tester->getDisplay();
-        $this->assertIsInt($exitCode);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertStringContainsString('Category updated successfully!', $output);
+        $this->assertStringContainsString('Category: Action', $output);
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
+            'category_id INTEGER, title TEXT, dir TEXT, description TEXT, category_group_id INTEGER, ' .
+            'status_id INTEGER, added_date TEXT, last_content_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_groups') . ' (' .
+            'category_group_id INTEGER, title TEXT)'
+        );
+
+        foreach ($this->relationTables() as $suffix => $objectColumn) {
+            $db->exec(
+                'CREATE TABLE ' . TestHelper::table('categories_' . $suffix) . ' (' .
+                'category_id INTEGER, ' . $objectColumn . ' INTEGER)'
+            );
+        }
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories_groups') .
+            " (category_group_id, title) VALUES (2, 'Genres')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories') .
+            ' (category_id, title, dir, description, category_group_id, status_id, added_date, last_content_date) VALUES ' .
+            "(10, 'Action', 'action', 'High energy scenes', 2, 1, '2026-05-25 10:00:00', '2026-05-25 11:00:00'), " .
+            "(20, 'Drama', 'drama', '', 0, 0, '2026-05-26 10:00:00', '2026-05-26 11:00:00'), " .
+            "(30, 'Unused Category', 'unused-category', '', 0, 1, '2026-05-26 11:00:00', '2026-05-26 12:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories_videos') .
+            ' (category_id, video_id) VALUES (10, 100), (10, 101), (20, 200)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories_albums') .
+            ' (category_id, album_id) VALUES (10, 300)'
+        );
+
+        return $db;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function relationTables(): array
+    {
+        return [
+            'videos' => 'video_id',
+            'content_sources' => 'content_source_id',
+            'albums' => 'album_id',
+            'posts' => 'post_id',
+            'playlists' => 'playlist_id',
+            'dvds' => 'dvd_id',
+            'dvds_groups' => 'dvd_group_id',
+            'models' => 'model_id',
+        ];
+    }
+
+    private function createCommand(PDO $db): CategoryCommand
+    {
+        return new class ($this->config, $db) extends CategoryCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:category');
+                $this->setDescription('Manage KVS categories');
+                $this->setAliases(['category', 'categories', 'cat']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
