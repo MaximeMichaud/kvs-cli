@@ -149,6 +149,7 @@ HELP
     private function checkFormats(InputInterface $input): int
     {
         $videoId = $this->getStringArgument($input, 'video_id');
+        $outputFormat = $this->getStringOptionOrDefault($input, 'format', 'table');
 
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
@@ -167,7 +168,9 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->title("Format Status for Video $videoId");
+        if ($outputFormat === 'table') {
+            $this->io()->title("Format Status for Video $videoId");
+        }
 
         // Get configured formats from database
         $configuredFormats = $this->getFormatsFromDatabase();
@@ -181,6 +184,7 @@ HELP
 
         $available = [];
         $missing = [];
+        $formatRows = [];
 
         // Check each configured format
         foreach ($configuredFormats as $format) {
@@ -199,9 +203,33 @@ HELP
                 $size = format_bytes($filesize);
                 $dimensions = $this->getVideoDimensions($fullPath);
                 $available[] = sprintf('%s (%s, %s, %s)', $formatName, $postfix, $size, $dimensions);
+                $formatRows[] = [
+                    'format' => $formatName,
+                    'postfix' => $postfix,
+                    'status' => 'available',
+                    'file' => $filename,
+                    'size' => $size,
+                    'dimensions' => $dimensions,
+                    'path' => $fullPath,
+                ];
             } else {
                 $missing[] = sprintf('%s (%s)', $formatName, $postfix);
+                $formatRows[] = [
+                    'format' => $formatName,
+                    'postfix' => $postfix,
+                    'status' => 'missing',
+                    'file' => $filename,
+                    'size' => '',
+                    'dimensions' => '',
+                    'path' => $fullPath,
+                ];
             }
+        }
+
+        if ($outputFormat !== 'table') {
+            $formatter = new Formatter($input->getOptions(), ['format', 'postfix', 'status', 'file', 'size', 'dimensions']);
+            $formatter->display($formatRows, $this->io());
+            return self::SUCCESS;
         }
 
         if ($available !== []) {

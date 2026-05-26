@@ -117,6 +117,26 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('Missing Formats', $output);
     }
 
+    public function testCheckHonorsJsonFormat(): void
+    {
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'check',
+            'video_id' => '1234',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('MP4 480p', $rows[0]['format'] ?? null);
+        $this->assertSame('available', $rows[0]['status'] ?? null);
+        $this->assertSame('1234.mp4', $rows[0]['file'] ?? null);
+        $this->assertStringNotContainsString('Format Status for Video', $output);
+        $this->assertStringNotContainsString('Available Formats', $output);
+    }
+
     public function testAvailableFormatsJsonDoesNotIncludeTableDecoration(): void
     {
         $tester = new CommandTester($this->createCommand());
