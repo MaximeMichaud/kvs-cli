@@ -228,6 +228,22 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --status: bogus', $tester->getDisplay());
     }
 
+    public function testVideoFormatShowRejectsNonTableFormat(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('The show action only supports table output', $tester->getDisplay());
+        $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
+    }
+
     public function testConversionRejectsNegativeLimitBeforeSql(): void
     {
         $this->createConversionTables();
@@ -320,6 +336,38 @@ class SystemValidationRegressionTest extends TestCase
         )');
         $this->db->exec('CREATE TABLE ktvs_background_tasks (status_id INTEGER, server_id INTEGER)');
         $this->db->exec('CREATE TABLE ktvs_background_tasks_history (server_id INTEGER)');
+    }
+
+    private function createVideoFormatTables(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_formats_videos (
+            format_video_id INTEGER,
+            title TEXT,
+            postfix TEXT,
+            status_id INTEGER,
+            size TEXT,
+            access_level_id INTEGER,
+            is_download_enabled INTEGER,
+            is_timeline_enabled INTEGER,
+            format_video_group_id INTEGER,
+            ffmpeg_options TEXT
+        )');
+        $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
+            format_video_group_id INTEGER,
+            title TEXT,
+            is_default INTEGER,
+            is_premium INTEGER
+        )');
+        $this->db->exec(
+            "INSERT INTO ktvs_formats_videos_groups " .
+            "(format_video_group_id, title, is_default, is_premium) VALUES (1, 'Default', 1, 0)"
+        );
+        $this->db->exec(
+            "INSERT INTO ktvs_formats_videos " .
+            "(format_video_id, title, postfix, status_id, size, access_level_id, is_download_enabled, " .
+            "is_timeline_enabled, format_video_group_id, ffmpeg_options) " .
+            "VALUES (1, 'MP4 480p', '.mp4', 1, '848x480', 0, 0, 1, 1, '-vcodec libx264')"
+        );
     }
 
     private function createQueueCommand(): QueueCommand

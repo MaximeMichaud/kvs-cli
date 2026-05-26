@@ -80,7 +80,7 @@ HELP
 
         return match ($action) {
             'list' => $this->listFormats($input),
-            'show' => $this->showFormat($this->getStringArgument($input, 'id')),
+            'show' => $this->showFormat($input, $this->getStringArgument($input, 'id')),
             'groups' => $this->listGroups($input),
             default => $this->listFormats($input),
         };
@@ -189,8 +189,14 @@ HELP
         }
     }
 
-    private function showFormat(?string $id): int
+    private function showFormat(InputInterface $input, ?string $id): int
     {
+        $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+        if ($format !== 'table') {
+            $this->io()->error('The show action only supports table output. Use list --format=' . $format . ' for machine-readable output.');
+            return self::FAILURE;
+        }
+
         if ($id === null || $id === '') {
             $this->io()->error('Format ID is required');
             $this->io()->text('Usage: kvs video-format show <id>');
