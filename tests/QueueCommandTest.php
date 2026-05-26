@@ -285,6 +285,46 @@ class QueueCommandTest extends TestCase
         $this->assertSame('Deleted', $deletedRows[0]['status']);
     }
 
+    public function testQueueHistoryWithAlbumFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--album' => '7',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(302, (int) $rows[0]['task_id']);
+        $this->assertSame('Album #7', $rows[0]['content_id']);
+
+        $this->tester->execute([
+            'action' => 'history',
+            '--album' => '999',
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame("0\n", $this->tester->getDisplay());
+    }
+
+    public function testQueueHistoryWithServerFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--server' => '1',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(301, (int) $rows[0]['task_id']);
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');

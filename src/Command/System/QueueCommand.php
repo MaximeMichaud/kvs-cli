@@ -119,6 +119,7 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   <fg=green>kvs queue show 123</>                     Show task #123 details
   <fg=green>kvs queue stats</>                        Show queue statistics
   <fg=green>kvs queue history --limit=50</>           Show last 50 completed tasks
+  <fg=green>kvs queue history --album=12</>           Show history for album #12
 HELP
             );
     }
@@ -653,6 +654,18 @@ HELP
         if ($videoId !== null) {
             $query .= " AND video_id = :video_id";
             $params['video_id'] = $videoId;
+        }
+
+        $albumId = $this->getIntOption($input, 'album');
+        if ($albumId !== null) {
+            $query .= " AND album_id = :album_id";
+            $params['album_id'] = $albumId;
+        }
+
+        $serverId = $this->getIntOption($input, 'server');
+        if ($serverId !== null) {
+            $query .= " AND server_id = :server_id";
+            $params['server_id'] = $serverId;
         }
 
         $query .= " ORDER BY end_date DESC LIMIT :limit";
