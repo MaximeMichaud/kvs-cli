@@ -603,8 +603,11 @@ HELP
 
         try {
             $commentIds = $this->resolveCommentIds($db, $input, $id);
-            if ($commentIds === []) {
+            if ($commentIds === null) {
                 return self::FAILURE;
+            }
+            if ($commentIds === []) {
+                return self::SUCCESS;
             }
 
             // Get comment details for confirmation
@@ -702,8 +705,11 @@ HELP
 
         try {
             $commentIds = $this->resolveCommentIds($db, $input, $id);
-            if ($commentIds === []) {
+            if ($commentIds === null) {
                 return self::FAILURE;
+            }
+            if ($commentIds === []) {
+                return self::SUCCESS;
             }
 
             // Get comment details for confirmation
@@ -789,16 +795,16 @@ HELP
     /**
      * Resolve comment IDs from input (single ID, comma-separated, or --all flag).
      *
-     * @return list<int>
+     * @return list<int>|null
      */
-    private function resolveCommentIds(\PDO $db, InputInterface $input, ?string $id): array
+    private function resolveCommentIds(\PDO $db, InputInterface $input, ?string $id): ?array
     {
         // If --all flag is set, get all pending comment IDs
         if ($this->getBoolOption($input, 'all')) {
             $stmt = $db->query("SELECT comment_id FROM {$this->table('comments')} WHERE is_review_needed = 1");
             if ($stmt === false) {
                 $this->io()->error('Failed to fetch pending comments');
-                return [];
+                return null;
             }
             $ids = $stmt->fetchAll(\PDO::FETCH_COLUMN);
             if ($ids === []) {
@@ -820,7 +826,7 @@ HELP
                 'Comment ID required. Use comma-separated IDs for batch, or --all for pending.'
             );
             $this->io()->text('Usage: kvs comment approve ID or approve 1,2,3 or approve --all');
-            return [];
+            return null;
         }
 
         // Parse comma-separated IDs
@@ -833,9 +839,14 @@ HELP
             }
             if (!is_numeric($trimmed)) {
                 $this->io()->error("Invalid comment ID: $trimmed");
-                return [];
+                return null;
             }
             $intIds[] = (int) $trimmed;
+        }
+
+        if ($intIds === []) {
+            $this->io()->error('Comment ID required');
+            return null;
         }
 
         return $intIds;

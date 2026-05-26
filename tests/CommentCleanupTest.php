@@ -242,6 +242,36 @@ class CommentCleanupTest extends TestCase
         $this->assertSame('3', trim($tester->getDisplay()));
     }
 
+    public function testApproveAllWithNoPendingCommentsIsSuccessfulNoop(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'approve',
+            '--all' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('No pending comments to process', $tester->getDisplay());
+    }
+
+    public function testRejectAllWithNoPendingCommentsIsSuccessfulNoop(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'reject',
+            '--all' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('No pending comments to process', $tester->getDisplay());
+    }
+
     private function createCommand(\PDO $db): CommentCommand
     {
         return new class ($this->createConfig(), $db) extends CommentCommand {
