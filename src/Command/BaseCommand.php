@@ -519,6 +519,21 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * @param list<string> $availableActions
+     */
+    protected function failUnknownAction(string $command, string $action, array $availableActions): int
+    {
+        $this->io()->error(sprintf(
+            'Unknown %s action "%s". Available actions: %s.',
+            $command,
+            $action,
+            implode(', ', $availableActions)
+        ));
+
+        return self::FAILURE;
+    }
+
+    /**
      * Get prefixed table name (reads tables_prefix from KVS config)
      */
     protected function table(string $name): string

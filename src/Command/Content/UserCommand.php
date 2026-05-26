@@ -86,7 +86,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'list' => $this->listUsers($input),
@@ -94,7 +94,7 @@ HELP
             'create' => $this->createUser($input),
             'delete' => $this->deleteUser($this->getStringArgument($input, 'id')),
             'stats' => $this->showStats(),
-            default => $this->listUsers($input),
+            default => $this->failUnknownAction('user', $action, ['list', 'show', 'create', 'delete', 'stats']),
         };
     }
 

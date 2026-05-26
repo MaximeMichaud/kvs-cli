@@ -94,7 +94,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
         $values = $this->getStringArrayArgument($input, 'values');
 
@@ -109,7 +109,11 @@ HELP
             'disable' => $this->toggleStatus($id, 0),
             'merge' => $this->mergeCategory($id, $values[0] ?? null, $input),
             'assign-group' => $this->assignCategoriesToGroup($id, $values, $input),
-            default => $this->listCategories($input),
+            default => $this->failUnknownAction(
+                'category',
+                $action,
+                ['list', 'tree', 'show', 'create', 'delete', 'update', 'enable', 'disable', 'merge', 'assign-group']
+            ),
         };
     }
 

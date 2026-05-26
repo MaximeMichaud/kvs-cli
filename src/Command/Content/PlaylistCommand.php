@@ -78,6 +78,10 @@ HELP
     {
         $action = $this->getStringArgument($input, 'action');
 
+        if ($action === null || $action === '') {
+            return $this->showHelp();
+        }
+
         return match ($action) {
             'list' => $this->listPlaylists($input),
             'show' => $this->showPlaylist($this->getStringArgument($input, 'id')),
@@ -90,7 +94,7 @@ HELP
                 $this->getIntOption($input, 'video')
             ),
             'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id')),
-            default => $this->showHelp(),
+            default => $this->failUnknownAction('playlist', $action, ['list', 'show', 'add', 'remove', 'delete']),
         };
     }
 

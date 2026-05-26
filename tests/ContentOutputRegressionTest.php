@@ -506,6 +506,33 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertStringContainsString('Available actions: list, show', $tester->getDisplay());
     }
 
+    public function testContentCommandsRejectUnknownActions(): void
+    {
+        $db = $this->createSqliteConnection();
+        $commands = [
+            'video' => ['video', $this->createVideoCommand($db)],
+            'album' => ['album', $this->createAlbumCommand($db)],
+            'playlist' => ['playlist', $this->createPlaylistCommand($db)],
+            'user' => ['user', $this->createUserCommand($db)],
+            'comment' => ['comment', $this->createCommentCommand($db)],
+            'model' => ['model', $this->createModelCommand($db)],
+            'tag' => ['tag', $this->createTagCommand($db)],
+            'category' => ['category', $this->createCategoryCommand($db)],
+            'dvd' => ['DVD', $this->createDvdCommand($db)],
+        ];
+
+        foreach ($commands as $commandName => [$messageLabel, $command]) {
+            $tester = new CommandTester($command);
+            $tester->execute(['action' => 'bogus']);
+
+            $this->assertSame(1, $tester->getStatusCode(), "$commandName should fail on unknown action");
+            $this->assertStringContainsString(
+                sprintf('Unknown %s action "bogus"', $messageLabel),
+                $tester->getDisplay()
+            );
+        }
+    }
+
     public function testPlaylistListDefaultFieldsExposeFormattedStatusAndType(): void
     {
         $db = $this->createSqliteConnection();

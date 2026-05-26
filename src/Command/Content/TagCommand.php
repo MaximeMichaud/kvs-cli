@@ -80,7 +80,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $identifier = $this->getStringArgument($input, 'identifier');
         $target = $this->getStringArgument($input, 'target');
 
@@ -94,7 +94,11 @@ HELP
             'disable' => $this->toggleStatus($identifier, 0),
             'merge' => $this->mergeTags($identifier, $target),
             'stats' => $this->showStats(),
-            default => $this->listTags($input),
+            default => $this->failUnknownAction(
+                'tag',
+                $action,
+                ['list', 'show', 'create', 'delete', 'update', 'enable', 'disable', 'merge', 'stats']
+            ),
         };
     }
 

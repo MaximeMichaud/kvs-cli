@@ -81,13 +81,17 @@ HELP
             return $this->showStats();
         }
 
+        if ($action === null || $action === '') {
+            return $this->showHelp();
+        }
+
         return match ($action) {
             'list' => $this->listVideos($input),
             'show' => $this->showVideo($this->getStringArgument($input, 'id')),
             'delete' => $this->deleteVideo($this->getStringArgument($input, 'id')),
             'update' => $this->updateVideo($this->getStringArgument($input, 'id'), $input),
             'stats' => $this->showStats(),
-            default => $this->showHelp(),
+            default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'update', 'stats']),
         };
     }
 

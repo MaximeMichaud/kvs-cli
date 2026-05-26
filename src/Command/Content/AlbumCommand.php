@@ -71,11 +71,15 @@ HELP
     {
         $action = $this->getStringArgument($input, 'action');
 
+        if ($action === null || $action === '') {
+            return $this->showHelp();
+        }
+
         return match ($action) {
             'list' => $this->listAlbums($input),
             'show' => $this->showAlbum($this->getStringArgument($input, 'id')),
             'delete' => $this->deleteAlbum($this->getStringArgument($input, 'id')),
-            default => $this->showHelp(),
+            default => $this->failUnknownAction('album', $action, ['list', 'show', 'delete']),
         };
     }
 

@@ -65,14 +65,14 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listModels($input),
             'show' => $this->showModel($id),
             'stats' => $this->showStats(),
-            default => $this->listModels($input),
+            default => $this->failUnknownAction('model', $action, ['list', 'show', 'stats']),
         };
     }
 

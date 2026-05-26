@@ -104,7 +104,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
@@ -114,7 +114,11 @@ HELP
             'approve' => $this->approveComments($input, $id),
             'reject', 'delete' => $this->rejectComments($input, $id),
             'stats' => $this->showStats(),
-            default => $this->listComments($input),
+            default => $this->failUnknownAction(
+                'comment',
+                $action,
+                ['list', 'pending', 'show', 'approve', 'reject', 'delete', 'stats']
+            ),
         };
     }
 
