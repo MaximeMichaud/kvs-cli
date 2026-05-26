@@ -176,6 +176,38 @@ class StatusCommandTest extends TestCase
         $this->assertSame(1, $command->connectionCalls);
     }
 
+    public function testStatusShowsDatabaseTableStats(): void
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec('CREATE TABLE ktvs_background_tasks (task_id INTEGER, status_id INTEGER, added_date TEXT)');
+        $db->exec('CREATE TABLE ktvs_background_tasks_history (task_id INTEGER, status_id INTEGER, effective_duration INTEGER)');
+
+        $command = new class (TestHelper::createTestConfiguration($this->tempDir), $db) extends StatusCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute([]);
+
+        $display = $tester->getDisplay();
+        $normalizedDisplay = preg_replace('/[^\w.]+/u', ' ', $display);
+        $this->assertIsString($normalizedDisplay);
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $this->assertStringNotContainsString('Could not fetch database statistics', $display);
+        $this->assertStringContainsString('Total Tables 2', $normalizedDisplay);
+        $this->assertStringContainsString('Database Size', $display);
+    }
+
     public function testStatusDetectsRedisProtocolCacheWithoutDockerCli(): void
     {
         $portFile = $this->tempDir . '/redis-port.txt';

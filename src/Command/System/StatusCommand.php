@@ -92,39 +92,166 @@ HELP
         $info[] = ['Database', $dbConfig['database'] ?? 'N/A'];
 
         try {
-            $stmt = $db->query("SELECT VERSION() as version");
-            if ($stmt === false) {
-                throw new \Exception('Failed to query MySQL version');
-            }
-            $version = $stmt->fetch();
-            if (is_array($version) && isset($version['version']) && (is_string($version['version']) || is_numeric($version['version']))) {
-                $info[] = ['MySQL Version', (string) $version['version']];
+            $databaseVersion = $this->fetchDatabaseVersion($db);
+            if ($databaseVersion !== null) {
+                $info[] = [$databaseVersion['label'], $databaseVersion['version']];
             }
 
-            $stmt = $db->query("SHOW TABLE STATUS");
-            if ($stmt === false) {
+            $tableStats = $this->fetchDatabaseTableStats($db);
+            if ($tableStats === null) {
                 throw new \Exception('Failed to query table status');
             }
-            $tables = $stmt->fetchAll();
-            $info[] = ['Total Tables', count($tables)];
 
-            $totalSize = 0;
-            foreach ($tables as $table) {
-                if (!is_array($table)) {
-                    continue;
-                }
-                $dataLength = $table['Data_length'] ?? 0;
-                $indexLength = $table['Index_length'] ?? 0;
-                $dataLengthInt = is_numeric($dataLength) ? (int) $dataLength : 0;
-                $indexLengthInt = is_numeric($indexLength) ? (int) $indexLength : 0;
-                $totalSize += $dataLengthInt + $indexLengthInt;
-            }
-            $info[] = ['Database Size', format_bytes($totalSize)];
+            $info[] = ['Total Tables', number_format($tableStats['table_count'])];
+            $info[] = ['Database Size', format_bytes($tableStats['total_size'])];
         } catch (\Exception $e) {
             $this->io()->warning('Could not fetch database statistics');
         }
 
         $this->renderTable(['Parameter', 'Value'], $info);
+    }
+
+    /**
+     * @return array{label: string, version: string}|null
+     */
+    private function fetchDatabaseVersion(\PDO $db): ?array
+    {
+        try {
+            $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+            $isSqlite = $driver === 'sqlite';
+            $query = $isSqlite ? 'SELECT sqlite_version() AS version' : 'SELECT VERSION() AS version';
+
+            $stmt = $db->query($query);
+            if ($stmt === false) {
+                return null;
+            }
+
+            $version = $stmt->fetch();
+            if (!is_array($version)) {
+                return null;
+            }
+
+            $value = $version['version'] ?? null;
+            if (!is_string($value) && !is_numeric($value)) {
+                return null;
+            }
+
+            return [
+                'label' => $isSqlite ? 'SQLite Version' : 'MySQL Version',
+                'version' => (string) $value,
+            ];
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array{table_count: int, total_size: int}|null
+     */
+    private function fetchDatabaseTableStats(\PDO $db): ?array
+    {
+        try {
+            $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                return $this->fetchSqliteDatabaseTableStats($db);
+            }
+
+            if ($driver === 'mysql') {
+                return $this->fetchMysqlDatabaseTableStats($db);
+            }
+
+            return $this->fetchShowTableStatusStats($db);
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array{table_count: int, total_size: int}|null
+     */
+    private function fetchMysqlDatabaseTableStats(\PDO $db): ?array
+    {
+        $stmt = $db->query("
+            SELECT COUNT(*) AS table_count, COALESCE(SUM(data_length + index_length), 0) AS total_size
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+        ");
+        if ($stmt === false) {
+            return null;
+        }
+
+        $stats = $stmt->fetch();
+        if (!is_array($stats)) {
+            return null;
+        }
+
+        return [
+            'table_count' => $this->numericArrayValueToInt($stats, 'table_count'),
+            'total_size' => $this->numericArrayValueToInt($stats, 'total_size'),
+        ];
+    }
+
+    /**
+     * @return array{table_count: int, total_size: int}|null
+     */
+    private function fetchSqliteDatabaseTableStats(\PDO $db): ?array
+    {
+        $stmt = $db->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'");
+        if ($stmt === false) {
+            return null;
+        }
+
+        $tableCount = $stmt->fetchColumn();
+        $pageCount = $db->query('PRAGMA page_count');
+        $pageSize = $db->query('PRAGMA page_size');
+        if ($pageCount === false || $pageSize === false) {
+            return null;
+        }
+
+        $pageCountValue = $pageCount->fetchColumn();
+        $pageSizeValue = $pageSize->fetchColumn();
+
+        return [
+            'table_count' => is_numeric($tableCount) ? (int) $tableCount : 0,
+            'total_size' => (is_numeric($pageCountValue) ? (int) $pageCountValue : 0)
+                * (is_numeric($pageSizeValue) ? (int) $pageSizeValue : 0),
+        ];
+    }
+
+    /**
+     * @return array{table_count: int, total_size: int}|null
+     */
+    private function fetchShowTableStatusStats(\PDO $db): ?array
+    {
+        $stmt = $db->query('SHOW TABLE STATUS');
+        if ($stmt === false) {
+            return null;
+        }
+
+        $tables = $stmt->fetchAll();
+        $totalSize = 0;
+        foreach ($tables as $table) {
+            if (!is_array($table)) {
+                continue;
+            }
+            $totalSize += $this->numericArrayValueToInt($table, 'Data_length')
+                + $this->numericArrayValueToInt($table, 'Index_length');
+        }
+
+        return [
+            'table_count' => count($tables),
+            'total_size' => $totalSize,
+        ];
+    }
+
+    /**
+     * @param array<array-key, mixed> $values
+     */
+    private function numericArrayValueToInt(array $values, string $key): int
+    {
+        $value = $values[$key] ?? 0;
+
+        return is_numeric($value) ? (int) $value : 0;
     }
 
     private function showSystemInfo(): void
