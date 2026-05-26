@@ -103,8 +103,18 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->success("Backup created: $outputDir/$backupName");
+        $this->io()->success('Backup created: ' . $this->getCreatedBackupPath($outputDir, $backupName, $type));
         return self::SUCCESS;
+    }
+
+    private function getCreatedBackupPath(string $outputDir, string $backupName, string $type): string
+    {
+        return match ($type) {
+            'db' => "$outputDir/{$backupName}_db.sql.gz",
+            'files' => "$outputDir/{$backupName}_files.tar.gz",
+            'full' => "$outputDir/{$backupName}_full.tar.gz",
+            default => "$outputDir/$backupName",
+        };
     }
 
     private function cleanupPartialBackupFiles(string $outputDir, string $backupName): void

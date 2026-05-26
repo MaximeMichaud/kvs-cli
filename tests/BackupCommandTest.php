@@ -201,6 +201,103 @@ SH
         }
     }
 
+    public function testDatabaseBackupSuccessMessageShowsActualFilePath(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-message-db';
+        mkdir($toolsDir, 0755, true);
+        $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
+#!/bin/sh
+echo 'SQL dump'
+SH);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'db',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(0, $this->tester->getStatusCode(), $output);
+            $this->assertStringEndsWith('_db.sql.gz', $this->extractSuccessBackupPath($output));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testFilesBackupSuccessMessageShowsActualFilePath(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-message-files';
+        mkdir($toolsDir, 0755, true);
+        $this->writeTool($toolsDir, 'tar', <<<'SH'
+#!/bin/sh
+printf 'archive' > "$2"
+SH);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'files',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(0, $this->tester->getStatusCode(), $output);
+            $this->assertStringEndsWith('_files.tar.gz', $this->extractSuccessBackupPath($output));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testFullBackupSuccessMessageShowsActualFilePath(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-message-full';
+        mkdir($toolsDir, 0755, true);
+        $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
+#!/bin/sh
+echo 'SQL dump'
+SH);
+        $this->writeTool($toolsDir, 'tar', <<<'SH'
+#!/bin/sh
+printf 'archive' > "$2"
+SH);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'full',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(0, $this->tester->getStatusCode(), $output);
+            $this->assertStringEndsWith('_full.tar.gz', $this->extractSuccessBackupPath($output));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testFilesBackupTreatsTarExitOneWithArchiveAsWarning(): void
     {
         $toolsDir = $this->tempDir . '/tools';
@@ -357,5 +454,46 @@ SH
         $this->assertStringContainsString('--list', $output);
         $this->assertStringContainsString('--restore', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    private function writeTool(string $toolsDir, string $name, string $script): void
+    {
+        $path = $toolsDir . '/' . $name;
+        file_put_contents($path, $script);
+        chmod($path, 0755);
+    }
+
+    private function extractSuccessBackupPath(string $output): string
+    {
+        $captureNextPathLine = false;
+        $pathParts = [];
+
+        foreach (explode("\n", $output) as $line) {
+            if (str_contains($line, '[OK] Backup created:')) {
+                $path = trim(substr($line, strpos($line, 'Backup created:') + strlen('Backup created:')));
+                if ($path !== '') {
+                    return $path;
+                }
+                $captureNextPathLine = true;
+                continue;
+            }
+
+            if ($captureNextPathLine) {
+                $pathPart = trim($line);
+                if ($pathPart === '') {
+                    if ($pathParts !== []) {
+                        return implode('', $pathParts);
+                    }
+                    continue;
+                }
+                $pathParts[] = $pathPart;
+            }
+        }
+
+        if ($pathParts !== []) {
+            return implode('', $pathParts);
+        }
+
+        $this->fail('Success backup path was not found in output: ' . $output);
     }
 }
