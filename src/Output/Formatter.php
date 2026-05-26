@@ -6,6 +6,8 @@ use KVS\CLI\Constants;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Output\OutputInterface;
 
+use function KVS\CLI\Utils\pluralize;
+
 /**
  * Formatter - Centralized output formatting for list commands
  *
@@ -267,7 +269,8 @@ class Formatter
 
         // Footer with total count
         $output->writeln('');
-        $output->writeln(sprintf('<info>Total: %d results</info>', count($items)));
+        $count = count($items);
+        $output->writeln(sprintf('<info>Total: %d %s</info>', $count, pluralize('result', $count)));
 
         // Tip about --no-truncate if text was truncated
         if (

@@ -12,6 +12,8 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
+use function KVS\CLI\Utils\pluralize;
+
 #[AsCommand(
     name: 'system:queue',
     description: 'Manage KVS background tasks queue',
@@ -265,7 +267,7 @@ HELP
                     ];
                 }
                 $this->renderTable(['ID', 'Status', 'Type', 'Content', 'Priority', 'Server', 'Error'], $rows);
-                $this->io()->text(sprintf('Showing %d tasks', count($tasks)));
+                $this->io()->text($this->formatTaskCount(count($tasks)));
             } else {
                 $formatter = new Formatter(
                     $input->getOptions(),
@@ -720,7 +722,7 @@ HELP
                     ];
                 }
                 $this->renderTable(['ID', 'Status', 'Type', 'Content', 'Duration', 'Ended'], $rows);
-                $this->io()->text(sprintf('Showing %d tasks', count($tasks)));
+                $this->io()->text($this->formatTaskCount(count($tasks)));
             } else {
                 $formatter = new Formatter(
                     $input->getOptions(),
@@ -775,5 +777,10 @@ HELP
             return sprintf('%dm %ds', $minutes, $secs);
         }
         return sprintf('%ds', $secs);
+    }
+
+    private function formatTaskCount(int $count): string
+    {
+        return sprintf('Showing %d %s', $count, pluralize('task', $count));
     }
 }

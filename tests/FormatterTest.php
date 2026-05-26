@@ -151,7 +151,20 @@ class FormatterTest extends TestCase
         $output = $this->output->fetch();
         $this->assertStringContainsString('Id', $output);
         $this->assertStringContainsString('Title', $output);
-        $this->assertStringContainsString('Total: 1 results', $output);
+        $this->assertStringContainsString('Total: 1 result', $output);
+    }
+
+    public function testDisplayTableFormatPluralizesTotal(): void
+    {
+        $items = [
+            ['id' => 1, 'title' => 'First Item'],
+            ['id' => 2, 'title' => 'Second Item'],
+        ];
+
+        $formatter = new Formatter(['format' => 'table'], ['id', 'title']);
+        $formatter->display($items, $this->output);
+
+        $this->assertStringContainsString('Total: 2 results', $this->output->fetch());
     }
 
     public function testDisplayIdsFormat(): void

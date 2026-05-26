@@ -86,6 +86,25 @@ class QueueEmptyFormatTest extends TestCase
         $this->assertStringNotContainsString('Background Tasks Queue', $output);
     }
 
+    public function testQueueListSingularTaskCount(): void
+    {
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks
+                (task_id, status_id, type_id, video_id, album_id, server_id, error_code, priority, added_date)
+             VALUES
+                (123, 0, 1, 456, NULL, NULL, 0, 10, '2026-05-26 12:00:00')"
+        );
+
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute(['action' => 'list']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('Showing 1 task', $output);
+        $this->assertStringNotContainsString('Showing 1 tasks', $output);
+    }
+
     public function testEmptyQueueHistoryJsonIsValidArray(): void
     {
         $tester = new CommandTester($this->createCommand());
@@ -108,6 +127,25 @@ class QueueEmptyFormatTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame("0\n", $tester->getDisplay());
+    }
+
+    public function testQueueHistorySingularTaskCount(): void
+    {
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks_history
+                (task_id, status_id, type_id, video_id, album_id, effective_duration, end_date)
+             VALUES
+                (234, 3, 1, 456, NULL, 12, '2026-05-26 12:00:00')"
+        );
+
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute(['action' => 'history']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('Showing 1 task', $output);
+        $this->assertStringNotContainsString('Showing 1 tasks', $output);
     }
 
     private function createCommand(): QueueCommand
