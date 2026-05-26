@@ -81,7 +81,7 @@ class LogCommand extends BaseCommand
                 }
 
                 $logs[] = [
-                    basename($file, '.log'),
+                    pathinfo($file, PATHINFO_FILENAME),
                     basename($file),
                     format_bytes($fileSize),
                     date('Y-m-d H:i:s', $fileMtime),

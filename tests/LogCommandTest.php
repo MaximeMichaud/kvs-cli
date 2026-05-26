@@ -34,6 +34,10 @@ class LogCommandTest extends TestCase
             $this->tempDir . '/admin/logs/debug.log',
             "[2024-01-01 12:00:00] DEBUG: Debug message\n"
         );
+        file_put_contents(
+            $this->tempDir . '/admin/logs/cron.txt',
+            "[2024-01-01 12:00:00] INFO: Cron started\n"
+        );
 
         $this->config = new Configuration(['path' => $this->tempDir]);
         $this->command = new LogCommand($this->config);
@@ -59,6 +63,7 @@ class LogCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('system', $output);
         $this->assertStringContainsString('debug', $output);
+        $this->assertMatchesRegularExpression('/│\s*cron\s*│\s*cron\.txt\s*│/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -69,6 +74,7 @@ class LogCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('system', $output);
         $this->assertStringContainsString('debug', $output);
+        $this->assertMatchesRegularExpression('/│\s*cron\s*│\s*cron\.txt\s*│/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
