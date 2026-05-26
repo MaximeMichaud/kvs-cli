@@ -574,15 +574,17 @@ HELP
             }
 
             // Recent history stats (last 24h)
-            $stmt = $db->query("
+            $recentHistoryCutoff = date('Y-m-d H:i:s', time() - (Constants::RECENT_HOURS * 3600));
+            $stmt = $db->prepare("
                 SELECT
                     COUNT(*) as total,
                     SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
                     SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
                     AVG(effective_duration) as avg_duration
                 FROM {$this->table('background_tasks_history')}
-                WHERE end_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_HOURS . " HOUR)
+                WHERE end_date >= :cutoff
             ");
+            $stmt->execute(['cutoff' => $recentHistoryCutoff]);
 
             if ($stmt !== false) {
                 /** @var array<string, mixed>|false $history */
