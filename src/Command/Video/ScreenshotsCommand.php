@@ -24,9 +24,14 @@ class ScreenshotsCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|generate|regenerate)', 'list')
             ->addArgument('video_id', InputArgument::OPTIONAL, 'Video ID')
             ->addOption('count', null, InputOption::VALUE_REQUIRED, 'Number of screenshots to generate', 10)
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Screenshot type (timeline|poster)', 'timeline')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
-            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption(
+                'format',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Output format: table, csv, json, yaml, count',
+                'table'
+            )
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
             ->setHelp(<<<'HELP'
 Manage video screenshots (thumbnails).
@@ -38,7 +43,6 @@ Manage video screenshots (thumbnails).
 
 <fg=yellow>OPTIONS:</>
   --count=N                 Number of screenshots to generate (default: 10)
-  --type=timeline|poster    Screenshot type (default: timeline)
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs screenshots list 123</>

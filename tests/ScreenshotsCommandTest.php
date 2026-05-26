@@ -199,8 +199,8 @@ class ScreenshotsCommandTest extends TestCase
         $definition = $this->command->getDefinition();
 
         $this->assertTrue($definition->hasOption('count'));
-        $this->assertTrue($definition->hasOption('type'));
         $this->assertTrue($definition->hasOption('format'));
+        $this->assertFalse($definition->hasOption('type'));
     }
 
     public function testCommandHasExpectedAliases(): void
