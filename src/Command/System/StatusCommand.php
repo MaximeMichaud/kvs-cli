@@ -19,6 +19,9 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class StatusCommand extends BaseCommand
 {
+    private bool $statusDatabaseConnectionResolved = false;
+    private ?\PDO $statusDatabaseConnection = null;
+
     protected function configure(): void
     {
         $this->setHelp(<<<'HELP'
@@ -75,7 +78,7 @@ HELP
     {
         $this->io()->section('Database');
 
-        $db = $this->getDatabaseConnection();
+        $db = $this->getStatusDatabaseConnection();
 
         if ($db === null) {
             $this->io()->error('Database connection failed');
@@ -182,7 +185,7 @@ HELP
     {
         $this->io()->section('Content Statistics');
 
-        $db = $this->getDatabaseConnection();
+        $db = $this->getStatusDatabaseConnection();
 
         if ($db === null) {
             return;
@@ -507,7 +510,7 @@ HELP
     {
         $this->io()->section('Video Processing');
 
-        $db = $this->getDatabaseConnection();
+        $db = $this->getStatusDatabaseConnection();
         if ($db === null) {
             $this->io()->warning('Database connection not available');
             return;
@@ -800,7 +803,7 @@ HELP
         $health = [];
 
         // Database connectivity
-        $db = $this->getDatabaseConnection();
+        $db = $this->getStatusDatabaseConnection();
         $health[] = $db !== null ? ['✓', 'Database connectivity', 'OK'] : ['✗', 'Database connectivity', 'FAILED'];
 
         // File permissions - admin/data directory
@@ -896,7 +899,7 @@ HELP
         }
 
         // Check for recent database backups
-        $db = $this->getDatabaseConnection();
+        $db = $this->getStatusDatabaseConnection();
         if ($db !== null) {
             try {
                 // Check if backup log table exists
@@ -943,5 +946,15 @@ HELP
         }
 
         $this->renderTable(['Status', 'Item', 'Details'], $security);
+    }
+
+    private function getStatusDatabaseConnection(bool $quiet = false): ?\PDO
+    {
+        if (!$this->statusDatabaseConnectionResolved) {
+            $this->statusDatabaseConnection = $this->getDatabaseConnection($quiet);
+            $this->statusDatabaseConnectionResolved = true;
+        }
+
+        return $this->statusDatabaseConnection;
     }
 }
