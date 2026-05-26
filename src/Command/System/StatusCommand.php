@@ -407,8 +407,7 @@ class StatusCommand extends BaseCommand
 
         try {
             // Check if background_tasks table exists
-            $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "background_tasks'");
-            if ($stmt === false || $stmt->rowCount() === 0) {
+            if (!$this->databaseTableExists($db, $this->table('background_tasks'))) {
                 $this->io()->text('No conversion queue table found (' . $this->table('background_tasks') . ')');
                 return;
             }
@@ -432,9 +431,13 @@ class StatusCommand extends BaseCommand
             $stats[] = ['Processing', number_format((int)$processing)];
 
             // Failed tasks (last 24h)
+            $failedSince = $db->quote(date('Y-m-d H:i:s', time() - Constants::RECENT_HOURS * 3600));
+            if ($failedSince === false) {
+                throw new \Exception('Failed to quote failed task date');
+            }
             $sql = "SELECT COUNT(*) FROM " . $this->table('background_tasks')
                 . " WHERE status_id = " . StatusFormatter::TASK_FAILED
-                . " AND added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_HOURS . " HOUR)";
+                . " AND added_date >= $failedSince";
             $stmt = $db->query($sql);
             if ($stmt === false) {
                 throw new \Exception('Failed to query failed tasks');
@@ -443,12 +446,16 @@ class StatusCommand extends BaseCommand
             $stats[] = ['Failed (24h)', number_format((int)$failed)];
 
             // Average processing time (completed tasks)
-            // KVS stores duration in effective_duration column (seconds)
+            // KVS moves completed tasks into background_tasks_history.
             $stmt = $db->query("
                 SELECT AVG(effective_duration) as avg_time
-                FROM " . $this->table('background_tasks') . "
-                WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND effective_duration > 0
-                LIMIT " . Constants::STATS_SAMPLE_LIMIT . "
+                FROM (
+                    SELECT effective_duration
+                    FROM " . $this->table('background_tasks_history') . "
+                    WHERE status_id = " . StatusFormatter::TASK_COMPLETED . " AND effective_duration > 0
+                    ORDER BY task_id DESC
+                    LIMIT " . Constants::STATS_SAMPLE_LIMIT . "
+                ) completed_tasks
             ");
             if ($stmt === false) {
                 throw new \Exception('Failed to query average time');
@@ -465,6 +472,31 @@ class StatusCommand extends BaseCommand
             $this->renderTable(['Metric', 'Value'], $stats);
         } catch (\Exception $e) {
             $this->io()->warning('Could not fetch conversion queue data: ' . $e->getMessage());
+        }
+    }
+
+    private function databaseTableExists(\PDO $db, string $tableName): bool
+    {
+        try {
+            $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                $stmt = $db->prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = :name");
+                if ($stmt === false) {
+                    return false;
+                }
+                $stmt->execute(['name' => $tableName]);
+                return $stmt->fetchColumn() !== false;
+            }
+
+            $quotedTableName = $db->quote($tableName);
+            if ($quotedTableName === false) {
+                return false;
+            }
+
+            $stmt = $db->query("SHOW TABLES LIKE $quotedTableName");
+            return $stmt !== false && $stmt->rowCount() > 0;
+        } catch (\Exception) {
+            return false;
         }
     }
 

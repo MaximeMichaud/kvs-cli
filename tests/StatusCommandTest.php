@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\StatusCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -108,6 +109,39 @@ class StatusCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/\d+(\.\d+)?\s*(TB|GB|MB)/', $output); // Should show size
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testStatusAverageTimeUsesBackgroundTaskHistory(): void
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec('CREATE TABLE ktvs_background_tasks (task_id INTEGER, status_id INTEGER, effective_duration INTEGER, added_date TEXT)');
+        $db->exec('CREATE TABLE ktvs_background_tasks_history (task_id INTEGER, status_id INTEGER, effective_duration INTEGER)');
+        $db->exec("INSERT INTO ktvs_background_tasks (task_id, status_id, effective_duration, added_date) VALUES (1, 3, 999, '2026-05-26 12:00:00')");
+        $db->exec('DELETE FROM ktvs_background_tasks WHERE status_id = 3');
+        $db->exec('INSERT INTO ktvs_background_tasks_history (task_id, status_id, effective_duration) VALUES (10, 3, 30)');
+        $db->exec('INSERT INTO ktvs_background_tasks_history (task_id, status_id, effective_duration) VALUES (11, 3, 90)');
+
+        $command = new class (TestHelper::createTestConfiguration($this->tempDir), $db) extends StatusCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute([]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Average Time', $display);
+        $this->assertStringContainsString('1m 0s', $display);
     }
 
     public function testStatusExitCode(): void
