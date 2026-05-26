@@ -554,16 +554,18 @@ HELP
      */
     private function updateBlockedDomains(\PDO $db, array $domains): void
     {
-        $db->exec("DELETE FROM {$this->table('users_blocked_domains')}");
+        $this->runInTransaction($db, function () use ($db, $domains): void {
+            $db->exec("DELETE FROM {$this->table('users_blocked_domains')}");
 
-        $stmt = $db->prepare("
-            INSERT INTO {$this->table('users_blocked_domains')} (domain, sort_id)
-            VALUES (:domain, :sort_id)
-        ");
+            $stmt = $db->prepare("
+                INSERT INTO {$this->table('users_blocked_domains')} (domain, sort_id)
+                VALUES (:domain, :sort_id)
+            ");
 
-        foreach ($domains as $i => $domain) {
-            $stmt->execute(['domain' => $domain, 'sort_id' => $i]);
-        }
+            foreach ($domains as $i => $domain) {
+                $stmt->execute(['domain' => $domain, 'sort_id' => $i]);
+            }
+        });
     }
 
     /**
@@ -571,15 +573,46 @@ HELP
      */
     private function updateBlockedIps(\PDO $db, array $ips): void
     {
-        $db->exec("DELETE FROM {$this->table('users_blocked_ips')}");
+        $this->runInTransaction($db, function () use ($db, $ips): void {
+            $db->exec("DELETE FROM {$this->table('users_blocked_ips')}");
 
-        $stmt = $db->prepare("
-            INSERT INTO {$this->table('users_blocked_ips')} (ip, sort_id)
-            VALUES (:ip, :sort_id)
-        ");
+            $stmt = $db->prepare("
+                INSERT INTO {$this->table('users_blocked_ips')} (ip, sort_id)
+                VALUES (:ip, :sort_id)
+            ");
 
-        foreach ($ips as $i => $ip) {
-            $stmt->execute(['ip' => $ip, 'sort_id' => $i]);
+            foreach ($ips as $i => $ip) {
+                $stmt->execute(['ip' => $ip, 'sort_id' => $i]);
+            }
+        });
+    }
+
+    /**
+     * @param \Closure(): void $operation
+     */
+    private function runInTransaction(\PDO $db, \Closure $operation): void
+    {
+        $startedTransaction = !$db->inTransaction();
+        $transactionOpen = false;
+
+        if ($startedTransaction) {
+            $db->beginTransaction();
+            $transactionOpen = true;
+        }
+
+        try {
+            $operation();
+
+            if ($startedTransaction) {
+                $db->commit();
+                $transactionOpen = false;
+            }
+        } catch (\Throwable $e) {
+            if ($transactionOpen) {
+                $db->rollBack();
+            }
+
+            throw $e;
         }
     }
 
