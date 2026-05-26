@@ -4,47 +4,31 @@ namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Video\ScreenshotsCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Console\Application;
 
 #[CoversClass(ScreenshotsCommand::class)]
 class ScreenshotsCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private ScreenshotsCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
         $this->command = new ScreenshotsCommand($this->config);
-
-        $app = new Application();
-        $app->add($this->command);
-
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testListScreenshotsRequiresVideoId(): void
@@ -63,30 +47,26 @@ class ScreenshotsCommandTest extends TestCase
             'video_id' => '999999999'
         ]);
 
-        // Either warning or path not configured - both are valid in test env
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Screenshots directory not found', $output);
+        $this->assertStringContainsString('999999999', $output);
     }
 
     public function testListScreenshotsWithExistingVideo(): void
     {
-        // Get a video ID that exists
-        $table = $this->config->getTablePrefix() . 'videos';
-        $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
-        $videoId = $stmt->fetchColumn();
-
-        if ($videoId === false) {
-            $this->markTestSkipped('No videos in database');
-        }
+        $this->createScreenshotFixture('1234');
 
         $this->tester->execute([
             'action' => 'list',
-            'video_id' => $videoId
+            'video_id' => '1234'
         ]);
 
-        // Success with warning (no files) or success with files
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('preview.png', $output);
+        $this->assertStringContainsString('320x180/001.jpg', $output);
+        $this->assertStringContainsString('1x1', $output);
     }
 
     public function testGenerateScreenshotsRequiresVideoId(): void
@@ -107,72 +87,57 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('Video ID is required', $output);
     }
 
-    #[Group('integration')]
-    #[Group('slow')]
-    public function testGenerateScreenshotsChecksFfmpeg(): void
+    public function testGenerateScreenshotsFailsWhenFfmpegIsMissing(): void
     {
-        // Skip unless explicitly allowed - this test can write to filesystem
-        if (!getenv('KVS_TEST_ALLOW_SIDE_EFFECTS')) {
-            $this->markTestSkipped('Skipped: set KVS_TEST_ALLOW_SIDE_EFFECTS=1 to run');
-        }
-
-        // Get a video ID that exists
-        $table = $this->config->getTablePrefix() . 'videos';
-        $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
-        $videoId = $stmt->fetchColumn();
-
-        if ($videoId === false) {
-            $this->markTestSkipped('No videos in database');
-        }
+        TestHelper::createMockSetupConfig($this->kvsPath, [
+            'project_path' => $this->kvsPath,
+            'tables_prefix' => TestHelper::getTablePrefix(),
+            'tables_prefix_multi' => TestHelper::getTablePrefix(),
+            'content_path_videos_screenshots' => $this->kvsPath . '/contents/videos_screenshots',
+            'content_path_videos_sources' => $this->kvsPath . '/contents/videos_sources',
+            'ffmpeg_path' => $this->kvsPath . '/missing-ffmpeg',
+            'ffprobe_path' => $this->kvsPath . '/missing-ffprobe',
+        ]);
+        $this->reloadCommand();
 
         $this->tester->execute([
             'action' => 'generate',
-            'video_id' => $videoId
+            'video_id' => '1234'
         ]);
 
         $output = $this->tester->getDisplay();
-        $statusCode = $this->tester->getStatusCode();
-
-        // With side effects enabled, accept success OR expected failures
-        if ($statusCode === 0) {
-            // Success means ffmpeg worked and screenshots were generated
-            $this->assertStringContainsString('Generated', $output);
-        } else {
-            // Failure should be due to missing dependencies or configuration
-            $this->assertEquals(1, $statusCode);
-            $this->assertTrue(
-                str_contains($output, 'ffmpeg')
-                || str_contains($output, 'not configured')
-                || str_contains($output, 'not found')
-                || str_contains($output, 'No video file')
-                || str_contains($output, 'Failed to get video duration')
-                || str_contains($output, 'does not exist'),
-                'Expected ffmpeg, path, or video file error. Got: ' . $output
-            );
-        }
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('ffmpeg is not installed or not accessible', $output);
+        $this->assertDirectoryDoesNotExist($this->kvsPath . '/contents/videos_screenshots/1000/1234');
     }
 
     #[DataProvider('provideOutputFormats')]
     public function testListScreenshotsOutputFormats(string $format): void
     {
-        // Get a video ID that exists
-        $table = $this->config->getTablePrefix() . 'videos';
-        $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
-        $videoId = $stmt->fetchColumn();
-
-        if ($videoId === false) {
-            $this->markTestSkipped('No videos in database');
-        }
+        $this->createScreenshotFixture('1234');
 
         $this->tester->execute([
             'action' => 'list',
-            'video_id' => $videoId,
+            'video_id' => '1234',
             '--format' => $format
         ]);
 
-        // Just verify the command runs without crashing
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+
+        if ($format === 'json') {
+            $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertCount(2, $rows);
+            $this->assertSame(['320x180/001.jpg', 'preview.png'], array_column($rows, 'filename'));
+            return;
+        }
+
+        if ($format === 'count') {
+            $this->assertSame('2', trim($output));
+            return;
+        }
+
+        $this->assertStringContainsString('preview.png', $output);
     }
 
     public static function provideOutputFormats(): array
@@ -180,18 +145,20 @@ class ScreenshotsCommandTest extends TestCase
         return [
             'table format' => ['table'],
             'json format' => ['json'],
+            'count format' => ['count'],
         ];
     }
 
     public function testDefaultActionIsList(): void
     {
+        $this->createScreenshotFixture('1234');
+
         $this->tester->execute([
-            'video_id' => '999999999'
+            'video_id' => '1234'
         ]);
 
-        // Should behave like list action - returns success with warning
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('preview.png', $this->tester->getDisplay());
     }
 
     public function testCommandHasExpectedOptions(): void
@@ -208,5 +175,33 @@ class ScreenshotsCommandTest extends TestCase
         $aliases = $this->command->getAliases();
 
         $this->assertContains('screenshots', $aliases);
+    }
+
+    private function reloadCommand(): void
+    {
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = new ScreenshotsCommand($this->config);
+        $this->tester = new CommandTester($this->command);
+    }
+
+    private function createScreenshotFixture(string $videoId): void
+    {
+        $screenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket($videoId) . '/' . $videoId;
+        mkdir($screenshotsDir . '/320x180', 0755, true);
+
+        $image = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+            true
+        );
+        $this->assertIsString($image);
+
+        file_put_contents($screenshotsDir . '/preview.png', $image);
+        file_put_contents($screenshotsDir . '/320x180/001.jpg', $image);
+        file_put_contents($screenshotsDir . '/ignore.txt', 'not an image');
+    }
+
+    private function getBucket(string $videoId): int
+    {
+        return (int) floor((int) $videoId / 1000) * 1000;
     }
 }
