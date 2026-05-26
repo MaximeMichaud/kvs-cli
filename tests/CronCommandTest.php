@@ -26,6 +26,7 @@ class CronCommandTest extends TestCase
         file_put_contents($this->tempDir . '/admin/include/cron.php', '<?php echo "Main cron";');
         file_put_contents($this->tempDir . '/admin/include/cron_conversion.php', '<?php echo "Conversion cron";');
         file_put_contents($this->tempDir . '/admin/include/cron_optimize.php', '<?php echo "Optimize cron";');
+        file_put_contents($this->tempDir . '/admin/include/cron_plugins.php', '<?php echo "Plugins cron";');
         file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');
         file_put_contents($this->tempDir . '/admin/include/setup.php', '<?php');
 
@@ -110,6 +111,22 @@ SH
         $this->assertStringContainsString('cron.php', $output);
         $this->assertStringContainsString('cron_conversion.php', $output);
         $this->assertStringContainsString('cron_optimize.php', $output);
+        $this->assertStringContainsString('cron_billing.php', $output);
+        $this->assertStringContainsString('cron_clone_db.php', $output);
+        $this->assertStringContainsString('cron_custom.php', $output);
+        $this->assertStringContainsString('cron_import.php', $output);
+        $this->assertStringContainsString('cron_plugins.php', $output);
+        $this->assertStringContainsString('cron_servers.php', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testCronRunSupportsScriptBasenameAliases(): void
+    {
+        $this->tester->execute(['task' => 'cron_plugins']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Running cron task: cron_plugins', $output);
+        $this->assertStringContainsString('Plugins cron', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 

@@ -16,6 +16,27 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 class CronCommand extends BaseCommand
 {
+    /**
+     * @var array<string, array{script: string, description: string}>
+     */
+    private const CRON_TASKS = [
+        'main' => ['script' => 'cron.php', 'description' => 'Main cron job (runs all scheduled tasks)'],
+        'conversion' => ['script' => 'cron_conversion.php', 'description' => 'Process video conversions'],
+        'optimize' => ['script' => 'cron_optimize.php', 'description' => 'Optimize database and files'],
+        'rotator' => ['script' => 'cron_rotator.php', 'description' => 'Content rotation tasks'],
+        'feeds' => ['script' => 'cron_feeds.php', 'description' => 'Update external feeds'],
+        'cleanup' => ['script' => 'cron_cleanup.php', 'description' => 'Clean temporary files'],
+        'stats' => ['script' => 'cron_stats.php', 'description' => 'Process statistics'],
+        'check_db' => ['script' => 'cron_check_db.php', 'description' => 'Check database integrity'],
+        'postponed' => ['script' => 'cron_postponed_tasks.php', 'description' => 'Run postponed tasks'],
+        'billing' => ['script' => 'cron_billing.php', 'description' => 'Process billing tasks'],
+        'clone_db' => ['script' => 'cron_clone_db.php', 'description' => 'Clone database tasks'],
+        'custom' => ['script' => 'cron_custom.php', 'description' => 'Run custom cron tasks'],
+        'import' => ['script' => 'cron_import.php', 'description' => 'Process import tasks'],
+        'plugins' => ['script' => 'cron_plugins.php', 'description' => 'Run plugin cron tasks'],
+        'servers' => ['script' => 'cron_servers.php', 'description' => 'Process server tasks'],
+    ];
+
     protected function configure(): void
     {
         $this
@@ -54,17 +75,10 @@ HELP
 
     private function listCronTasks(): int
     {
-        $tasks = [
-            ['main', 'cron.php', 'Main cron job (runs all scheduled tasks)'],
-            ['conversion', 'cron_conversion.php', 'Process video conversions'],
-            ['optimize', 'cron_optimize.php', 'Optimize database and files'],
-            ['rotator', 'cron_rotator.php', 'Content rotation tasks'],
-            ['feeds', 'cron_feeds.php', 'Update external feeds'],
-            ['cleanup', 'cron_cleanup.php', 'Clean temporary files'],
-            ['stats', 'cron_stats.php', 'Process statistics'],
-            ['check_db', 'cron_check_db.php', 'Check database integrity'],
-            ['postponed', 'cron_postponed_tasks.php', 'Run postponed tasks'],
-        ];
+        $tasks = [];
+        foreach (self::CRON_TASKS as $name => $task) {
+            $tasks[] = [$name, $task['script'], $task['description']];
+        }
 
         $this->renderTable(
             ['Task Name', 'Script', 'Description'],
@@ -135,17 +149,7 @@ HELP
 
     private function runSpecificTask(string $task): int
     {
-        $cronScripts = [
-            'main' => 'cron.php',
-            'conversion' => 'cron_conversion.php',
-            'optimize' => 'cron_optimize.php',
-            'rotator' => 'cron_rotator.php',
-            'feeds' => 'cron_feeds.php',
-            'cleanup' => 'cron_cleanup.php',
-            'stats' => 'cron_stats.php',
-            'check_db' => 'cron_check_db.php',
-            'postponed' => 'cron_postponed_tasks.php',
-        ];
+        $cronScripts = $this->getCronScriptMap();
 
         if (!isset($cronScripts[$task])) {
             $this->io()->error("Unknown cron task: $task");
@@ -173,6 +177,24 @@ HELP
         }
 
         return self::FAILURE;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getCronScriptMap(): array
+    {
+        $scripts = [];
+        foreach (self::CRON_TASKS as $name => $task) {
+            $scripts[$name] = $task['script'];
+
+            $basename = pathinfo($task['script'], PATHINFO_FILENAME);
+            if ($basename !== '') {
+                $scripts[$basename] = $task['script'];
+            }
+        }
+
+        return $scripts;
     }
 
     private function runAllCronTasks(): int
