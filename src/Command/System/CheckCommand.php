@@ -708,7 +708,9 @@ HELP
         }
 
         // Get multiple lines for better version parsing
-        $output = @shell_exec(escapeshellarg($path) . " $versionFlag 2>&1 | head -n 5");
+        $output = @shell_exec(
+            escapeshellarg($path) . ' ' . escapeshellarg($versionFlag) . ' 2>&1 | head -n 5'
+        );
         if ($output === null || $output === false || $output === '') {
             return null;
         }

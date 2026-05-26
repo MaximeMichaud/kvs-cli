@@ -189,6 +189,30 @@ SH
         $this->assertTrue($result['libavfilter']);
     }
 
+    public function testToolVersionEscapesVersionFlag(): void
+    {
+        $tool = $this->tempDir . '/fake-version-tool';
+        $marker = $this->tempDir . '/check-command-injection';
+        file_put_contents(
+            $tool,
+            <<<'SH'
+#!/bin/sh
+echo 'fake tool 1.2.3'
+SH
+        );
+        chmod($tool, 0755);
+
+        $method = new \ReflectionMethod(CheckCommand::class, 'getToolVersion');
+        $version = $method->invoke(
+            $this->command,
+            $tool,
+            '--version; touch ' . escapeshellarg($marker)
+        );
+
+        $this->assertSame('1.2.3', $version);
+        $this->assertFileDoesNotExist($marker);
+    }
+
     public function testCheckPhpSettings(): void
     {
         $this->tester->execute([]);

@@ -98,6 +98,19 @@ class StatusCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testCheckCommandEscapesCommandName(): void
+    {
+        $marker = $this->tempDir . '/status-command-injection';
+        $maliciousCommand = 'definitely-missing-command; touch ' . escapeshellarg($marker);
+
+        $method = new \ReflectionMethod(StatusCommand::class, 'checkCommand');
+        $result = $method->invoke($this->command, $maliciousCommand, '--version');
+
+        $this->assertIsArray($result);
+        $this->assertFalse($result['available']);
+        $this->assertFileDoesNotExist($marker);
+    }
+
     public function testStatusChecksDiskSpace(): void
     {
         $this->tester->execute([]);

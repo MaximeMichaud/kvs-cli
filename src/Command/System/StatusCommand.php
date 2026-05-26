@@ -461,7 +461,7 @@ HELP
         ];
 
         // Check if command exists
-        $which = shell_exec("which $command 2>/dev/null");
+        $which = shell_exec('which ' . escapeshellarg($command) . ' 2>/dev/null');
         if ($which === null || $which === false || trim($which) === '') {
             return $result;
         }
@@ -470,7 +470,9 @@ HELP
         $result['available'] = true;
 
         // Get version
-        $versionOutput = shell_exec("$command $versionFlag 2>&1 | head -n 1");
+        $versionOutput = shell_exec(
+            escapeshellarg($command) . ' ' . escapeshellarg($versionFlag) . ' 2>&1 | head -n 1'
+        );
         if ($versionOutput !== null && $versionOutput !== false) {
             // Extract version number from output
             if (preg_match('/(\d+\.\d+\.\d+)/', $versionOutput, $matches) === 1) {
