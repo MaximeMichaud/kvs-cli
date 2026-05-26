@@ -7,43 +7,36 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\DvdCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 #[CoversClass(DvdCommand::class)]
 class DvdCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private DvdCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new DvdCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testListDvdsDefault(): void
@@ -51,6 +44,8 @@ class DvdCommandTest extends TestCase
         $this->tester->execute(['action' => 'list']);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Test Series', $this->tester->getDisplay());
+        $this->assertStringContainsString('Disabled Series', $this->tester->getDisplay());
     }
 
     public function testListDvdsWithLimit(): void
@@ -61,16 +56,24 @@ class DvdCommandTest extends TestCase
         ]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Other Channel', $this->tester->getDisplay());
     }
 
     public function testListDvdsActiveStatus(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--status' => 'active'
+            '--status' => 'active',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,status'
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(2, $rows);
+        $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
+        $this->assertSame('Active', $rows[0]['status']);
     }
 
     public function testListDvdsDisabledStatus(): void
@@ -80,7 +83,11 @@ class DvdCommandTest extends TestCase
             '--status' => 'disabled'
         ]);
 
+        $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Disabled Series', $output);
+        $this->assertStringNotContainsString('Test Series', $output);
     }
 
     public function testListDvdsSearch(): void
@@ -90,11 +97,15 @@ class DvdCommandTest extends TestCase
             '--search' => 'test'
         ]);
 
+        $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Test Series', $output);
+        $this->assertStringNotContainsString('Disabled Series', $output);
     }
 
     #[DataProvider('provideOutputFormats')]
-    public function testListDvdsFormats(string $format, string $assertMethod): void
+    public function testListDvdsFormats(string $format): void
     {
         $this->tester->execute([
             'action' => 'list',
@@ -103,36 +114,40 @@ class DvdCommandTest extends TestCase
         ]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+        if ($format === 'json') {
+            $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertCount(3, $rows);
+            $this->assertSame(30, (int) $rows[0]['dvd_id']);
+            $this->assertSame('Test Series', $rows[0]['title']);
+            return;
+        }
+
+        $this->assertStringContainsString('Test Series', $this->tester->getDisplay());
     }
 
     public static function provideOutputFormats(): array
     {
         return [
-            'table format' => ['table', 'assertSuccess'],
-            'json format' => ['json', 'assertSuccess'],
+            'table format' => ['table'],
+            'json format' => ['json'],
         ];
     }
 
     public function testShowDvd(): void
     {
-        // Get a DVD ID
-        $table = $this->config->getTablePrefix() . 'dvds';
-        $stmt = $this->db->query("SELECT dvd_id FROM {$table} LIMIT 1");
-        $dvdId = $stmt->fetchColumn();
-
-        if ($dvdId === false) {
-            $this->markTestSkipped('No DVDs in database');
-        }
-
         $this->tester->execute([
             'action' => 'show',
-            'id' => $dvdId
+            'id' => '30'
         ]);
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('DVD:', $output);
+        $this->assertStringContainsString('DVD: Test Series', $output);
         $this->assertStringContainsString('DVD ID', $output);
+        $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Total Duration\W+1h 1m/', $output);
+        $this->assertStringContainsString('4.0/5 (10 votes)', $output);
+        $this->assertStringContainsString('Long running series', $output);
     }
 
     public function testShowDvdNotFound(): void
@@ -144,7 +159,7 @@ class DvdCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('not found', $output);
+        $this->assertStringContainsString('DVD not found: 999999999', $output);
     }
 
     public function testShowDvdMissingId(): void
@@ -155,7 +170,7 @@ class DvdCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('required', $output);
+        $this->assertStringContainsString('DVD ID is required', $output);
     }
 
     public function testStats(): void
@@ -165,6 +180,9 @@ class DvdCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('DVD Statistics', $output);
+        $this->assertMatchesRegularExpression('/Total DVDs\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Active\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
     }
 
     public function testDefaultActionIsList(): void
@@ -172,12 +190,61 @@ class DvdCommandTest extends TestCase
         $this->tester->execute([]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Test Series', $this->tester->getDisplay());
     }
 
-    public function testInvalidActionFallsBackToList(): void
+    public function testInvalidActionReturnsFailure(): void
     {
         $this->tester->execute(['action' => 'invalid']);
 
-        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown DVD action "invalid"', $this->tester->getDisplay());
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('dvds') . ' (' .
+            'dvd_id INTEGER, title TEXT, status_id INTEGER, release_year INTEGER, dvd_viewed INTEGER, ' .
+            'subscribers_count INTEGER, rating INTEGER, rating_amount INTEGER, description TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
+            'dvd_id INTEGER, duration INTEGER)'
+        );
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('dvds') .
+            " (dvd_id, title, status_id, release_year, dvd_viewed, subscribers_count, rating, rating_amount, description) VALUES " .
+            "(30, 'Test Series', 1, 2026, 100, 5, 40, 10, 'Long running series'), " .
+            "(20, 'Disabled Series', 0, 2025, 10, 0, 0, 0, ''), " .
+            "(10, 'Other Channel', 1, 2024, 50, 2, 12, 3, '')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (30, 3600), (30, 90), (20, 120), (10, 300)');
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): DvdCommand
+    {
+        return new class ($this->config, $db) extends DvdCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:dvd');
+                $this->setDescription('Manage KVS DVDs (channels/series)');
+                $this->setAliases(['dvd', 'dvds', 'channel', 'channels']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
