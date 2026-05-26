@@ -7,43 +7,39 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Video\FormatsCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 #[CoversClass(FormatsCommand::class)]
 class FormatsCommandTest extends TestCase
 {
+    private string $kvsPath;
+    private string $storagePath;
     private Configuration $config;
     private FormatsCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->storagePath = $this->kvsPath . '/storage/videos';
+        $this->createVideoStorage();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new FormatsCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testListFormatsRequiresVideoId(): void
@@ -63,29 +59,23 @@ class FormatsCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        // Could be either "not found" or "path not configured" depending on setup
-        $this->assertNotEquals(0, $this->tester->getStatusCode());
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video directory not found', $output);
     }
 
     public function testListFormatsWithExistingVideo(): void
     {
-        // Get a video ID that exists
-        $table = $this->config->getTablePrefix() . 'videos';
-        $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
-        $videoId = $stmt->fetchColumn();
-
-        if ($videoId === false) {
-            $this->markTestSkipped('No videos in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            'video_id' => $videoId
+            'video_id' => '10'
         ]);
 
-        // Success if video has formats, failure if directory not found (expected in test env)
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('720p MP4', $output);
+        $this->assertStringContainsString('10_720p.mp4', $output);
+        $this->assertStringContainsString('1.00 KB', $output);
+        $this->assertStringContainsString('Unknown', $output);
     }
 
     public function testCheckFormatsRequiresVideoId(): void
@@ -106,47 +96,54 @@ class FormatsCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video directory not found for video ID: 999999999', $output);
+    }
+
+    public function testCheckFormatsWithExistingVideo(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '10'
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('720p MP4', $output);
+        $this->assertStringContainsString('1080p MP4', $output);
+        $this->assertStringContainsString('available', strtolower($output));
+        $this->assertStringContainsString('missing', strtolower($output));
     }
 
     public function testShowAvailableFormats(): void
     {
-        // Check if formats_videos table exists
-        try {
-            $table = $this->config->getTablePrefix() . 'formats_videos';
-            $stmt = $this->db->query("SHOW TABLES LIKE '{$table}'");
-            $hasTable = $stmt->fetch() !== false;
-        } catch (\PDOException $e) {
-            $hasTable = false;
-        }
-
         $this->tester->execute(['action' => 'available']);
 
-        // If table exists and has data, success; otherwise failure with warning
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Available Format Configurations', $output);
+        $this->assertStringContainsString('720p MP4', $output);
+        $this->assertStringContainsString('Required', $output);
     }
 
     #[DataProvider('provideOutputFormats')]
     public function testListFormatsOutputFormats(string $format): void
     {
-        // Get a video ID that exists
-        $table = $this->config->getTablePrefix() . 'videos';
-        $stmt = $this->db->query("SELECT video_id FROM {$table} LIMIT 1");
-        $videoId = $stmt->fetchColumn();
-
-        if ($videoId === false) {
-            $this->markTestSkipped('No videos in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            'video_id' => $videoId,
+            'video_id' => '10',
             '--format' => $format
         ]);
 
-        // Just verify the command runs without error
-        $statusCode = $this->tester->getStatusCode();
-        $this->assertTrue($statusCode === 0 || $statusCode === 1);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        if ($format === 'json') {
+            $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertCount(1, $rows);
+            $this->assertSame('720p MP4', $rows[0]['format']);
+            $this->assertSame('10_720p.mp4', $rows[0]['file']);
+            return;
+        }
+
+        $this->assertStringContainsString('720p MP4', $this->tester->getDisplay());
     }
 
     public static function provideOutputFormats(): array
@@ -163,7 +160,8 @@ class FormatsCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringNotContainsString('Video ID is required', $output);
-        $this->assertTrue(in_array($this->tester->getStatusCode(), [0, 1], true));
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('720p MP4', $output);
     }
 
     public function testCommandHasExpectedAliases(): void
@@ -171,5 +169,67 @@ class FormatsCommandTest extends TestCase
         $aliases = $this->command->getAliases();
 
         $this->assertContains('formats', $aliases);
+    }
+
+    private function createVideoStorage(): void
+    {
+        $videoDir = $this->storagePath . '/0/10';
+        mkdir($videoDir, 0775, true);
+        file_put_contents($videoDir . '/10_720p.mp4', str_repeat('x', 1024));
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
+            'video_id INTEGER, server_group_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_servers') . ' (' .
+            'server_id INTEGER, path TEXT, content_type_id INTEGER, status_id INTEGER, is_remote INTEGER, group_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('formats_videos') . ' (' .
+            'format_video_id INTEGER, title TEXT, postfix TEXT, status_id INTEGER, ' .
+            'format_video_group_id INTEGER, access_level_id INTEGER)'
+        );
+
+        $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (10, 1)');
+        $serverPath = $db->quote($this->storagePath);
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_servers') .
+            " VALUES (1, {$serverPath}, 1, 1, 0, 1)"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('formats_videos') .
+            " VALUES " .
+            "(1, '720p MP4', '_720p.mp4', 1, 1, 0), " .
+            "(2, '1080p MP4', '_1080p.mp4', 2, 1, 0)"
+        );
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): FormatsCommand
+    {
+        return new class ($this->config, $db) extends FormatsCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('video:formats');
+                $this->setDescription('Manage video formats');
+                $this->setAliases(['formats']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
