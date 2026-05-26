@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use KVS\CLI\Command\Settings\OptionsCommand;
+use KVS\CLI\Command\Settings\VideoFormatCommand;
 use KVS\CLI\Command\System\ConversionCommand;
 use KVS\CLI\Command\System\QueueCommand;
 use KVS\CLI\Command\System\ServerCommand;
@@ -214,6 +215,19 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --status', $tester->getDisplay());
     }
 
+    public function testVideoFormatRejectsInvalidStatus(): void
+    {
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'bogus',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --status: bogus', $tester->getDisplay());
+    }
+
     public function testConversionRejectsNegativeLimitBeforeSql(): void
     {
         $this->createConversionTables();
@@ -363,6 +377,22 @@ class SystemValidationRegressionTest extends TestCase
             {
                 parent::__construct($config);
                 $this->setName('system:conversion');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+        };
+    }
+
+    private function createVideoFormatCommand(): VideoFormatCommand
+    {
+        return new class ($this->createConfig(), $this->db) extends VideoFormatCommand {
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('settings:video-format');
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?\PDO

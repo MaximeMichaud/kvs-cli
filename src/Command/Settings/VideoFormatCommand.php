@@ -121,14 +121,22 @@ HELP
                 'error' => StatusFormatter::FORMAT_ERROR,
                 'conditional' => StatusFormatter::FORMAT_CONDITIONAL,
             ];
+            $validStatusIds = array_values($statusMap);
             // Accept case-insensitive strings and numeric values
             $statusLower = strtolower($status);
             if (isset($statusMap[$statusLower])) {
                 $query .= " AND f.status_id = :status";
                 $params['status'] = $statusMap[$statusLower];
-            } elseif (ctype_digit($status)) {
+            } elseif (ctype_digit($status) && in_array((int) $status, $validStatusIds, true)) {
                 $query .= " AND f.status_id = :status";
                 $params['status'] = (int) $status;
+            } else {
+                $this->io()->error(sprintf(
+                    'Invalid value for --status: %s. Expected one of: %s.',
+                    $status,
+                    implode(', ', array_merge(array_keys($statusMap), array_map('strval', $validStatusIds)))
+                ));
+                return self::FAILURE;
             }
         }
 
