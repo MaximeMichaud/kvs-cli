@@ -321,6 +321,16 @@ HELP
 
     private function listGroups(InputInterface $input): int
     {
+        if ($this->getStringOption($input, 'status') !== null) {
+            $this->io()->error('The groups action does not support --status. Use list --status to filter video formats.');
+            return self::FAILURE;
+        }
+
+        if ($this->getStringOption($input, 'group') !== null) {
+            $this->io()->error('The groups action does not support --group. Use list --group to filter video formats.');
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

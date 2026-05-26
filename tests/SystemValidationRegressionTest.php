@@ -244,6 +244,25 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
     }
 
+    public function testVideoFormatGroupsRejectsListFilters(): void
+    {
+        $this->createVideoFormatTables();
+
+        foreach (['status' => 'required', 'group' => '1'] as $option => $value) {
+            $tester = new CommandTester($this->createVideoFormatCommand());
+            $tester->execute([
+                'action' => 'groups',
+                '--' . $option => $value,
+                '--format' => 'json',
+                '--force' => true,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode());
+            $this->assertStringContainsString("The groups action does not support --$option", $tester->getDisplay());
+            $this->assertStringNotContainsString('Default', $tester->getDisplay());
+        }
+    }
+
     public function testConversionRejectsNegativeLimitBeforeSql(): void
     {
         $this->createConversionTables();
