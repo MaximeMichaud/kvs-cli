@@ -130,6 +130,33 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringNotContainsString('mariadb kvs < /tmp/kvs-migration.sql', $output);
     }
 
+    public function testToDockerDryRunShowsSourceDatabaseConnectionOptions(): void
+    {
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $dbConfig = $this->config->getDatabaseConfig();
+        $host = $dbConfig['host'];
+        $port = 3306;
+        if (str_contains($host, ':')) {
+            [$host, $portString] = explode(':', $host, 2);
+            $port = (int) $portString;
+        }
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString("MYSQL_PWD='<DB_PASS>' mariadb-dump", $output);
+        $this->assertStringContainsString('--host=' . escapeshellarg($host), $output);
+        $this->assertStringContainsString('--port=' . $port, $output);
+        $this->assertStringContainsString('--user=' . escapeshellarg($dbConfig['user']), $output);
+        $this->assertStringContainsString(escapeshellarg($dbConfig['database']) . ' > /tmp/kvs-migration.sql', $output);
+        $this->assertStringNotContainsString($dbConfig['password'], $output);
+    }
+
     public function testToDockerDryRunNoContentDoesNotShowContentCopy(): void
     {
         $this->tester->execute([

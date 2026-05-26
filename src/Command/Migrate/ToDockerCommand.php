@@ -373,7 +373,7 @@ EOT
         $this->io()->newLine();
 
         $this->io()->text('<comment># 2. Export source database</comment>');
-        $this->io()->text("mariadb-dump {$dbConfig['database']} > /tmp/kvs-migration.sql");
+        $this->io()->text($this->buildDryRunDatabaseDumpCommand($dbConfig));
         $this->io()->newLine();
 
         $this->io()->text('<comment># 3. Run KVS-Install setup (headless)</comment>');
@@ -458,20 +458,15 @@ EOT
             return null;
         }
 
-        $host = $dbConfig['host'];
-        $port = Constants::DEFAULT_MYSQL_PORT;
-        if (str_contains($host, ':')) {
-            [$host, $portStr] = explode(':', $host, 2);
-            $port = (int) $portStr;
-        }
+        $connection = $this->getDatabaseHostAndPort($dbConfig);
 
         $outputFile = '/tmp/kvs-migration-' . uniqid() . '.sql';
 
         $command = sprintf(
             '%s --host=%s --port=%d --user=%s --password=%s %s > %s 2>/dev/null',
             $dumpCmd,
-            escapeshellarg($host),
-            $port,
+            escapeshellarg($connection['host']),
+            $connection['port'],
             escapeshellarg($dbConfig['user']),
             escapeshellarg($dbConfig['password']),
             escapeshellarg($dbConfig['database']),
@@ -491,6 +486,43 @@ EOT
         $this->io()->text('Exported: ' . ($size !== false ? format_bytes($size) : '0 B'));
 
         return $outputFile;
+    }
+
+    /**
+     * @param array<string, string> $dbConfig
+     */
+    private function buildDryRunDatabaseDumpCommand(array $dbConfig): string
+    {
+        $connection = $this->getDatabaseHostAndPort($dbConfig);
+        $user = $dbConfig['user'] ?? '<DB_USER>';
+        $database = $dbConfig['database'] ?? '<DB_NAME>';
+
+        return sprintf(
+            "MYSQL_PWD='<DB_PASS>' mariadb-dump --host=%s --port=%d --user=%s %s > /tmp/kvs-migration.sql",
+            escapeshellarg($connection['host']),
+            $connection['port'],
+            escapeshellarg($user),
+            escapeshellarg($database)
+        );
+    }
+
+    /**
+     * @param array<string, string> $dbConfig
+     * @return array{host: string, port: int}
+     */
+    private function getDatabaseHostAndPort(array $dbConfig): array
+    {
+        $host = $dbConfig['host'] ?? 'localhost';
+        $port = Constants::DEFAULT_MYSQL_PORT;
+        if (str_contains($host, ':')) {
+            [$host, $portStr] = explode(':', $host, 2);
+            $parsedPort = (int) $portStr;
+            if ($parsedPort > 0) {
+                $port = $parsedPort;
+            }
+        }
+
+        return ['host' => $host, 'port' => $port];
     }
 
     private function runKvsInstallSetup(
