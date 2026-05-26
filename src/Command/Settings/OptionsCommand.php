@@ -61,6 +61,7 @@ class OptionsCommand extends BaseCommand
             ->addOption('disabled', null, InputOption::VALUE_NONE, 'Show only disabled options (value=0)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Fields to display')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Apply set changes without confirmation')
             ->setHelp(<<<'HELP'
 Manage KVS system options (ktvs_options table).
 
@@ -83,7 +84,7 @@ Manage KVS system options (ktvs_options table).
   <fg=green>kvs options list --category=system</>
   <fg=green>kvs options list --search=AVATAR</>
   <fg=green>kvs options get ENABLE_ANTI_HOTLINK</>
-  <fg=green>kvs options set ENABLE_ANTI_HOTLINK 1</>
+  <fg=green>kvs options set ENABLE_ANTI_HOTLINK 1 --yes</>
   <fg=green>kvs options list --format=json</>
 
 <fg=yellow>NOTE:</>
@@ -325,7 +326,13 @@ HELP
             $this->io()->text("New value: <comment>$value</comment>");
             $this->io()->newLine();
 
-            if (!$this->io()->confirm('Apply this change?', false)) {
+            $yes = $this->getBoolOption($input, 'yes');
+            if (!$yes && !$input->isInteractive()) {
+                $this->io()->error('Confirmation is required in non-interactive mode. Use --yes to apply this change.');
+                return self::FAILURE;
+            }
+
+            if (!$yes && !$this->io()->confirm('Apply this change?', false)) {
                 $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }

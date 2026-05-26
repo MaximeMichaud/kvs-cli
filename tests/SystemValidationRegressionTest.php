@@ -132,6 +132,42 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertContains('USE_POST_DATE_RANDOMIZATION', $websiteVariables);
     }
 
+    public function testOptionsSetRequiresYesInNonInteractiveMode(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('CODEX_OPTION', '0')");
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'set',
+            'name' => 'CODEX_OPTION',
+            'value' => '1',
+            '--force' => true,
+        ], ['interactive' => false]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Use --yes', $tester->getDisplay());
+        $this->assertSame('0', $this->db->query("SELECT value FROM ktvs_options WHERE variable = 'CODEX_OPTION'")->fetchColumn());
+    }
+
+    public function testOptionsSetYesUpdatesInNonInteractiveMode(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('CODEX_OPTION', '0')");
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'set',
+            'name' => 'CODEX_OPTION',
+            'value' => '1',
+            '--force' => true,
+            '--yes' => true,
+        ], ['interactive' => false]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('1', $this->db->query("SELECT value FROM ktvs_options WHERE variable = 'CODEX_OPTION'")->fetchColumn());
+    }
+
     public function testServerRejectsInvalidTypeStatusAndConnection(): void
     {
         foreach (['type', 'status', 'connection'] as $option) {
