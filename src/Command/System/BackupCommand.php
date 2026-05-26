@@ -25,6 +25,16 @@ class BackupCommand extends BaseCommand
     protected function configure(): void
     {
         $this
+            ->setHelp(<<<'HELP'
+Create, list, and restore KVS backups.
+
+<info>EXAMPLES:</info>
+  <comment>kvs system:backup --list</comment>
+  <comment>kvs system:backup --create --type=db</comment>
+  <comment>kvs system:backup --create --type=files --output=/var/backups/kvs</comment>
+  <comment>kvs system:backup --restore=/var/backups/kvs/kvs_backup_full_2026-05-26_12-00-00_full.tar.gz</comment>
+HELP
+            )
             ->addOption('create', null, InputOption::VALUE_NONE, 'Create a new backup')
             ->addOption('restore', null, InputOption::VALUE_REQUIRED, 'Restore from backup file')
             ->addOption('list', null, InputOption::VALUE_NONE, 'List available backups')

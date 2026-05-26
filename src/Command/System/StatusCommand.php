@@ -19,6 +19,18 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class StatusCommand extends BaseCommand
 {
+    protected function configure(): void
+    {
+        $this->setHelp(<<<'HELP'
+Show KVS installation, database, service, queue, storage, and security status.
+
+<info>EXAMPLES:</info>
+  <comment>kvs system:status</comment>
+  <comment>kvs status</comment>
+HELP
+        );
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->io()->title('KVS System Status');

@@ -68,6 +68,16 @@ class CheckCommand extends BaseCommand
     protected function configure(): void
     {
         $this
+            ->setHelp(<<<'HELP'
+Check KVS configuration and system health.
+
+<info>EXAMPLES:</info>
+  <comment>kvs system:check</comment>
+  <comment>kvs system:check --quiet-ok</comment>
+  <comment>kvs system:check --format=json</comment>
+  <comment>kvs system:check --json</comment>
+HELP
+            )
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output as JSON')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, json', 'table')
             ->addOption('quiet-ok', null, InputOption::VALUE_NONE, 'Only show warnings and errors');

@@ -21,6 +21,16 @@ class CacheCommand extends BaseCommand
     protected function configure(): void
     {
         $this
+            ->setHelp(<<<'HELP'
+Manage KVS file and database cache.
+
+<info>EXAMPLES:</info>
+  <comment>kvs system:cache --stats</comment>
+  <comment>kvs system:cache --clear</comment>
+  <comment>kvs system:cache --clear --type=file</comment>
+  <comment>kvs system:cache --clear --type=db</comment>
+HELP
+            )
             ->addOption('clear', null, InputOption::VALUE_NONE, 'Clear all cache')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Cache type to clear (file|db)')
             ->addOption('stats', null, InputOption::VALUE_NONE, 'Show cache statistics');

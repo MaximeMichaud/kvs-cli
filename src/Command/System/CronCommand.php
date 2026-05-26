@@ -19,6 +19,16 @@ class CronCommand extends BaseCommand
     protected function configure(): void
     {
         $this
+            ->setHelp(<<<'HELP'
+Run or inspect KVS cron tasks.
+
+<info>EXAMPLES:</info>
+  <comment>kvs system:cron --list</comment>
+  <comment>kvs system:cron --status</comment>
+  <comment>kvs system:cron main</comment>
+  <comment>kvs system:cron cleanup</comment>
+HELP
+            )
             ->addArgument('task', InputArgument::OPTIONAL, 'Specific cron task to run')
             ->addOption('list', null, InputOption::VALUE_NONE, 'List available cron tasks')
             ->addOption('status', null, InputOption::VALUE_NONE, 'Show cron status');
