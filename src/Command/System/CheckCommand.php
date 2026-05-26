@@ -742,7 +742,7 @@ class CheckCommand extends BaseCommand
         $result['av1'] = preg_match('/libsvtav1|libaom-av1|librav1e|av1/i', $encoders) === 1;
 
         // Check for libavfilter (typically included, check for filter support)
-        $filters = @shell_exec(escapeshellarg($ffmpegPath) . " -filters 2>&1 | head -5");
+        $filters = @shell_exec(escapeshellarg($ffmpegPath) . " -filters 2>/dev/null | head -5");
         $result['libavfilter'] = is_string($filters) && $filters !== '' && stripos($filters, 'filter') !== false;
 
         return $result;

@@ -121,6 +121,42 @@ class CheckCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/error|warning|passed/i', $output);
     }
 
+    public function testFfmpegFilterDetectionIgnoresVersionHeaderOnStderr(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+        $ffmpeg = $toolsDir . '/ffmpeg';
+        file_put_contents(
+            $ffmpeg,
+            <<<'SH'
+#!/bin/sh
+if [ "$1" = "-encoders" ]; then
+  echo ' V..... libx264 H.264'
+  echo ' A..... aac AAC'
+  exit 0
+fi
+if [ "$1" = "-filters" ]; then
+  echo 'ffmpeg version test' >&2
+  echo 'built with test' >&2
+  echo 'configuration: test' >&2
+  echo 'libavutil test' >&2
+  echo 'libavcodec test' >&2
+  echo 'Filters:'
+  echo ' T.. scale V->V Scale the input video size'
+  exit 0
+fi
+exit 1
+SH
+        );
+        chmod($ffmpeg, 0755);
+
+        $method = new \ReflectionMethod(CheckCommand::class, 'checkFfmpegCodecs');
+        $result = $method->invoke($this->command, $ffmpeg);
+
+        $this->assertIsArray($result);
+        $this->assertTrue($result['libavfilter']);
+    }
+
     public function testCheckPhpSettings(): void
     {
         $this->tester->execute([]);
