@@ -372,6 +372,23 @@ class StatusCommand extends BaseCommand
             return $result;
         }
 
+        $directCache = $this->checkDirectCache($server, $port);
+        if ($directCache !== null) {
+            return $directCache;
+        }
+
+        if ($this->isRunningInsideContainer()) {
+            $dragonflyCache = $this->checkDirectCache('dragonfly', 6379);
+            if ($dragonflyCache !== null) {
+                return $dragonflyCache;
+            }
+
+            $memcachedCache = $this->checkDirectCache('memcached', Constants::DEFAULT_MEMCACHE_PORT);
+            if ($memcachedCache !== null) {
+                return $memcachedCache;
+            }
+        }
+
         // Non-Docker mode: use local Memcached extension
         if (!class_exists('Memcached')) {
             $result['status'] = 'Extension not installed';
@@ -393,6 +410,85 @@ class StatusCommand extends BaseCommand
         }
 
         return $result;
+    }
+
+    /**
+     * @return array{available: bool, host: string, status: string, type: string}|null
+     */
+    private function checkDirectCache(string $server, int $port): ?array
+    {
+        $checks = $port === Constants::DEFAULT_MEMCACHE_PORT
+            ? ['memcached', 'dragonfly']
+            : ['dragonfly', 'memcached'];
+
+        foreach ($checks as $type) {
+            $connected = $type === 'dragonfly'
+                ? $this->checkRedisProtocol($server, $port)
+                : $this->checkMemcachedProtocol($server, $port);
+
+            if ($connected) {
+                return [
+                    'available' => true,
+                    'host' => "$server:$port",
+                    'status' => 'Connected',
+                    'type' => $type === 'dragonfly' ? 'Dragonfly' : 'Memcached',
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    private function checkRedisProtocol(string $server, int $port): bool
+    {
+        $fp = $this->openCacheSocket($server, $port);
+        if ($fp === null) {
+            return false;
+        }
+
+        $written = fwrite($fp, "PING\r\n");
+        $response = $written === false ? false : fgets($fp, 128);
+        fclose($fp);
+
+        return is_string($response) && str_contains($response, 'PONG');
+    }
+
+    private function checkMemcachedProtocol(string $server, int $port): bool
+    {
+        $fp = $this->openCacheSocket($server, $port);
+        if ($fp === null) {
+            return false;
+        }
+
+        $written = fwrite($fp, "version\r\n");
+        $response = $written === false ? false : fgets($fp, 128);
+        fclose($fp);
+
+        return is_string($response) && str_starts_with($response, 'VERSION ');
+    }
+
+    /**
+     * @return resource|null
+     */
+    private function openCacheSocket(string $server, int $port)
+    {
+        $fp = @fsockopen($server, $port, $errno, $errstr, 1.0);
+        if (!is_resource($fp)) {
+            return null;
+        }
+
+        stream_set_timeout($fp, 1);
+        return $fp;
+    }
+
+    private function isRunningInsideContainer(): bool
+    {
+        if (is_file('/.dockerenv')) {
+            return true;
+        }
+
+        $cgroup = @file_get_contents('/proc/1/cgroup');
+        return is_string($cgroup) && preg_match('/docker|containerd|kubepods/', $cgroup) === 1;
     }
 
     private function showConversionQueue(): void

@@ -144,6 +144,97 @@ class StatusCommandTest extends TestCase
         $this->assertStringContainsString('1m 0s', $display);
     }
 
+    public function testStatusDetectsRedisProtocolCacheWithoutDockerCli(): void
+    {
+        $portFile = $this->tempDir . '/redis-port.txt';
+        $serverScript = $this->tempDir . '/redis-server.php';
+        file_put_contents(
+            $serverScript,
+            <<<'PHP'
+<?php
+$server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+if ($server === false) {
+    exit(1);
+}
+$address = stream_socket_get_name($server, false);
+if ($address === false) {
+    exit(1);
+}
+file_put_contents($argv[1], $address);
+$connection = @stream_socket_accept($server, 10);
+if (is_resource($connection)) {
+    $line = fgets($connection);
+    fwrite($connection, is_string($line) && stripos($line, 'PING') !== false ? "+PONG\r\n" : "-ERR\r\n");
+    fclose($connection);
+}
+fclose($server);
+PHP
+        );
+
+        $process = proc_open(
+            [PHP_BINARY, $serverScript, $portFile],
+            [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ],
+            $pipes
+        );
+        $this->assertIsResource($process);
+
+        try {
+            $address = $this->waitForPortFile($portFile);
+            $parts = explode(':', $address);
+            $port = (int) end($parts);
+            $this->assertGreaterThan(0, $port);
+
+            file_put_contents(
+                $this->tempDir . '/admin/include/setup.php',
+                "<?php\n"
+                . '$config = ["project_version" => "6.3.2", "project_name" => "Test KVS", '
+                . "\"memcache_server\" => \"127.0.0.1\", \"memcache_port\" => $port];\n"
+            );
+
+            $db = new PDO('sqlite::memory:');
+            $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $db->exec('CREATE TABLE ktvs_background_tasks (task_id INTEGER, status_id INTEGER, added_date TEXT)');
+            $db->exec('CREATE TABLE ktvs_background_tasks_history (task_id INTEGER, status_id INTEGER, effective_duration INTEGER)');
+
+            $command = new class (new Configuration(['path' => $this->tempDir]), $db) extends StatusCommand {
+                public function __construct(Configuration $config, private PDO $testDb)
+                {
+                    parent::__construct($config);
+                }
+
+                protected function getDatabaseConnection(bool $quiet = false): ?PDO
+                {
+                    return $this->testDb;
+                }
+            };
+            $tester = new CommandTester($command);
+
+            $tester->execute([]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(0, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Dragonfly', $display);
+            $this->assertStringContainsString("127.0.0.1:$port", $display);
+            $this->assertStringContainsString('Connected', $display);
+        } finally {
+            foreach ($pipes ?? [] as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+            $status = proc_get_status($process);
+            if (($status['running'] ?? false) === true) {
+                proc_terminate($process);
+            }
+            proc_close($process);
+        }
+    }
+
     public function testStatusExitCode(): void
     {
         // StatusCommand doesn't support --format option
@@ -153,5 +244,21 @@ class StatusCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('KVS System Status', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    private function waitForPortFile(string $portFile): string
+    {
+        $deadline = microtime(true) + 5;
+        while (microtime(true) < $deadline) {
+            if (is_file($portFile)) {
+                $address = trim((string) file_get_contents($portFile));
+                if ($address !== '') {
+                    return $address;
+                }
+            }
+            usleep(10000);
+        }
+
+        $this->fail('Redis test server did not start');
     }
 }
