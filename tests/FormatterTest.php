@@ -74,6 +74,22 @@ class FormatterTest extends TestCase
         $this->assertEquals('Test Item', $decoded[0]['title']);
     }
 
+    public function testJsonKeepsEmptyStringFields(): void
+    {
+        $items = [
+            ['variable' => 'API_PASSWORD', 'display_value' => '', 'category' => 'System'],
+        ];
+
+        $formatter = new Formatter(['format' => 'json'], ['variable', 'display_value', 'category', 'missing']);
+        $formatter->display($items, $this->output);
+
+        $decoded = json_decode($this->output->fetch(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('', $decoded[0]['display_value']);
+        $this->assertArrayHasKey('display_value', $decoded[0]);
+        $this->assertArrayNotHasKey('missing', $decoded[0]);
+    }
+
     public function testDisplayCsvFormat(): void
     {
         $items = [
@@ -107,6 +123,20 @@ class FormatterTest extends TestCase
         $this->assertStringContainsString('-', $output);
         $this->assertStringContainsString('id: 1', $output);
         $this->assertStringContainsString('title: Test Item', $output);
+    }
+
+    public function testYamlKeepsEmptyStringFields(): void
+    {
+        $items = [
+            ['variable' => 'API_PASSWORD', 'display_value' => '', 'category' => 'System'],
+        ];
+
+        $formatter = new Formatter(['format' => 'yaml'], ['variable', 'display_value', 'category', 'missing']);
+        $formatter->display($items, $this->output);
+
+        $output = $this->output->fetch();
+        $this->assertStringContainsString('display_value: ""', $output);
+        $this->assertStringNotContainsString('missing:', $output);
     }
 
     public function testDisplayTableFormat(): void

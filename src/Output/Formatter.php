@@ -284,9 +284,8 @@ class Formatter
         $filtered = array_map(function ($item) use ($fields) {
             $result = [];
             foreach ($fields as $field) {
-                $value = $this->getFieldValue($item, $field);
-                if ($value !== '') {
-                    $result[$field] = $value;
+                if ($this->hasField($item, $field)) {
+                    $result[$field] = $this->getFieldValue($item, $field);
                 }
             }
             return $result;
@@ -345,20 +344,47 @@ class Formatter
         foreach ($items as $item) {
             $output->writeln('-');
             foreach ($fields as $field) {
+                if (!$this->hasField($item, $field)) {
+                    continue;
+                }
+
                 $value = $this->getFieldValue($item, $field);
-                if ($value !== '') {
-                    // Convert to string for YAML output (database values are typically strings/ints/null)
-                    $stringValue = is_scalar($value) || $value === null ? (string)$value : '';
-                    if ($stringValue !== '') {
-                        // Escape special YAML characters
-                        if (str_contains($stringValue, ':') || str_contains($stringValue, '#')) {
-                            $stringValue = '"' . str_replace('"', '\\"', $stringValue) . '"';
-                        }
-                        $output->writeln("  $field: $stringValue");
+                if ($value === '' || $value === null) {
+                    $output->writeln("  $field: \"\"");
+                    continue;
+                }
+
+                // Convert to string for YAML output (database values are typically strings/ints/null)
+                $stringValue = is_scalar($value) ? (string)$value : '';
+                if ($stringValue !== '') {
+                    // Escape special YAML characters
+                    if (str_contains($stringValue, ':') || str_contains($stringValue, '#')) {
+                        $stringValue = '"' . str_replace('"', '\\"', $stringValue) . '"';
                     }
+                    $output->writeln("  $field: $stringValue");
                 }
             }
         }
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     */
+    private function hasField(array $item, string $field): bool
+    {
+        if (array_key_exists($field, $item)) {
+            return true;
+        }
+
+        if (isset(self::FIELD_ALIASES[$field])) {
+            foreach (self::FIELD_ALIASES[$field] as $aliasField) {
+                if (array_key_exists($aliasField, $item)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -371,14 +397,14 @@ class Formatter
     private function getFieldValue(array $item, string $field): mixed
     {
         // Direct match first
-        if (isset($item[$field])) {
+        if (array_key_exists($field, $item)) {
             return $item[$field];
         }
 
         // Check aliases
         if (isset(self::FIELD_ALIASES[$field])) {
             foreach (self::FIELD_ALIASES[$field] as $aliasField) {
-                if (isset($item[$aliasField])) {
+                if (array_key_exists($aliasField, $item)) {
                     return $item[$aliasField];
                 }
             }
