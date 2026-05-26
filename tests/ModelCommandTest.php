@@ -76,6 +76,32 @@ class ModelCommandTest extends TestCase
         $this->assertSame('Active', $rows[0]['status']);
     }
 
+    public function testListModelsInactiveStatusAlias(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'inactive',
+            '--format' => 'json',
+            '--fields' => 'model_id,title,status'
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['model_id']);
+        $this->assertSame('Disabled Model', $rows[0]['title']);
+        $this->assertSame('Disabled', $rows[0]['status']);
+    }
+
+    public function testHelpDocumentsInactiveStatusAlias(): void
+    {
+        $statusOption = $this->command->getDefinition()->getOption('status');
+
+        $this->assertStringContainsString('active|disabled|inactive', $statusOption->getDescription());
+        $this->assertStringContainsString('kvs model list --status=inactive', $this->command->getHelp());
+    }
+
     public function testListModelsSearch(): void
     {
         $this->tester->execute([

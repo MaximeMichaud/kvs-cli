@@ -25,7 +25,7 @@ class ModelCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Model ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
@@ -53,6 +53,7 @@ Manage KVS models (performers/actors).
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs model list</>
   <fg=green>kvs model list --status=active</>
+  <fg=green>kvs model list --status=inactive</>
   <fg=green>kvs model list --search="Jane"</>
   <fg=green>kvs model list --fields=id,title,videos,country,rank</>
   <fg=green>kvs model list --format=json</>
