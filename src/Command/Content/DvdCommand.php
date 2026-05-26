@@ -61,15 +61,25 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listDvds($input),
             'show' => $this->showDvd($id),
             'stats' => $this->showStats(),
-            default => $this->listDvds($input),
+            default => $this->unknownAction($action),
         };
+    }
+
+    private function unknownAction(string $action): int
+    {
+        $this->io()->error(sprintf(
+            'Unknown DVD action "%s". Available actions: list, show, stats.',
+            $action
+        ));
+
+        return self::FAILURE;
     }
 
     private function listDvds(InputInterface $input): int

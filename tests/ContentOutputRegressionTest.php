@@ -492,6 +492,18 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('5.0/5 (5 votes)', $ratingRows[0]['rating']);
     }
 
+    public function testDvdRejectsUnknownAction(): void
+    {
+        $tester = new CommandTester($this->createDvdCommand($this->createSqliteConnection()));
+        $tester->execute([
+            'action' => 'invalid-action',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Unknown DVD action "invalid-action"', $tester->getDisplay());
+        $this->assertStringContainsString('Available actions: list, show', $tester->getDisplay());
+    }
+
     public function testPlaylistListDefaultFieldsExposeFormattedStatusAndType(): void
     {
         $db = $this->createSqliteConnection();
