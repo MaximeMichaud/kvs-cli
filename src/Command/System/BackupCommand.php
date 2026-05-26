@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\SecureFileTrait;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -19,6 +20,8 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class BackupCommand extends BaseCommand
 {
+    use SecureFileTrait;
+
     protected function configure(): void
     {
         $this
@@ -153,13 +156,15 @@ class BackupCommand extends BaseCommand
         $process->run();
 
         if ($process->isSuccessful()) {
-            if (file_put_contents($dumpFile, $process->getOutput()) === false) {
+            if (!$this->writeSecureFile($dumpFile, $process->getOutput())) {
                 $this->io()->error('Failed to write SQL dump file');
                 return false;
             }
 
             $gzFile = "$dumpFile.gz";
-            $fp = gzopen($gzFile, 'w9');
+            $fp = $this->withSecureFileUmask(
+                static fn () => gzopen($gzFile, 'w9')
+            );
             if ($fp === false) {
                 $this->io()->error('Failed to create compressed backup file');
                 return false;
@@ -174,6 +179,10 @@ class BackupCommand extends BaseCommand
 
             gzwrite($fp, $sqlContent);
             gzclose($fp);
+            if (!$this->restrictFilePermissions($gzFile)) {
+                $this->io()->error('Failed to set compressed backup file permissions');
+                return false;
+            }
             unlink($dumpFile);
 
             $this->io()->info('Database backup created: ' . basename($gzFile));
@@ -215,12 +224,19 @@ class BackupCommand extends BaseCommand
 
         $this->io()->info('Creating files backup...');
 
-        $process->run();
+        $this->withSecureFileUmask(
+            static fn (): int => $process->run()
+        );
 
         $tarFileSize = is_file($tarFile) ? filesize($tarFile) : false;
         $tarWarningWithArchive = $process->getExitCode() === 1 && $tarFileSize !== false && $tarFileSize > 0;
 
         if ($process->isSuccessful() || $tarWarningWithArchive) {
+            if (!$this->restrictFilePermissions($tarFile)) {
+                $this->io()->error('Failed to set files backup permissions');
+                return false;
+            }
+
             if ($tarWarningWithArchive) {
                 $this->io()->warning('Some files changed during archival; continuing with the created archive.');
                 $errorOutput = trim($process->getErrorOutput());
@@ -252,17 +268,30 @@ class BackupCommand extends BaseCommand
             ];
 
             $process = new Process($command);
-            $process->run();
+            $this->withSecureFileUmask(
+                static fn (): int => $process->run()
+            );
 
             if ($process->isSuccessful()) {
+                if (!$this->restrictFilePermissions($fullFile)) {
+                    $this->io()->error('Failed to set full backup archive permissions');
+                    return false;
+                }
+
                 unlink($dbFile);
                 unlink($filesFile);
 
                 $gzCommand = ['gzip', '-9', $fullFile];
                 $gzProcess = new Process($gzCommand);
-                $gzProcess->run();
+                $this->withSecureFileUmask(
+                    static fn (): int => $gzProcess->run()
+                );
                 if (!$gzProcess->isSuccessful()) {
                     $this->io()->error('Full backup compression failed: ' . $gzProcess->getErrorOutput());
+                    return false;
+                }
+                if (!$this->restrictFilePermissions("$fullFile.gz")) {
+                    $this->io()->error('Failed to set compressed full backup permissions');
                     return false;
                 }
 

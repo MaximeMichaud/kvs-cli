@@ -137,6 +137,43 @@ class ExportCommandTest extends TestCase
         }
     }
 
+    public function testExportCreatesOutputWithRestrictedPermissions(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-secure-output';
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 8.0.35'\n");
+        chmod($mysql, 0755);
+
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents($mysqldump, "#!/bin/sh\necho 'SQL dump'\n");
+        chmod($mysqldump, 0755);
+
+        $outputFile = $this->tempDir . '/exports/secure_backup.sql';
+        $previousPath = getenv('PATH');
+        $previousUmask = umask(0000);
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+            $tester->execute(['--output' => $outputFile]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertFileExists($outputFile);
+            $permissions = fileperms($outputFile);
+            $this->assertIsInt($permissions);
+            $this->assertSame(0640, $permissions & 0777);
+        } finally {
+            umask($previousUmask);
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testExportUsesCanonicalExtensionForDefaultCompressedOutput(): void
     {
         $toolsDir = $this->tempDir . '/tools-canonical-extension';

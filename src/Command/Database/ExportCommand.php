@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Database;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\SecureFileTrait;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -17,6 +18,8 @@ use Symfony\Component\Process\Process;
 )]
 class ExportCommand extends BaseCommand
 {
+    use SecureFileTrait;
+
     protected function configure(): void
     {
         $this
@@ -188,9 +191,15 @@ EOT
                 return self::FAILURE;
             }
 
-            file_put_contents($outputFile, $compressProcess->getOutput());
+            if (!$this->writeSecureFile($outputFile, $compressProcess->getOutput())) {
+                $this->io()->error('Failed to write export file');
+                return self::FAILURE;
+            }
         } else {
-            file_put_contents($outputFile, $sqlContent);
+            if (!$this->writeSecureFile($outputFile, $sqlContent)) {
+                $this->io()->error('Failed to write export file');
+                return self::FAILURE;
+            }
         }
 
         $fileSize = filesize($outputFile);

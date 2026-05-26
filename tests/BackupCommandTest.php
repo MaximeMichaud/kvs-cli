@@ -159,6 +159,48 @@ SH
         }
     }
 
+    public function testDatabaseBackupCreatesRestrictedFilePermissions(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-secure-output';
+        mkdir($toolsDir, 0755, true);
+
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents(
+            $mysqldump,
+            <<<'SH'
+#!/bin/sh
+echo 'SQL dump'
+SH
+        );
+        chmod($mysqldump, 0755);
+
+        $previousPath = getenv('PATH');
+        $previousUmask = umask(0000);
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'db',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $files = glob($this->tempDir . '/backups/*_db.sql.gz') ?: [];
+            $this->assertCount(1, $files);
+            $permissions = fileperms($files[0]);
+            $this->assertIsInt($permissions);
+            $this->assertSame(0640, $permissions & 0777);
+        } finally {
+            umask($previousUmask);
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testFilesBackupTreatsTarExitOneWithArchiveAsWarning(): void
     {
         $toolsDir = $this->tempDir . '/tools';
