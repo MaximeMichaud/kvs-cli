@@ -64,6 +64,8 @@ class CheckCommand extends BaseCommand
     private int $errors = 0;
     private int $warnings = 0;
     private bool $silent = false;
+    private bool $quietOkOutput = false;
+    private ?string $pendingSection = null;
 
     protected function configure(): void
     {
@@ -96,6 +98,8 @@ HELP
 
         // For JSON output, suppress all visual output
         $this->silent = $jsonOutput;
+        $this->quietOkOutput = $quietOk && !$jsonOutput;
+        $this->pendingSection = null;
 
         if (!$this->silent) {
             $this->io()->title('KVS Configuration Check');
@@ -1105,7 +1109,7 @@ HELP
             'status' => 'ok',
         ];
 
-        $db = $this->getDatabaseConnection($this->silent);
+        $db = $this->getDatabaseConnection($this->silent || $quietOk);
         if ($db === null) {
             $this->printStatus('Cron', 'Database not available', 'warning');
             $result['status'] = 'warning';
@@ -1246,7 +1250,7 @@ HELP
             'status' => 'unknown',
         ];
 
-        $db = $this->getDatabaseConnection($this->silent);
+        $db = $this->getDatabaseConnection($this->silent || $quietOk);
         if ($db === null) {
             $this->printStatus('Connection', 'Failed', 'error');
             $this->errors++;
@@ -1680,9 +1684,26 @@ HELP
 
     private function printSection(string $title): void
     {
-        if (!$this->silent) {
-            $this->io()->section($title);
+        if ($this->silent) {
+            return;
         }
+
+        if ($this->quietOkOutput) {
+            $this->pendingSection = $title;
+            return;
+        }
+
+        $this->io()->section($title);
+    }
+
+    private function flushPendingSection(): void
+    {
+        if ($this->pendingSection === null) {
+            return;
+        }
+
+        $this->io()->section($this->pendingSection);
+        $this->pendingSection = null;
     }
 
     private function printStatus(string $label, string $value, string $status): void
@@ -1690,6 +1711,8 @@ HELP
         if ($this->silent) {
             return;
         }
+
+        $this->flushPendingSection();
 
         $icon = match ($status) {
             'ok' => '<fg=green>✓</>',

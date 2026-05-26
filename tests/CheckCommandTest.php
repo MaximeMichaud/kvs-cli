@@ -141,6 +141,18 @@ class CheckCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/error|warning|passed/i', $output);
     }
 
+    public function testQuietOkOmitsEmptySectionHeaders(): void
+    {
+        $this->tester->execute(['--quiet-ok' => true]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertStringNotContainsString("PHP Extensions\n--------------", $output);
+        $this->assertStringNotContainsString("IonCube\n-------", $output);
+        $this->assertStringContainsString('Memcached', $output);
+        $this->assertStringContainsString('Failed to connect', $output);
+    }
+
     public function testFfmpegFilterDetectionIgnoresVersionHeaderOnStderr(): void
     {
         $toolsDir = $this->tempDir . '/tools';
