@@ -222,7 +222,8 @@ class FpmConfigReader
 // KVS CLI temporary file - auto-deleted after use
 if ((\$_GET['t'] ?? '') !== '{$token}') {
     http_response_code(403);
-    die('Forbidden');
+    echo 'Forbidden';
+    return;
 }
 header('Content-Type: application/json');
 header('Cache-Control: no-store');

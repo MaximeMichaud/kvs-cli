@@ -210,7 +210,8 @@ class RemoteBenchmarkClient
 if ((\$_GET['t'] ?? '') !== '{$token}') {
     http_response_code(403);
     header('Content-Type: application/json');
-    die(json_encode(['error' => 'Forbidden']));
+    echo json_encode(['error' => 'Forbidden']);
+    return;
 }
 
 // Prevent caching
