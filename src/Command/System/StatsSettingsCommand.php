@@ -593,12 +593,27 @@ HELP
         }
 
         $countryListOptions = [
-            'videos-countries' => ['videos_stats_limit_countries', 'Videos countries'],
-            'albums-countries' => ['albums_stats_limit_countries', 'Albums countries'],
-            'search-countries' => ['search_stats_limit_countries', 'Search countries'],
+            'videos-countries' => [
+                'videos_stats_limit_countries',
+                'Videos countries',
+                'videos-countries-mode',
+                'videos_stats_limit_countries_option',
+            ],
+            'albums-countries' => [
+                'albums_stats_limit_countries',
+                'Albums countries',
+                'albums-countries-mode',
+                'albums_stats_limit_countries_option',
+            ],
+            'search-countries' => [
+                'search_stats_limit_countries',
+                'Search countries',
+                'search-countries-mode',
+                'search_stats_limit_countries_option',
+            ],
         ];
 
-        foreach ($countryListOptions as $option => [$paramKey, $label]) {
+        foreach ($countryListOptions as $option => [$paramKey, $label, $modeOption, $modeParamKey]) {
             $value = $this->getStringOption($input, $option);
             if ($value === null) {
                 continue;
@@ -607,12 +622,35 @@ HELP
                 $params[$paramKey] = [];
                 $changes[] = "$label: Cleared";
             } else {
+                $mode = $this->getEffectiveCountryMode($input, $modeOption, $params, $modeParamKey);
+                if ($mode === '') {
+                    $this->io()->error("--$option requires --$modeOption=include or --$modeOption=exclude.");
+                    return self::FAILURE;
+                }
                 $params[$paramKey] = $this->parseCountryCodes($value);
                 $changes[] = "$label: $value";
             }
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function getEffectiveCountryMode(
+        InputInterface $input,
+        string $modeOption,
+        array $params,
+        string $modeParamKey
+    ): string {
+        $inputMode = $this->getStringOption($input, $modeOption);
+        if ($inputMode !== null) {
+            return $inputMode === 'none' ? '' : $inputMode;
+        }
+
+        $storedMode = $params[$modeParamKey] ?? '';
+        return is_string($storedMode) ? $storedMode : '';
     }
 
     /**
