@@ -333,6 +333,60 @@ class BenchmarkResultTest extends TestCase
         $this->assertSame(['load_1m' => 0.5], $loaded->getSystemMetrics());
     }
 
+    public function testExperimentExportMergesDetectedSystemInfo(): void
+    {
+        $this->result->setSystemInfo([
+            'php_version' => '8.1.0',
+            'cpu_vendor' => 'Existing Vendor',
+        ]);
+
+        $experiment = new ExperimentResult($this->result);
+        $experiment->setSystemDetection([
+            'cpu' => [
+                'vendor' => 'AMD',
+                'model' => 'Ryzen 9',
+                'generation' => 'Zen 4',
+                'family' => 'Ryzen',
+                'cores' => 12,
+                'threads' => 24,
+            ],
+            'architecture' => [
+                'name' => 'x86_64',
+                'bits' => 64,
+                'family' => 'x86',
+            ],
+            'device_type' => [
+                'type' => 'bare_metal',
+                'technology' => 'dedicated',
+                'confidence' => 'high',
+            ],
+            'storage' => [
+                'type' => 'nvme',
+                'device' => '/dev/nvme0n1',
+                'confidence' => 'high',
+            ],
+        ]);
+
+        $export = $experiment->toArray();
+
+        $this->assertSame('8.1.0', $export['system']['php_version']);
+        $this->assertSame('AMD', $export['system']['cpu_vendor']);
+        $this->assertSame('Ryzen 9', $export['system']['cpu_model']);
+        $this->assertSame('Zen 4', $export['system']['cpu_generation']);
+        $this->assertSame('Ryzen', $export['system']['cpu_family']);
+        $this->assertSame(12, $export['system']['cpu_cores']);
+        $this->assertSame(24, $export['system']['cpu_threads']);
+        $this->assertSame('x86_64', $export['system']['arch']);
+        $this->assertSame(64, $export['system']['arch_bits']);
+        $this->assertSame('x86', $export['system']['arch_family']);
+        $this->assertSame('bare_metal', $export['system']['device_type']);
+        $this->assertSame('dedicated', $export['system']['device_technology']);
+        $this->assertSame('high', $export['system']['device_confidence']);
+        $this->assertSame('nvme', $export['system']['storage_type']);
+        $this->assertSame('/dev/nvme0n1', $export['system']['storage_device']);
+        $this->assertSame('high', $export['system']['storage_confidence']);
+    }
+
     public function testFromArrayHandlesEmptyData(): void
     {
         $result = BenchmarkResult::fromArray([]);

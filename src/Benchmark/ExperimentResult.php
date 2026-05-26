@@ -174,46 +174,7 @@ class ExperimentResult
     public function toArray(): array
     {
         $benchData = $this->benchmarkResult->toArray();
-
-        // Build system info from detection
-        $systemInfo = [];
-
-        if (isset($this->systemDetection['cpu']) && is_array($this->systemDetection['cpu'])) {
-            $cpu = $this->systemDetection['cpu'];
-            $systemInfo['cpu_vendor'] = (string) ($cpu['vendor'] ?? 'Unknown');
-            $systemInfo['cpu_model'] = (string) ($cpu['model'] ?? 'Unknown');
-            $systemInfo['cpu_generation'] = (string) ($cpu['generation'] ?? 'Unknown');
-            $systemInfo['cpu_family'] = (string) ($cpu['family'] ?? 'Unknown');
-            $systemInfo['cpu_cores'] = (int) ($cpu['cores'] ?? 1);
-            $systemInfo['cpu_threads'] = (int) ($cpu['threads'] ?? 1);
-        }
-
-        if (isset($this->systemDetection['architecture']) && is_array($this->systemDetection['architecture'])) {
-            $arch = $this->systemDetection['architecture'];
-            $systemInfo['arch'] = (string) ($arch['name'] ?? php_uname('m'));
-            $systemInfo['arch_bits'] = (int) ($arch['bits'] ?? 64);
-            $systemInfo['arch_family'] = (string) ($arch['family'] ?? 'Unknown');
-        }
-
-        if (isset($this->systemDetection['device_type']) && is_array($this->systemDetection['device_type'])) {
-            $device = $this->systemDetection['device_type'];
-            $systemInfo['device_type'] = (string) ($device['type'] ?? 'unknown');
-            $systemInfo['device_technology'] = (string) ($device['technology'] ?? '');
-            $systemInfo['device_confidence'] = (string) ($device['confidence'] ?? 'low');
-        }
-
-        if (isset($this->systemDetection['storage']) && is_array($this->systemDetection['storage'])) {
-            $storage = $this->systemDetection['storage'];
-            $systemInfo['storage_type'] = (string) ($storage['type'] ?? 'unknown');
-            $systemInfo['storage_device'] = (string) ($storage['device'] ?? '');
-            $systemInfo['storage_confidence'] = (string) ($storage['confidence'] ?? 'low');
-        }
-
-        // Merge with existing system info from benchmark
-        $existingInfo = $benchData['system_info'] ?? [];
-        if (is_array($existingInfo)) {
-            $systemInfo = array_merge($existingInfo, $systemInfo);
-        }
+        $systemInfo = $this->buildSystemInfo($benchData);
 
         return [
             'id' => $this->id,
@@ -222,24 +183,173 @@ class ExperimentResult
             'score' => $this->benchmarkResult->calculateScore(),
             'rating' => $this->benchmarkResult->getRating(),
             'efficiency_score' => $this->efficiencyScore,
-            'stack_score' => $this->stackScore !== [] ? $this->stackScore : null,
-            'config_score' => $this->configScore !== [] ? $this->configScore : null,
+            'stack_score' => $this->arrayOrNull($this->stackScore),
+            'config_score' => $this->arrayOrNull($this->configScore),
             'system' => $systemInfo,
-            'confirmations' => $this->confirmations !== [] ? $this->confirmations : new \stdClass(),
+            'confirmations' => $this->arrayOrObject($this->confirmations),
             'confirmed' => $this->isFullyConfirmed(),
-            'results' => [
-                'cpu' => ($benchData['cpu_results'] ?? []) !== [] ? $benchData['cpu_results'] : new \stdClass(),
-                'database' => ($benchData['db_results'] ?? []) !== [] ? $benchData['db_results'] : new \stdClass(),
-                'cache' => ($benchData['cache_results'] ?? []) !== [] ? $benchData['cache_results'] : new \stdClass(),
-                'fileio' => ($benchData['fileio_results'] ?? []) !== [] ? $benchData['fileio_results'] : new \stdClass(),
-                'http' => ($benchData['http_results'] ?? []) !== [] ? $benchData['http_results'] : new \stdClass(),
-                'weights' => $benchData['weights'] ?? null,
-            ],
-            'metrics' => ($benchData['system_metrics'] ?? []) !== [] ? $benchData['system_metrics'] : new \stdClass(),
+            'results' => $this->buildResults($benchData),
+            'metrics' => $this->arrayOrObject($benchData['system_metrics'] ?? []),
             'warnings' => $benchData['warnings'] ?? [],
             'total_time' => $benchData['total_time'] ?? 0,
             'command_line' => $this->commandLine,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $benchData
+     * @return array<string, mixed>
+     */
+    private function buildResults(array $benchData): array
+    {
+        return [
+            'cpu' => $this->arrayOrObject($benchData['cpu_results'] ?? []),
+            'database' => $this->arrayOrObject($benchData['db_results'] ?? []),
+            'cache' => $this->arrayOrObject($benchData['cache_results'] ?? []),
+            'fileio' => $this->arrayOrObject($benchData['fileio_results'] ?? []),
+            'http' => $this->arrayOrObject($benchData['http_results'] ?? []),
+            'weights' => $benchData['weights'] ?? null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $value
+     * @return array<string, mixed>|null
+     */
+    private function arrayOrNull(array $value): ?array
+    {
+        return $value !== [] ? $value : null;
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private function arrayOrObject(mixed $value): mixed
+    {
+        return is_array($value) && $value !== [] ? $value : new \stdClass();
+    }
+
+    /**
+     * @param array<string, mixed> $benchData
+     * @return array<string, mixed>
+     */
+    private function buildSystemInfo(array $benchData): array
+    {
+        $systemInfo = array_merge(
+            $this->buildCpuSystemInfo(),
+            $this->buildArchitectureSystemInfo(),
+            $this->buildDeviceTypeSystemInfo(),
+            $this->buildStorageSystemInfo()
+        );
+
+        $existingInfo = $benchData['system_info'] ?? [];
+        if (is_array($existingInfo)) {
+            return array_merge($this->stringKeyedArray($existingInfo), $systemInfo);
+        }
+
+        return $systemInfo;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildCpuSystemInfo(): array
+    {
+        $cpu = $this->getDetectionSection('cpu');
+        if ($cpu === []) {
+            return [];
+        }
+
+        return [
+            'cpu_vendor' => (string) ($cpu['vendor'] ?? 'Unknown'),
+            'cpu_model' => (string) ($cpu['model'] ?? 'Unknown'),
+            'cpu_generation' => (string) ($cpu['generation'] ?? 'Unknown'),
+            'cpu_family' => (string) ($cpu['family'] ?? 'Unknown'),
+            'cpu_cores' => (int) ($cpu['cores'] ?? 1),
+            'cpu_threads' => (int) ($cpu['threads'] ?? 1),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildArchitectureSystemInfo(): array
+    {
+        $arch = $this->getDetectionSection('architecture');
+        if ($arch === []) {
+            return [];
+        }
+
+        return [
+            'arch' => (string) ($arch['name'] ?? php_uname('m')),
+            'arch_bits' => (int) ($arch['bits'] ?? 64),
+            'arch_family' => (string) ($arch['family'] ?? 'Unknown'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildDeviceTypeSystemInfo(): array
+    {
+        $device = $this->getDetectionSection('device_type');
+        if ($device === []) {
+            return [];
+        }
+
+        return [
+            'device_type' => (string) ($device['type'] ?? 'unknown'),
+            'device_technology' => (string) ($device['technology'] ?? ''),
+            'device_confidence' => (string) ($device['confidence'] ?? 'low'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildStorageSystemInfo(): array
+    {
+        $storage = $this->getDetectionSection('storage');
+        if ($storage === []) {
+            return [];
+        }
+
+        return [
+            'storage_type' => (string) ($storage['type'] ?? 'unknown'),
+            'storage_device' => (string) ($storage['device'] ?? ''),
+            'storage_confidence' => (string) ($storage['confidence'] ?? 'low'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function getDetectionSection(string $name): array
+    {
+        $section = $this->systemDetection[$name] ?? [];
+
+        if (!is_array($section)) {
+            return [];
+        }
+
+        return $this->stringKeyedArray($section);
+    }
+
+    /**
+     * @param array<mixed> $value
+     * @return array<string, mixed>
+     */
+    private function stringKeyedArray(array $value): array
+    {
+        $result = [];
+        foreach ($value as $key => $item) {
+            if (is_string($key)) {
+                $result[$key] = $item;
+            }
+        }
+
+        return $result;
     }
 
     /**
