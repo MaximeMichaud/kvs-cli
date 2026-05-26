@@ -214,6 +214,15 @@ HELP
             );
             $this->warnings++;
             $result['status'] = 'update_available';
+        } elseif (version_compare($currentVersion, $latestVersion, '>')) {
+            if (!$quietOk) {
+                $this->printStatus('Current Version', $currentVersion, 'ok');
+                $this->printStatus(
+                    'Latest Version',
+                    $latestVersion . ' (cache older than installed; run cron to refresh)',
+                    'info'
+                );
+            }
         } else {
             if (!$quietOk) {
                 $this->printStatus('Current Version', $currentVersion, 'ok');

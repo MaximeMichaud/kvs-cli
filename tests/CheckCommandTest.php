@@ -284,6 +284,26 @@ SH
         $this->assertTrue($hasVersionInfo, 'Should show version information');
     }
 
+    public function testCheckKvsUpdateShowsStaleLatestVersionCache(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/version.php',
+            '<?php $config[\'project_version\'] = "7.0.0";'
+        );
+        mkdir($this->tempDir . '/admin/data/plugins/kvs_news', 0755, true);
+        file_put_contents(
+            $this->tempDir . '/admin/data/plugins/kvs_news/data.dat',
+            serialize(['latest_version' => '6.4.0'])
+        );
+
+        $this->tester->execute([]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Current Version: 7.0.0', $output);
+        $this->assertStringContainsString('Latest Version: 6.4.0 (cache older than installed; run cron to refresh)', $output);
+        $this->assertStringNotContainsString('Latest Version: 6.4.0 (up to date)', $output);
+    }
+
     public function testCheckCronUsesNativeKvsAdminProcessesSchema(): void
     {
         $db = new \PDO('sqlite::memory:');
