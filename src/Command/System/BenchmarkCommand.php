@@ -31,6 +31,11 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class BenchmarkCommand extends BaseCommand
 {
+    private const RECOMMENDED_DB_ITERATIONS = 10;
+    private const RECOMMENDED_CACHE_ITERATIONS = 100;
+    private const RECOMMENDED_FILE_ITERATIONS = 100;
+    private const RECOMMENDED_CPU_ITERATIONS = 1000;
+
     protected function configure(): void
     {
         $this
@@ -230,6 +235,8 @@ class BenchmarkCommand extends BaseCommand
         }
         $this->io()->title($title);
 
+        $this->warnLowBenchmarkIterations($dbIterations, $cacheIterations, $fileIterations, $cpuIterations);
+
         // Check requirements
         if ($baseUrl === '') {
             $this->io()->warning('No --url provided and project_url not found in config. HTTP tests will be skipped.');
@@ -391,6 +398,54 @@ class BenchmarkCommand extends BaseCommand
         }
 
         return self::SUCCESS;
+    }
+
+    private function warnLowBenchmarkIterations(
+        int $dbIterations,
+        int $cacheIterations,
+        int $fileIterations,
+        int $cpuIterations
+    ): void {
+        $lowCounts = $this->getLowBenchmarkIterationWarnings(
+            $dbIterations,
+            $cacheIterations,
+            $fileIterations,
+            $cpuIterations
+        );
+
+        if ($lowCounts === []) {
+            return;
+        }
+
+        $this->io()->warning(
+            'Low benchmark iteration counts can produce noisy scores: ' . implode(', ', $lowCounts)
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function getLowBenchmarkIterationWarnings(
+        int $dbIterations,
+        int $cacheIterations,
+        int $fileIterations,
+        int $cpuIterations
+    ): array {
+        $lowCounts = [];
+        if ($dbIterations < self::RECOMMENDED_DB_ITERATIONS) {
+            $lowCounts[] = sprintf('db=%d (recommended >=%d)', $dbIterations, self::RECOMMENDED_DB_ITERATIONS);
+        }
+        if ($cacheIterations < self::RECOMMENDED_CACHE_ITERATIONS) {
+            $lowCounts[] = sprintf('cache=%d (recommended >=%d)', $cacheIterations, self::RECOMMENDED_CACHE_ITERATIONS);
+        }
+        if ($fileIterations < self::RECOMMENDED_FILE_ITERATIONS) {
+            $lowCounts[] = sprintf('file=%d (recommended >=%d)', $fileIterations, self::RECOMMENDED_FILE_ITERATIONS);
+        }
+        if ($cpuIterations < self::RECOMMENDED_CPU_ITERATIONS) {
+            $lowCounts[] = sprintf('cpu=%d (recommended >=%d)', $cpuIterations, self::RECOMMENDED_CPU_ITERATIONS);
+        }
+
+        return $lowCounts;
     }
 
     /**
