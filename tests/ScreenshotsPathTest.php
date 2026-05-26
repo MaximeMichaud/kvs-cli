@@ -44,6 +44,23 @@ class ScreenshotsPathTest extends TestCase
         $this->assertStringContainsString('320x180/0.jpg', $output);
     }
 
+    public function testNumericFirstArgumentListsScreenshots(): void
+    {
+        $screenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
+        mkdir($screenshotsDir, 0755, true);
+        file_put_contents($screenshotsDir . '/preview.jpg', 'preview');
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => '1234',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('preview.jpg', $output);
+    }
+
     public function testListFallsBackWhenConfiguredScreenshotsPathIsStale(): void
     {
         TestHelper::createMockSetupConfig($this->tempDir, [

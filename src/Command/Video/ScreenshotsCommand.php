@@ -60,20 +60,33 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        [$action, $videoId] = $this->resolveActionAndVideoId($input);
 
         return match ($action) {
-            'list' => $this->listScreenshots($input),
-            'generate' => $this->generateScreenshots($input),
-            'regenerate' => $this->regenerateScreenshots($input),
-            default => $this->listScreenshots($input),
+            'list' => $this->listScreenshots($input, $videoId),
+            'generate' => $this->generateScreenshots($input, $videoId),
+            'regenerate' => $this->regenerateScreenshots($input, $videoId),
+            default => $this->listScreenshots($input, null),
         };
     }
 
-    private function listScreenshots(InputInterface $input): int
+    /**
+     * @return array{0: string, 1: string|null}
+     */
+    private function resolveActionAndVideoId(InputInterface $input): array
     {
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $videoId = $this->getStringArgument($input, 'video_id');
 
+        if ($videoId === null && ctype_digit($action)) {
+            return ['list', $action];
+        }
+
+        return [$action, $videoId];
+    }
+
+    private function listScreenshots(InputInterface $input, ?string $videoId): int
+    {
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots list <video_id>');
@@ -134,10 +147,8 @@ HELP
         return self::SUCCESS;
     }
 
-    private function generateScreenshots(InputInterface $input): int
+    private function generateScreenshots(InputInterface $input, ?string $videoId): int
     {
-        $videoId = $this->getStringArgument($input, 'video_id');
-
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots generate <video_id>');
@@ -238,10 +249,8 @@ HELP
         return self::SUCCESS;
     }
 
-    private function regenerateScreenshots(InputInterface $input): int
+    private function regenerateScreenshots(InputInterface $input, ?string $videoId): int
     {
-        $videoId = $this->getStringArgument($input, 'video_id');
-
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
@@ -275,7 +284,7 @@ HELP
         }
 
         // Generate new screenshots
-        return $this->generateScreenshots($input);
+        return $this->generateScreenshots($input, $videoId);
     }
 
     /**
