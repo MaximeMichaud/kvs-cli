@@ -140,6 +140,11 @@ HELP
         // Display users
         $this->io()->title($confirm ? 'Users to Delete' : 'Users Matching Criteria (Dry-Run)');
 
+        $headers = ['ID', 'Username', 'Email', 'Last Login', 'Created'];
+        if ($removalRequested) {
+            $headers[] = 'Removal Reason';
+        }
+
         /** @var list<list<string>> $rows */
         $rows = [];
         foreach ($users as $user) {
@@ -158,6 +163,7 @@ HELP
             $userIdVal = $user['user_id'] ?? '';
             $usernameVal = $user['username'] ?? '';
             $emailVal = $user['email'] ?? '';
+            $removalReasonVal = $user['removal_reason'] ?? '';
             $addedDateVal = $user['added_date'] ?? '';
             $addedDateStr = 'Unknown';
             if (is_string($addedDateVal) && $addedDateVal !== '') {
@@ -167,16 +173,22 @@ HELP
                 }
             }
 
-            $rows[] = [
+            $row = [
                 is_scalar($userIdVal) ? (string) $userIdVal : '',
                 is_scalar($usernameVal) ? (string) $usernameVal : '',
                 is_scalar($emailVal) ? (string) $emailVal : '',
                 $lastLoginStr,
                 $addedDateStr,
             ];
+            if ($removalRequested) {
+                $removalReason = is_scalar($removalReasonVal) ? (string) $removalReasonVal : '';
+                $row[] = $removalReason !== '' ? $removalReason : 'N/A';
+            }
+
+            $rows[] = $row;
         }
 
-        $this->renderTable(['ID', 'Username', 'Email', 'Last Login', 'Created'], $rows);
+        $this->renderTable($headers, $rows);
 
         $this->io()->newLine();
         $this->io()->text(sprintf('<info>Total:</info> %d users', $count));
