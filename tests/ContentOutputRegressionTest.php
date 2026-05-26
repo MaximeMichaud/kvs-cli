@@ -158,10 +158,19 @@ class ContentOutputRegressionTest extends TestCase
             '--limit' => '2',
         ]);
 
+        $countTester = new CommandTester($this->createVideoCommand($db));
+        $countTester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--limit' => '1',
+        ]);
+
         $this->assertSame(0, $fieldTester->getStatusCode());
         $this->assertSame("Second video\nFirst video", trim($fieldTester->getDisplay()));
         $this->assertSame(0, $idsTester->getStatusCode());
         $this->assertSame('21 20', trim($idsTester->getDisplay()));
+        $this->assertSame(0, $countTester->getStatusCode());
+        $this->assertSame('2', trim($countTester->getDisplay()));
     }
 
     public function testVideoStatsFlagShowsStatsWithoutAction(): void

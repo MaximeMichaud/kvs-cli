@@ -102,9 +102,7 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT v.*, u.username,
-                 v.video_viewed as views
-                 FROM {$this->table('videos')} v
+        $fromSql = "FROM {$this->table('videos')} v
                  LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id
                  WHERE 1=1";
 
@@ -118,31 +116,38 @@ HELP
                 'error' => StatusFormatter::VIDEO_ERROR,
             ], [0, 1, 2, 3, 4, 5]);
             if ($statusId !== null) {
-                $query .= " AND v.status_id = :status";
+                $fromSql .= " AND v.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND v.title LIKE :search";
+            $fromSql .= " AND v.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
         $category = $this->getIntOption($input, 'category');
         if ($category !== null) {
-            $query .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
+            $fromSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
                 . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
         $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
-            $query .= " AND v.user_id = :user";
+            $fromSql .= " AND v.user_id = :user";
             $params['user'] = $user;
         }
 
-        $query .= " ORDER BY v.post_date DESC LIMIT :limit";
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            return $this->countVideos($db, $fromSql, $params);
+        }
+
+        $query = "SELECT v.*, u.username,
+                 v.video_viewed as views
+                 $fromSql
+                 ORDER BY v.post_date DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -197,6 +202,26 @@ HELP
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch videos: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function countVideos(\PDO $db, string $fromSql, array $params): int
+    {
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) $fromSql");
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+
+            $this->io()->writeln((string) (int) $stmt->fetchColumn());
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to count videos: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
