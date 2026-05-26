@@ -5,42 +5,31 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Console\Application;
 
 class ServerCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private ServerCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new ServerCommand($this->config);
-
-        $app = new Application();
-        $app->add($this->command);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testServerListBasic(): void
@@ -51,7 +40,11 @@ class ServerCommandTest extends TestCase
             '--limit' => 10
         ]);
 
+        $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video Local', $output);
+        $this->assertStringContainsString('Video Disabled', $output);
+        $this->assertStringContainsString('Album Error', $output);
     }
 
     public function testServerListWithStatusFilter(): void
@@ -60,10 +53,17 @@ class ServerCommandTest extends TestCase
             '--force' => true,
             'action' => 'list',
             '--status' => 'active',
-            '--limit' => 10
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title,status'
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(2, $rows);
+        $this->assertSame([1, 3], array_map(static fn (array $row): int => (int) $row['server_id'], $rows));
+        $this->assertSame(['Active', 'Active'], array_column($rows, 'status'));
     }
 
     public function testServerListWithTypeFilter(): void
@@ -72,10 +72,16 @@ class ServerCommandTest extends TestCase
             '--force' => true,
             'action' => 'list',
             '--type' => 'video',
-            '--limit' => 10
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title'
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(2, $rows);
+        $this->assertSame([1, 2], array_map(static fn (array $row): int => (int) $row['server_id'], $rows));
     }
 
     public function testServerListWithConnectionFilter(): void
@@ -84,10 +90,17 @@ class ServerCommandTest extends TestCase
             '--force' => true,
             'action' => 'list',
             '--connection' => 'local',
-            '--limit' => 10
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title,connection'
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['server_id']);
+        $this->assertSame('Local', $rows[0]['connection']);
     }
 
     public function testServerListWithErrorsFilter(): void
@@ -96,10 +109,18 @@ class ServerCommandTest extends TestCase
             '--force' => true,
             'action' => 'list',
             '--errors' => true,
-            '--limit' => 10
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title,has_error'
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(3, (int) $rows[0]['server_id']);
+        $this->assertSame('Album Error', $rows[0]['title']);
+        $this->assertSame('Yes', $rows[0]['has_error']);
     }
 
     public function testServerListJsonFormat(): void
@@ -113,7 +134,13 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $testerJson->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertJson($output);
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['server_id']);
+        $this->assertSame('Video Local', $rows[0]['title']);
+        $this->assertSame('Video Group', $rows[0]['group_title']);
         $this->assertEquals(0, $testerJson->getStatusCode());
     }
 
@@ -127,28 +154,26 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = trim($testerCount->getDisplay());
-        $this->assertMatchesRegularExpression('/^\d+$/', $output);
+        $this->assertSame('3', $output);
         $this->assertEquals(0, $testerCount->getStatusCode());
     }
 
     public function testServerShow(): void
     {
-        $stmt = $this->db->query('SELECT server_id FROM ' . TestHelper::table('admin_servers') . ' LIMIT 1');
-        $serverId = $stmt->fetchColumn();
-
-        if (!$serverId) {
-            $this->markTestSkipped('No servers in database');
-        }
-
         $this->tester->execute([
             '--force' => true,
             'action' => 'show',
-            'id' => $serverId
+            'id' => '1'
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Server #', $output);
+        $this->assertStringContainsString('Server #1', $output);
+        $this->assertStringContainsString('Video Local', $output);
+        $this->assertStringContainsString('Video Group', $output);
         $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('10 GB', $output);
+        $this->assertStringContainsString('6 GB', $output);
+        $this->assertStringContainsString('/data/videos', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -161,7 +186,7 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+        $this->assertStringContainsString('Server not found: 999999', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -173,7 +198,7 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+        $this->assertStringContainsString('Server ID is required', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -186,7 +211,12 @@ class ServerCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Storage Statistics', $output);
-        $this->assertStringContainsString('Total Servers', $output);
+        $this->assertMatchesRegularExpression('/Total Servers\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Active\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/With Errors\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -197,28 +227,27 @@ class ServerCommandTest extends TestCase
             'action' => 'group'
         ]);
 
+        $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video Group', $output);
+        $this->assertStringContainsString('Album Group', $output);
+        $this->assertStringContainsString('1/2', $output);
     }
 
     public function testServerGroupShow(): void
     {
-        $stmt = $this->db->query(
-            'SELECT group_id FROM ' . TestHelper::table('admin_servers_groups') . ' LIMIT 1'
-        );
-        $groupId = $stmt->fetchColumn();
-
-        if (!$groupId) {
-            $this->markTestSkipped('No server groups in database');
-        }
-
         $this->tester->execute([
             '--force' => true,
             'action' => 'group',
-            'id' => $groupId
+            'id' => '10'
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Server Group #', $output);
+        $this->assertStringContainsString('Server Group #10: Video Group', $output);
+        $this->assertStringContainsString('3 Videos', $output);
+        $this->assertStringContainsString('Servers in Group', $output);
+        $this->assertStringContainsString('Video Local', $output);
+        $this->assertStringContainsString('Video Disabled', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -231,7 +260,7 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+        $this->assertStringContainsString('Server group not found: 999999', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -249,8 +278,8 @@ class ServerCommandTest extends TestCase
     {
         $this->tester->execute(['--force' => true]);
 
-        // Default action is list
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video Local', $this->tester->getDisplay());
     }
 
     public function testServerEnableMissingId(): void
@@ -261,7 +290,7 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+        $this->assertStringContainsString('Server ID is required', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -273,7 +302,7 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+        $this->assertStringContainsString('Server ID is required', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -286,7 +315,7 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+        $this->assertStringContainsString('Server not found: 999999', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -299,7 +328,74 @@ class ServerCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+        $this->assertStringContainsString('Server not found: 999999', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_servers_groups') . ' (' .
+            'group_id INTEGER, title TEXT, status_id INTEGER, content_type_id INTEGER, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_servers') . ' (' .
+            'server_id INTEGER, group_id INTEGER, content_type_id INTEGER, title TEXT, status_id INTEGER, ' .
+            'connection_type_id INTEGER, streaming_type_id INTEGER, total_space INTEGER, free_space INTEGER, ' .
+            '`load` REAL, error_iteration INTEGER, error_streaming_iteration INTEGER, error_id INTEGER, ' .
+            'error_streaming_id INTEGER, is_debug_enabled INTEGER, urls TEXT, path TEXT, ftp_host TEXT, ' .
+            'ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, s3_region TEXT, s3_bucket TEXT, s3_endpoint TEXT, ' .
+            'control_script_url TEXT, control_script_url_version TEXT, added_date TEXT)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('videos') . ' (server_group_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('albums') . ' (server_group_id INTEGER)');
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_servers_groups') .
+            " VALUES (10, 'Video Group', 1, 1, '2026-05-20 10:00:00'), " .
+            "(20, 'Album Group', 1, 2, '2026-05-21 10:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_servers') .
+            ' (server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, ' .
+            'total_space, free_space, `load`, error_iteration, error_streaming_iteration, error_id, ' .
+            'error_streaming_id, is_debug_enabled, urls, path, ftp_host, ftp_port, ftp_user, ftp_folder, ' .
+            's3_region, s3_bucket, s3_endpoint, control_script_url, control_script_url_version, added_date) VALUES ' .
+            "(1, 10, 1, 'Video Local', 1, 0, 0, 10737418240, 6442450944, 0.50, 0, 0, 0, 0, 0, " .
+            "'https://cdn1.example.test', '/data/videos', '', '', '', '', '', '', '', " .
+            "'https://control.example.test', '1.0', '2026-05-20 10:00:00'), " .
+            "(2, 10, 1, 'Video Disabled', 0, 1, 1, 5368709120, 2147483648, 1.00, 0, 0, 0, 0, 0, " .
+            "'https://cdn2.example.test', '/mnt/videos', '', '', '', '', '', '', '', '', '', '2026-05-21 10:00:00'), " .
+            "(3, 20, 2, 'Album Error', 1, 2, 4, 2147483648, 536870912, 2.00, 3, 0, 1, 0, 1, " .
+            "'https://albums.example.test', '', 'ftp.example.test', '21', 'ftp-user', '/albums', " .
+            "'', '', '', '', '', '2026-05-22 10:00:00')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (10), (10), (10)');
+        $db->exec('INSERT INTO ' . TestHelper::table('albums') . ' VALUES (20), (20)');
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): ServerCommand
+    {
+        return new class ($this->config, $db) extends ServerCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('system:server');
+                $this->setDescription('[EXPERIMENTAL] Manage KVS storage servers');
+                $this->setAliases(['server', 'servers']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
