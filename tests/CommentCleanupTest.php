@@ -272,6 +272,28 @@ class CommentCleanupTest extends TestCase
         $this->assertStringContainsString('No pending comments to process', $tester->getDisplay());
     }
 
+    public function testRejectWithoutIdShowsRejectUsage(): void
+    {
+        $tester = new CommandTester($this->createCommand($this->createDatabase()));
+        $tester->execute(['action' => 'reject']);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Usage: kvs comment reject ID or reject 1,2,3 or reject --all', $output);
+        $this->assertStringNotContainsString('Usage: kvs comment approve ID', $output);
+    }
+
+    public function testDeleteWithoutIdShowsDeleteUsage(): void
+    {
+        $tester = new CommandTester($this->createCommand($this->createDatabase()));
+        $tester->execute(['action' => 'delete']);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Usage: kvs comment delete ID or delete 1,2,3 or delete --all', $output);
+        $this->assertStringNotContainsString('Usage: kvs comment approve ID', $output);
+    }
+
     private function createCommand(\PDO $db): CommentCommand
     {
         return new class ($this->createConfig(), $db) extends CommentCommand {

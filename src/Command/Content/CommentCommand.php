@@ -112,7 +112,8 @@ HELP
             'pending' => $this->listPendingComments($input),
             'show' => $this->showComment($id),
             'approve' => $this->approveComments($input, $id),
-            'reject', 'delete' => $this->rejectComments($input, $id),
+            'reject' => $this->rejectComments($input, $id, 'reject'),
+            'delete' => $this->rejectComments($input, $id, 'delete'),
             'stats' => $this->showStats(),
             default => $this->failUnknownAction(
                 'comment',
@@ -602,7 +603,7 @@ HELP
         }
 
         try {
-            $commentIds = $this->resolveCommentIds($db, $input, $id);
+            $commentIds = $this->resolveCommentIds($db, $input, $id, 'approve');
             if ($commentIds === null) {
                 return self::FAILURE;
             }
@@ -696,7 +697,7 @@ HELP
         }
     }
 
-    private function rejectComments(InputInterface $input, ?string $id): int
+    private function rejectComments(InputInterface $input, ?string $id, string $action): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -704,7 +705,7 @@ HELP
         }
 
         try {
-            $commentIds = $this->resolveCommentIds($db, $input, $id);
+            $commentIds = $this->resolveCommentIds($db, $input, $id, $action);
             if ($commentIds === null) {
                 return self::FAILURE;
             }
@@ -797,7 +798,7 @@ HELP
      *
      * @return list<int>|null
      */
-    private function resolveCommentIds(\PDO $db, InputInterface $input, ?string $id): ?array
+    private function resolveCommentIds(\PDO $db, InputInterface $input, ?string $id, string $action): ?array
     {
         // If --all flag is set, get all pending comment IDs
         if ($this->getBoolOption($input, 'all')) {
@@ -825,7 +826,7 @@ HELP
             $this->io()->error(
                 'Comment ID required. Use comma-separated IDs for batch, or --all for pending.'
             );
-            $this->io()->text('Usage: kvs comment approve ID or approve 1,2,3 or approve --all');
+            $this->io()->text("Usage: kvs comment $action ID or $action 1,2,3 or $action --all");
             return null;
         }
 
