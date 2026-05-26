@@ -2,88 +2,83 @@
 
 namespace KVS\CLI\Tests;
 
-use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\PlaylistCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
+use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Console\Application;
 
+#[CoversClass(PlaylistCommand::class)]
 class PlaylistCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private PlaylistCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new PlaylistCommand($this->config);
-
-        $app = new Application();
-        $app->add($this->command);
-
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
         $this->tester = new CommandTester($this->command);
-
-        // Setup test database connection
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testPlaylistListBasic(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--limit' => 5
+            '--limit' => 5,
         ]);
 
         $output = $this->tester->getDisplay();
-        // Either shows playlists or empty result (both are valid)
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Test Playlist', $output);
+        $this->assertStringContainsString('Private Playlist', $output);
+        $this->assertStringContainsString('Disabled Playlist', $output);
     }
 
     public function testPlaylistListWithStatusFilter(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--status' => 1,
-            '--limit' => 5
+            '--status' => 'active',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,status',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(2, $rows);
+        $this->assertSame([30, 20], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame(['Active', 'Active'], array_column($rows, 'status'));
     }
 
     public function testPlaylistListWithUserFilter(): void
     {
-        // Get a user ID that exists
-        $stmt = $this->db->query('SELECT user_id FROM ' . TestHelper::table('users') . ' LIMIT 1');
-        $userId = $stmt->fetchColumn();
-
-        if (!$userId) {
-            $this->markTestSkipped('No users in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            '--user' => $userId,
-            '--limit' => 5
+            '--user' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,user',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame([30, 20], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame(['alice', 'alice'], array_column($rows, 'user'));
     }
 
     public function testPlaylistListPublicFilter(): void
@@ -91,10 +86,15 @@ class PlaylistCommandTest extends TestCase
         $this->tester->execute([
             'action' => 'list',
             '--public' => true,
-            '--limit' => 5
+            '--limit' => 5,
         ]);
 
+        $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Test Playlist', $output);
+        $this->assertStringContainsString('Disabled Playlist', $output);
+        $this->assertStringNotContainsString('Private Playlist', $output);
     }
 
     public function testPlaylistListPrivateFilter(): void
@@ -102,10 +102,17 @@ class PlaylistCommandTest extends TestCase
         $this->tester->execute([
             'action' => 'list',
             '--private' => true,
-            '--limit' => 5
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,type',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['playlist_id']);
+        $this->assertSame('Private Playlist', $rows[0]['title']);
+        $this->assertSame('Private', $rows[0]['type']);
     }
 
     public function testPlaylistListSearchFilter(): void
@@ -113,119 +120,133 @@ class PlaylistCommandTest extends TestCase
         $this->tester->execute([
             'action' => 'list',
             '--search' => 'test',
-            '--limit' => 5
+            '--limit' => 5,
         ]);
 
+        $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Test Playlist', $output);
+        $this->assertStringNotContainsString('Private Playlist', $output);
+        $this->assertStringNotContainsString('Disabled Playlist', $output);
     }
 
     public function testPlaylistListJsonFormat(): void
     {
-        $testerJson = new CommandTester($this->command);
-        $testerJson->execute([
+        $this->tester->execute([
             'action' => 'list',
             '--limit' => 1,
-            '--format' => 'json'
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,videos',
         ]);
 
-        $output = $testerJson->getDisplay();
-        $this->assertJson($output);
-        $this->assertEquals(0, $testerJson->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame(2, (int) $rows[0]['videos']);
     }
 
     public function testPlaylistListCsvFormat(): void
     {
-        $testerCsv = new CommandTester($this->command);
         ob_start();
-        $testerCsv->execute([
+        $this->tester->execute([
             'action' => 'list',
             '--limit' => 1,
-            '--format' => 'csv'
+            '--format' => 'csv',
+            '--fields' => 'playlist_id,title,status',
         ]);
         $csvOutput = ob_get_clean();
 
-        $this->assertStringContainsString('playlist_id', $csvOutput);
-        $this->assertEquals(0, $testerCsv->getStatusCode());
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('playlist_id,title,status', $csvOutput);
+        $this->assertStringContainsString('30,"Test Playlist",Active', $csvOutput);
     }
 
     public function testPlaylistListCountFormat(): void
     {
-        $testerCount = new CommandTester($this->command);
-        $testerCount->execute([
+        $this->tester->execute([
             'action' => 'list',
-            '--format' => 'count'
+            '--format' => 'count',
         ]);
 
-        $output = trim($testerCount->getDisplay());
-        $this->assertMatchesRegularExpression('/^\d+$/', $output);
-        $this->assertEquals(0, $testerCount->getStatusCode());
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('3', trim($this->tester->getDisplay()));
     }
 
     public function testPlaylistShow(): void
     {
-        // Get first playlist ID
-        $stmt = $this->db->query('SELECT playlist_id FROM ' . TestHelper::table('playlists') . ' LIMIT 1');
-        $playlistId = $stmt->fetchColumn();
-
-        if (!$playlistId) {
-            $this->markTestSkipped('No playlists in database');
-        }
-
         $this->tester->execute([
             'action' => 'show',
-            'id' => $playlistId
+            'id' => '30',
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Playlist #', $output);
-        $this->assertStringContainsString('Title', $output);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist #30', $output);
+        $this->assertStringContainsString('Test Playlist', $output);
+        $this->assertStringContainsString('alice', $output);
+        $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Views\W+100/', $output);
+        $this->assertStringContainsString('4.0/5 (10 votes)', $output);
+        $this->assertStringContainsString('A test playlist', $output);
+        $this->assertStringContainsString('#100: Intro Video', $output);
+        $this->assertStringContainsString('#101: Second Video', $output);
+        $this->assertStringContainsString('Featured', $output);
+        $this->assertStringContainsString('training', $output);
     }
 
     public function testPlaylistShowNotFound(): void
     {
         $this->tester->execute([
             'action' => 'show',
-            'id' => 999999
+            'id' => 999999,
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist not found: 999999', $output);
     }
 
     public function testPlaylistShowMissingId(): void
     {
         $this->tester->execute([
-            'action' => 'show'
+            'action' => 'show',
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist ID is required', $output);
     }
 
     public function testPlaylistDeleteMissingId(): void
     {
         $this->tester->execute([
-            'action' => 'delete'
+            'action' => 'delete',
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist ID is required', $output);
     }
 
     public function testPlaylistDeleteNotFound(): void
     {
         $this->tester->execute([
             'action' => 'delete',
-            'id' => 999999
+            'id' => 999999,
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist not found: 999999', $output);
     }
 
     public function testPlaylistAddMissingId(): void
@@ -236,8 +257,9 @@ class PlaylistCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist ID is required', $output);
     }
 
     public function testPlaylistAddMissingVideoOption(): void
@@ -248,8 +270,9 @@ class PlaylistCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Video ID', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video ID is required (use --video=<id>)', $output);
     }
 
     public function testPlaylistAddPlaylistNotFound(): void
@@ -261,30 +284,23 @@ class PlaylistCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist not found: 999999', $output);
     }
 
     public function testPlaylistAddVideoNotFound(): void
     {
-        $stmt = $this->db->query(
-            'SELECT playlist_id FROM ' . TestHelper::table('playlists') . ' WHERE is_locked = 0 LIMIT 1'
-        );
-        $playlistId = $stmt->fetchColumn();
-
-        if ($playlistId === false) {
-            $this->markTestSkipped('No unlocked playlists in database');
-        }
-
         $this->tester->execute([
             'action' => 'add',
-            'id' => $playlistId,
+            'id' => 30,
             '--video' => 999999,
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Video not found', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video not found: 999999', $output);
     }
 
     public function testPlaylistRemoveMissingId(): void
@@ -295,8 +311,9 @@ class PlaylistCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('required', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist ID is required', $output);
     }
 
     public function testPlaylistRemoveMissingVideoOption(): void
@@ -307,8 +324,9 @@ class PlaylistCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Video ID', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video ID is required (use --video=<id>)', $output);
     }
 
     public function testPlaylistRemovePlaylistNotFound(): void
@@ -320,30 +338,23 @@ class PlaylistCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('not found', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Playlist not found: 999999', $output);
     }
 
     public function testPlaylistRemoveVideoNotFound(): void
     {
-        $stmt = $this->db->query(
-            'SELECT playlist_id FROM ' . TestHelper::table('playlists') . ' WHERE is_locked = 0 LIMIT 1'
-        );
-        $playlistId = $stmt->fetchColumn();
-
-        if ($playlistId === false) {
-            $this->markTestSkipped('No unlocked playlists in database');
-        }
-
         $this->tester->execute([
             'action' => 'remove',
-            'id' => $playlistId,
+            'id' => 30,
             '--video' => 999999,
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Video not found', $output);
+
         $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Video not found: 999999', $output);
     }
 
     public function testPlaylistCommandMetadata(): void
@@ -358,11 +369,122 @@ class PlaylistCommandTest extends TestCase
 
     public function testPlaylistDefaultAction(): void
     {
-        // No action specified should show help
         $this->tester->execute([]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('list', $output);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Available actions:', $output);
+        $this->assertStringContainsString('list : List playlists', $output);
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('users') . ' (' .
+            'user_id INTEGER, username TEXT, favourite_videos_count INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('playlists') . ' (' .
+            'playlist_id INTEGER, user_id INTEGER, title TEXT, description TEXT, dir TEXT, ' .
+            'status_id INTEGER, is_private INTEGER, is_locked INTEGER, rating INTEGER, rating_amount INTEGER, ' .
+            'playlist_viewed INTEGER, comments_count INTEGER, subscribers_count INTEGER, added_date TEXT, ' .
+            'last_content_date TEXT, total_videos INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('fav_videos') . ' (' .
+            'user_id INTEGER, video_id INTEGER, fav_type INTEGER, playlist_id INTEGER, ' .
+            'playlist_sort_id INTEGER, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
+            'video_id INTEGER, title TEXT, favourites_count INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
+            'category_id INTEGER, title TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_playlists') . ' (' .
+            'category_id INTEGER, playlist_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
+            'tag_id INTEGER, tag TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags_playlists') . ' (' .
+            'tag_id INTEGER, playlist_id INTEGER)'
+        );
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('users') .
+            " (user_id, username, favourite_videos_count) VALUES (1, 'alice', 2), (2, 'bob', 0)"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('playlists') .
+            ' (playlist_id, user_id, title, description, dir, status_id, is_private, is_locked, ' .
+            'rating, rating_amount, playlist_viewed, comments_count, subscribers_count, added_date, ' .
+            'last_content_date, total_videos) VALUES ' .
+            "(30, 1, 'Test Playlist', 'A test playlist', 'test-playlist', 1, 0, 0, " .
+            "40, 10, 100, 2, 3, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 2), " .
+            "(20, 1, 'Private Playlist', 'Private collection', 'private-playlist', 1, 1, 0, " .
+            "10, 5, 20, 0, 1, '2026-05-25 10:00:00', '2026-05-25 11:00:00', 1), " .
+            "(10, 2, 'Disabled Playlist', 'Disabled collection', 'disabled-playlist', 0, 0, 0, " .
+            "0, 1, 5, 0, 0, '2026-05-24 10:00:00', '2026-05-24 11:00:00', 0)"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            " (video_id, title, favourites_count) VALUES " .
+            "(100, 'Intro Video', 1), (101, 'Second Video', 1), (102, 'Private Video', 1)"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('fav_videos') .
+            ' (user_id, video_id, fav_type, playlist_id, playlist_sort_id, added_date) VALUES ' .
+            "(1, 100, 10, 30, 1, '2026-05-26 10:10:00'), " .
+            "(1, 101, 10, 30, 2, '2026-05-26 10:20:00'), " .
+            "(1, 102, 10, 20, 1, '2026-05-25 10:10:00')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories') .
+            " (category_id, title) VALUES (1, 'Featured')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories_playlists') .
+            ' (category_id, playlist_id) VALUES (1, 30)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags') .
+            " (tag_id, tag) VALUES (1, 'training')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags_playlists') .
+            ' (tag_id, playlist_id) VALUES (1, 30)'
+        );
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): PlaylistCommand
+    {
+        return new class ($this->config, $db) extends PlaylistCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:playlist');
+                $this->setDescription('Manage KVS playlists');
+                $this->setAliases(['playlist', 'playlists']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
