@@ -503,9 +503,8 @@ class BenchmarkCommand extends BaseCommand
      */
     private function submitBenchmark(ExperimentResult $experiment, bool $hasExport): void
     {
-        // Check if API URL is configured
-        // @phpstan-ignore identical.alwaysFalse (check remains for potential config changes)
-        if (Constants::BENCHMARK_API_URL === '') {
+        $apiUrl = BenchmarkApiClient::getConfiguredApiUrl();
+        if ($apiUrl === '') {
             $this->io()->warning('Cannot submit: Benchmark API URL not configured.');
             if (!$hasExport) {
                 $this->io()->text('Use --export to save results locally instead.');
@@ -513,11 +512,10 @@ class BenchmarkCommand extends BaseCommand
             return;
         }
 
-        /** @phpstan-ignore-next-line deadCode.unreachable (code is reachable once API URL is set) */
         $this->io()->newLine();
         $this->io()->text('<comment>Submitting benchmark results to API...</comment>');
 
-        $client = new BenchmarkApiClient();
+        $client = new BenchmarkApiClient($apiUrl);
         $response = $client->submit($experiment);
 
         if ($response->success) {

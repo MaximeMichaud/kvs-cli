@@ -13,20 +13,39 @@ use KVS\CLI\Constants;
  */
 final class BenchmarkApiClient
 {
+    private string $apiUrl;
+
+    public function __construct(?string $apiUrl = null)
+    {
+        $this->apiUrl = $apiUrl ?? self::getConfiguredApiUrl();
+    }
+
+    public static function getConfiguredApiUrl(): string
+    {
+        $envUrl = getenv('KVS_BENCHMARK_API_URL');
+        if (is_string($envUrl)) {
+            return trim($envUrl);
+        }
+
+        return Constants::BENCHMARK_API_URL;
+    }
+
     /**
      * Submit benchmark results to the API.
      */
     public function submit(ExperimentResult $result): SubmitResponse
     {
-        $url = Constants::BENCHMARK_API_URL;
+        $url = $this->apiUrl;
 
-        // @phpstan-ignore identical.alwaysFalse (check remains for potential config changes)
         if ($url === '') {
             return SubmitResponse::error('Benchmark API URL not configured');
         }
 
-        /** @phpstan-ignore-next-line deadCode.unreachable (code is reachable once API URL is set) */
         $payload = json_encode($result->toArray(), JSON_THROW_ON_ERROR);
+        $applicationVersion = Application::VERSION;
+        if (!is_string($applicationVersion)) {
+            $applicationVersion = 'unknown';
+        }
 
         $context = stream_context_create([
             'http' => [
@@ -34,7 +53,7 @@ final class BenchmarkApiClient
                 'header' => implode("\r\n", [
                     'Content-Type: application/json',
                     'Accept: application/json',
-                    'User-Agent: ' . Application::NAME . '/' . Application::VERSION,
+                    'User-Agent: ' . Application::NAME . '/' . $applicationVersion,
                     'Content-Length: ' . strlen($payload),
                 ]),
                 'content' => $payload,
@@ -75,7 +94,6 @@ final class BenchmarkApiClient
      * Extract HTTP status code from response headers.
      *
      * @param array<string> $headers
-     * @phpstan-ignore method.unused (used once API URL is configured)
      */
     private function getHttpStatusCode(array $headers): int
     {
@@ -90,8 +108,6 @@ final class BenchmarkApiClient
 
     /**
      * Handle error HTTP response.
-     *
-     * @phpstan-ignore method.unused (used once API URL is configured)
      */
     private function handleErrorResponse(int $statusCode, string $response): SubmitResponse
     {
@@ -121,8 +137,6 @@ final class BenchmarkApiClient
 
     /**
      * Parse successful API response.
-     *
-     * @phpstan-ignore method.unused (used once API URL is configured)
      */
     private function parseSuccessResponse(string $response, string $benchmarkId): SubmitResponse
     {
@@ -169,7 +183,7 @@ final class BenchmarkApiClient
     private function constructDashboardUrl(string $benchmarkId): string
     {
         // Extract base URL from API URL
-        $apiUrl = Constants::BENCHMARK_API_URL;
+        $apiUrl = $this->apiUrl;
         $baseUrl = preg_replace('#/api/.*$#', '', $apiUrl);
 
         if ($baseUrl === null || $baseUrl === '') {

@@ -240,7 +240,7 @@ final class Constants
     // BENCHMARK API
     // ========================================
 
-    /** Benchmark API URL (empty = disabled) */
+    /** Default benchmark API URL (KVS_BENCHMARK_API_URL overrides it; empty disables submit) */
     public const BENCHMARK_API_URL = 'https://kvs-bench.mich.sh/api/benchmarks';
 
     /** Timeout for benchmark API requests in seconds */
