@@ -203,6 +203,34 @@ class FormatterTest extends TestCase
         $this->assertArrayNotHasKey('title', $decoded[0]);
     }
 
+    public function testRejectsUnknownRequestedField(): void
+    {
+        $items = [
+            ['id' => 1, 'title' => 'Test'],
+        ];
+
+        $formatter = new Formatter(['format' => 'json', 'fields' => 'id,missing'], ['id', 'title']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unknown field(s): missing');
+
+        $formatter->display($items, $this->output);
+    }
+
+    public function testRejectsUnknownSingleField(): void
+    {
+        $items = [
+            ['id' => 1, 'title' => 'Test'],
+        ];
+
+        $formatter = new Formatter(['format' => 'table', 'field' => 'missing'], ['id', 'title']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unknown field(s): missing');
+
+        $formatter->display($items, $this->output);
+    }
+
     public function testFieldAliasResolution(): void
     {
         $items = [

@@ -49,11 +49,13 @@ class Formatter
      */
     public function __construct(array $options, array $defaultFields)
     {
+        $fieldsOption = $options['fields'] ?? null;
         $this->args = [
             'format' => $options['format'] ?? 'table',
-            'fields' => $options['fields'] ?? null,
+            'fields' => $fieldsOption,
             'field'  => $options['field'] ?? null,
             'no-truncate' => $options['no-truncate'] ?? false,
+            'fields-provided' => $fieldsOption !== null && $fieldsOption !== '',
         ];
 
         // Parse fields
@@ -120,6 +122,8 @@ class Formatter
             return;
         }
 
+        $this->validateRequestedFields($items, [$field]);
+
         foreach ($items as $item) {
             $value = $this->getFieldValue($item, $field);
             if ($value !== '') {
@@ -156,6 +160,10 @@ class Formatter
             if (is_string($field)) {
                 $validFields[] = $field;
             }
+        }
+
+        if ($this->args['fields-provided'] === true) {
+            $this->validateRequestedFields($items, $validFields);
         }
 
         // Type check: format must be a string
@@ -385,6 +393,70 @@ class Formatter
         }
 
         return false;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     * @param list<string> $fields
+     */
+    private function validateRequestedFields(array $items, array $fields): void
+    {
+        if ($items === [] || $fields === []) {
+            return;
+        }
+
+        $unknown = [];
+        foreach ($fields as $field) {
+            $known = false;
+            foreach ($items as $item) {
+                if ($this->hasField($item, $field)) {
+                    $known = true;
+                    break;
+                }
+            }
+
+            if (!$known) {
+                $unknown[] = $field;
+            }
+        }
+
+        if ($unknown === []) {
+            return;
+        }
+
+        throw new \InvalidArgumentException(sprintf(
+            'Unknown field(s): %s. Available fields: %s',
+            implode(', ', $unknown),
+            implode(', ', $this->getAvailableFields($items))
+        ));
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     * @return list<string>
+     */
+    private function getAvailableFields(array $items): array
+    {
+        $fields = [];
+        foreach ($items as $item) {
+            foreach (array_keys($item) as $field) {
+                $fields[$field] = true;
+            }
+        }
+
+        foreach (self::FIELD_ALIASES as $alias => $aliasFields) {
+            foreach ($aliasFields as $aliasField) {
+                if (isset($fields[$aliasField])) {
+                    $fields[$alias] = true;
+                    break;
+                }
+            }
+        }
+
+        $fieldNames = array_keys($fields);
+        sort($fieldNames, SORT_STRING);
+
+        return $fieldNames;
     }
 
     /**

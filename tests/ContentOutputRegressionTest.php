@@ -345,6 +345,33 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Premium', $defaultRows[0]['is_private']);
     }
 
+    public function testAlbumListRejectsUnknownRequestedField(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_albums (' .
+            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec(
+            "INSERT INTO ktvs_albums VALUES " .
+            "(4, 1, 'Weekend Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5)"
+        );
+
+        $tester = new CommandTester($this->createAlbumCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'nonexistent_field',
+            '--limit' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Unknown field(s): nonexistent_field', $tester->getDisplay());
+    }
+
     public function testAlbumListSearchSupportsSingleFieldAndIdsFormat(): void
     {
         $db = $this->createSqliteConnection();
