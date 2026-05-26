@@ -439,7 +439,7 @@ class ContentOutputRegressionTest extends TestCase
         $ratingRows = $this->decodeJsonRows($ratingTester->getDisplay());
 
         $this->assertSame(0, $ratingTester->getStatusCode());
-        $this->assertSame(5.0, (float) $ratingRows[0]['rating']);
+        $this->assertSame('5.0/5 (5 votes)', $ratingRows[0]['rating']);
     }
 
     public function testDvdListDefaultFieldsExposeFormattedStatus(): void

@@ -11,7 +11,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 
-use function KVS\CLI\Utils\calculate_kvs_rating;
 use function KVS\CLI\Utils\format_kvs_rating;
 
 #[AsCommand(
@@ -131,8 +130,6 @@ HELP
 
             // Transform models for display (field aliases)
             $transformedModels = array_map(function (array $model): array {
-                $calculatedRating = calculate_kvs_rating($model['rating'] ?? 0, $model['rating_amount'] ?? 0);
-
                 $statusIdVal = $model['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
@@ -156,7 +153,7 @@ HELP
                     'height' => $model['height'] ?? '',
                     'weight' => $model['weight'] ?? '',
                     'rank' => $model['rank'] ?? '',
-                    'rating' => $calculatedRating,
+                    'rating' => format_kvs_rating($model['rating'] ?? 0, $model['rating_amount'] ?? 0),
                 ];
             }, $models);
 
