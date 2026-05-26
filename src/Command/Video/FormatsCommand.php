@@ -50,7 +50,12 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
+        $videoId = $this->getStringArgument($input, 'video_id');
+        if ($videoId === null && ctype_digit($action)) {
+            $input->setArgument('video_id', $action);
+            $action = 'list';
+        }
 
         return match ($action) {
             'list' => $this->listFormats($input),

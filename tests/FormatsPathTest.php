@@ -79,6 +79,20 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('videos_sources', $output);
     }
 
+    public function testNumericFirstArgumentListsFormats(): void
+    {
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => '1234',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('1234.mp4', $output);
+        $this->assertStringContainsString('MP4 480p', $output);
+    }
+
     public function testListFallsBackWhenLocalStorageServerPathIsStale(): void
     {
         $this->db->exec("UPDATE ktvs_admin_servers SET path = '/stale/contents/videos'");
