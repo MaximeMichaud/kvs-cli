@@ -159,14 +159,15 @@ class ContentStatusFilterTest extends TestCase
         $db = $this->createSqliteConnection();
         $db->exec(
             'CREATE TABLE ktvs_users (' .
-            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT)'
+            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT, ' .
+            'total_videos_count INTEGER, total_albums_count INTEGER)'
         );
-        $db->exec('CREATE TABLE ktvs_videos (user_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_albums (user_id INTEGER)');
         $db->exec(
-            "INSERT INTO ktvs_users (user_id, username, display_name, email, status_id, added_date) VALUES " .
-            "(1, 'pending', 'Pending', 'pending@example.com', 1, '2024-01-01 00:00:00'), " .
-            "(2, 'active', 'Active', 'active@example.com', 2, '2024-01-02 00:00:00')"
+            "INSERT INTO ktvs_users " .
+            "(user_id, username, display_name, email, status_id, added_date, total_videos_count, total_albums_count) " .
+            "VALUES " .
+            "(1, 'pending', 'Pending', 'pending@example.com', 1, '2024-01-01 00:00:00', 0, 0), " .
+            "(2, 'active', 'Active', 'active@example.com', 2, '2024-01-02 00:00:00', 0, 0)"
         );
 
         $tester = new CommandTester($this->createUserCommand($db));

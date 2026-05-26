@@ -107,8 +107,8 @@ HELP
 
         // Build query
         $query = "SELECT u.*,
-                 (SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = u.user_id) as video_count,
-                 (SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = u.user_id) as album_count
+                 u.total_videos_count as video_count,
+                 u.total_albums_count as album_count
                  FROM {$this->table('users')} u
                  WHERE 1=1";
 

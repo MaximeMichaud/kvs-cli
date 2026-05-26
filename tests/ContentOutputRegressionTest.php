@@ -668,14 +668,13 @@ class ContentOutputRegressionTest extends TestCase
         $db = $this->createSqliteConnection();
         $db->exec(
             'CREATE TABLE ktvs_users (' .
-            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT)'
+            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT, ' .
+            'total_videos_count INTEGER, total_albums_count INTEGER)'
         );
-        $db->exec('CREATE TABLE ktvs_videos (user_id INTEGER)');
-        $db->exec('CREATE TABLE ktvs_albums (user_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_users VALUES " .
-            "(1, 'member', 'Member', 'member@example.com', 2, '2024-01-01 00:00:00'), " .
-            "(2, 'anonymous', 'Anonymous', 'anonymous@example.com', 4, '2024-01-02 00:00:00')"
+            "(1, 'member', 'Member', 'member@example.com', 2, '2024-01-01 00:00:00', 0, 0), " .
+            "(2, 'anonymous', 'Anonymous', 'anonymous@example.com', 4, '2024-01-02 00:00:00', 0, 0)"
         );
 
         $tester = new CommandTester($this->createUserCommand($db));
@@ -703,6 +702,39 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame(0, $defaultTester->getStatusCode());
         $this->assertSame('Anonymous', $defaultRows[0]['status']);
         $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
+    }
+
+    public function testUserListUsesKvsMaintainedContentCounters(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_users (' .
+            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, added_date TEXT, ' .
+            'total_videos_count INTEGER, total_albums_count INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (user_id INTEGER, status_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (user_id INTEGER, status_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_users VALUES " .
+            "(1, 'admin', 'Admin', 'admin@example.com', 2, '2024-01-01 00:00:00', 0, 0)"
+        );
+        $db->exec('INSERT INTO ktvs_videos VALUES (1, 0), (1, 0), (1, 0)');
+        $db->exec('INSERT INTO ktvs_albums VALUES (1, 0), (1, 0)');
+
+        $tester = new CommandTester($this->createUserCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,username,videos,albums',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['id']);
+        $this->assertSame(0, (int) $rows[0]['videos']);
+        $this->assertSame(0, (int) $rows[0]['albums']);
     }
 
     public function testUserShowUsesKvsGenderLabels(): void
