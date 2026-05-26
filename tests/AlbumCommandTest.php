@@ -5,43 +5,35 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 class AlbumCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private AlbumCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new AlbumCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        // Setup test database connection using TestHelper
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testAlbumListBasic(): void
@@ -53,27 +45,27 @@ class AlbumCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Album id', $output);
+        $this->assertStringContainsString('Active Album', $output);
+        $this->assertStringContainsString('Disabled Album', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testAlbumListWithStatus(): void
     {
-        // Verify we have albums with different statuses
-        $stmt = $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('albums') . ' WHERE status_id = 1');
-        $activeCount = $stmt->fetchColumn();
-
-        if ($activeCount == 0) {
-            $this->markTestSkipped('No active albums in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
             '--status' => 1,
-            '--limit' => 5
+            '--format' => 'json',
+            '--fields' => 'album_id,title,status',
+            '--limit' => 5,
         ]);
 
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Album id', $output);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['album_id']);
+        $this->assertSame('Active Album', $rows[0]['title']);
+        $this->assertSame('Active', $rows[0]['status']);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -89,6 +81,9 @@ class AlbumCommandTest extends TestCase
 
         $output = $testerJson->getDisplay();
         $this->assertJson($output);
+        $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertCount(1, $jsonRows);
+        $this->assertSame(20, (int) $jsonRows[0]['album_id']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format
@@ -102,6 +97,7 @@ class AlbumCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('album_id', $csvOutput);
+        $this->assertStringContainsString('Disabled Album', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format
@@ -112,28 +108,22 @@ class AlbumCommandTest extends TestCase
         ]);
 
         $output = trim($testerCount->getDisplay());
-        $this->assertMatchesRegularExpression('/^\d+$/', $output);
+        $this->assertSame('2', $output);
         $this->assertEquals(0, $testerCount->getStatusCode());
     }
 
     public function testAlbumShow(): void
     {
-        // Get first album ID
-        $stmt = $this->db->query('SELECT album_id FROM ' . TestHelper::table('albums') . ' LIMIT 1');
-        $albumId = $stmt->fetchColumn();
-
-        if (!$albumId) {
-            $this->markTestSkipped('No albums in database');
-        }
-
         $this->tester->execute([
             'action' => 'show',
-            'id' => $albumId
+            'id' => '10'
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Album #', $output);
+        $this->assertStringContainsString('Album #10', $output);
         $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Active Album', $output);
+        $this->assertMatchesRegularExpression('/Images\W+2/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -144,5 +134,50 @@ class AlbumCommandTest extends TestCase
 
         $aliases = $this->command->getAliases();
         $this->assertContains('album', $aliases);
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('albums') . ' (' .
+            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('albums_images') . ' (album_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
+
+        $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('albums') .
+            " (album_id, user_id, title, status_id, is_private, post_date, album_viewed, rating, rating_amount) VALUES " .
+            "(10, 1, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10), " .
+            "(20, 2, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5)"
+        );
+        $db->exec("INSERT INTO " . TestHelper::table('albums_images') . " VALUES (10), (10), (20)");
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): AlbumCommand
+    {
+        return new class ($this->config, $db) extends AlbumCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:album');
+                $this->setDescription('Manage KVS photo albums');
+                $this->setAliases(['album', 'albums', 'gallery']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
