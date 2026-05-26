@@ -8,6 +8,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\Process;
 
 use function KVS\CLI\Utils\truncate;
 
@@ -337,11 +338,8 @@ class ConfigCommand extends BaseCommand
         copy($filePath, $backupFile);
         $this->io()->info("Backup created: $backupFile");
 
-        // Open in editor
-        $command = sprintf('%s %s', escapeshellcmd($editor), escapeshellarg($filePath));
-
         $this->io()->info("Opening $filePath in $editor...");
-        passthru($command, $returnCode);
+        $returnCode = $this->runEditor($editor, $filePath);
 
         if ($returnCode === 0) {
             $this->io()->success('Configuration file edited successfully');
@@ -362,6 +360,27 @@ class ConfigCommand extends BaseCommand
         }
 
         return self::SUCCESS;
+    }
+
+    private function runEditor(string $editor, string $filePath): int
+    {
+        if (is_file($editor) && is_executable($editor)) {
+            $process = new Process([$editor, $filePath]);
+        } else {
+            $process = Process::fromShellCommandline(
+                $editor . ' "$KVS_CONFIG_FILE"',
+                null,
+                ['KVS_CONFIG_FILE' => $filePath]
+            );
+        }
+
+        if (Process::isTtySupported()) {
+            $process->setTty(true);
+        }
+
+        $process->run();
+
+        return $process->getExitCode() ?? self::FAILURE;
     }
 
     /**

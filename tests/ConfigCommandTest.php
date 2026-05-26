@@ -177,6 +177,46 @@ $config["player_license_code"] = "secret-player-license";
         }
     }
 
+    public function testConfigEditSupportsEditorPathWithSpaces(): void
+    {
+        $tempDir = TestHelper::createTempDir('kvs editor path test ');
+        mkdir($tempDir . '/admin/include', 0755, true);
+        TestHelper::createMockDbConfig($tempDir);
+        file_put_contents($tempDir . '/admin/include/setup.php', '<?php $config = [];');
+
+        $editorPath = $tempDir . '/editor with spaces.sh';
+        $markerPath = $tempDir . '/editor-called';
+        file_put_contents(
+            $editorPath,
+            "#!/bin/sh\n" .
+            'printf "%s" "$1" > ' . escapeshellarg($markerPath) . "\n"
+        );
+        chmod($editorPath, 0755);
+
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editorPath);
+
+        try {
+            $tester = new CommandTester(new ConfigCommand(new Configuration(['path' => $tempDir])));
+            $tester->execute(['action' => 'edit', '--file' => 'main']);
+
+            $output = $tester->getDisplay();
+            $this->assertEquals(0, $tester->getStatusCode());
+            $this->assertStringContainsString('Configuration file edited successfully', $output);
+            $this->assertSame($tempDir . '/admin/include/setup.php', file_get_contents($markerPath));
+        } finally {
+            if ($previousEditor === false) {
+                putenv('EDITOR');
+            } else {
+                putenv('EDITOR=' . $previousEditor);
+            }
+
+            if (is_dir($tempDir)) {
+                exec('rm -rf ' . escapeshellarg($tempDir));
+            }
+        }
+    }
+
     public function testConfigGetNonExistent(): void
     {
         $this->tester->execute([
