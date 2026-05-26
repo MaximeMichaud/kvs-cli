@@ -25,13 +25,16 @@ class PlaylistCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|add|remove|delete)')
-            ->addArgument('id', InputArgument::OPTIONAL, 'Playlist ID')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|create|add|remove|delete)')
+            ->addArgument('id', InputArgument::OPTIONAL, 'Playlist ID, or title for create')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
             ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public playlists')
             ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private playlists')
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles and descriptions')
+            ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Playlist title for create action')
+            ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Playlist description for create action')
+            ->addOption('dir', null, InputOption::VALUE_REQUIRED, 'Playlist directory slug for create action')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
@@ -58,13 +61,14 @@ Manage KVS playlists.
   <fg=green>kvs playlist list --private --user=5</>
   <fg=green>kvs playlist list --status=active --limit=50</>
   <fg=green>kvs playlist list --search="favorites"</>
-  <fg=green>kvs playlist list --field=title</>
-  <fg=green>kvs playlist list --format=json</>
-  <fg=green>kvs playlist list --format=ids</>
-  <fg=green>kvs playlist list --format=count</>
-  <fg=green>kvs playlist show 1</>
-  <fg=green>kvs playlist add 1 --video=42</>
-  <fg=green>kvs playlist remove 1 --video=42</>
+	  <fg=green>kvs playlist list --field=title</>
+	  <fg=green>kvs playlist list --format=json</>
+	  <fg=green>kvs playlist list --format=ids</>
+	  <fg=green>kvs playlist list --format=count</>
+	  <fg=green>kvs playlist create "Favorites" --user=1 --private</>
+	  <fg=green>kvs playlist show 1</>
+	  <fg=green>kvs playlist add 1 --video=42</>
+	  <fg=green>kvs playlist remove 1 --video=42</>
   <fg=green>kvs playlist delete 1</>
 
 <fg=yellow>NOTE:</>
@@ -85,6 +89,7 @@ HELP
         return match ($action) {
             'list' => $this->listPlaylists($input),
             'show' => $this->showPlaylist($this->getStringArgument($input, 'id')),
+            'create' => $this->createPlaylist($input),
             'add' => $this->addVideoToPlaylist(
                 $this->getStringArgument($input, 'id'),
                 $this->getIntOption($input, 'video')
@@ -94,7 +99,7 @@ HELP
                 $this->getIntOption($input, 'video')
             ),
             'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id')),
-            default => $this->failUnknownAction('playlist', $action, ['list', 'show', 'add', 'remove', 'delete']),
+            default => $this->failUnknownAction('playlist', $action, ['list', 'show', 'create', 'add', 'remove', 'delete']),
         };
     }
 
@@ -389,6 +394,167 @@ HELP
         ];
     }
 
+    private function createPlaylist(InputInterface $input): int
+    {
+        $title = $this->getStringOption($input, 'title') ?? $this->getStringArgument($input, 'id');
+        if ($title === null || trim($title) === '') {
+            $this->io()->error('Playlist title is required');
+            $this->io()->text('Usage: kvs content:playlist create "Playlist Title" --user=<user_id>');
+            return self::FAILURE;
+        }
+        $title = trim($title);
+
+        $userId = $this->getIntOption($input, 'user');
+        if ($userId === null || $userId <= 0) {
+            $this->io()->error('User ID is required (use --user=<id>)');
+            return self::FAILURE;
+        }
+
+        if ($input->getOption('public') === true && $input->getOption('private') === true) {
+            $this->io()->error('Use either --public or --private, not both');
+            return self::FAILURE;
+        }
+
+        try {
+            $statusId = $this->parseStatusFilter($input, [
+                'active' => StatusFormatter::PLAYLIST_ACTIVE,
+                'disabled' => StatusFormatter::PLAYLIST_DISABLED,
+                'inactive' => StatusFormatter::PLAYLIST_DISABLED,
+            ]) ?? StatusFormatter::PLAYLIST_ACTIVE;
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
+        }
+
+        $isPrivate = $input->getOption('private') === true ? 1 : 0;
+        if ($isPrivate === 1) {
+            $statusId = StatusFormatter::PLAYLIST_ACTIVE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            if (!$this->userExists($db, $userId)) {
+                $this->io()->error("User not found: $userId");
+                return self::FAILURE;
+            }
+
+            $requestedDir = $this->getStringOption($input, 'dir');
+            $dir = $this->getUniquePlaylistDir($db, $requestedDir ?? $this->slugifyDirectory($title));
+            $description = $this->getStringOption($input, 'description') ?? '';
+            $now = date('Y-m-d H:i:s');
+
+            $restoreSqlMode = $this->relaxSqlMode($db);
+            $db->beginTransaction();
+            try {
+                $stmt = $db->prepare("
+                    INSERT INTO {$this->table('playlists')}
+                        (user_id, title, dir, description, status_id, is_private, is_locked,
+                         rating, rating_amount, added_date, last_content_date)
+                    VALUES
+                        (:user_id, :title, :dir, :description, :status_id, :is_private, 0,
+                         0, 1, :added_date, :last_content_date)
+                ");
+                $stmt->execute([
+                    'user_id' => $userId,
+                    'title' => $title,
+                    'dir' => $dir,
+                    'description' => $description,
+                    'status_id' => $statusId,
+                    'is_private' => $isPrivate,
+                    'added_date' => $now,
+                    'last_content_date' => $now,
+                ]);
+
+                $playlistId = (string) $db->lastInsertId();
+                $db->commit();
+            } catch (\Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                throw $e;
+            } finally {
+                $this->restoreSqlMode($db, $restoreSqlMode);
+            }
+
+            $this->io()->success("Playlist created successfully with ID: $playlistId");
+            $this->renderTable(
+                ['Property', 'Value'],
+                [
+                    ['ID', $playlistId],
+                    ['Title', $title],
+                    ['User ID', (string) $userId],
+                    ['Directory', $dir],
+                    ['Type', $isPrivate === 1 ? 'Private' : 'Public'],
+                    ['Status', StatusFormatter::playlist($statusId, false)],
+                ]
+            );
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to create playlist: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    private function userExists(\PDO $db, int $userId): bool
+    {
+        $stmt = $db->prepare("SELECT 1 FROM {$this->table('users')} WHERE user_id = :id");
+        $stmt->execute(['id' => $userId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    private function getUniquePlaylistDir(\PDO $db, string $baseDir): string
+    {
+        $baseDir = trim($baseDir);
+        if ($baseDir === '') {
+            $baseDir = 'playlist';
+        }
+
+        for ($i = 1; $i < 999999; $i++) {
+            $dir = $i === 1 ? $baseDir : $baseDir . $i;
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('playlists')} WHERE dir = :dir");
+            $stmt->execute(['dir' => $dir]);
+            if ((int) $stmt->fetchColumn() === 0) {
+                return $dir;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique playlist directory');
+    }
+
+    private function slugifyDirectory(string $title): string
+    {
+        $dir = preg_replace('/[^a-z0-9]+/', '-', strtolower($title));
+
+        return trim((string) $dir, '-');
+    }
+
+    private function relaxSqlMode(\PDO $db): bool
+    {
+        if ($db->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+            return false;
+        }
+
+        $db->exec("SET @kvs_cli_old_sql_mode = @@sql_mode, sql_mode = ''");
+        return true;
+    }
+
+    private function restoreSqlMode(\PDO $db, bool $restore): void
+    {
+        if (!$restore) {
+            return;
+        }
+
+        try {
+            $db->exec('SET sql_mode = @kvs_cli_old_sql_mode');
+        } catch (\Exception) {
+        }
+    }
+
     private function videoExists(\PDO $db, int $videoId): bool
     {
         $stmt = $db->prepare("SELECT 1 FROM {$this->table('videos')} WHERE video_id = :id");
@@ -672,6 +838,7 @@ HELP
         $this->io()->listing([
             'list : List playlists',
             'show <id> : Show playlist details',
+            'create <title> --user=<user_id> : Create a playlist',
             'add <id> --video=<video_id> : Add a video to a playlist',
             'remove <id> --video=<video_id> : Remove a video from a playlist',
             'delete <id> : Delete a playlist',
