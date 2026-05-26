@@ -5,46 +5,35 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 class UserCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private UserCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
-    private string $dbName;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new UserCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        // Setup test database connection using TestHelper
-        try {
-            $this->db = TestHelper::getPDO();
-            $dbConfig = TestHelper::getDbConfig();
-            $this->dbName = $dbConfig['database'];
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testUserListBasic(): void
@@ -57,40 +46,28 @@ class UserCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('User id', $output);
         $this->assertStringContainsString('Username', $output);
+        $this->assertStringContainsString('alice', $output);
+        $this->assertStringContainsString('remove_me', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testUserListWithRemovalRequested(): void
     {
-        $usersTable = TestHelper::table('users');
+        $this->tester->execute([
+            'action' => 'list',
+            '--removal-requested' => true,
+            '--format' => 'json',
+            '--fields' => 'user_id,username,email,removal_reason',
+            '--limit' => 10
+        ]);
 
-        // Create a test user with removal request
-        $this->db->exec("SET SESSION sql_mode = ''");
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
-        try {
-            $this->db->exec("
-                INSERT INTO {$usersTable} (
-                    username, pass, display_name, email, status_id,
-                    is_removal_requested, removal_reason, added_date
-                ) VALUES (
-                    'test_removal_user', 'test_hash', 'Test Removal', 'test_removal@test.com', 2,
-                    1, 'I want to delete my account', NOW()
-                )
-                ON DUPLICATE KEY UPDATE is_removal_requested=1, removal_reason='I want to delete my account'
-            ");
-
-            $this->tester->execute([
-                'action' => 'list',
-                '--removal-requested' => true,
-                '--limit' => 10
-            ]);
-
-            $output = $this->tester->getDisplay();
-            $this->assertStringContainsString('Removal reason', $output);
-            $this->assertEquals(0, $this->tester->getStatusCode());
-        } finally {
-            $this->db->exec("DELETE FROM {$usersTable} WHERE username='test_removal_user'");
-        }
+        $this->assertCount(1, $rows);
+        $this->assertSame(2, (int) $rows[0]['user_id']);
+        $this->assertSame('remove_me', $rows[0]['username']);
+        $this->assertSame('Delete my account', $rows[0]['removal_reason']);
+        $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testUserListFormats(): void
@@ -105,6 +82,10 @@ class UserCommandTest extends TestCase
 
         $output = $testerJson->getDisplay();
         $this->assertJson($output);
+        $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertCount(1, $jsonRows);
+        $this->assertSame(1, (int) $jsonRows[0]['user_id']);
+        $this->assertSame('alice', $jsonRows[0]['username']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format - CSV writes to php://output so we capture it with ob_start
@@ -118,6 +99,7 @@ class UserCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('user_id', $csvOutput);
+        $this->assertStringContainsString('alice', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format
@@ -128,72 +110,46 @@ class UserCommandTest extends TestCase
         ]);
 
         $output = trim($testerCount->getDisplay());
-        $this->assertMatchesRegularExpression('/^\d+$/', $output);
+        $this->assertSame('3', $output);
         $this->assertEquals(0, $testerCount->getStatusCode());
     }
 
     public function testUserShow(): void
     {
-        // Get first user ID
-        $stmt = $this->db->query('SELECT user_id FROM ' . TestHelper::table('users') . ' LIMIT 1');
-        $userId = $stmt->fetchColumn();
-
-        if (!$userId) {
-            $this->markTestSkipped('No users in database');
-        }
-
         $this->tester->execute([
             'action' => 'show',
-            'id' => $userId
+            'id' => '1'
         ]);
 
         $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('User: alice', $output);
         $this->assertStringContainsString('User ID', $output);
         $this->assertStringContainsString('Username', $output);
+        $this->assertStringContainsString('alice@example.com', $output);
+        $this->assertStringContainsString('Content Statistics', $output);
+        $this->assertMatchesRegularExpression('/Videos Uploaded\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Albums Created\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Comments Posted\W+3/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
-    public function testRemovalRequestedRequiresColumns(): void
+    public function testTrustedFilterReturnsOnlyTrustedUsers(): void
     {
-        $usersTable = TestHelper::table('users');
-
-        // Verify that is_removal_requested column exists
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*) FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = :schema
-            AND TABLE_NAME = :table
-            AND COLUMN_NAME = :column
-        ");
-        $stmt->execute([
-            'schema' => $this->dbName,
-            'table' => $usersTable,
-            'column' => 'is_removal_requested',
+        $this->tester->execute([
+            'action' => 'list',
+            '--trusted' => true,
+            '--format' => 'json',
+            '--fields' => 'user_id,username,is_trusted',
+            '--limit' => 10
         ]);
 
-        $hasRemovalRequestedColumn = (int) $stmt->fetchColumn() > 0;
-        $this->assertTrue(
-            $hasRemovalRequestedColumn,
-            "Column 'is_removal_requested' does not exist in {$usersTable} table."
-        );
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
-        // Verify removal_reason column
-        $stmt = $this->db->prepare("
-            SELECT COUNT(*) FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = :schema
-            AND TABLE_NAME = :table
-            AND COLUMN_NAME = :column
-        ");
-        $stmt->execute([
-            'schema' => $this->dbName,
-            'table' => $usersTable,
-            'column' => 'removal_reason',
-        ]);
-
-        $hasRemovalReasonColumn = (int) $stmt->fetchColumn() > 0;
-        $this->assertTrue(
-            $hasRemovalReasonColumn,
-            "Column 'removal_reason' does not exist in {$usersTable} table."
-        );
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['user_id']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame(1, (int) $rows[0]['is_trusted']);
+        $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testCommandMetadata(): void
@@ -203,5 +159,61 @@ class UserCommandTest extends TestCase
 
         $aliases = $this->command->getAliases();
         $this->assertContains('user', $aliases);
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('users') . ' (' .
+            'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, ' .
+            'gender_id INTEGER, country_id TEXT, birth_date TEXT, ip TEXT, added_date TEXT, last_login_date TEXT, ' .
+            'profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, tokens_available INTEGER, ' .
+            'tokens_required INTEGER, total_videos_count INTEGER, total_albums_count INTEGER, is_trusted INTEGER, ' .
+            'is_removal_requested INTEGER, removal_reason TEXT)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('videos') . ' (user_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('albums') . ' (user_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('comments') . ' (user_id INTEGER)');
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('users') .
+            " (user_id, username, display_name, email, status_id, gender_id, country_id, birth_date, ip, " .
+            "added_date, last_login_date, profile_viewed, logins_count, activity, tokens_available, tokens_required, " .
+            "total_videos_count, total_albums_count, is_trusted, is_removal_requested, removal_reason) VALUES " .
+            "(1, 'alice', 'Alice Example', 'alice@example.com', 2, 2, 'CA', '1990-01-02', '127.0.0.1', " .
+            "'2026-05-26 10:00:00', '2026-05-26 11:00:00', 1000, 4, 42, 50, 10, 2, 1, 1, 0, ''), " .
+            "(2, 'remove_me', 'Remove Me', 'remove@example.com', 0, 0, '', '0000-00-00', '', " .
+            "'2026-05-25 10:00:00', '0000-00-00 00:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 1, 'Delete my account'), " .
+            "(3, 'premium', 'Premium User', 'premium@example.com', 3, 1, 'US', '1985-03-04', '127.0.0.2', " .
+            "'2026-05-24 10:00:00', '2026-05-24 12:00:00', 50, 2, 10, 100, 0, 0, 0, 0, 0, '')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (1), (1), (2)');
+        $db->exec('INSERT INTO ' . TestHelper::table('albums') . ' VALUES (1)');
+        $db->exec('INSERT INTO ' . TestHelper::table('comments') . ' VALUES (1), (1), (1), (2)');
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): UserCommand
+    {
+        return new class ($this->config, $db) extends UserCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:user');
+                $this->setDescription('Manage KVS users');
+                $this->setAliases(['user', 'users', 'member', 'members']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
