@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\CacheCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -96,6 +97,41 @@ class CacheCommandTest extends TestCase
         $this->assertStringContainsString('Invalid value for --type', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertFileExists($this->tempDir . '/admin/data/engine/cache_test.dat');
+    }
+
+    public function testCacheClearDbWarnsWhenNoDatabaseCacheTablesFound(): void
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        $command = new class ($this->config, $db) extends CacheCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function databaseCacheTableExists(PDO $db, string $table): bool
+            {
+                return false;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->execute([
+            '--clear' => true,
+            '--type' => 'db',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('No database cache tables found', $output);
+        $this->assertStringContainsString('ktvs_stats_cache', $output);
+        $this->assertStringContainsString('ktvs_admin_system_cache', $output);
     }
 
     public function testCacheStats(): void

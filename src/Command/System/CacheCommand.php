@@ -119,17 +119,40 @@ HELP
                 $this->table('admin_system_cache'),
             ];
 
+            $clearedTables = [];
             foreach ($tables as $table) {
-                // Check if table exists first (TRUNCATE doesn't support IF EXISTS)
-                $result = $db->query("SHOW TABLES LIKE '$table'");
-                if ($result !== false && $result->rowCount() > 0) {
-                    $db->exec("TRUNCATE TABLE $table");
+                if ($this->databaseCacheTableExists($db, $table)) {
+                    $this->truncateDatabaseCacheTable($db, $table);
+                    $clearedTables[] = $table;
                     $this->io()->info("Cleared database cache table: $table");
                 }
+            }
+
+            if ($clearedTables === []) {
+                $this->io()->warning(
+                    'No database cache tables found (' . implode(', ', $tables) . '). '
+                    . 'KVS may use Memcached or Dragonfly instead.'
+                );
             }
         } catch (\Exception $e) {
             $this->io()->warning('Could not clear database cache: ' . $e->getMessage());
         }
+    }
+
+    protected function databaseCacheTableExists(\PDO $db, string $table): bool
+    {
+        $quotedTable = $db->quote($table);
+        if ($quotedTable === false) {
+            $quotedTable = "'" . str_replace("'", "''", $table) . "'";
+        }
+
+        $result = $db->query("SHOW TABLES LIKE $quotedTable");
+        return $result !== false && $result->rowCount() > 0;
+    }
+
+    protected function truncateDatabaseCacheTable(\PDO $db, string $table): void
+    {
+        $db->exec("TRUNCATE TABLE $table");
     }
 
     private function showStats(): int
