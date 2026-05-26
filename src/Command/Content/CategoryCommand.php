@@ -155,6 +155,7 @@ HELP
             }
 
             $usageSelectors = $this->getCategoryUsageSelectors();
+            $usageJoins = $this->getCategoryUsageJoins();
             if ($this->getBoolOption($input, 'unused')) {
                 $conditions[] = $this->getCategoryTotalUsageCondition() . ' = 0';
             }
@@ -166,6 +167,7 @@ HELP
                 SELECT c.*,
                        {$usageSelectors}
                 FROM {$this->table('categories')} c
+                {$usageJoins}
                 $whereClause
                 ORDER BY c.title
                 LIMIT :limit
@@ -491,17 +493,52 @@ HELP
 
     private function getCategoryUsageSelectors(): string
     {
-        return $this->getRelationUsageSelectors('categories', 'c', 'category_id', self::CATEGORY_RELATION_TABLES);
+        $selectors = [];
+        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
+            $selectors[] = sprintf(
+                'COALESCE(%s.usage_count, 0) as %s',
+                $this->getCategoryUsageJoinAlias($suffix),
+                $this->getRelationUsageAlias($suffix)
+            );
+        }
+
+        return implode(",\n                       ", $selectors);
+    }
+
+    private function getCategoryUsageJoins(): string
+    {
+        $joins = [];
+        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
+            $table = $this->table('categories') . '_' . $suffix;
+            $alias = $this->getCategoryUsageJoinAlias($suffix);
+            $joins[] = sprintf(
+                'LEFT JOIN (SELECT category_id, COUNT(*) as usage_count FROM %s GROUP BY category_id) %s ' .
+                'ON %s.category_id = c.category_id',
+                $table,
+                $alias,
+                $alias
+            );
+        }
+
+        return implode("\n                ", $joins);
     }
 
     private function getCategoryTotalUsageCondition(): string
     {
-        return $this->getRelationTotalUsageSubqueryExpression(
-            'categories',
-            'c',
-            'category_id',
-            self::CATEGORY_RELATION_TABLES
-        );
+        $expressions = [];
+        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
+            $expressions[] = sprintf(
+                'COALESCE(%s.usage_count, 0)',
+                $this->getCategoryUsageJoinAlias($suffix)
+            );
+        }
+
+        return implode(' + ', $expressions);
+    }
+
+    private function getCategoryUsageJoinAlias(string $suffix): string
+    {
+        return 'category_' . $suffix . '_usage';
     }
 
     /**
