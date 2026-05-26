@@ -61,7 +61,7 @@ pre-commit:
       name: PHPStan
       glob: "*.php"
       # Intentionally runs on the full project (no {staged_files}) for accurate cross-file analysis
-      run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+      run: ./vendor/bin/phpstan clear-result-cache && ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
     composer-validate:
       name: Composer Validate
@@ -89,7 +89,7 @@ pre-push:
       name: PHPStan
       env:
         XDEBUG_MODE: "off"
-      run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+      run: ./vendor/bin/phpstan clear-result-cache && ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
     phpunit:
       name: PHPUnit
