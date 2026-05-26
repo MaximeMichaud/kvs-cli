@@ -4,6 +4,9 @@ namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Migrate\ImportCommand;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -113,5 +116,72 @@ class ImportCommandTest extends TestCase
         $this->assertStringContainsString('migrate:package', $help);
         $this->assertStringContainsString('migrate:import', $help);
         $this->assertStringContainsString('SSL options', $help);
+    }
+
+    public function testDatabaseImportStreamsDecompressedSqlToDocker(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-import-stream-');
+        $extractDir = $rootDir . '/extract';
+        $targetDir = $rootDir . '/target';
+        $toolsDir = $rootDir . '/tools';
+        mkdir($extractDir, 0755, true);
+        mkdir($targetDir . '/docker', 0755, true);
+        mkdir($toolsDir, 0755, true);
+
+        file_put_contents($extractDir . '/database.sql.zst', 'compressed');
+        file_put_contents($targetDir . '/docker/.env', "MARIADB_DATABASE=example_db\n");
+        $capturedSql = $rootDir . '/captured.sql';
+
+        file_put_contents(
+            $toolsDir . '/zstd',
+            <<<'SH'
+#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+printf 'CREATE TABLE streamed(id int);\nINSERT INTO streamed VALUES (1);\n' > "$out"
+SH
+        );
+        chmod($toolsDir . '/zstd', 0755);
+
+        file_put_contents(
+            $toolsDir . '/docker',
+            '#!/bin/sh' . "\n"
+            . 'if [ "$1" = "exec" ] && [ "$2" = "-i" ]; then' . "\n"
+            . '  cat > ' . escapeshellarg($capturedSql) . "\n"
+            . "  exit 0\n"
+            . "fi\n"
+            . "exit 0\n"
+        );
+        chmod($toolsDir . '/docker', 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new ImportCommand();
+            $ioProperty = new \ReflectionProperty($command, 'io');
+            $ioProperty->setValue($command, new SymfonyStyle(new ArrayInput([]), new BufferedOutput()));
+
+            $method = new \ReflectionMethod($command, 'importDatabase');
+            $result = $method->invoke($command, $extractDir, $targetDir, 'example.com');
+
+            $this->assertTrue($result);
+            $this->assertFileExists($capturedSql);
+            $this->assertStringContainsString('CREATE TABLE streamed', (string) file_get_contents($capturedSql));
+            $this->assertFileDoesNotExist($extractDir . '/database.sql');
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            TestHelper::removeDir($rootDir);
+        }
     }
 }

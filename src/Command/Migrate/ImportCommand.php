@@ -599,23 +599,26 @@ EOT
             return false;
         }
 
-        // Step 2: Import via docker exec with stdin
-        $sqlContent = file_get_contents($tempSql);
-        if ($sqlContent === false) {
+        $sqlHandle = fopen($tempSql, 'rb');
+        if ($sqlHandle === false) {
             $this->io()->error('Failed to read decompressed database');
             unlink($tempSql);
             return false;
         }
 
-        $process = new Process([
-            'docker', 'exec', '-i', $mariadbContainer,
-            'mariadb', '-u', 'root', $database
-        ]);
-        $process->setInput($sqlContent);
-        $process->setTimeout(3600);
-        $process->run();
+        try {
+            $process = new Process([
+                'docker', 'exec', '-i', $mariadbContainer,
+                'mariadb', '-u', 'root', $database
+            ]);
+            $process->setInput($sqlHandle);
+            $process->setTimeout(3600);
+            $process->run();
+        } finally {
+            fclose($sqlHandle);
+            unlink($tempSql);
+        }
 
-        unlink($tempSql); // Cleanup temp file
 
         if (!$process->isSuccessful()) {
             $this->io()->error('Database import failed: ' . $process->getErrorOutput());
