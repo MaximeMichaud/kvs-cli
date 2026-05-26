@@ -68,7 +68,12 @@ HELP
             )
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|create|delete|stats)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'User ID or username')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|premium)')
+            ->addOption(
+                'status',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Filter by status (active|disabled|premium|not-confirmed|unconfirmed|anonymous|generated|webmaster|0-6)'
+            )
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in usernames and emails')
             ->addOption('removal-requested', null, InputOption::VALUE_NONE, 'Filter users who requested account deletion')

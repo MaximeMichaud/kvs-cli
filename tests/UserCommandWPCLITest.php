@@ -55,6 +55,17 @@ class UserCommandWPCLITest extends TestCase
         $this->assertEquals('Comma-separated list of fields to display', $option->getDescription());
     }
 
+    public function testCommandDocumentsAllStatusFilters(): void
+    {
+        $definition = $this->command->getDefinition();
+        $this->assertTrue($definition->hasOption('status'));
+
+        $description = $definition->getOption('status')->getDescription();
+        foreach (['active', 'disabled', 'premium', 'not-confirmed', 'unconfirmed', 'anonymous', 'generated', 'webmaster', '0-6'] as $status) {
+            $this->assertStringContainsString($status, $description);
+        }
+    }
+
     public function testCommandHasFieldOption(): void
     {
         $definition = $this->command->getDefinition();
