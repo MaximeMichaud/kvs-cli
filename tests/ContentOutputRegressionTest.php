@@ -39,19 +39,19 @@ class ContentOutputRegressionTest extends TestCase
             'CREATE TABLE ktvs_videos (' .
             'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, ' .
             'video_viewed INTEGER, rating_amount INTEGER, rating REAL, resolution_type INTEGER, ' .
-            'file_size INTEGER, favourites_count INTEGER)'
+            'duration INTEGER, file_size INTEGER, favourites_count INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
-            "(20, 1, 1, 'Daily news', '2024-01-02 00:00:00', 15, 4, 16, 2, 5050, 7)"
+            "(20, 1, 1, 'Daily news', '2024-01-02 00:00:00', 15, 4, 16, 2, 90, 5050, 7)"
         );
 
         $tester = new CommandTester($this->createVideoCommand($db));
         $tester->execute([
             'action' => 'list',
-            '--fields' => 'id,title,filesize,resolution,favourites',
+            '--fields' => 'id,title,filesize,duration,rating,resolution,favourites',
             '--format' => 'json',
             '--limit' => '1',
         ]);
@@ -60,7 +60,9 @@ class ContentOutputRegressionTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame(20, (int) $rows[0]['id']);
-        $this->assertSame('5050', (string) $rows[0]['filesize']);
+        $this->assertSame('4.93 KB', $rows[0]['filesize']);
+        $this->assertSame('1:30', $rows[0]['duration']);
+        $this->assertSame('4.0/5 (4 votes)', $rows[0]['rating']);
         $this->assertSame('FHD', $rows[0]['resolution']);
         $this->assertSame(7, (int) $rows[0]['favourites']);
     }
@@ -211,7 +213,7 @@ class ContentOutputRegressionTest extends TestCase
         $statsOutput = $statsTester->getDisplay();
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertSame(5.0, (float) $rows[0]['rating']);
+        $this->assertSame('5.0/5 (5 votes)', $rows[0]['rating']);
         $this->assertSame(0, $statsTester->getStatusCode());
         $this->assertStringContainsString('5.0/5', $statsOutput);
         $this->assertStringNotContainsString('14.0/5', $statsOutput);

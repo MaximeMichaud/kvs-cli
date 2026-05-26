@@ -167,7 +167,18 @@ HELP
                     : 0;
                 $video['resolution'] = $this->formatResolutionType($resolutionType, false);
 
-                $video['rating'] = calculate_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
+                if (array_key_exists('duration', $video)) {
+                    $durationVal = $video['duration'];
+                    $video['duration'] = $this->formatDuration(is_numeric($durationVal) ? (int) $durationVal : null);
+                }
+
+                if (array_key_exists('file_size', $video)) {
+                    $fileSizeVal = $video['file_size'];
+                    $fileSize = is_numeric($fileSizeVal) ? (int) $fileSizeVal : 0;
+                    $video['filesize'] = format_bytes($fileSize);
+                }
+
+                $video['rating'] = format_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
                 return $video;
             }, $videos);
