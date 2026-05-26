@@ -84,11 +84,36 @@ class BackupCommand extends BaseCommand
         }
 
         if (!$success) {
+            if ($type === 'full') {
+                $this->cleanupPartialBackupFiles($outputDir, $backupName);
+            }
             return self::FAILURE;
         }
 
         $this->io()->success("Backup created: $outputDir/$backupName");
         return self::SUCCESS;
+    }
+
+    private function cleanupPartialBackupFiles(string $outputDir, string $backupName): void
+    {
+        $partialFiles = [
+            "$outputDir/{$backupName}_db.sql",
+            "$outputDir/{$backupName}_db.sql.gz",
+            "$outputDir/{$backupName}_files.tar.gz",
+            "$outputDir/{$backupName}_full.tar",
+            "$outputDir/{$backupName}_full.tar.gz",
+        ];
+
+        $removed = [];
+        foreach ($partialFiles as $file) {
+            if (is_file($file) && unlink($file)) {
+                $removed[] = basename($file);
+            }
+        }
+
+        if ($removed !== []) {
+            $this->io()->info('Removed partial backup files: ' . implode(', ', $removed));
+        }
     }
 
     private function createDatabaseBackup(string $outputDir, string $backupName): bool

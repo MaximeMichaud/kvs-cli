@@ -199,6 +199,57 @@ SH
         }
     }
 
+    public function testFullBackupCleansPartialFilesWhenFilesStepFails(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents(
+            $mysqldump,
+            <<<'SH'
+#!/bin/sh
+echo 'SQL dump'
+SH
+        );
+        chmod($mysqldump, 0755);
+
+        $tar = $toolsDir . '/tar';
+        file_put_contents(
+            $tar,
+            <<<'SH'
+#!/bin/sh
+echo 'fatal tar failure' >&2
+exit 2
+SH
+        );
+        chmod($tar, 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'full',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Files backup failed', $output);
+            $this->assertStringContainsString('Removed partial backup files', $output);
+            $this->assertSame([], glob($this->tempDir . '/backups/*_db.sql.gz') ?: []);
+            $this->assertSame([], glob($this->tempDir . '/backups/*_files.tar.gz') ?: []);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testBackupList(): void
     {
         // BackupCommand looks in dirname(kvsPath)/backups
