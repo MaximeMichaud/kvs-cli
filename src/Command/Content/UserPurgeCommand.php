@@ -71,7 +71,10 @@ HELP
         $minAge = $this->getIntOption($input, 'min-age');
         $confirm = $this->getBoolOption($input, 'confirm');
         $yes = $this->getBoolOption($input, 'yes');
-        $limit = $this->getIntOptionOrDefault($input, 'limit', 1000);
+        $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 1000);
+        if ($limit === null) {
+            return self::FAILURE;
+        }
 
         // Require at least one filter
         if (!$removalRequested && !$noContent && $inactiveDays === null && $minAge === null) {

@@ -136,7 +136,10 @@ HELP
 
             // Build query
             $whereClause = implode(' AND ', $conditions);
-            $limit = $this->getIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
+            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
+            if ($limit === null) {
+                return self::FAILURE;
+            }
 
             $usageSelectors = $this->getTagUsageSelectors();
             $totalUsageCondition = $this->getTagTotalUsageCondition();

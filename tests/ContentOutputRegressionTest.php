@@ -173,6 +173,25 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('2', trim($countTester->getDisplay()));
     }
 
+    public function testVideoListRejectsInvalidLimit(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, video_viewed INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--limit' => 'abc',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --limit', $tester->getDisplay());
+    }
+
     public function testVideoStatsFlagShowsStatsWithoutAction(): void
     {
         $db = $this->createSqliteConnection();
