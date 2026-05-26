@@ -2,48 +2,36 @@
 
 namespace KVS\CLI\Tests;
 
+use KVS\CLI\Command\Content\CommentCommand;
+use KVS\CLI\Config\Configuration;
+use PDO;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use KVS\CLI\Command\Content\CommentCommand;
-use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Console\Application;
 
 #[CoversClass(CommentCommand::class)]
 class CommentCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private CommentCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new CommentCommand($this->config);
-
-        $app = new Application();
-        $app->add($this->command);
-
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testHelpDocumentation(): void
@@ -58,176 +46,213 @@ class CommentCommandTest extends TestCase
         $this->tester->execute(['action' => 'list']);
 
         $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Great test video', $output);
+        $this->assertStringContainsString('Needs review test phrase', $output);
+        $this->assertStringContainsString('Album feedback', $output);
     }
 
     public function testListCommentsWithLimit(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--limit' => 5
+            '--limit' => 2,
         ]);
 
         $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Great test video', $output);
+        $this->assertStringContainsString('Needs review test phrase', $output);
+        $this->assertStringNotContainsString('Album feedback', $output);
     }
 
     public function testListCommentsApproved(): void
     {
-        // Check if is_approved column exists
-        $table = $this->config->getTablePrefix() . 'comments';
-        $stmt = $this->db->query("SHOW COLUMNS FROM {$table} LIKE 'is_approved'");
-        if ($stmt->rowCount() === 0) {
-            $this->markTestSkipped('is_approved column does not exist in this KVS version');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            '--approved' => true
+            '--approved' => true,
+            '--format' => 'json',
+            '--fields' => 'comment_id,comment',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+        $this->assertSame(['Great test video', 'Album feedback'], array_column($rows, 'comment'));
     }
 
     public function testListCommentsPending(): void
     {
-        // Check if is_approved column exists
-        $table = $this->config->getTablePrefix() . 'comments';
-        $stmt = $this->db->query("SHOW COLUMNS FROM {$table} LIKE 'is_approved'");
-        if ($stmt->rowCount() === 0) {
-            $this->markTestSkipped('is_approved column does not exist in this KVS version');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            '--pending' => true
+            '--pending' => true,
+            '--format' => 'json',
+            '--fields' => 'comment_id,comment',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['comment_id']);
+        $this->assertSame('Needs review test phrase', $rows[0]['comment']);
     }
 
     public function testListCommentsOldest(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--oldest' => true
+            '--oldest' => true,
+            '--format' => 'json',
+            '--fields' => 'comment_id',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame([10, 20, 30], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
     }
 
     public function testListCommentsFilterByVideo(): void
     {
-        // Get a video ID that has comments
-        $table = $this->config->getTablePrefix() . 'comments';
-        $stmt = $this->db->query("SELECT object_id FROM {$table} WHERE object_type_id = 1 LIMIT 1");
-        $videoId = $stmt->fetchColumn();
-
-        if ($videoId === false) {
-            $this->markTestSkipped('No video comments in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            '--video' => $videoId
+            '--video' => 100,
+            '--format' => 'json',
+            '--fields' => 'comment_id,content_title',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame([30, 20], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+        $this->assertSame(['Intro Video', 'Intro Video'], array_column($rows, 'content_title'));
     }
 
     public function testListCommentsFilterByUser(): void
     {
-        // Get a user ID that has comments
-        $table = $this->config->getTablePrefix() . 'comments';
-        $stmt = $this->db->query("SELECT user_id FROM {$table} WHERE user_id IS NOT NULL LIMIT 1");
-        $userId = $stmt->fetchColumn();
-
-        if ($userId === false) {
-            $this->markTestSkipped('No user comments in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
-            '--user' => $userId
+            '--user' => 1,
+            '--format' => 'json',
+            '--fields' => 'comment_id,user',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['comment_id']);
+        $this->assertSame('alice', $rows[0]['user']);
     }
 
     public function testListCommentsSearch(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--search' => 'test'
+            '--search' => 'review',
+            '--format' => 'json',
+            '--fields' => 'comment_id,comment',
         ]);
 
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['comment_id']);
+        $this->assertSame('Needs review test phrase', $rows[0]['comment']);
     }
 
     #[DataProvider('provideOutputFormats')]
-    public function testListCommentsFormats(string $format, string $contains): void
+    public function testListCommentsFormats(string $format): void
     {
         $this->tester->execute([
             'action' => 'list',
             '--format' => $format,
-            '--limit' => 3
+            '--limit' => 3,
         ]);
 
-        $output = $this->tester->getDisplay();
+        $output = trim($this->tester->getDisplay());
+
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString($contains, $output);
+
+        if ($format === 'table') {
+            $this->assertStringContainsString('Comment id', $output);
+            $this->assertStringContainsString('Great test video', $output);
+            return;
+        }
+
+        if ($format === 'json') {
+            $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertCount(3, $rows);
+            $this->assertSame(30, (int) $rows[0]['comment_id']);
+            return;
+        }
+
+        if ($format === 'count') {
+            $this->assertSame('3', $output);
+            return;
+        }
+
+        $this->assertSame('30 20 10', $output);
     }
 
     public static function provideOutputFormats(): array
     {
         return [
-            'table format' => ['table', 'Comment id'],
-            'json format' => ['json', 'comment_id'],
+            'table format' => ['table'],
+            'json format' => ['json'],
+            'count format' => ['count'],
+            'ids format' => ['ids'],
         ];
     }
 
     public function testShowComment(): void
     {
-        // Get a comment ID
-        $table = $this->config->getTablePrefix() . 'comments';
-        $stmt = $this->db->query("SELECT comment_id FROM {$table} LIMIT 1");
-        $commentId = $stmt->fetchColumn();
-
-        if ($commentId === false) {
-            $this->markTestSkipped('No comments in database');
-        }
-
         $this->tester->execute([
             'action' => 'show',
-            'id' => $commentId
+            'id' => '30',
         ]);
 
         $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Comment #' . $commentId, $output);
+        $this->assertStringContainsString('Comment #30', $output);
+        $this->assertStringContainsString('alice', $output);
+        $this->assertStringContainsString('alice@example.test', $output);
+        $this->assertStringContainsString('Approved', $output);
+        $this->assertStringContainsString('Video', $output);
+        $this->assertStringContainsString('Intro Video', $output);
+        $this->assertStringContainsString('Great test video', $output);
     }
 
     public function testShowCommentNotFound(): void
     {
         $this->tester->execute([
             'action' => 'show',
-            'id' => '999999999'
+            'id' => '999999999',
         ]);
 
         $output = $this->tester->getDisplay();
+
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('not found', $output);
+        $this->assertStringContainsString('Comment not found: 999999999', $output);
     }
 
     public function testShowCommentMissingId(): void
     {
         $this->tester->execute([
-            'action' => 'show'
+            'action' => 'show',
         ]);
 
         $output = $this->tester->getDisplay();
+
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('required', $output);
+        $this->assertStringContainsString('Comment ID is required', $output);
+        $this->assertStringContainsString('Usage: kvs content:comment show <comment_id>', $output);
     }
 
     public function testStats(): void
@@ -235,9 +260,34 @@ class CommentCommandTest extends TestCase
         $this->tester->execute(['action' => 'stats']);
 
         $output = $this->tester->getDisplay();
+
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Comment Statistics', $output);
-        $this->assertStringContainsString('Total Comments', $output);
+        $this->assertStringContainsString('Overall Statistics', $output);
+        $this->assertMatchesRegularExpression('/Total Comments\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Unique Commenters\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Video Comments\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Album Comments\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Comments \(Last 7 Days\)\W+3/', $output);
+        $this->assertStringContainsString('Top 10 Commenters', $output);
+        $this->assertStringContainsString('alice', $output);
+        $this->assertStringContainsString('bob', $output);
+        $this->assertStringContainsString('Unknown', $output);
+    }
+
+    public function testPendingActionListsReviewNeededComments(): void
+    {
+        $this->tester->execute([
+            'action' => 'pending',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Pending Comments (1 awaiting moderation)', $output);
+        $this->assertStringContainsString('Needs review test phrase', $output);
+        $this->assertStringContainsString('Use kvs comment approve ID', $output);
+        $this->assertStringNotContainsString('Great test video', $output);
     }
 
     public function testDefaultActionIsList(): void
@@ -245,12 +295,165 @@ class CommentCommandTest extends TestCase
         $this->tester->execute([]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Great test video', $this->tester->getDisplay());
     }
 
-    public function testInvalidActionFallsBackToList(): void
+    public function testInvalidActionReturnsFailure(): void
     {
         $this->tester->execute(['action' => 'invalid']);
 
-        $this->assertEquals(0, $this->tester->getStatusCode());
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown comment action "invalid"', $output);
+        $this->assertStringContainsString('Available actions: list, pending', $output);
+        $this->assertStringContainsString('show, approve, reject, delete, stats', $output);
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $this->createSchema($db);
+        $this->seedDatabase($db);
+
+        return $db;
+    }
+
+    private function createSchema(PDO $db): void
+    {
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
+            'comment_id INTEGER, object_id INTEGER, object_type_id INTEGER, object_sub_id INTEGER, ' .
+            'user_id INTEGER, anonymous_username TEXT, is_approved INTEGER, is_review_needed INTEGER, ' .
+            'comment TEXT, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('users') . ' (' .
+            'user_id INTEGER, username TEXT, email TEXT)'
+        );
+
+        $this->createObjectTable($db, 'videos', 'video_id');
+        $this->createObjectTable($db, 'albums', 'album_id');
+        $this->createObjectTable($db, 'content_sources', 'content_source_id');
+        $this->createObjectTable($db, 'models', 'model_id');
+        $this->createObjectTable($db, 'dvds', 'dvd_id');
+        $this->createObjectTable($db, 'posts', 'post_id');
+        $this->createObjectTable($db, 'playlists', 'playlist_id');
+    }
+
+    private function createObjectTable(PDO $db, string $table, string $idColumn): void
+    {
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table($table) . ' (' .
+            $idColumn . ' INTEGER, title TEXT, comments_count INTEGER)'
+        );
+    }
+
+    private function seedDatabase(PDO $db): void
+    {
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('users') .
+            " (user_id, username, email) VALUES " .
+            "(1, 'alice', 'alice@example.test'), (2, 'bob', 'bob@example.test')"
+        );
+
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            " (video_id, title, comments_count) VALUES (100, 'Intro Video', 2)"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('albums') .
+            " (album_id, title, comments_count) VALUES (200, 'Sample Album', 1)"
+        );
+
+        $objectFixtures = [
+            ['content_sources', 'content_source_id', 300, 'Source Title'],
+            ['models', 'model_id', 400, 'Model Title'],
+            ['dvds', 'dvd_id', 500, 'DVD Title'],
+            ['posts', 'post_id', 600, 'Post Title'],
+            ['playlists', 'playlist_id', 700, 'Playlist Title'],
+        ];
+
+        foreach ($objectFixtures as [$table, $idColumn, $id, $title]) {
+            $stmt = $db->prepare(
+                'INSERT INTO ' . TestHelper::table($table) .
+                " ({$idColumn}, title, comments_count) VALUES (:id, :title, 0)"
+            );
+            $stmt->execute(['id' => $id, 'title' => $title]);
+        }
+
+        $this->insertComment($db, [
+            'comment_id' => 30,
+            'object_id' => 100,
+            'object_type_id' => 1,
+            'object_sub_id' => 0,
+            'user_id' => 1,
+            'anonymous_username' => '',
+            'is_approved' => 1,
+            'is_review_needed' => 0,
+            'comment' => 'Great test video',
+            'added_date' => date('Y-m-d H:i:s', time() - 3600),
+        ]);
+        $this->insertComment($db, [
+            'comment_id' => 20,
+            'object_id' => 100,
+            'object_type_id' => 1,
+            'object_sub_id' => 0,
+            'user_id' => 2,
+            'anonymous_username' => '',
+            'is_approved' => 0,
+            'is_review_needed' => 1,
+            'comment' => 'Needs review test phrase',
+            'added_date' => date('Y-m-d H:i:s', time() - 7200),
+        ]);
+        $this->insertComment($db, [
+            'comment_id' => 10,
+            'object_id' => 200,
+            'object_type_id' => 2,
+            'object_sub_id' => 0,
+            'user_id' => 0,
+            'anonymous_username' => 'GuestUser',
+            'is_approved' => 1,
+            'is_review_needed' => 0,
+            'comment' => 'Album feedback',
+            'added_date' => date('Y-m-d H:i:s', time() - 259200),
+        ]);
+    }
+
+    /**
+     * @param array<string, int|string> $comment
+     */
+    private function insertComment(PDO $db, array $comment): void
+    {
+        $stmt = $db->prepare(
+            'INSERT INTO ' . TestHelper::table('comments') .
+            ' (comment_id, object_id, object_type_id, object_sub_id, user_id, anonymous_username, ' .
+            'is_approved, is_review_needed, comment, added_date) VALUES ' .
+            '(:comment_id, :object_id, :object_type_id, :object_sub_id, :user_id, :anonymous_username, ' .
+            ':is_approved, :is_review_needed, :comment, :added_date)'
+        );
+        $stmt->execute($comment);
+    }
+
+    private function createCommand(PDO $db): CommentCommand
+    {
+        return new class ($this->config, $db) extends CommentCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:comment');
+                $this->setDescription('Manage KVS comments');
+                $this->setAliases(['comment', 'comments']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }

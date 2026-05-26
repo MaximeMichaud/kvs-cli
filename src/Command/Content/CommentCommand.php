@@ -413,11 +413,13 @@ HELP
             $topCommenters = $stmt->fetchAll();
 
             // Recent activity (last 7 days)
-            $stmt = $db->query("
+            $recentCommentsCutoff = date('Y-m-d H:i:s', time() - (Constants::RECENT_DAYS * 86400));
+            $stmt = $db->prepare("
                 SELECT COUNT(*) as recent_comments
                 FROM {$this->table('comments')}
-                WHERE added_date >= DATE_SUB(NOW(), INTERVAL " . Constants::RECENT_DAYS . " DAY)
+                WHERE added_date >= :cutoff
             ");
+            $stmt->execute(['cutoff' => $recentCommentsCutoff]);
             if ($stmt === false) {
                 $this->io()->error('Failed to fetch recent activity statistics');
                 return self::FAILURE;
