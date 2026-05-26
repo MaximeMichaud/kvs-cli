@@ -36,6 +36,10 @@ class DebugCommand extends BaseCommand
             return $this->testDatabase();
         }
 
+        if ($this->getBoolOption($input, 'info')) {
+            return $this->showDebugInfo();
+        }
+
         return $this->showDebugInfo();
     }
 
