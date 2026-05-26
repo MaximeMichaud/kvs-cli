@@ -11,7 +11,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 
-use function KVS\CLI\Utils\calculate_kvs_rating;
 use function KVS\CLI\Utils\format_kvs_rating;
 
 #[AsCommand(
@@ -124,8 +123,6 @@ HELP
 
             // Transform DVDs for display (field aliases)
             $transformedDvds = array_map(function (array $dvd): array {
-                $calculatedRating = calculate_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0);
-
                 $statusIdVal = $dvd['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
@@ -147,7 +144,7 @@ HELP
                     'views' => $dvd['dvd_viewed'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
-                    'rating' => $calculatedRating,
+                    'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
                 ];
             }, $dvds);
 
