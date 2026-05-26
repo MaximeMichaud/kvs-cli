@@ -23,7 +23,7 @@ class FormatsCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|check|available)', 'list')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|check|available)', 'available')
             ->addArgument('video_id', InputArgument::OPTIONAL, 'Video ID')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml', 'table')
@@ -50,7 +50,7 @@ HELP
 
     protected function execute(InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action') ?? 'list';
+        $action = $this->getStringArgument($input, 'action') ?? 'available';
         $videoId = $this->getStringArgument($input, 'video_id');
         if ($videoId === null && ctype_digit($action)) {
             $input->setArgument('video_id', $action);

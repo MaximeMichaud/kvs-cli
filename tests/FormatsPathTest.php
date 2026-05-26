@@ -169,6 +169,21 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('These formats are configured', $output);
     }
 
+    public function testBareCommandShowsAvailableFormats(): void
+    {
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('MP4 480p', $decoded[0]['title']);
+        $this->assertStringNotContainsString('Video ID is required', $output);
+    }
+
     public function testListUsesConfiguredFfprobePath(): void
     {
         $toolsDir = $this->tempDir . '/tools';

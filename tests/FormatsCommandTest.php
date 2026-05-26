@@ -157,15 +157,13 @@ class FormatsCommandTest extends TestCase
         ];
     }
 
-    public function testDefaultActionIsList(): void
+    public function testDefaultActionShowsAvailableFormats(): void
     {
-        $this->tester->execute([
-            'video_id' => '999999999'
-        ]);
+        $this->tester->execute([]);
 
-        // Should behave like list action
         $output = $this->tester->getDisplay();
-        $this->assertNotEquals(0, $this->tester->getStatusCode());
+        $this->assertStringNotContainsString('Video ID is required', $output);
+        $this->assertTrue(in_array($this->tester->getStatusCode(), [0, 1], true));
     }
 
     public function testCommandHasExpectedAliases(): void
