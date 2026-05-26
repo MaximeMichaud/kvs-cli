@@ -98,6 +98,22 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringNotContainsString('EMAIL=admin@test.example.com', $output);
     }
 
+    public function testToDockerDryRunUsesSanitizedMariaDbContainerName(): void
+    {
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('docker exec -i kvs-test-example-com-mariadb', $output);
+        $this->assertStringNotContainsString('docker exec -i kvs-test.example.com-mariadb', $output);
+    }
+
     public function testToDockerDryRunNoContentDoesNotShowContentCopy(): void
     {
         $this->tester->execute([
