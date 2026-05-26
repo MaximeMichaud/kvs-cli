@@ -117,9 +117,8 @@ SH
         $this->tester->execute(['--status' => true]);
 
         $output = $this->tester->getDisplay();
-        // Without status file, shows warning
-        $this->assertStringContainsString('status', strtolower($output));
-        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Database configuration missing', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testCronInvalidTask(): void

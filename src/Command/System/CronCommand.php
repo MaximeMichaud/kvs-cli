@@ -67,36 +67,59 @@ class CronCommand extends BaseCommand
 
     private function showCronStatus(): int
     {
-        $adminPath = $this->config->getAdminPath();
-        $statusFile = $adminPath . '/data/engine/cron_status.dat';
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
 
-        if (file_exists($statusFile)) {
-            $contents = file_get_contents($statusFile);
-            if ($contents !== false) {
-                $status = unserialize($contents);
+        try {
+            $stmt = $db->query("
+                SELECT pid, last_exec_date
+                FROM {$this->multiTable('admin_processes')}
+                ORDER BY pid ASC
+            ");
+            if ($stmt === false) {
+                $this->io()->error('Failed to query cron status');
+                return self::FAILURE;
+            }
+            $processes = $stmt->fetchAll();
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to query cron status: ' . $e->getMessage());
+            return self::FAILURE;
+        }
 
-                if (is_array($status)) {
-                    $rows = [];
-                    foreach ($status as $task => $lastRun) {
-                        if (!is_int($lastRun)) {
-                            continue;
-                        }
-                        $rows[] = [
-                            (string) $task,
-                            date('Y-m-d H:i:s', $lastRun),
-                            $this->getTimeDiff($lastRun),
-                        ];
-                    }
+        if ($processes === []) {
+            $this->io()->warning('No cron status information available');
+            return self::SUCCESS;
+        }
 
-                    $this->renderTable(
-                        ['Task', 'Last Run', 'Time Ago'],
-                        $rows
-                    );
+        $rows = [];
+        foreach ($processes as $process) {
+            if (!is_array($process)) {
+                continue;
+            }
+
+            $pid = $process['pid'] ?? '';
+            $lastExecDate = $process['last_exec_date'] ?? null;
+            $timestamp = null;
+            if (is_string($lastExecDate) && $lastExecDate !== '' && $lastExecDate !== '0000-00-00 00:00:00') {
+                $parsed = strtotime($lastExecDate);
+                if ($parsed !== false && $parsed > 0) {
+                    $timestamp = $parsed;
                 }
             }
-        } else {
-            $this->io()->warning('No cron status information available');
+
+            $rows[] = [
+                is_scalar($pid) ? (string) $pid : '',
+                $timestamp === null ? 'Never' : date('Y-m-d H:i:s', $timestamp),
+                $timestamp === null ? 'Never' : $this->getTimeDiff($timestamp),
+            ];
         }
+
+        $this->renderTable(
+            ['Task', 'Last Run', 'Time Ago'],
+            $rows
+        );
 
         return self::SUCCESS;
     }
