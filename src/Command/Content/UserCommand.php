@@ -389,7 +389,7 @@ HELP
             $stmt->execute([
                 'username' => $username,
                 'email' => $email,
-                'pass' => md5(is_string($password) ? $password : ''),
+                'pass' => $this->generateKvsPasswordHash(is_string($password) ? $password : ''),
                 'display_name' => (is_string($displayName) && $displayName !== '')
                     ? $displayName : $username,
             ]);
@@ -404,6 +404,11 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    protected function generateKvsPasswordHash(string $password): string
+    {
+        return \crypt($password, '$2a$07$aa5f7b4693ccdbdd792f6a998e9ed446$');
     }
 
     private function deleteUser(?string $id): int
