@@ -5,43 +5,35 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 class VideoCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private VideoCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new VideoCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        // Setup test database connection using TestHelper
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testVideoListBasic(): void
@@ -53,27 +45,32 @@ class VideoCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Video id', $output);
+        $this->assertStringContainsString('Featured Clip', $output);
+        $this->assertStringContainsString('Disabled Clip', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
     public function testVideoListWithStatus(): void
     {
-        // Verify we have videos with different statuses
-        $stmt = $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('videos') . ' WHERE status_id = 1');
-        $activeCount = $stmt->fetchColumn();
-
-        if ($activeCount == 0) {
-            $this->markTestSkipped('No active videos in database');
-        }
-
         $this->tester->execute([
             'action' => 'list',
             '--status' => 1,
-            '--limit' => 5
+            '--format' => 'json',
+            '--fields' => 'video_id,title,status,views,username,duration,filesize,rating',
+            '--limit' => 5,
         ]);
 
-        $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Video id', $output);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame([10, 30], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Featured Clip', $rows[0]['title']);
+        $this->assertSame('Active', $rows[0]['status']);
+        $this->assertSame(123, (int) $rows[0]['views']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame('2:05', $rows[0]['duration']);
+        $this->assertSame('1.00 MB', $rows[0]['filesize']);
+        $this->assertSame('4.0/5 (10 votes)', $rows[0]['rating']);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -89,6 +86,10 @@ class VideoCommandTest extends TestCase
 
         $output = $testerJson->getDisplay();
         $this->assertJson($output);
+        $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertCount(1, $jsonRows);
+        $this->assertSame(10, (int) $jsonRows[0]['video_id']);
+        $this->assertSame('Featured Clip', $jsonRows[0]['title']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format
@@ -102,6 +103,7 @@ class VideoCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('video_id', $csvOutput);
+        $this->assertStringContainsString('Featured Clip', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format
@@ -112,28 +114,26 @@ class VideoCommandTest extends TestCase
         ]);
 
         $output = trim($testerCount->getDisplay());
-        $this->assertMatchesRegularExpression('/^\d+$/', $output);
+        $this->assertSame('3', $output);
         $this->assertEquals(0, $testerCount->getStatusCode());
     }
 
     public function testVideoShow(): void
     {
-        // Get first video ID
-        $stmt = $this->db->query('SELECT video_id FROM ' . TestHelper::table('videos') . ' LIMIT 1');
-        $videoId = $stmt->fetchColumn();
-
-        if (!$videoId) {
-            $this->markTestSkipped('No videos in database');
-        }
-
         $this->tester->execute([
             'action' => 'show',
-            'id' => $videoId
+            'id' => '10'
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertStringContainsString('Video #', $output);
+        $this->assertStringContainsString('Video #10', $output);
         $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Featured Clip', $output);
+        $this->assertStringContainsString('Featured description', $output);
+        $this->assertStringContainsString('Action', $output);
+        $this->assertStringContainsString('tag-one, tag-two', $output);
+        $this->assertMatchesRegularExpression('/Duration\W+2:05/', $output);
+        $this->assertMatchesRegularExpression('/Views\W+123/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -144,5 +144,59 @@ class VideoCommandTest extends TestCase
 
         $aliases = $this->command->getAliases();
         $this->assertContains('video', $aliases);
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
+            'video_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, resolution_type INTEGER, ' .
+            'is_private INTEGER, duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, ' .
+            'rating INTEGER, rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories_videos') . ' (category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (tag_id INTEGER, video_id INTEGER)');
+
+        $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('videos') .
+            " (video_id, user_id, title, status_id, resolution_type, is_private, duration, file_size, " .
+            "file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, description) VALUES " .
+            "(10, 1, 'Featured Clip', 1, 2, 0, 125, 1048576, '1920x1080', '2026-05-26 10:00:00', 40, 10, 123, 7, 'Featured description'), " .
+            "(20, 2, 'Disabled Clip', 0, 0, 2, 61, 524288, '640x360', '2026-05-25 10:00:00', 0, 0, 5, 0, ''), " .
+            "(30, 1, 'Older Active Clip', 1, 1, 1, 3600, 2097152, '1280x720', '2026-05-24 10:00:00', 15, 5, 20, 1, '')"
+        );
+        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Action'), (2, 'Drama')");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 10), (2, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one'), (2, 'tag-two')");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 10), (2, 10)");
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): VideoCommand
+    {
+        return new class ($this->config, $db) extends VideoCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:video');
+                $this->setDescription('Manage KVS videos');
+                $this->setAliases(['video', 'videos']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
