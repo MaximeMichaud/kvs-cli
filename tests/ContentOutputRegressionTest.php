@@ -452,6 +452,7 @@ class ContentOutputRegressionTest extends TestCase
         );
         $db->exec('CREATE TABLE ktvs_videos (dvd_id INTEGER, duration INTEGER)');
         $db->exec("INSERT INTO ktvs_dvds VALUES (4, 'Fitness Basics', 1, 70, 5, 100, 2026, 0)");
+        $db->exec('INSERT INTO ktvs_videos VALUES (4, 4260)');
 
         $tester = new CommandTester($this->createDvdCommand($db));
         $tester->execute([
@@ -465,6 +466,18 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame('Active', $rows[0]['status']);
         $this->assertArrayNotHasKey('status_id', $rows[0]);
+
+        $durationTester = new CommandTester($this->createDvdCommand($db));
+        $durationTester->execute([
+            'action' => 'list',
+            '--fields' => 'id,duration',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+        $durationRows = $this->decodeJsonRows($durationTester->getDisplay());
+
+        $this->assertSame(0, $durationTester->getStatusCode());
+        $this->assertSame('1h 11m', $durationRows[0]['duration']);
 
         $ratingTester = new CommandTester($this->createDvdCommand($db));
         $ratingTester->execute([

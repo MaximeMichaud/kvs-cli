@@ -129,6 +129,9 @@ HELP
                 $statusIdVal = $dvd['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
+                $durationVal = $dvd['video_duration'] ?? 0;
+                $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
+
                 return [
                     'dvd_id' => $dvd['dvd_id'] ?? 0,
                     'id' => $dvd['dvd_id'] ?? 0,
@@ -137,8 +140,8 @@ HELP
                     'status' => StatusFormatter::dvd($statusId, false),
                     'total_videos' => $dvd['video_count'] ?? 0,
                     'videos' => $dvd['video_count'] ?? 0,
-                    'total_videos_duration' => $dvd['video_duration'] ?? 0,
-                    'duration' => $dvd['video_duration'] ?? 0,
+                    'total_videos_duration' => $duration,
+                    'duration' => $this->formatDvdDuration($duration),
                     'release_year' => $dvd['release_year'] ?? '',
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
@@ -216,9 +219,7 @@ HELP
             $durationVal = $dvd['video_duration'] ?? 0;
             $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
             if ($duration > 0) {
-                $hours = floor($duration / 3600);
-                $minutes = floor(($duration % 3600) / 60);
-                $info[] = ['Total Duration', sprintf('%dh %dm', (int) $hours, (int) $minutes)];
+                $info[] = ['Total Duration', $this->formatDvdDuration($duration)];
             }
 
             // Release year
@@ -254,6 +255,14 @@ HELP
             $this->io()->error('Failed to fetch DVD: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function formatDvdDuration(int $seconds): string
+    {
+        $hours = intdiv($seconds, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+
+        return sprintf('%dh %dm', $hours, $minutes);
     }
 
     private function showStats(): int
