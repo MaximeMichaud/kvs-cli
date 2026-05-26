@@ -170,6 +170,7 @@ HELP
 
         if (!is_dir($videoPath)) {
             $this->io()->error("Video directory not found for video ID: $videoId");
+            $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
         }
 

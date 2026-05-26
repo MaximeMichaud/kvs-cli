@@ -151,6 +151,20 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('Available Formats', $output);
     }
 
+    public function testCheckMissingVideoDirectoryShowsHelpfulNote(): void
+    {
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'check',
+            'video_id' => '9999',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Video directory not found for video ID: 9999', $output);
+        $this->assertStringContainsString("The video might not exist or formats haven't been generated yet.", $output);
+    }
+
     public function testAvailableFormatsJsonDoesNotIncludeTableDecoration(): void
     {
         $tester = new CommandTester($this->createCommand());
