@@ -43,9 +43,6 @@ final class BenchmarkApiClient
 
         $payload = json_encode($result->toArray(), JSON_THROW_ON_ERROR);
         $applicationVersion = Application::VERSION;
-        if (!is_string($applicationVersion)) {
-            $applicationVersion = 'unknown';
-        }
 
         $context = stream_context_create([
             'http' => [
