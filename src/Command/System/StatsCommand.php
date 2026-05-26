@@ -116,7 +116,7 @@ class StatsCommand extends BaseCommand
             $this->showOverview($db, $period);
             $this->showTopVideos($db, $top, $period);
             $this->showTopAlbums($db, min($top, 5), $period);
-            $this->showRecentActivity($db);
+            $this->showRecentActivity($db, $period);
         }
 
         if ($showVideos) {
@@ -402,12 +402,14 @@ class StatsCommand extends BaseCommand
     /**
      * Show recent activity
      */
-    private function showRecentActivity(\PDO $db): void
+    private function showRecentActivity(\PDO $db, string $period): void
     {
-        $this->io()->section('Recent Activity (7 days)');
+        $this->io()->section('Recent Activity (' . $this->getPeriodLabel($period) . ')');
 
         $prefix = $this->config->getTablePrefix();
-        $weekStart = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $startDate = $this->getPeriodStartDate($period);
+        $dateWhere = $startDate !== null ? 'WHERE added_date >= ?' : '';
+        $dateParams = $startDate !== null ? [$startDate] : [];
 
         $rows = [];
 
@@ -416,11 +418,11 @@ class StatsCommand extends BaseCommand
             DATE(added_date) as date,
             COUNT(*) as count
             FROM {$prefix}videos
-            WHERE added_date >= ?
+            {$dateWhere}
             GROUP BY DATE(added_date)
             ORDER BY date DESC
             LIMIT 7");
-        $stmt->execute([$weekStart]);
+        $stmt->execute($dateParams);
         $dailyVideos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         if ($dailyVideos !== []) {
@@ -436,24 +438,28 @@ class StatsCommand extends BaseCommand
             }
         }
 
-        // New users this week
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}users WHERE added_date >= ?");
-        $stmt->execute([$weekStart]);
+        // New users in selected period
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}users {$dateWhere}");
+        $stmt->execute($dateParams);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        $weekUsers = is_array($row) ? (int) ($row['count'] ?? 0) : 0;
+        $periodUsers = is_array($row) ? (int) ($row['count'] ?? 0) : 0;
 
-        // New comments this week
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}comments WHERE added_date >= ?");
-        $stmt->execute([$weekStart]);
+        // New comments in selected period
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM {$prefix}comments {$dateWhere}");
+        $stmt->execute($dateParams);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        $weekComments = is_array($row) ? (int) ($row['count'] ?? 0) : 0;
+        $periodComments = is_array($row) ? (int) ($row['count'] ?? 0) : 0;
 
         if ($rows === []) {
             $rows[] = ['<fg=gray>No new content</>', '', ''];
         }
 
         $rows[] = ['', '', ''];
-        $rows[] = ['<fg=cyan>Week Total</>', "+{$weekUsers} users", "+{$weekComments} comments"];
+        $rows[] = [
+            '<fg=cyan>' . $this->getPeriodTotalLabel($period) . '</>',
+            "+{$periodUsers} users",
+            "+{$periodComments} comments",
+        ];
 
         $this->renderTable(['Date', 'Content', 'Activity'], $rows);
     }
@@ -1104,6 +1110,28 @@ class StatsCommand extends BaseCommand
             'month' => date('Y-m-d H:i:s', strtotime('-30 days')),
             'year' => date('Y-m-d H:i:s', strtotime('-365 days')),
             default => null,
+        };
+    }
+
+    private function getPeriodLabel(string $period): string
+    {
+        return match ($period) {
+            'today' => 'today',
+            'week' => '7 days',
+            'month' => '30 days',
+            'year' => '365 days',
+            default => 'all time',
+        };
+    }
+
+    private function getPeriodTotalLabel(string $period): string
+    {
+        return match ($period) {
+            'today' => 'Today Total',
+            'week' => '7 Days Total',
+            'month' => '30 Days Total',
+            'year' => '365 Days Total',
+            default => 'All Time Total',
         };
     }
 

@@ -171,6 +171,53 @@ class StatsCommandTest extends TestCase
         $this->assertStringNotContainsString('180.0% (5)', $output);
     }
 
+    public function testOverviewRecentActivityUsesSelectedPeriod(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, video_viewed INTEGER, ' .
+            'rating REAL, rating_amount INTEGER, duration INTEGER, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ktvs_albums (' .
+            'album_id INTEGER, title TEXT, status_id INTEGER, album_viewed INTEGER, rating REAL, ' .
+            'rating_amount INTEGER, photos_amount INTEGER, added_date TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (status_id INTEGER, added_date TEXT)');
+        $db->exec('CREATE TABLE ktvs_comments (added_date TEXT)');
+
+        $today = date('Y-m-d H:i:s');
+        $todayDate = date('Y-m-d');
+        $old = date('Y-m-d H:i:s', strtotime('-5 days'));
+        $oldDate = date('Y-m-d', strtotime('-5 days'));
+
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(1, 'Today Video', 'today', 1, 200, 45, 5, 120, " . $db->quote($today) . "), " .
+            "(2, 'Old Video', 'old', 1, 100, 80, 20, 60, " . $db->quote($old) . ")"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_albums VALUES " .
+            "(1, 'Today Album', 1, 50, 40, 4, 8, " . $db->quote($today) . ")"
+        );
+        $db->exec("INSERT INTO ktvs_users VALUES (2, " . $db->quote($old) . ")");
+        $db->exec("INSERT INTO ktvs_comments VALUES (" . $db->quote($old) . ")");
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--period' => 'today', '--top' => '2']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertStringContainsString('Recent Activity (today)', $output);
+        $this->assertStringContainsString($todayDate, $output);
+        $this->assertStringNotContainsString($oldDate, $output);
+        $this->assertStringContainsString('Today Total', $output);
+        $this->assertStringContainsString('+0 users', $output);
+        $this->assertStringContainsString('+0 comments', $output);
+    }
+
     public function testStatsRejectsInvalidPeriod(): void
     {
         $tester = new CommandTester($this->createStatsCommand($this->createSqliteConnection()));
