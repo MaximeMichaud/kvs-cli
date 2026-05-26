@@ -304,6 +304,16 @@ SH
         $this->assertStringNotContainsString('Latest Version: 6.4.0 (up to date)', $output);
     }
 
+    public function testCheckCanSkipOnlineChecks(): void
+    {
+        $this->tester->execute(['--json' => true, '--skip-online-checks' => true]);
+
+        $data = json_decode($this->tester->getDisplay(), true);
+        $this->assertIsArray($data);
+        $this->assertSame('skip', $data['results']['internet']['status']);
+        $this->assertSame('skip', $data['results']['end_of_life']['status']);
+    }
+
     public function testCheckCronUsesNativeKvsAdminProcessesSchema(): void
     {
         $db = new \PDO('sqlite::memory:');

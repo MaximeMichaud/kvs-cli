@@ -76,12 +76,14 @@ Check KVS configuration and system health.
 <info>EXAMPLES:</info>
   <comment>kvs system:check</comment>
   <comment>kvs system:check --quiet-ok</comment>
+  <comment>kvs system:check --skip-online-checks</comment>
   <comment>kvs system:check --format=json</comment>
   <comment>kvs system:check --json</comment>
 HELP
             )
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output as JSON')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, json', 'table')
+            ->addOption('skip-online-checks', null, InputOption::VALUE_NONE, 'Skip outbound network checks')
             ->addOption('quiet-ok', null, InputOption::VALUE_NONE, 'Only show warnings and errors');
     }
 
@@ -95,6 +97,7 @@ HELP
 
         $jsonOutput = $this->getBoolOption($input, 'json') || $format === 'json';
         $quietOk = $this->getBoolOption($input, 'quiet-ok');
+        $skipOnlineChecks = $this->getBoolOption($input, 'skip-online-checks');
 
         // For JSON output, suppress all visual output
         $this->silent = $jsonOutput;
@@ -122,8 +125,10 @@ HELP
         $results['mysql'] = $this->checkMysql($quietOk);
         $results['system_load'] = $this->checkSystemLoad($quietOk);
         $results['disk_space'] = $this->checkDiskSpace($quietOk);
-        $results['internet'] = $this->checkInternet($quietOk);
-        $results['end_of_life'] = $this->checkEndOfLife($quietOk, $results);
+        $results['internet'] = $this->checkInternet($quietOk, $skipOnlineChecks);
+        $results['end_of_life'] = $skipOnlineChecks
+            ? $this->skipEndOfLife()
+            : $this->checkEndOfLife($quietOk, $results);
 
         if ($jsonOutput === true) {
             $json = json_encode([
@@ -1636,7 +1641,7 @@ HELP
     /**
      * @return array{online: bool, latency_ms: float|null, status: string, http_code?: int, error?: string}
      */
-    private function checkInternet(bool $quietOk): array
+    private function checkInternet(bool $quietOk, bool $skipOnlineChecks): array
     {
         $this->printSection('Internet Connectivity');
 
@@ -1645,6 +1650,12 @@ HELP
             'latency_ms' => null,
             'status' => 'unknown',
         ];
+
+        if ($skipOnlineChecks) {
+            $this->printStatus('Status', 'SKIP (--skip-online-checks)', 'comment');
+            $result['status'] = 'skip';
+            return $result;
+        }
 
         if (!extension_loaded('curl')) {
             $this->printStatus('Status', 'SKIP (curl not available)', 'comment');
@@ -1823,6 +1834,21 @@ HELP
 
         $result['status'] = $hasWarning ? 'warning' : 'ok';
         return $result;
+    }
+
+    /**
+     * @return array{php: array<string, mixed>|null, mysql: array<string, mixed>|null, status: string}
+     */
+    private function skipEndOfLife(): array
+    {
+        $this->printSection('End of Life Status');
+        $this->printStatus('Status', 'SKIP (--skip-online-checks)', 'comment');
+
+        return [
+            'php' => null,
+            'mysql' => null,
+            'status' => 'skip',
+        ];
     }
 
     /**
