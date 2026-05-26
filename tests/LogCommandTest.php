@@ -124,6 +124,24 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogClearNoInteractionFailsWithoutClearing(): void
+    {
+        $logFile = $this->tempDir . '/admin/logs/system.log';
+        $originalContent = file_get_contents($logFile);
+
+        $this->tester->execute([
+            'type' => 'system',
+            '--clear' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('confirmation was not provided', $output);
+        $this->assertSame($originalContent, file_get_contents($logFile));
+    }
+
     public function testLogNotFound(): void
     {
         $this->tester->execute(['type' => 'nonexistent']);

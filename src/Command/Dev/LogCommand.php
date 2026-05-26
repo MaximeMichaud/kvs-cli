@@ -42,7 +42,7 @@ class LogCommand extends BaseCommand
         }
 
         if ($this->getBoolOption($input, 'clear')) {
-            return $this->clearLog($type);
+            return $this->clearLog($type, $input);
         }
 
         if ($this->getBoolOption($input, 'follow')) {
@@ -200,7 +200,7 @@ class LogCommand extends BaseCommand
         }
     }
 
-    private function clearLog(?string $type): int
+    private function clearLog(?string $type, InputInterface $input): int
     {
         if ($type === null) {
             $this->io()->error('Log type is required');
@@ -217,6 +217,12 @@ class LogCommand extends BaseCommand
         $this->io()->warning("This will clear the log file: $logFile");
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+            if (!$input->isInteractive()) {
+                $this->io()->error('Log clear cancelled because confirmation was not provided.');
+                return self::FAILURE;
+            }
+
+            $this->io()->warning('Log clear cancelled');
             return self::SUCCESS;
         }
 
