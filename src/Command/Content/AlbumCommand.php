@@ -246,13 +246,6 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will delete album #$id using KVS native cleanup");
-        $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
-
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
-            return self::SUCCESS;
-        }
-
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -265,6 +258,13 @@ HELP
             if (!is_numeric($albumId)) {
                 $this->io()->error("Album not found: #$id");
                 return self::FAILURE;
+            }
+
+            $this->io()->warning("This will delete album #$id using KVS native cleanup");
+            $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
+
+            if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+                return self::SUCCESS;
             }
 
             $this->deleteAlbumWithKvs((int) $albumId);

@@ -110,7 +110,9 @@ class AlbumCommandDeleteTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode());
         $this->assertFalse($command->kvsCleanupCalled);
-        $this->assertStringContainsString('Album not found', $tester->getDisplay());
+        $output = $tester->getDisplay();
+        $this->assertStringContainsString('Album not found', $output);
+        $this->assertStringNotContainsString('This will delete album #999', $output);
     }
 
     private function createDeleteSchema(\PDO $db): void
