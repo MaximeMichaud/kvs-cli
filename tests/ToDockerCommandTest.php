@@ -82,6 +82,22 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('Import database', $output);
     }
 
+    public function testToDockerDryRunUsesProvidedEmail(): void
+    {
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'myemail@mycompany.com',
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('EMAIL=myemail@mycompany.com', $output);
+        $this->assertStringNotContainsString('EMAIL=admin@test.example.com', $output);
+    }
+
     public function testToDockerDryRunNoContentDoesNotShowContentCopy(): void
     {
         $this->tester->execute([

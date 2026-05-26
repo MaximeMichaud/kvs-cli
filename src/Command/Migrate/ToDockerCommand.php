@@ -201,7 +201,7 @@ EOT
 
         if ($dryRun) {
             $this->io()->note('Dry run mode - no changes will be made');
-            $this->showDryRunSteps($sourceConfig, $targetDir, $domain, $sslChoice, $dbChoice, $noContent);
+            $this->showDryRunSteps($sourceConfig, $targetDir, $domain, $email, $sslChoice, $dbChoice, $noContent);
             return self::SUCCESS;
         }
 
@@ -359,6 +359,7 @@ EOT
         Configuration $config,
         string $targetDir,
         string $domain,
+        string $email,
         string $sslChoice,
         string $dbChoice,
         bool $noContent
@@ -379,7 +380,7 @@ EOT
         $this->io()->text("cd {$targetDir}/docker && \\");
         $this->io()->text("  HEADLESS=y \\");
         $this->io()->text("  DOMAIN={$domain} \\");
-        $this->io()->text("  EMAIL=admin@{$domain} \\");
+        $this->io()->text("  EMAIL={$email} \\");
         $this->io()->text("  SSL_CHOICE={$sslChoice} \\");
         $this->io()->text("  DB_CHOICE={$dbChoice} \\");
         $this->io()->text("  ./setup.sh");
