@@ -5,42 +5,35 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\AntispamCommand;
 use KVS\CLI\Config\Configuration;
-use Symfony\Component\Console\Tester\CommandTester;
+use PDO;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\CommandTester;
 
 class AntispamCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private AntispamCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new AntispamCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testAntispamShowBasic(): void
@@ -229,5 +222,35 @@ class AntispamCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Nothing removed', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec('CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('users_blocked_domains') . ' (domain TEXT, sort_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('users_blocked_ips') . ' (ip TEXT, sort_id INTEGER)');
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): AntispamCommand
+    {
+        return new class ($this->config, $db) extends AntispamCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('system:antispam');
+                $this->setDescription('[EXPERIMENTAL] Manage KVS anti-spam settings');
+                $this->setAliases(['antispam']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
