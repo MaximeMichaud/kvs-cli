@@ -79,4 +79,55 @@ class UserPurgeCommandTest extends TestCase
         $this->assertStringNotContainsString('Anonymous', $display);
         $this->assertStringNotContainsString('anonymous-copy', $display);
     }
+
+    public function testDryRunDisplaysZeroLastLoginAsNever(): void
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec(
+            'CREATE TABLE ktvs_users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
+                status_id INTEGER NOT NULL,
+                is_removal_requested INTEGER NOT NULL DEFAULT 0,
+                total_videos_count INTEGER NOT NULL DEFAULT 0,
+                comments_total_count INTEGER NOT NULL DEFAULT 0,
+                last_login_date TEXT NOT NULL,
+                added_date TEXT NOT NULL,
+                removal_reason TEXT NOT NULL DEFAULT \'\'
+            )'
+        );
+
+        $stmt = $db->prepare(
+            'INSERT INTO ktvs_users (
+                user_id, username, email, status_id, total_videos_count,
+                comments_total_count, last_login_date, added_date
+            ) VALUES (?, ?, ?, 2, 0, 0, ?, ?)'
+        );
+        $stmt->execute([3, 'zero-login-user', 'zero@example.test', '0000-00-00 00:00:00', '2026-01-01 00:00:00']);
+
+        $config = TestHelper::createTestConfiguration($this->kvsPath);
+        $command = new class ($config, $db) extends UserPurgeCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute(['--no-content' => true]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $this->assertStringContainsString('zero-login-user', $display);
+        $this->assertStringContainsString('Never', $display);
+        $this->assertStringNotContainsString('-0001-11-30', $display);
+    }
 }

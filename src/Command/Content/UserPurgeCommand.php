@@ -148,9 +148,9 @@ HELP
             }
             $lastLogin = $user['last_login_date'] ?? null;
             $lastLoginStr = 'Never';
-            if (is_string($lastLogin) && $lastLogin !== '') {
+            if (is_string($lastLogin) && $lastLogin !== '' && $lastLogin !== '0000-00-00 00:00:00') {
                 $timestamp = strtotime($lastLogin);
-                if ($timestamp !== false) {
+                if ($timestamp !== false && $timestamp > 0) {
                     $lastLoginStr = date('Y-m-d', $timestamp);
                 }
             }
