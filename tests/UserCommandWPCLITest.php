@@ -91,7 +91,8 @@ class UserCommandWPCLITest extends TestCase
         $this->assertStringContainsString('AVAILABLE FIELDS', $help);
         $this->assertStringContainsString('username', $help);
         $this->assertStringContainsString('email', $help);
-        $this->assertStringContainsString('tokens', $help);
+        $this->assertStringContainsString('tokens_available', $help);
+        $this->assertStringContainsString('tokens_required', $help);
 
         // Check for format examples
         $this->assertStringContainsString('table', $help);
@@ -137,7 +138,8 @@ class UserCommandWPCLITest extends TestCase
 
         // Check for example commands
         $this->assertStringContainsString('kvs user list', $help);
-        $this->assertStringContainsString('--fields=', $help);
+        $this->assertStringContainsString('--fields=id,username,email,tokens_available,tokens_required', $help);
+        $this->assertDoesNotMatchRegularExpression('/--fields=id,username,email,tokens(?!_)/', $help);
         $this->assertStringContainsString('--field=', $help);
         $this->assertStringContainsString('--format=csv', $help);
         $this->assertStringContainsString('--format=json', $help);

@@ -52,7 +52,7 @@ Manage KVS users.
 
 <info>EXAMPLES:</info>
   <comment>kvs user list</comment>
-  <comment>kvs user list --fields=id,username,email,tokens</comment>
+  <comment>kvs user list --fields=id,username,email,tokens_available,tokens_required</comment>
   <comment>kvs user list --field=username</comment>
   <comment>kvs user list --format=csv</comment>
   <comment>kvs user list --status=premium --format=json</comment>
