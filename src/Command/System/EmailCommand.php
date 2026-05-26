@@ -135,7 +135,7 @@ HELP
             $format = $this->getStringOption($input, 'format');
 
             if ($format === 'json') {
-                $this->io()->writeln((string) json_encode($settings, JSON_PRETTY_PRINT));
+                $this->io()->writeln((string) json_encode($this->maskSensitiveSettings($settings), JSON_PRETTY_PRINT));
                 return self::SUCCESS;
             }
 
@@ -295,6 +295,19 @@ HELP
             $this->io()->error('Failed to send test email: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     * @return array<string, mixed>
+     */
+    private function maskSensitiveSettings(array $settings): array
+    {
+        if (isset($settings['smtp_password']) && $settings['smtp_password'] !== '') {
+            $settings['smtp_password'] = '********';
+        }
+
+        return $settings;
     }
 
     private function setSettings(InputInterface $input): int
