@@ -77,6 +77,8 @@ class TagCommandComprehensiveTest extends TestCase
 
         // Update options
         $this->assertTrue($definition->hasOption('name'));
+
+        $this->assertStringContainsString('show', $definition->getArgument('action')->getDescription());
     }
 
     public function testHelpDocumentation(): void
@@ -85,6 +87,7 @@ class TagCommandComprehensiveTest extends TestCase
 
         // Verify all actions are documented
         $this->assertStringContainsString('list', $help);
+        $this->assertStringContainsString('show <id>', $help);
         $this->assertStringContainsString('create', $help);
         $this->assertStringContainsString('delete', $help);
         $this->assertStringContainsString('update', $help);
@@ -409,7 +412,7 @@ class TagCommandComprehensiveTest extends TestCase
 
     public function testAllActionsAreAccessible(): void
     {
-        $actions = ['list', 'create', 'delete', 'update', 'enable', 'disable', 'merge', 'stats'];
+        $actions = ['list', 'show', 'create', 'delete', 'update', 'enable', 'disable', 'merge', 'stats'];
 
         foreach ($actions as $action) {
             // Verify help mentions the action

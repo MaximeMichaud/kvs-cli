@@ -44,6 +44,7 @@ Manage KVS tags with full CRUD operations.
 
 <info>ACTIONS:</info>
   list              List all tags (default)
+  show <id>         Show tag details
   create <name>     Create new tag
   delete <id>       Delete tag
   update <id>       Update tag name or status
@@ -55,6 +56,7 @@ Manage KVS tags with full CRUD operations.
 <info>EXAMPLES:</info>
   <comment>kvs tag list --search=HD</comment>
   <comment>kvs tag list --unused</comment>
+  <comment>kvs tag show 5</comment>
   <comment>kvs tag create "4K UHD"</comment>
   <comment>kvs tag update 5 --name="Ultra HD"</comment>
   <comment>kvs tag enable 3</comment>
@@ -64,7 +66,7 @@ Manage KVS tags with full CRUD operations.
   <comment>kvs tag stats</comment>
 HELP
             )
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list, create, delete, merge, update, enable, disable, stats', 'list')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list, show, create, delete, merge, update, enable, disable, stats', 'list')
             ->addArgument('identifier', InputArgument::OPTIONAL, 'Tag ID or name')
             ->addArgument('target', InputArgument::OPTIONAL, 'Target tag ID for merge operation')
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Tag name (for update)')
