@@ -271,7 +271,7 @@ HELP
                 ['Display Name', $displayName !== '' ? $displayName : 'N/A'],
                 ['Country', $countryCode !== '' ? $countryCode : 'N/A'],
                 ['Gender', $this->formatGender($this->getInt($user['gender_id'] ?? null))],
-                ['Birth Date', $birthDate !== '' ? $birthDate : 'N/A'],
+                ['Birth Date', $this->formatDate($birthDate, 'Y-m-d', 'N/A')],
                 ['Joined', $this->formatDate($this->getStr($user['added_date'] ?? null), 'Y-m-d H:i:s', 'Unknown')],
                 ['Last Login', $this->formatDate($this->getStr($user['last_login_date'] ?? null))],
                 ['IP', $ip !== '' ? $ip : 'N/A'],
