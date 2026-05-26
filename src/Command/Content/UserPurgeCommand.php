@@ -85,7 +85,10 @@ HELP
         }
 
         // Build query
-        $conditions = [];
+        $conditions = [
+            'user_id NOT IN (1, 2)',
+            'status_id != 4',
+        ];
         $params = [];
 
         if ($removalRequested) {
