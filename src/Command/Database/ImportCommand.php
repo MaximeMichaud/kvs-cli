@@ -21,7 +21,7 @@ class ImportCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('file', InputArgument::REQUIRED, 'SQL file to import (supports .sql, .gz, .zstd, .xz, .bz2)')
+            ->addArgument('file', InputArgument::REQUIRED, 'SQL file to import (supports .sql, .gz, .gzip, .zst, .zstd, .xz, .bz2, .bzip2)')
             ->setHelp(<<<'EOT'
 Import KVS database from SQL file.
 

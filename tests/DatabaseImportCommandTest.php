@@ -41,6 +41,20 @@ class DatabaseImportCommandTest extends TestCase
         $this->assertStringNotContainsString('Database imported successfully', $tester->getDisplay());
     }
 
+    public function testFileArgumentDocumentsAllSupportedExtensions(): void
+    {
+        $command = new ImportCommand(new Configuration([
+            'path' => $this->tempDir,
+            'disable_db_env_overrides' => true,
+        ]));
+
+        $description = $command->getDefinition()->getArgument('file')->getDescription();
+
+        foreach (['.sql', '.gz', '.gzip', '.zst', '.zstd', '.xz', '.bz2', '.bzip2'] as $extension) {
+            $this->assertStringContainsString($extension, $description);
+        }
+    }
+
     public function testMissingZstdReportsActionableError(): void
     {
         $zstdFile = $this->tempDir . '/import.sql.zstd';
