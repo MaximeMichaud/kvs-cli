@@ -5,42 +5,35 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\EmailCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 class EmailCommandTest extends TestCase
 {
+    private string $kvsPath;
     private Configuration $config;
     private EmailCommand $command;
     private CommandTester $tester;
-    private ?\PDO $db = null;
+    private PDO $db;
 
     protected function setUp(): void
     {
-        $kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->db = $this->createDatabase();
 
-        $this->config = TestHelper::createTestConfiguration($kvsPath);
-        $this->command = new EmailCommand($this->config);
+        $this->config = TestHelper::createTestConfiguration($this->kvsPath);
+        $this->command = $this->createCommand($this->db);
 
         $app = new Application();
         $app->add($this->command);
 
         $this->tester = new CommandTester($this->command);
-
-        if (TestHelper::isCommandDefinitionTest($this->name())) {
-            return;
-        }
-
-        try {
-            $this->db = TestHelper::getPDO();
-        } catch (\PDOException $e) {
-            $this->markTestSkipped(TestHelper::databaseSkipMessage($e));
-        }
     }
 
     protected function tearDown(): void
     {
-        $this->db = null;
+        TestHelper::removeDir($this->kvsPath);
     }
 
     public function testEmailShowBasic(): void
@@ -232,5 +225,62 @@ class EmailCommandTest extends TestCase
         $this->assertJson($output);
         $this->assertIsArray(json_decode($output, true));
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    private function createDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('settings') .
+            ' (section TEXT PRIMARY KEY, satellite_prefix TEXT, value TEXT NOT NULL, added_date TEXT, version_control INTEGER)'
+        );
+
+        $settings = json_encode([
+            'use_mailer' => 'smtp',
+            'send_from_email' => 'noreply@example.test',
+            'send_from_title' => 'Test Sender',
+            'debug_level' => '1',
+            'smtp_host' => 'smtp.example.test',
+            'smtp_port' => 587,
+            'smtp_username' => 'smtp-user',
+            'smtp_password' => 'smtp-secret',
+            'smtp_security' => 'tls',
+            'smtp_timeout' => 20,
+        ]);
+        $this->assertIsString($settings);
+
+        $stmt = $db->prepare(
+            'INSERT INTO ' . TestHelper::table('settings') .
+            ' (section, satellite_prefix, value, added_date, version_control) VALUES (:section, :prefix, :value, :date, :version)'
+        );
+        $stmt->execute([
+            'section' => 'email',
+            'prefix' => '',
+            'value' => $settings,
+            'date' => '2026-05-26 00:00:00',
+            'version' => 1,
+        ]);
+
+        return $db;
+    }
+
+    private function createCommand(PDO $db): EmailCommand
+    {
+        return new class ($this->config, $db) extends EmailCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('system:email');
+                $this->setDescription('[EXPERIMENTAL] Manage KVS email settings');
+                $this->setAliases(['email']);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
     }
 }
