@@ -159,6 +159,9 @@ class ToDockerCommandTest extends TestCase
 
     public function testToDockerDryRunNoContentDoesNotShowContentCopy(): void
     {
+        mkdir($this->tempDir . '/contents/videos_sources/1000', 0755, true);
+        file_put_contents($this->tempDir . '/contents/videos_sources/1000/source.mp4', 'video');
+
         $this->tester->execute([
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
