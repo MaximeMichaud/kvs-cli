@@ -201,6 +201,15 @@ class FormatsCommandTest extends TestCase
         $this->assertContains('formats', $aliases);
     }
 
+    public function testHelpDistinguishesDiskFilesFromConfiguredFormats(): void
+    {
+        $output = $this->command->getHelp();
+
+        $this->assertStringContainsString('list <video_id>     List actual video files found on disk', $output);
+        $this->assertStringContainsString('check <video_id>    Compare disk files against configured formats', $output);
+        $this->assertStringContainsString('available           Show all configured format options from KVS', $output);
+    }
+
     private function createVideoStorage(): void
     {
         $videoDir = $this->storagePath . '/0/10';

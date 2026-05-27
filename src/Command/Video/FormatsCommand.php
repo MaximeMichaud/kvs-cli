@@ -31,9 +31,9 @@ class FormatsCommand extends BaseCommand
 Manage video formats and check format availability.
 
 <fg=yellow>ACTIONS:</>
-  list <video_id>     List available formats for a video
-  check <video_id>    Check which formats exist/missing
-  available           Show all configured format options
+  list <video_id>     List actual video files found on disk
+  check <video_id>    Compare disk files against configured formats
+  available           Show all configured format options from KVS
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs video:formats list 123</>
