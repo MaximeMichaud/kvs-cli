@@ -78,7 +78,7 @@ HELP
         return match ($action) {
             'list' => $this->listAlbums($input),
             'show' => $this->showAlbum($this->getStringArgument($input, 'id')),
-            'delete' => $this->deleteAlbum($this->getStringArgument($input, 'id')),
+            'delete' => $this->deleteAlbum($this->getStringArgument($input, 'id'), $input),
             default => $this->failUnknownAction('album', $action, ['list', 'show', 'delete']),
         };
     }
@@ -268,7 +268,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function deleteAlbum(?string $id): int
+    private function deleteAlbum(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Album ID is required');
@@ -297,6 +297,12 @@ HELP
             $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
 
             if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Album deletion cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
+                $this->io()->warning('Album deletion cancelled');
                 return self::SUCCESS;
             }
 
