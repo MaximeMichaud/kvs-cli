@@ -535,6 +535,11 @@ class SystemDetector
 
         $result['device'] = $rootDevice;
 
+        $virtualStorage = $this->detectVirtualStorage($rootDevice);
+        if ($virtualStorage !== null) {
+            return $virtualStorage;
+        }
+
         // NVMe detection (device name) - always SSD
         if (str_starts_with($rootDevice, 'nvme')) {
             $result['type'] = 'nvme';
@@ -596,6 +601,22 @@ class SystemDetector
         }
 
         return $result;
+    }
+
+    /**
+     * @return array{type: string, device: string, confidence: string}|null
+     */
+    private function detectVirtualStorage(string $rootDevice): ?array
+    {
+        if (in_array($rootDevice, ['overlay', 'overlay2', 'aufs', 'fuse-overlayfs'], true)) {
+            return [
+                'type' => 'container_overlay',
+                'device' => $rootDevice,
+                'confidence' => 'high',
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -858,7 +879,7 @@ class SystemDetector
 
         // Storage
         if ($storage['type'] !== 'unknown') {
-            $parts[] = strtoupper($storage['type']);
+            $parts[] = $storage['type'] === 'container_overlay' ? 'OverlayFS' : strtoupper($storage['type']);
         }
 
         return implode(' | ', $parts);

@@ -1407,6 +1407,7 @@ class BenchmarkCommand extends BaseCommand
                 'hdd' => '<fg=yellow>HDD</>',
                 'virtio' => '<fg=cyan>VirtIO (Virtual)</>',
                 'xen' => '<fg=cyan>Xen (Virtual)</>',
+                'container_overlay' => '<fg=cyan>OverlayFS (Container)</>',
                 default => strtoupper($type),
             };
 
