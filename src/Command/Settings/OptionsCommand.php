@@ -105,13 +105,13 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'list' => $this->listOptions($input),
             'get' => $this->getOption($input),
             'set' => $this->setOption($input),
-            default => $this->listOptions($input),
+            default => $this->failUnknownAction('options', $action, ['list', 'get', 'set']),
         };
     }
 

@@ -96,6 +96,19 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --category', $tester->getDisplay());
     }
 
+    public function testOptionsRejectsUnknownAction(): void
+    {
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'unknown_action',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Unknown options action "unknown_action"', $tester->getDisplay());
+        $this->assertMatchesRegularExpression('/Available actions: list, get,\s+set/', $tester->getDisplay());
+    }
+
     public function testOptionsSystemCategoryDoesNotMatchUserPrefix(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
