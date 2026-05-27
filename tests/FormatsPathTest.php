@@ -179,6 +179,7 @@ class FormatsPathTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertIsArray($decoded);
         $this->assertSame('MP4 480p', $decoded[0]['title']);
+        $this->assertSame('Any', $decoded[0]['access']);
         $this->assertStringNotContainsString('Available Format Configurations', $output);
         $this->assertStringNotContainsString('These formats are configured', $output);
     }
@@ -195,6 +196,7 @@ class FormatsPathTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame('MP4 480p', $decoded[0]['title']);
+        $this->assertSame('Any', $decoded[0]['access']);
         $this->assertStringNotContainsString('Video ID is required', $output);
     }
 

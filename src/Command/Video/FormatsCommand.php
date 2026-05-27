@@ -274,7 +274,16 @@ HELP
             return self::FAILURE;
         }
 
-        $defaultFields = ['format_id', 'title', 'postfix', 'status', 'group_id'];
+        $formats = array_map(static function (array $format): array {
+            $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id'])
+                ? (int) $format['access_level_id']
+                : 0;
+            $format['access'] = StatusFormatter::formatAccessLevel($accessId, false);
+
+            return $format;
+        }, $formats);
+
+        $defaultFields = ['format_id', 'title', 'postfix', 'status', 'group_id', 'access'];
 
         $formatter = new Formatter($input->getOptions(), $defaultFields);
         /** @var list<array<string, mixed>> $formats */

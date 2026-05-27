@@ -123,6 +123,8 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('Available Format Configurations', $output);
         $this->assertStringContainsString('720p MP4', $output);
         $this->assertStringContainsString('Required', $output);
+        $this->assertStringContainsString('Access', $output);
+        $this->assertStringContainsString('Premium', $output);
     }
 
     #[DataProvider('provideOutputFormats')]
@@ -209,7 +211,7 @@ class FormatsCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('formats_videos') .
             " VALUES " .
             "(1, '720p MP4', '_720p.mp4', 1, 1, 0), " .
-            "(2, '1080p MP4', '_1080p.mp4', 2, 1, 0)"
+            "(2, '1080p MP4', '_1080p.mp4', 2, 1, 2)"
         );
 
         return $db;
