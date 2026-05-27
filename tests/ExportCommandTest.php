@@ -228,7 +228,7 @@ class ExportCommandTest extends TestCase
         file_put_contents(
             $mariadbDump,
             "#!/bin/sh\n"
-            . "dd if=/dev/zero bs=1M count=16 2>/dev/null | tr '\\000' 'A'\n"
+            . "dd if=/dev/zero bs=1M count=32 2>/dev/null | tr '\\000' 'A'\n"
         );
         chmod($mariadbDump, 0755);
 
@@ -237,12 +237,41 @@ class ExportCommandTest extends TestCase
         chmod($gzip, 0755);
 
         $outputFile = $this->tempDir . '/exports/streamed.sql.gz';
+        $runner = $this->tempDir . '/run-stream-export.php';
+        file_put_contents(
+            $runner,
+            str_replace('__AUTOLOAD__', var_export(dirname(__DIR__) . '/vendor/autoload.php', true), <<<'PHP'
+<?php
+
+require __AUTOLOAD__;
+
+use KVS\CLI\Command\Database\ExportCommand;
+use KVS\CLI\Config\Configuration;
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Tester\CommandTester;
+
+$command = new ExportCommand(new Configuration(['path' => $argv[1]]));
+$application = new Application();
+$application->add($command);
+
+$tester = new CommandTester($command);
+$tester->execute([
+    '--compress' => 'gzip',
+    '--output' => $argv[2],
+], ['decorated' => false]);
+
+echo $tester->getDisplay();
+
+exit($tester->getStatusCode());
+PHP)
+        );
+
         $path = $toolsDir . PATH_SEPARATOR . (getenv('PATH') !== false ? getenv('PATH') : '');
         $command = sprintf(
-            'PATH=%s %s -d memory_limit=8M %s --path=%s db:export --compress=gzip --output=%s --no-ansi 2>&1',
+            'PATH=%s %s -d memory_limit=16M %s %s %s 2>&1',
             escapeshellarg($path),
             escapeshellarg(PHP_BINARY),
-            escapeshellarg(dirname(__DIR__) . '/bin/kvs'),
+            escapeshellarg($runner),
             escapeshellarg($this->tempDir),
             escapeshellarg($outputFile)
         );
@@ -251,7 +280,7 @@ class ExportCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode, implode("\n", $output));
         $this->assertFileExists($outputFile);
-        $this->assertSame(16 * 1024 * 1024, filesize($outputFile));
+        $this->assertSame(32 * 1024 * 1024, filesize($outputFile));
     }
 
     public function testExportWithTablesOption(): void
