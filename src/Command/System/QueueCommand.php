@@ -126,14 +126,19 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'list' => $this->listTasks($input),
             'show' => $this->showTask($this->getStringArgument($input, 'id')),
             'stats' => $this->showStats(),
             'history' => $this->showHistory($input),
-            default => $this->showHelp(),
+            'help-action' => $this->showHelp(),
+            default => $this->failUnknownAction(
+                'queue',
+                $action,
+                ['list', 'show', 'stats', 'history', 'help-action']
+            ),
         };
     }
 

@@ -222,6 +222,16 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('history : Show completed/deleted tasks history', $output);
     }
 
+    public function testQueueRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'unknown_action',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown queue action "unknown_action"', $this->tester->getDisplay());
+    }
+
     public function testQueueCommandMetadata(): void
     {
         $this->assertEquals('system:queue', $this->command->getName());
