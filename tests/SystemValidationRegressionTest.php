@@ -269,6 +269,19 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --status: bogus', $tester->getDisplay());
     }
 
+    public function testVideoFormatRejectsUnknownAction(): void
+    {
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'unknown_action',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Unknown video-format action "unknown_action"', $tester->getDisplay());
+    }
+
     public function testVideoFormatShowRejectsNonTableFormat(): void
     {
         $this->createVideoFormatTables();

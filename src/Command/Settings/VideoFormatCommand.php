@@ -76,13 +76,17 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'list' => $this->listFormats($input),
             'show' => $this->showFormat($input, $this->getStringArgument($input, 'id')),
             'groups' => $this->listGroups($input),
-            default => $this->listFormats($input),
+            default => $this->failUnknownAction(
+                'video-format',
+                $action,
+                ['list', 'show', 'groups']
+            ),
         };
     }
 
