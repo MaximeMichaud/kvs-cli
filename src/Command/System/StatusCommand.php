@@ -62,16 +62,53 @@ HELP
         $info[] = ['Admin Path', $this->config->getAdminPath()];
         $info[] = ['Content Path', $this->config->getContentPath()];
 
-        $versionFile = $this->config->getAdminPath() . '/include/setup.php';
-        if (file_exists($versionFile)) {
-            $content = file_get_contents($versionFile);
-            if ($content !== false && preg_match('/\$config\[\'project_version\'\]\s*=\s*[\'"]([^\'"]+)[\'"]/', $content, $matches) === 1) {
-                $info[] = ['KVS Version', $matches[1]];
-            }
+        $kvsVersion = $this->detectKvsVersion();
+        if ($kvsVersion !== null) {
+            $info[] = ['KVS Version', $kvsVersion];
         }
 
         /** @var list<array{string, string}> $info */
         $this->renderTable(['Parameter', 'Value'], $info);
+    }
+
+    private function detectKvsVersion(): ?string
+    {
+        $includePath = $this->config->getAdminPath() . '/include';
+        foreach (['version.php', 'setup.php'] as $filename) {
+            $version = $this->extractKvsVersionFromFile($includePath . '/' . $filename);
+            if ($version !== null) {
+                return $version;
+            }
+        }
+
+        $configuredVersion = $this->config->getKvsVersion();
+        return $configuredVersion !== '' ? $configuredVersion : null;
+    }
+
+    private function extractKvsVersionFromFile(string $filePath): ?string
+    {
+        if (!is_file($filePath)) {
+            return null;
+        }
+
+        $content = file_get_contents($filePath);
+        if ($content === false) {
+            return null;
+        }
+
+        $patterns = [
+            '/\$config\[[\'"]project_version[\'"]\]\s*=\s*[\'"]([^\'"]+)[\'"]/',
+            '/define\s*\(\s*[\'"]KVS_VERSION[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)/',
+            '/define\s*\(\s*[\'"]VERSION_NUMBER[\'"]\s*,\s*[\'"]([^\'"]+)[\'"]\s*\)/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $content, $matches) === 1) {
+                return $matches[1];
+            }
+        }
+
+        return null;
     }
 
     private function showDatabaseStatus(): void

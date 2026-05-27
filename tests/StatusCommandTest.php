@@ -98,6 +98,29 @@ class StatusCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testStatusReadsKvsVersionFromVersionFile(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config = ["project_name" => "Test KVS"];'
+        );
+        file_put_contents(
+            $this->tempDir . '/admin/include/version.php',
+            '<?php $config["project_version"] = "7.0.0";'
+        );
+
+        $this->config = new Configuration(['path' => $this->tempDir]);
+        $this->command = new StatusCommand($this->config);
+        $this->tester = new CommandTester($this->command);
+
+        $this->tester->execute([]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('KVS Version', $output);
+        $this->assertStringContainsString('7.0.0', $output);
+    }
+
     public function testStatusSecurityReadsMaintenanceFlagFromWebsiteParams(): void
     {
         mkdir($this->tempDir . '/admin/data/system', 0755, true);
