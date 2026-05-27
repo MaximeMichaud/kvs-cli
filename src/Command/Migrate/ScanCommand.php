@@ -91,6 +91,11 @@ class ScanCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const DATABASE_PACKAGE_RATIO = 0.30;
+    private const VIDEO_MEDIA_PACKAGE_RATIO = 0.98;
+    private const IMAGE_MEDIA_PACKAGE_RATIO = 0.95;
+    private const DEFAULT_STORAGE_PACKAGE_RATIO = 0.70;
+
     private ?Configuration $targetConfig = null;
     private ?DockerDetector $targetDocker = null;
 
@@ -196,7 +201,10 @@ EOT
             'storage_size_bytes' => $storage['total_bytes'],
             'total_size_bytes' => $database['size_bytes'] + $storage['total_bytes'],
             'total_files' => $storage['total_files'],
-            'estimated_package_size_bytes' => (int) (($database['size_bytes'] + $storage['total_bytes']) * 0.7),
+            'estimated_package_size_bytes' => $this->estimatePackageSize(
+                $database['size_bytes'],
+                $storage['breakdown']
+            ),
         ];
 
         $assessment = $this->assessMigration($database, $storage, $environment, $content);
@@ -612,6 +620,42 @@ EOT
         }
 
         return $assessment;
+    }
+
+    /**
+     * @param array<string, array{path: string, exists: bool, size_bytes: int, files: int}> $storageBreakdown
+     */
+    private function estimatePackageSize(int $databaseSizeBytes, array $storageBreakdown): int
+    {
+        $estimatedSize = $databaseSizeBytes * self::DATABASE_PACKAGE_RATIO;
+
+        foreach ($storageBreakdown as $info) {
+            $sizeBytes = $info['size_bytes'];
+            if ($sizeBytes <= 0) {
+                continue;
+            }
+
+            $estimatedSize += $sizeBytes * $this->getStoragePackageRatio($info['path']);
+        }
+
+        return (int) ceil($estimatedSize);
+    }
+
+    private function getStoragePackageRatio(string $path): float
+    {
+        $topLevelPath = explode('/', trim($path, '/'))[0];
+
+        return match ($topLevelPath) {
+            Constants::CONTENT_VIDEOS_SOURCES,
+            Constants::CONTENT_VIDEOS => self::VIDEO_MEDIA_PACKAGE_RATIO,
+            Constants::CONTENT_VIDEOS_SCREENSHOTS,
+            Constants::CONTENT_ALBUMS_SOURCES,
+            Constants::CONTENT_CATEGORIES,
+            Constants::CONTENT_MODELS,
+            Constants::CONTENT_DVDS,
+            Constants::CONTENT_AVATARS => self::IMAGE_MEDIA_PACKAGE_RATIO,
+            default => self::DEFAULT_STORAGE_PACKAGE_RATIO,
+        };
     }
 
     /**

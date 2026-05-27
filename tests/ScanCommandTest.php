@@ -2,6 +2,7 @@
 
 namespace KVS\CLI\Tests;
 
+use KVS\CLI\Constants;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Migrate\ScanCommand;
 use KVS\CLI\Config\Configuration;
@@ -179,6 +180,36 @@ class ScanCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertStringContainsString('Est. Package Size (zstd)', $output);
+    }
+
+    public function testScanCommandUsesMediaAwarePackageEstimate(): void
+    {
+        TestHelper::createMockDbConfig($this->tempDir, [
+            'host' => '127.0.0.1',
+            'port' => 1,
+            'user' => 'missing',
+            'password' => 'missing',
+            'database' => 'missing',
+        ]);
+
+        $videosDir = $this->tempDir . '/content/' . Constants::CONTENT_VIDEOS_SOURCES;
+        mkdir($videosDir, 0755, true);
+        file_put_contents($videosDir . '/source.mp4', str_repeat('a', 1024 * 1024));
+
+        $command = new ScanCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--json' => true, '--force' => true]);
+
+        $data = json_decode($tester->getDisplay(), true);
+
+        $this->assertIsArray($data);
+        $this->assertIsArray($data['totals']);
+        $totalSize = (int) $data['totals']['total_size_bytes'];
+        $estimatedPackageSize = (int) $data['totals']['estimated_package_size_bytes'];
+
+        $this->assertGreaterThan(0, $totalSize);
+        $this->assertGreaterThan((int) floor($totalSize * 0.9), $estimatedPackageSize);
+        $this->assertGreaterThan((int) floor($totalSize * 0.7), $estimatedPackageSize);
     }
 
     public function testScanCommandShowsAssessment(): void

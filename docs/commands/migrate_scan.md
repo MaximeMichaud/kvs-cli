@@ -33,6 +33,7 @@ The scan provides:
 - **Database Info** - Host, database name, size, table count
 - **Content Statistics** - Number of videos, albums, users, comments
 - **Storage Breakdown** - Size of videos, albums, screenshots, etc.
+- **Estimated Package Size** - zstd package estimate using separate ratios for SQL dumps, KVS media directories, and unknown content directories
 - **Migration Readiness** - Assessment and warnings
 
 ## Examples
@@ -110,6 +111,7 @@ Migration Readiness
 
 - This command is **EXPERIMENTAL** - requires confirmation or `--force` flag
 - Read-only operation - does not modify the installation
+- Package size is an estimate, not a quota: SQL dumps are estimated as highly compressible, known KVS media directories as mostly incompressible, and unknown content directories with the default zstd heuristic
 - Use `--json` output for automation and scripting
 
 ## See Also
