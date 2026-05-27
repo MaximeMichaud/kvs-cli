@@ -92,6 +92,40 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertCount(2, $rows);
     }
 
+    public function testListCountIgnoresLimitAndKeepsFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('4', trim($this->tester->getDisplay()));
+
+        $activeTester = new CommandTester($this->command);
+        $activeTester->execute([
+            'action' => 'list',
+            '--status' => 'active',
+            '--format' => 'count',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $activeTester->getStatusCode());
+        $this->assertSame('3', trim($activeTester->getDisplay()));
+
+        $unusedTester = new CommandTester($this->command);
+        $unusedTester->execute([
+            'action' => 'list',
+            '--unused' => true,
+            '--format' => 'count',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $unusedTester->getStatusCode());
+        $this->assertSame('1', trim($unusedTester->getDisplay()));
+    }
+
     public function testListWithSearch(): void
     {
         $this->tester->execute([

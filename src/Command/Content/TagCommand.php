@@ -136,16 +136,40 @@ HELP
                 $params['search'] = '%' . $search . '%';
             }
 
-            // Build query
+            $usageSelectors = $this->getTagUsageAggregateSelectors();
+            $usageJoins = $this->getTagUsageAggregateJoins();
+            $totalUsageCondition = $this->getTagTotalUsageJoinCondition();
+            $unusedOnly = $this->getBoolOption($input, 'unused');
+
+            if ($unusedOnly) {
+                $conditions[] = "{$totalUsageCondition} = 0";
+            }
+
             $whereClause = implode(' AND ', $conditions);
+
+            if ($this->getStringOption($input, 'format') === 'count') {
+                $countJoins = $unusedOnly ? $usageJoins : '';
+                $stmt = $db->prepare("
+                    SELECT COUNT(*)
+                    FROM {$this->table('tags')} t
+                    {$countJoins}
+                    WHERE $whereClause
+                ");
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
+                }
+                $stmt->execute();
+
+                $total = $stmt->fetchColumn();
+                $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+                return self::SUCCESS;
+            }
+
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
             if ($limit === null) {
                 return self::FAILURE;
             }
-
-            $usageSelectors = $this->getTagUsageAggregateSelectors();
-            $usageJoins = $this->getTagUsageAggregateJoins();
-            $totalUsageCondition = $this->getTagTotalUsageJoinCondition();
 
             $sql = "
                 SELECT t.*,
@@ -154,11 +178,6 @@ HELP
                 {$usageJoins}
                 WHERE $whereClause
             ";
-
-            // Unused filter
-            if ($this->getBoolOption($input, 'unused')) {
-                $sql .= " AND {$totalUsageCondition} = 0";
-            }
 
             $sql .= " ORDER BY t.tag LIMIT :limit";
             $params['limit'] = $limit;
