@@ -430,6 +430,59 @@ SH
         $this->assertStringNotContainsString('No backups directory found', $output);
     }
 
+    public function testBackupListSupportsJsonFormat(): void
+    {
+        $customBackupsDir = $this->rootDir . '/custom-backups-json';
+        mkdir($customBackupsDir, 0755, true);
+        file_put_contents($customBackupsDir . '/kvs_backup_db_2026-05-27.sql.gz', 'test');
+
+        $this->tester->execute([
+            '--list' => true,
+            '--output' => $customBackupsDir,
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+
+        $decoded = json_decode($output, true);
+        $this->assertIsArray($decoded);
+        $this->assertCount(1, $decoded);
+        $this->assertSame('kvs_backup_db_2026-05-27.sql.gz', $decoded[0]['file']);
+        $this->assertSame('4.00 B', $decoded[0]['size']);
+        $this->assertArrayHasKey('created', $decoded[0]);
+    }
+
+    public function testBackupListSupportsCountFormat(): void
+    {
+        $customBackupsDir = $this->rootDir . '/custom-backups-count';
+        mkdir($customBackupsDir, 0755, true);
+        file_put_contents($customBackupsDir . '/kvs_backup_db_2026-05-27.sql.gz', 'test');
+        file_put_contents($customBackupsDir . '/kvs_backup_full_2026-05-27.tar.gz', 'test');
+
+        $this->tester->execute([
+            '--list' => true,
+            '--output' => $customBackupsDir,
+            '--format' => 'count',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame("2\n", $output);
+    }
+
+    public function testBackupListRejectsUnknownFormat(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '--format' => 'xml',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+    }
+
     public function testBackupRestore(): void
     {
         // Create a mock backup file

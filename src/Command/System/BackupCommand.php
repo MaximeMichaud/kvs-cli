@@ -10,6 +10,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Process\Process;
+use Symfony\Component\Yaml\Yaml;
 
 use function KVS\CLI\Utils\format_bytes;
 
@@ -22,6 +23,8 @@ class BackupCommand extends BaseCommand
 {
     use SecureFileTrait;
 
+    private const LIST_FORMATS = ['table', 'json', 'csv', 'yaml', 'count'];
+
     protected function configure(): void
     {
         $this
@@ -30,6 +33,7 @@ Create, list, and restore KVS backups.
 
 <info>EXAMPLES:</info>
   <comment>kvs system:backup --list</comment>
+  <comment>kvs system:backup --list --format=json</comment>
   <comment>kvs system:backup --create --type=db</comment>
   <comment>kvs system:backup --create --type=files --output=/var/backups/kvs</comment>
   <comment>kvs system:backup --restore=/var/backups/kvs/kvs_backup_full_2026-05-26_12-00-00_full.tar.gz</comment>
@@ -39,7 +43,8 @@ HELP
             ->addOption('restore', null, InputOption::VALUE_REQUIRED, 'Restore from backup file')
             ->addOption('list', null, InputOption::VALUE_NONE, 'List available backups')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Backup type (full|db|files)', 'full')
-            ->addOption('output', null, InputOption::VALUE_REQUIRED, 'Output directory for backup');
+            ->addOption('output', null, InputOption::VALUE_REQUIRED, 'Output directory for backup')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format for --list (table|json|csv|yaml|count)', 'table');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -57,7 +62,10 @@ HELP
         }
 
         if ($this->getBoolOption($input, 'list')) {
-            return $this->listBackups($this->getStringOption($input, 'output'));
+            return $this->listBackups(
+                $this->getStringOption($input, 'output'),
+                $this->getStringOptionOrDefault($input, 'format', 'table')
+            );
         }
 
         $this->io()->info('Available options:');
@@ -68,6 +76,7 @@ HELP
             '--restore=backup.tar.gz : Restore from backup',
             '--list : List available backups',
             '--list --output=/var/backups/kvs : List backups in a custom directory',
+            '--list --format=json : List backups as JSON',
         ]);
 
         return self::SUCCESS;
@@ -347,19 +356,38 @@ HELP
         return self::FAILURE;
     }
 
-    private function listBackups(?string $outputDir = null): int
+    private function listBackups(?string $outputDir = null, string $format = 'table'): int
     {
+        if (!in_array($format, self::LIST_FORMATS, true)) {
+            $this->io()->error(sprintf(
+                'Invalid value for --format "%s" (expected: %s)',
+                $format,
+                implode(', ', self::LIST_FORMATS)
+            ));
+            return self::FAILURE;
+        }
+
         $backupDir = $outputDir ?? dirname($this->config->getKvsPath()) . '/backups';
 
         if (!is_dir($backupDir)) {
-            $this->io()->warning('No backups directory found');
+            if ($format === 'table') {
+                $this->io()->warning('No backups directory found');
+                return self::SUCCESS;
+            }
+
+            $this->displayBackupList([], $format);
             return self::SUCCESS;
         }
 
         $files = glob("$backupDir/kvs_backup_*.{tar.gz,sql.gz}", GLOB_BRACE);
 
         if ($files === false || $files === []) {
-            $this->io()->info('No backups found');
+            if ($format === 'table') {
+                $this->io()->info('No backups found');
+                return self::SUCCESS;
+            }
+
+            $this->displayBackupList([], $format);
             return self::SUCCESS;
         }
 
@@ -373,17 +401,81 @@ HELP
             }
 
             $backups[] = [
-                basename($file),
-                format_bytes($size),
-                date('Y-m-d H:i:s', $mtime),
+                'file' => basename($file),
+                'size' => format_bytes($size),
+                'created' => date('Y-m-d H:i:s', $mtime),
             ];
         }
 
-        $this->renderTable(
-            ['Backup File', 'Size', 'Created'],
-            $backups
-        );
+        $this->displayBackupList($backups, $format);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param list<array{file: string, size: string, created: string}> $backups
+     */
+    private function displayBackupList(array $backups, string $format): void
+    {
+        switch ($format) {
+            case 'table':
+                if ($backups === []) {
+                    $this->io()->info('No backups found');
+                    return;
+                }
+
+                $rows = array_map(
+                    static fn(array $backup): array => [$backup['file'], $backup['size'], $backup['created']],
+                    $backups
+                );
+                $this->renderTable(['Backup File', 'Size', 'Created'], $rows);
+                return;
+
+            case 'count':
+                $this->io()->writeln((string) count($backups));
+                return;
+
+            case 'json':
+                $json = json_encode($backups, Constants::JSON_FLAGS);
+                if ($json === false) {
+                    throw new \RuntimeException('Failed to encode JSON: ' . json_last_error_msg());
+                }
+                $this->io()->writeln($json);
+                return;
+
+            case 'csv':
+                $this->io()->write($this->formatBackupsCsv($backups));
+                return;
+
+            case 'yaml':
+                $this->io()->write(Yaml::dump($backups, 2, 2));
+                return;
+        }
+    }
+
+    /**
+     * @param list<array{file: string, size: string, created: string}> $backups
+     */
+    private function formatBackupsCsv(array $backups): string
+    {
+        $stream = fopen('php://temp', 'r+');
+        if ($stream === false) {
+            throw new \RuntimeException('Failed to open temporary CSV stream');
+        }
+
+        fputcsv($stream, ['file', 'size', 'created'], ',', '"', '\\');
+        foreach ($backups as $backup) {
+            fputcsv($stream, [$backup['file'], $backup['size'], $backup['created']], ',', '"', '\\');
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream);
+        fclose($stream);
+
+        if ($csv === false) {
+            throw new \RuntimeException('Failed to read temporary CSV stream');
+        }
+
+        return $csv;
     }
 }
