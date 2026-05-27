@@ -90,7 +90,7 @@ HELP
             'list' => $this->listTags($input),
             'show' => $this->showTag($identifier),
             'create' => $this->createTag($identifier),
-            'delete' => $this->deleteTag($identifier),
+            'delete' => $this->deleteTag($identifier, $input),
             'update' => $this->updateTag($identifier, $input),
             'enable' => $this->toggleStatus($identifier, 1),
             'disable' => $this->toggleStatus($identifier, 0),
@@ -345,7 +345,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function deleteTag(?string $identifier): int
+    private function deleteTag(?string $identifier, InputInterface $input): int
     {
         if ($identifier === null || $identifier === '') {
             $this->io()->error('Tag ID is required');
@@ -381,6 +381,11 @@ HELP
                 $this->io()->listing($this->formatUsageCounts($usage));
 
                 if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
+                    if (!$input->isInteractive()) {
+                        $this->io()->error('Tag deletion cancelled because confirmation was not provided.');
+                        return self::FAILURE;
+                    }
+
                     $this->io()->info('Operation cancelled');
                     return self::SUCCESS;
                 }
