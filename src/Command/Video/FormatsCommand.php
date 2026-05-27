@@ -61,7 +61,11 @@ HELP
             'list' => $this->listFormats($input),
             'check' => $this->checkFormats($input),
             'available' => $this->showAvailableFormats($input),
-            default => $this->listFormats($input),
+            default => $this->failUnknownAction(
+                'formats',
+                $action,
+                ['available', 'list', 'check']
+            ),
         };
     }
 

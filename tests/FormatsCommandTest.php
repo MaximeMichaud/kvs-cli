@@ -182,6 +182,18 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('720p MP4', $output);
     }
 
+    public function testRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'unknown_action',
+            'video_id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown formats action "unknown_action"', $this->tester->getDisplay());
+    }
+
     public function testCommandHasExpectedAliases(): void
     {
         $aliases = $this->command->getAliases();
