@@ -62,6 +62,10 @@ Manage KVS email settings.
   tls           TLS encryption (recommended)
   ssl           SSL encryption
 
+<fg=yellow>TEST LIMITATION:</>
+  The test action can send only through PHP mail().
+  For SMTP test emails, use the KVS admin panel.
+
 <fg=yellow>DEBUG LEVELS:</>
   0             None (default)
   1             Basic logging

@@ -113,6 +113,29 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testEmailHelpDocumentsSmtpTestLimitation(): void
+    {
+        $output = $this->command->getHelp();
+
+        $this->assertStringContainsString('The test action can send only through PHP mail().', $output);
+        $this->assertStringContainsString('For SMTP test emails, use the KVS admin panel.', $output);
+    }
+
+    public function testEmailTestWithSmtpMailerReportsCliLimitation(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'test',
+            '--to' => 'recipient@example.test',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('SMTP sending requires KVS internal API', $output);
+        $this->assertStringContainsString('Use the admin panel to send test emails via SMTP.', $output);
+    }
+
     public function testEmailSetNoOptions(): void
     {
         $this->tester->execute([
