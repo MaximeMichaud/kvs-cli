@@ -338,6 +338,37 @@ SH
         $this->assertSame('skip', $data['results']['end_of_life']['status']);
     }
 
+    public function testOpcacheJitCheckUsesTargetPhpRuntimeVersion(): void
+    {
+        $command = new class ($this->config) extends CheckCommand {
+            protected function getKvsPhpVersion(): string
+            {
+                return '7.4.33';
+            }
+
+            protected function getOpcacheConfig(): array|false
+            {
+                return [
+                    'directives' => [
+                        'opcache.enable' => true,
+                        'opcache.memory_consumption' => 256 * 1024 * 1024,
+                        'opcache.interned_strings_buffer' => 16,
+                        'opcache.jit_buffer_size' => 64 * 1024 * 1024,
+                    ],
+                ];
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute(['--json' => true, '--skip-online-checks' => true]);
+
+        $data = json_decode($tester->getDisplay(), true);
+        $this->assertIsArray($data);
+        $this->assertArrayHasKey('opcache', $data['results']);
+        $this->assertFalse($data['results']['opcache']['jit_enabled']);
+        $this->assertArrayNotHasKey('jit_buffer_size', $data['results']['opcache']);
+    }
+
     public function testCheckCronUsesNativeKvsAdminProcessesSchema(): void
     {
         $db = new \PDO('sqlite::memory:');

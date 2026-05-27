@@ -1010,8 +1010,7 @@ HELP
         }
 
         // JIT (PHP 8+)
-        // @phpstan-ignore greaterOrEqual.alwaysTrue (forward-compatible check)
-        if (PHP_MAJOR_VERSION >= 8) {
+        if (version_compare($this->getKvsPhpVersion(), '8.0', '>=')) {
             $jitRaw = $directives['opcache.jit_buffer_size'] ?? 0;
             $jitBuffer = is_numeric($jitRaw) ? (int) $jitRaw : 0;
             $result['jit_buffer_size'] = $jitBuffer;
