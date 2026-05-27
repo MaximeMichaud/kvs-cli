@@ -79,14 +79,15 @@ HELP
             return self::FAILURE;
         }
 
-        $videoPath = $this->getVideoStorageDir($videoId);
-        if ($videoPath === null) {
+        $videoPaths = $this->getVideoStorageDirs($videoId);
+        if ($videoPaths === []) {
             $this->io()->error('Video storage path not configured');
             return self::FAILURE;
         }
 
-        if (!is_dir($videoPath)) {
-            $this->io()->error("Video directory not found: $videoPath");
+        $existingVideoPaths = $this->filterExistingDirs($videoPaths);
+        if ($existingVideoPaths === []) {
+            $this->io()->error("Video directory not found: {$videoPaths[0]}");
             $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
         }
@@ -95,16 +96,18 @@ HELP
         $extensions = ['mp4', 'webm', 'mkv', 'avi', 'flv', 'm4v'];
         $files = [];
 
-        foreach ($extensions as $ext) {
-            $matches = glob("$videoPath/*.$ext");
-            if (is_array($matches) && $matches !== []) {
-                $files = array_merge($files, $matches);
+        foreach ($existingVideoPaths as $videoPath) {
+            foreach ($extensions as $ext) {
+                $matches = glob("$videoPath/*.$ext");
+                if (is_array($matches) && $matches !== []) {
+                    $files = array_merge($files, $matches);
+                }
             }
         }
 
         if ($files === []) {
             $this->io()->warning('No video files found in directory');
-            $this->io()->text("Directory: $videoPath");
+            $this->io()->text('Directory: ' . implode(', ', $existingVideoPaths));
             return self::SUCCESS;
         }
 
@@ -166,13 +169,14 @@ HELP
             return self::FAILURE;
         }
 
-        $videoPath = $this->getVideoStorageDir($videoId);
-        if ($videoPath === null) {
+        $videoPaths = $this->getVideoStorageDirs($videoId);
+        if ($videoPaths === []) {
             $this->io()->error('Video storage path not configured');
             return self::FAILURE;
         }
 
-        if (!is_dir($videoPath)) {
+        $existingVideoPaths = $this->filterExistingDirs($videoPaths);
+        if ($existingVideoPaths === []) {
             $this->io()->error("Video directory not found for video ID: $videoId");
             $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
@@ -203,7 +207,8 @@ HELP
 
             // KVS stores converted video files as {video_id}{postfix}, e.g. 123_720p.mp4.
             $filename = $videoId . $postfix;
-            $fullPath = "$videoPath/$filename";
+            $fullPath = $this->findExistingFile($existingVideoPaths, $filename)
+                ?? $videoPaths[0] . '/' . $filename;
 
             if (file_exists($fullPath)) {
                 $filesize = filesize($fullPath);
@@ -237,7 +242,10 @@ HELP
         }
 
         if ($outputFormat !== 'table') {
-            $formatter = new Formatter($input->getOptions(), ['format', 'postfix', 'status', 'file', 'size', 'dimensions']);
+            $formatter = new Formatter(
+                $input->getOptions(),
+                ['format', 'postfix', 'status', 'file', 'size', 'dimensions']
+            );
             $formatter->display($formatRows, $this->io());
             return $missing === [] ? self::SUCCESS : self::FAILURE;
         }
@@ -355,52 +363,63 @@ HELP
         }
     }
 
-    private function getVideoStorageDir(string $videoId): ?string
+    /**
+     * @return list<string>
+     */
+    private function getVideoStorageDirs(string $videoId): array
     {
-        $basePath = $this->getVideoStorageBasePath($videoId);
-        if ($basePath === null || $basePath === '') {
-            return null;
+        $basePaths = $this->getVideoStorageBasePaths($videoId);
+        $dirs = [];
+
+        foreach ($basePaths as $basePath) {
+            $dirs[] = rtrim($basePath, '/') . '/' . $this->getDirById($videoId) . '/' . $videoId;
         }
 
-        return rtrim($basePath, '/') . '/' . $this->getDirById($videoId) . '/' . $videoId;
+        return array_values(array_unique($dirs));
     }
 
-    private function getVideoStorageBasePath(string $videoId): ?string
+    /**
+     * @return list<string>
+     */
+    private function getVideoStorageBasePaths(string $videoId): array
     {
         $db = $this->getDatabaseConnection(true);
         if ($db !== null) {
-            $serverPath = $this->getLocalVideoServerPath($db, $videoId);
-            if ($serverPath !== null) {
-                return $serverPath;
+            $serverPaths = $this->getLocalVideoServerPaths($db, $videoId);
+            if ($serverPaths !== []) {
+                return $serverPaths;
             }
         }
 
         $videosPath = $this->config->getContentPath() . '/' . Constants::CONTENT_VIDEOS;
         if (is_dir($videosPath)) {
-            return $videosPath;
+            return [$videosPath];
         }
 
         $sourcesPath = $this->config->getVideoSourcesPath();
         if ($sourcesPath !== '') {
-            return dirname($sourcesPath) . '/' . Constants::CONTENT_VIDEOS;
+            return [dirname($sourcesPath) . '/' . Constants::CONTENT_VIDEOS];
         }
 
-        return null;
+        return [];
     }
 
-    private function getLocalVideoServerPath(\PDO $db, string $videoId): ?string
+    /**
+     * @return list<string>
+     */
+    private function getLocalVideoServerPaths(\PDO $db, string $videoId): array
     {
         try {
             $videoStmt = $db->prepare(
                 'SELECT server_group_id FROM ' . $this->table('videos') . ' WHERE video_id = :video_id'
             );
             if ($videoStmt === false) {
-                return null;
+                return [];
             }
             $videoStmt->execute(['video_id' => (int) $videoId]);
             $video = $videoStmt->fetch();
             if (!is_array($video)) {
-                return null;
+                return [];
             }
 
             $serverGroupId = $video['server_group_id'] ?? 0;
@@ -413,23 +432,54 @@ HELP
                 $query .= ' AND group_id = :group_id';
                 $params['group_id'] = $serverGroupId;
             }
-            $query .= ' ORDER BY server_id ASC LIMIT 1';
+            $query .= ' ORDER BY server_id ASC';
 
             $serverStmt = $db->prepare($query);
             if ($serverStmt === false) {
-                return null;
+                return [];
             }
             $serverStmt->execute($params);
-            $server = $serverStmt->fetch();
-            if (!is_array($server)) {
-                return null;
+
+            $paths = [];
+            while (($server = $serverStmt->fetch()) !== false) {
+                if (!is_array($server)) {
+                    continue;
+                }
+
+                $path = $server['path'] ?? null;
+                if (is_string($path) && $path !== '' && is_dir($path)) {
+                    $paths[] = $path;
+                }
             }
 
-            $path = $server['path'] ?? null;
-            return is_string($path) && $path !== '' && is_dir($path) ? $path : null;
+            return array_values(array_unique($paths));
         } catch (\Exception) {
-            return null;
+            return [];
         }
+    }
+
+    /**
+     * @param list<string> $paths
+     * @return list<string>
+     */
+    private function filterExistingDirs(array $paths): array
+    {
+        return array_values(array_filter($paths, static fn(string $path): bool => is_dir($path)));
+    }
+
+    /**
+     * @param list<string> $dirs
+     */
+    private function findExistingFile(array $dirs, string $filename): ?string
+    {
+        foreach ($dirs as $dir) {
+            $path = $dir . '/' . $filename;
+            if (file_exists($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     private function getDirById(string $id): int

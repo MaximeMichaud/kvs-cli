@@ -117,6 +117,48 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('/stale/contents/videos', $output);
     }
 
+    public function testListAndCheckUseSecondLocalServerWhenFileIsStoredThere(): void
+    {
+        $primaryFile = $this->tempDir . '/contents/videos/1000/1234/1234.mp4';
+        $secondaryPath = $this->tempDir . '/secondary/videos';
+        $secondaryDir = $secondaryPath . '/1000/1234';
+        mkdir($secondaryDir, 0755, true);
+        rename($primaryFile, $secondaryDir . '/1234.mp4');
+
+        $quotedPath = $this->db->quote($secondaryPath);
+        $this->db->exec(
+            "INSERT INTO ktvs_admin_servers
+                (server_id, group_id, content_type_id, status_id, is_remote, path)
+             VALUES (2, 1, 1, 1, 0, {$quotedPath})"
+        );
+
+        $listTester = new CommandTester($this->createCommand());
+        $listTester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--fields' => 'file,path',
+            '--format' => 'json',
+        ]);
+
+        $listRows = json_decode($listTester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $listTester->getStatusCode());
+        $this->assertSame('1234.mp4', $listRows[0]['file'] ?? null);
+        $this->assertSame($secondaryDir . '/1234.mp4', $listRows[0]['path'] ?? null);
+
+        $checkTester = new CommandTester($this->createCommand());
+        $checkTester->execute([
+            'action' => 'check',
+            'video_id' => '1234',
+            '--fields' => 'status,path',
+            '--format' => 'json',
+        ]);
+
+        $checkRows = json_decode($checkTester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $checkTester->getStatusCode());
+        $this->assertSame('available', $checkRows[0]['status'] ?? null);
+        $this->assertSame($secondaryDir . '/1234.mp4', $checkRows[0]['path'] ?? null);
+    }
+
     public function testCheckUsesKvsVideoIdPostfixFilename(): void
     {
         $tester = new CommandTester($this->createCommand());
