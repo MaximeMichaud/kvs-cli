@@ -253,6 +253,44 @@ class StatusCommandTest extends TestCase
         $this->assertSame(1, $command->connectionCalls);
     }
 
+    public function testStatusLabelsFilteredUserCountAsEnabledUsers(): void
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec('CREATE TABLE ktvs_videos (status_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (status_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_users (status_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_models (model_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_dvds (dvd_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_background_tasks (task_id INTEGER, status_id INTEGER, added_date TEXT)');
+        $db->exec('CREATE TABLE ktvs_background_tasks_history (task_id INTEGER, status_id INTEGER, effective_duration INTEGER)');
+        $db->exec('INSERT INTO ktvs_users VALUES (0), (1), (2), (3), (4)');
+
+        $command = new class (TestHelper::createTestConfiguration($this->tempDir), $db) extends StatusCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute([]);
+
+        $normalizedDisplay = preg_replace('/[^\w.]+/u', ' ', $tester->getDisplay());
+        $this->assertIsString($normalizedDisplay);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Enabled Users 3', $normalizedDisplay);
+        $this->assertStringNotContainsString('Users 5', $normalizedDisplay);
+    }
+
     public function testStatusShowsDatabaseTableStats(): void
     {
         $db = new PDO('sqlite::memory:');

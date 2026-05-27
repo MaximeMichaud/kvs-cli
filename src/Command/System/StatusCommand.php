@@ -361,7 +361,7 @@ HELP
             $queries = [
                 'Videos' => "SELECT COUNT(*) FROM " . $this->table('videos') . " WHERE status_id = " . StatusFormatter::VIDEO_ACTIVE,
                 'Albums' => "SELECT COUNT(*) FROM " . $this->table('albums') . " WHERE status_id = " . StatusFormatter::ALBUM_ACTIVE,
-                'Users' => "SELECT COUNT(*) FROM " . $this->table('users')
+                'Enabled Users' => "SELECT COUNT(*) FROM " . $this->table('users')
                     . " WHERE status_id NOT IN (" . StatusFormatter::USER_DISABLED
                     . "," . StatusFormatter::USER_NOT_CONFIRMED . ")",
                 'Categories' => "SELECT COUNT(*) FROM " . $this->table('categories') . "",
