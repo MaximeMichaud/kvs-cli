@@ -103,6 +103,26 @@ class ServerCommandTest extends TestCase
         $this->assertSame('Local', $rows[0]['connection']);
     }
 
+    public function testServerListWithGroupFilterIsolatesGroups(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--group' => '20',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title,group_title',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(3, (int) $rows[0]['server_id']);
+        $this->assertSame('Album Error', $rows[0]['title']);
+        $this->assertSame('Album Group', $rows[0]['group_title']);
+    }
+
     public function testServerListWithErrorsFilter(): void
     {
         $this->tester->execute([
