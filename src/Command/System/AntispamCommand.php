@@ -179,7 +179,7 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'show';
 
         return match ($action) {
             'show' => $this->showSettings($input),
@@ -187,7 +187,7 @@ HELP
             'add' => $this->addToBlacklist($input),
             'remove' => $this->removeFromBlacklist($input),
             'blacklist' => $this->showBlacklist($input),
-            default => $this->showSettings($input),
+            default => $this->failUnknownAction('antispam', $action, ['show', 'set', 'add', 'remove', 'blacklist']),
         };
     }
 

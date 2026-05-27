@@ -80,6 +80,18 @@ class AntispamCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testAntispamRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'unknown_action',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Unknown antispam action "unknown_action"', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testAntispamBlacklistAction(): void
     {
         $this->tester->execute([
