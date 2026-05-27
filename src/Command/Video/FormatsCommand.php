@@ -235,7 +235,7 @@ HELP
         if ($outputFormat !== 'table') {
             $formatter = new Formatter($input->getOptions(), ['format', 'postfix', 'status', 'file', 'size', 'dimensions']);
             $formatter->display($formatRows, $this->io());
-            return self::SUCCESS;
+            return $missing === [] ? self::SUCCESS : self::FAILURE;
         }
 
         if ($available !== []) {
@@ -253,7 +253,7 @@ HELP
             $this->io()->warning('No standard formats found in directory');
         }
 
-        return self::SUCCESS;
+        return $missing === [] ? self::SUCCESS : self::FAILURE;
     }
 
     private function showAvailableFormats(InputInterface $input): int

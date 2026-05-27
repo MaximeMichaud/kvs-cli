@@ -107,11 +107,27 @@ class FormatsCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('720p MP4', $output);
         $this->assertStringContainsString('1080p MP4', $output);
         $this->assertStringContainsString('available', strtolower($output));
         $this->assertStringContainsString('missing', strtolower($output));
+    }
+
+    public function testCheckFormatsJsonReturnsFailureWhenAnyFormatIsMissing(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $statuses = array_column($rows, 'status');
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertContains('available', $statuses);
+        $this->assertContains('missing', $statuses);
     }
 
     public function testShowAvailableFormats(): void
