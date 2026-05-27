@@ -84,14 +84,8 @@ HELP
             return self::FAILURE;
         }
 
-        // Build query with stored content counts and country.
-        $query = "SELECT m.*,
-                 m.total_videos as video_count,
-                 m.total_albums as album_count,
-                 c.title as country_name
-                 FROM {$this->table('models')} m
-                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
-                 WHERE 1=1";
+        $fromClause = "FROM {$this->table('models')} m";
+        $whereClause = "WHERE 1=1";
 
         $params = [];
 
@@ -104,7 +98,7 @@ HELP
                 'inactive' => StatusFormatter::MODEL_DISABLED,
             ]);
             if ($statusId !== null) {
-                $query .= " AND m.status_id = :status";
+                $whereClause .= " AND m.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
@@ -112,11 +106,23 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND m.title LIKE :search";
+            $whereClause .= " AND m.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
-        $query .= " ORDER BY m.model_id DESC LIMIT :limit";
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            return $this->countModels($db, $fromClause, $whereClause, $params);
+        }
+
+        // Build query with stored content counts and country.
+        $query = "SELECT m.*,
+                 m.total_videos as video_count,
+                 m.total_albums as album_count,
+                 c.title as country_name
+                 $fromClause
+                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
+                 $whereClause
+                 ORDER BY m.model_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -172,6 +178,28 @@ HELP
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch models: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function countModels(\PDO $db, string $fromClause, string $whereClause, array $params): int
+    {
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) $fromClause $whereClause");
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+
+            $total = $stmt->fetchColumn();
+            $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to count models: ' . $e->getMessage());
             return self::FAILURE;
         }
     }

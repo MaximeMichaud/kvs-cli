@@ -76,6 +76,28 @@ class ModelCommandTest extends TestCase
         $this->assertSame('Active', $rows[0]['status']);
     }
 
+    public function testListModelsCountFormatIgnoresPaginationButAppliesFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('3', trim($this->tester->getDisplay()));
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'active',
+            '--format' => 'count',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('2', trim($this->tester->getDisplay()));
+    }
+
     public function testListModelsInactiveStatusAlias(): void
     {
         $this->tester->execute([
