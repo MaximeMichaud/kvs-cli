@@ -226,12 +226,14 @@ HELP
 
             $this->io()->text(sprintf('Deleting %d users...', $count));
 
-            $this->runWithKvsAdminContext(function () use ($userIds): void {
-                if (!function_exists('delete_users')) {
-                    throw new \RuntimeException('KVS delete_users function is not available');
-                }
-                delete_users($userIds, true, 'ap');
-            });
+            $this->deleteUsersWithKvs($userIds);
+
+            $remaining = $this->countRemainingUsers($db, $userIds);
+            if ($remaining > 0) {
+                $label = $remaining === 1 ? 'selected user' : 'selected users';
+                $this->io()->error(sprintf('KVS did not delete %d %s.', $remaining, $label));
+                return self::FAILURE;
+            }
 
             $this->io()->success(sprintf('Successfully deleted %d users.', $count));
             return self::SUCCESS;
@@ -242,5 +244,41 @@ HELP
             }
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Delete users through KVS native cleanup so files, references, counters and background tasks stay consistent.
+     *
+     * @param list<int> $userIds
+     */
+    protected function deleteUsersWithKvs(array $userIds): void
+    {
+        $this->runWithKvsAdminContext(function () use ($userIds): void {
+            if (!function_exists('delete_users')) {
+                throw new \RuntimeException('KVS delete_users function is not available');
+            }
+            delete_users($userIds, true, 'ap');
+        });
+    }
+
+    /**
+     * @param list<int> $userIds
+     */
+    private function countRemainingUsers(\PDO $db, array $userIds): int
+    {
+        if ($userIds === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE user_id IN ($placeholders)");
+        foreach ($userIds as $index => $userId) {
+            $stmt->bindValue($index + 1, $userId, \PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $remaining = $stmt->fetchColumn();
+
+        return is_numeric($remaining) ? (int) $remaining : 0;
     }
 }
