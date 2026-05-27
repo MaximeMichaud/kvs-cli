@@ -123,6 +123,8 @@ class AlbumCommandTest extends TestCase
         $this->assertStringContainsString('Album #10', $output);
         $this->assertStringContainsString('Title', $output);
         $this->assertStringContainsString('Active Album', $output);
+        $this->assertMatchesRegularExpression('/Access\W+Public/', $output);
+        $this->assertMatchesRegularExpression('/User\W+alice/', $output);
         $this->assertMatchesRegularExpression('/Images\W+2/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }

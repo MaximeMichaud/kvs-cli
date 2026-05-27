@@ -195,9 +195,14 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM {$this->table('albums')} WHERE album_id = :id");
+            $stmt = $db->prepare("
+                SELECT a.*, u.username
+                FROM {$this->table('albums')} a
+                LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
+                WHERE a.album_id = :id
+            ");
             $stmt->execute(['id' => $id]);
-            /** @var array{title: string, status_id: int, post_date: string, album_viewed: int, rating: int, rating_amount: int}|false $album */
+            /** @var array<string, mixed>|false $album */
             $album = $stmt->fetch();
 
             if ($album === false) {
@@ -212,17 +217,30 @@ HELP
             $imageCount = $stmt->fetchColumn();
             $imageCountValue = is_numeric($imageCount) ? (int) $imageCount : 0;
 
-            $postTimestamp = strtotime($album['post_date']);
+            $title = isset($album['title']) && is_string($album['title']) ? $album['title'] : '';
+            $statusIdVal = $album['status_id'] ?? 0;
+            $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+            $postDate = isset($album['post_date']) && is_string($album['post_date']) ? $album['post_date'] : '';
+            $postTimestamp = strtotime($postDate);
+            $privacyIdVal = $album['is_private'] ?? 0;
+            $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
+            $viewedVal = $album['album_viewed'] ?? 0;
+            $views = is_numeric($viewedVal) ? (int) $viewedVal : 0;
+            $username = isset($album['username']) && is_string($album['username']) && $album['username'] !== ''
+                ? $album['username']
+                : 'N/A';
 
             $info = [
-                ['Title', $album['title']],
-                ['Status', StatusFormatter::album($album['status_id'])],
+                ['Title', $title],
+                ['Status', StatusFormatter::album($statusId)],
+                ['Access', StatusFormatter::contentPrivacy($privacyId)],
+                ['User', $username],
                 ['Images', $imageCountValue],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
-                ['Views', number_format($album['album_viewed'])],
+                ['Views', number_format($views)],
                 [
                     'Rating',
-                    format_kvs_rating($album['rating'], $album['rating_amount'])
+                    format_kvs_rating($album['rating'] ?? 0, $album['rating_amount'] ?? 0)
                 ],
             ];
 
