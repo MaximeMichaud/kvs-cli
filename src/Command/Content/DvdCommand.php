@@ -89,11 +89,8 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT d.*,
-                        (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
-                        (SELECT COALESCE(SUM(duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
-                 FROM {$this->table('dvds')} d
-                 WHERE 1=1";
+        $fromClause = "FROM {$this->table('dvds')} d";
+        $whereClause = "WHERE 1=1";
 
         $params = [];
 
@@ -106,7 +103,7 @@ HELP
                 'inactive' => StatusFormatter::DVD_DISABLED,
             ]);
             if ($statusId !== null) {
-                $query .= " AND d.status_id = :status";
+                $whereClause .= " AND d.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
@@ -114,11 +111,20 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND d.title LIKE :search";
+            $whereClause .= " AND d.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
-        $query .= " ORDER BY d.dvd_id DESC LIMIT :limit";
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            return $this->countDvds($db, $fromClause, $whereClause, $params);
+        }
+
+        $query = "SELECT d.*,
+                        (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
+                        (SELECT COALESCE(SUM(duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
+                 $fromClause
+                 $whereClause
+                 ORDER BY d.dvd_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -172,6 +178,28 @@ HELP
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch DVDs: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function countDvds(\PDO $db, string $fromClause, string $whereClause, array $params): int
+    {
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) $fromClause $whereClause");
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+
+            $total = $stmt->fetchColumn();
+            $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to count DVDs: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
