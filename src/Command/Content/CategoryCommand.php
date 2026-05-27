@@ -103,7 +103,7 @@ HELP
             'tree' => $this->showTree(),
             'show' => $this->showCategory($id),
             'create' => $this->createCategory($input),
-            'delete' => $this->deleteCategory($id),
+            'delete' => $this->deleteCategory($id, $input),
             'update' => $this->updateCategory($id, $input),
             'enable' => $this->toggleStatus($id, 1),
             'disable' => $this->toggleStatus($id, 0),
@@ -452,7 +452,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function deleteCategory(?string $id): int
+    private function deleteCategory(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Category ID is required');
@@ -488,6 +488,11 @@ HELP
                 $this->io()->listing($this->formatUsageCounts($usage));
 
                 if ($this->io()->confirm('Delete anyway? This will remove all associations.', false) !== true) {
+                    if (!$input->isInteractive()) {
+                        $this->io()->error('Category deletion cancelled because confirmation was not provided.');
+                        return self::FAILURE;
+                    }
+
                     $this->io()->info('Operation cancelled');
                     return self::SUCCESS;
                 }

@@ -105,6 +105,30 @@ class TagCategoryCleanupTest extends TestCase
         $this->assertDirectoryDoesNotExist($this->tempDir . '/contents/categories/1');
     }
 
+    public function testCategoryDeleteWithoutInteractiveConfirmationFailsWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createCategorySchema($db);
+
+        $db->exec("INSERT INTO ktvs_categories (category_id, title, category_group_id) VALUES (1, 'Delete', 0)");
+        $db->exec('INSERT INTO ktvs_categories_videos (category_id, video_id) VALUES (1, 100)');
+
+        $tester = new CommandTester($this->createCategoryCommand($db));
+        $tester->execute(
+            ['action' => 'delete', 'id' => '1'],
+            ['interactive' => false]
+        );
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString(
+            'Category deletion cancelled because confirmation was not provided.',
+            $tester->getDisplay()
+        );
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_categories WHERE category_id = 1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = 1'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_admin_audit_log'));
+    }
+
     public function testTagDeleteCleansAllKvsAssociationTables(): void
     {
         $db = $this->createDatabase();
