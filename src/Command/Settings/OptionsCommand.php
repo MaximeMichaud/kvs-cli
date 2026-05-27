@@ -61,6 +61,7 @@ class OptionsCommand extends BaseCommand
             ->addOption('disabled', null, InputOption::VALUE_NONE, 'Show only disabled options (value=0)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Fields to display')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long values in table view')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Apply set changes without confirmation')
             ->setHelp(<<<'HELP'
 Manage KVS system options (ktvs_options table).
@@ -83,12 +84,14 @@ Manage KVS system options (ktvs_options table).
   <fg=green>kvs options list --prefix=ENABLE --enabled</>
   <fg=green>kvs options list --category=system</>
   <fg=green>kvs options list --search=AVATAR</>
+  <fg=green>kvs options list --search=ACTIVITY --no-truncate</>
   <fg=green>kvs options get ENABLE_ANTI_HOTLINK</>
   <fg=green>kvs options set ENABLE_ANTI_HOTLINK 1 --yes</>
   <fg=green>kvs options list --format=json</>
 
 <fg=yellow>NOTE:</>
   Options are stored in the ktvs_options table as key-value pairs.
+  Long list values are truncated in table view unless --no-truncate is used.
   Use with caution - changing options can affect site behavior.
 HELP
             );
@@ -188,11 +191,13 @@ HELP
                 return self::SUCCESS;
             }
 
+            $noTruncate = $this->getBoolOption($input, 'no-truncate');
+
             // Transform for display
-            $options = array_map(function (array $option): array {
+            $options = array_map(function (array $option) use ($noTruncate): array {
                 $value = $option['value'];
                 // Truncate long values for table display
-                if (strlen($value) > 50) {
+                if (!$noTruncate && strlen($value) > 50) {
                     $option['display_value'] = substr($value, 0, 47) . '...';
                 } else {
                     $option['display_value'] = $value;

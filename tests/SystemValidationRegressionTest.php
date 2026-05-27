@@ -133,6 +133,34 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertContains('USE_POST_DATE_RANDOMIZATION', $websiteVariables);
     }
 
+    public function testOptionsListNoTruncateShowsFullLongValues(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $longValue = '%total_videos%*20 + %total_albums%*20 + %total_comments%*10 + %logins%';
+        $stmt = $this->db->prepare('INSERT INTO ktvs_options VALUES (:variable, :value)');
+        $stmt->execute(['variable' => 'ACTIVITY_INDEX_FORMULA', 'value' => $longValue]);
+
+        $defaultTester = new CommandTester($this->createOptionsCommand());
+        $defaultTester->execute([
+            'action' => 'list',
+            '--search' => 'ACTIVITY_INDEX_FORMULA',
+            '--force' => true,
+        ]);
+
+        $fullTester = new CommandTester($this->createOptionsCommand());
+        $fullTester->execute([
+            'action' => 'list',
+            '--search' => 'ACTIVITY_INDEX_FORMULA',
+            '--no-truncate' => true,
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $defaultTester->getStatusCode(), $defaultTester->getDisplay());
+        $this->assertSame(0, $fullTester->getStatusCode(), $fullTester->getDisplay());
+        $this->assertStringContainsString('%total_videos%*20 + %total_albums%*20 + %total_...', $defaultTester->getDisplay());
+        $this->assertStringContainsString($longValue, $fullTester->getDisplay());
+    }
+
     public function testOptionsSetRequiresYesInNonInteractiveMode(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
