@@ -119,12 +119,31 @@ HELP
             return $this->countDvds($db, $fromClause, $whereClause, $params);
         }
 
+        $dvdFields = [
+            'dvd_id',
+            'title',
+            'status_id',
+            'release_year',
+            'dvd_viewed',
+            'subscribers_count',
+            'rating',
+            'rating_amount',
+        ];
+        $fieldList = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
+        $groupBy = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
+
         $query = "SELECT d.*,
-                        (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
-                        (SELECT COALESCE(SUM(duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
-                 $fromClause
-                 $whereClause
-                 ORDER BY d.dvd_id DESC LIMIT :limit";
+                        COUNT(v.dvd_id) as video_count,
+                        COALESCE(SUM(v.duration), 0) as video_duration
+                 FROM (
+                     SELECT $fieldList
+                     $fromClause
+                     $whereClause
+                     ORDER BY d.dvd_id DESC LIMIT :limit
+                 ) d
+                 LEFT JOIN {$this->table('videos')} v ON v.dvd_id = d.dvd_id
+                 GROUP BY $groupBy
+                 ORDER BY d.dvd_id DESC";
 
         try {
             $stmt = $db->prepare($query);
@@ -218,11 +237,29 @@ HELP
 
         try {
             $stmt = $db->prepare("
-                SELECT d.*,
-                       (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
-                       (SELECT COALESCE(SUM(duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
+                SELECT d.dvd_id,
+                       d.title,
+                       d.status_id,
+                       d.dvd_viewed,
+                       d.release_year,
+                       d.rating_amount,
+                       d.rating,
+                       d.subscribers_count,
+                       d.description,
+                       COUNT(v.dvd_id) as video_count,
+                       COALESCE(SUM(v.duration), 0) as video_duration
                 FROM {$this->table('dvds')} d
+                LEFT JOIN {$this->table('videos')} v ON v.dvd_id = d.dvd_id
                 WHERE d.dvd_id = :id
+                GROUP BY d.dvd_id,
+                         d.title,
+                         d.status_id,
+                         d.dvd_viewed,
+                         d.release_year,
+                         d.rating_amount,
+                         d.rating,
+                         d.subscribers_count,
+                         d.description
             ");
             $stmt->execute(['id' => $id]);
             $dvd = $stmt->fetch(\PDO::FETCH_ASSOC);

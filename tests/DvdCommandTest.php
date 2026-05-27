@@ -98,6 +98,26 @@ class DvdCommandTest extends TestCase
         $this->assertSame('2', trim($this->tester->getDisplay()));
     }
 
+    public function testListDvdsAggregatesRelationCountsWithoutNativeTotals(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,videos,total_videos_duration,duration',
+            '--limit' => '1',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame(2, (int) $rows[0]['videos']);
+        $this->assertSame(3690, (int) $rows[0]['total_videos_duration']);
+        $this->assertSame('1h 1m', $rows[0]['duration']);
+    }
+
     public function testListDvdsDisabledStatus(): void
     {
         $this->tester->execute([
@@ -233,7 +253,8 @@ class DvdCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('dvds') . ' (' .
             'dvd_id INTEGER, title TEXT, status_id INTEGER, release_year INTEGER, dvd_viewed INTEGER, ' .
-            'subscribers_count INTEGER, rating INTEGER, rating_amount INTEGER, description TEXT)'
+            'subscribers_count INTEGER, rating INTEGER, rating_amount INTEGER, description TEXT, ' .
+            'total_videos INTEGER, total_videos_duration INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
@@ -242,10 +263,11 @@ class DvdCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('dvds') .
-            " (dvd_id, title, status_id, release_year, dvd_viewed, subscribers_count, rating, rating_amount, description) VALUES " .
-            "(30, 'Test Series', 1, 2026, 100, 5, 40, 10, 'Long running series'), " .
-            "(20, 'Disabled Series', 0, 2025, 10, 0, 0, 0, ''), " .
-            "(10, 'Other Channel', 1, 2024, 50, 2, 12, 3, '')"
+            ' (dvd_id, title, status_id, release_year, dvd_viewed, subscribers_count, rating, rating_amount, ' .
+            "description, total_videos, total_videos_duration) VALUES " .
+            "(30, 'Test Series', 1, 2026, 100, 5, 40, 10, 'Long running series', 99, 99), " .
+            "(20, 'Disabled Series', 0, 2025, 10, 0, 0, 0, '', 99, 99), " .
+            "(10, 'Other Channel', 1, 2024, 50, 2, 12, 3, '', 99, 99)"
         );
         $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (30, 3600), (30, 90), (20, 120), (10, 300)');
 
