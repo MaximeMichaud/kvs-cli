@@ -110,9 +110,7 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT p.*, u.username,
-                        (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
-                 FROM {$this->table('playlists')} p
+        $fromClause = "FROM {$this->table('playlists')} p
                  LEFT JOIN {$this->table('users')} u ON p.user_id = u.user_id
                  WHERE 1=1";
 
@@ -127,7 +125,7 @@ HELP
                 'inactive' => StatusFormatter::PLAYLIST_DISABLED,
             ]);
             if ($statusId !== null) {
-                $query .= " AND p.status_id = :status";
+                $fromClause .= " AND p.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
@@ -135,25 +133,32 @@ HELP
         // User filter
         $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
-            $query .= " AND p.user_id = :user";
+            $fromClause .= " AND p.user_id = :user";
             $params['user'] = $user;
         }
 
         // Public/Private filter
         if ($input->getOption('public')) {
-            $query .= " AND p.is_private = 0";
+            $fromClause .= " AND p.is_private = 0";
         } elseif ($input->getOption('private')) {
-            $query .= " AND p.is_private = 1";
+            $fromClause .= " AND p.is_private = 1";
         }
 
         // Search filter
         $search = $input->getOption('search');
         if (is_string($search) && $search !== '') {
-            $query .= " AND (p.title LIKE :search OR p.description LIKE :search)";
+            $fromClause .= " AND (p.title LIKE :search OR p.description LIKE :search)";
             $params['search'] = '%' . $search . '%';
         }
 
-        $query .= " ORDER BY p.added_date DESC LIMIT :limit";
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            return $this->countPlaylists($db, $fromClause, $params);
+        }
+
+        $query = "SELECT p.*, u.username,
+                        (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
+                 $fromClause
+                 ORDER BY p.added_date DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -210,6 +215,28 @@ HELP
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch playlists: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function countPlaylists(\PDO $db, string $fromClause, array $params): int
+    {
+        try {
+            $stmt = $db->prepare("SELECT COUNT(*) $fromClause");
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+
+            $total = $stmt->fetchColumn();
+            $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to count playlists: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
