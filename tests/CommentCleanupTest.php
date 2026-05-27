@@ -156,6 +156,75 @@ class CommentCleanupTest extends TestCase
         );
     }
 
+    public function testApproveWithoutInteractiveConfirmationFailsWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 1)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_albums_count, comments_total_count
+            ) VALUES (5, 'tester', 1, 1)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (8, 1, 0, 2, 5, 'Approve cancelled', 0, 1)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute(
+            ['action' => 'approve', 'id' => '8'],
+            ['interactive' => false]
+        );
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString(
+            'Comment moderation cancelled because confirmation was not provided.',
+            $tester->getDisplay()
+        );
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id = 8'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id = 8'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT comments_count FROM ktvs_albums WHERE album_id = 1'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_admin_audit_log'));
+    }
+
+    public function testRejectWithoutInteractiveConfirmationFailsWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 1)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_albums_count, comments_total_count
+            ) VALUES (5, 'tester', 1, 1)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (9, 1, 0, 2, 5, 'Reject cancelled', 1, 0)"
+        );
+        $db->exec('INSERT INTO ktvs_users_events (comment_id) VALUES (9)');
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute(
+            ['action' => 'reject', 'id' => '9'],
+            ['interactive' => false]
+        );
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString(
+            'Comment moderation cancelled because confirmation was not provided.',
+            $tester->getDisplay()
+        );
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_comments WHERE comment_id = 9'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_users_events WHERE comment_id = 9'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT comments_count FROM ktvs_albums WHERE album_id = 1'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_admin_audit_log'));
+    }
+
     public function testListPendingUsesReviewNeededFlagLikeKvs(): void
     {
         $db = $this->createDatabase();

@@ -657,6 +657,11 @@ HELP
             $this->renderTable(['ID', 'User', 'Type', 'Comment'], $rows);
 
             if ($this->io()->confirm('Approve ' . count($comments) . ' comment(s)?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Comment moderation cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
                 $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }
@@ -757,6 +762,11 @@ HELP
             $this->renderTable(['ID', 'User', 'Type', 'Comment'], $rows);
 
             if ($this->io()->confirm('Reject and DELETE ' . count($comments) . ' comment(s)?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Comment moderation cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
                 $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }
