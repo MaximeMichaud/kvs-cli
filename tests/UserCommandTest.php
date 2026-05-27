@@ -106,6 +106,7 @@ class UserCommandTest extends TestCase
         $testerCount = new CommandTester($this->command);
         $testerCount->execute([
             'action' => 'list',
+            '--limit' => 1,
             '--format' => 'count'
         ]);
 

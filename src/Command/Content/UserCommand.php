@@ -105,12 +105,8 @@ HELP
             return self::FAILURE;
         }
 
-        // Build query
-        $query = "SELECT u.*,
-                 u.total_videos_count as video_count,
-                 u.total_albums_count as album_count
-                 FROM {$this->table('users')} u
-                 WHERE 1=1";
+        $fromClause = "FROM {$this->table('users')} u";
+        $whereClause = 'WHERE 1=1';
 
         $params = [];
 
@@ -128,7 +124,7 @@ HELP
                 'webmaster' => StatusFormatter::USER_WEBMASTER,
             ], [0, 1, 2, 3, 4, 5, 6]);
             if ($statusId !== null) {
-                $query .= " AND u.status_id = :status";
+                $whereClause .= " AND u.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
@@ -136,23 +132,41 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND (u.username LIKE :search OR u.email LIKE :search)";
+            $whereClause .= " AND (u.username LIKE :search OR u.email LIKE :search)";
             $params['search'] = "%$search%";
         }
 
         // Removal requested filter
         if ($this->getBoolOption($input, 'removal-requested')) {
-            $query .= " AND u.is_removal_requested = 1";
+            $whereClause .= " AND u.is_removal_requested = 1";
         }
 
         // Trusted users filter
         if ($this->getBoolOption($input, 'trusted')) {
-            $query .= " AND u.is_trusted = 1";
+            $whereClause .= " AND u.is_trusted = 1";
         }
 
-        $query .= " ORDER BY u.added_date DESC LIMIT :limit";
-
         try {
+            if ($this->getStringOption($input, 'format') === 'count') {
+                $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue($key, $value);
+                }
+                $stmt->execute();
+
+                $total = $stmt->fetchColumn();
+                $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+                return self::SUCCESS;
+            }
+
+            $query = "SELECT u.*,
+                 u.total_videos_count as video_count,
+                 u.total_albums_count as album_count
+                 {$fromClause}
+                 {$whereClause}
+                 ORDER BY u.added_date DESC LIMIT :limit";
+
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
