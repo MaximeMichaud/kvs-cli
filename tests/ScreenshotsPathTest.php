@@ -162,22 +162,90 @@ class ScreenshotsPathTest extends TestCase
         $this->assertDirectoryDoesNotExist($screenshotsPath . '/1000/1234/320x180');
     }
 
+    public function testRegenerateKeepsExistingScreenshotsWhenDurationProbeFails(): void
+    {
+        [$ffmpeg, $ffprobe] = $this->createMockVideoTools(
+            ffprobeScript: "#!/bin/sh\nexit 1\n"
+        );
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
+        mkdir($sourcesPath . '/1000/1234', 0755, true);
+        mkdir($screenshotsPath . '/1000/1234/320x180', 0755, true);
+        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
+        file_put_contents($screenshotsPath . '/1000/1234/320x180/001.jpg', 'old screenshot');
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $screenshotsPath,
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($screenshotsPath . '/1000/1234/320x180/001.jpg');
+        $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/001.jpg');
+    }
+
+    public function testRegenerateKeepsExistingScreenshotsWhenGenerationFails(): void
+    {
+        [$ffmpeg, $ffprobe] = $this->createMockVideoTools(
+            ffmpegScript: "#!/bin/sh\nexit 1\n"
+        );
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
+        mkdir($sourcesPath . '/1000/1234', 0755, true);
+        mkdir($screenshotsPath . '/1000/1234/320x180', 0755, true);
+        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
+        file_put_contents($screenshotsPath . '/1000/1234/320x180/001.jpg', 'old screenshot');
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $screenshotsPath,
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Existing screenshots were not changed.', $tester->getDisplay());
+        $this->assertFileExists($screenshotsPath . '/1000/1234/320x180/001.jpg');
+        $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/001.jpg');
+        $this->assertSame([], glob($screenshotsPath . '/1000/.1234-regenerate-*') ?: []);
+    }
+
     /**
      * @return array{0: string, 1: string}
      */
-    private function createMockVideoTools(): array
+    private function createMockVideoTools(?string $ffmpegScript = null, ?string $ffprobeScript = null): array
     {
         $toolsDir = $this->tempDir . '/tools';
         mkdir($toolsDir, 0755, true);
 
         $ffprobe = $toolsDir . '/ffprobe';
-        file_put_contents($ffprobe, "#!/bin/sh\necho '12.0'\n");
+        file_put_contents($ffprobe, $ffprobeScript ?? "#!/bin/sh\necho '12.0'\n");
         chmod($ffprobe, 0755);
 
         $ffmpeg = $toolsDir . '/ffmpeg';
         file_put_contents(
             $ffmpeg,
-            <<<'SH'
+            $ffmpegScript ?? <<<'SH'
 #!/bin/sh
 previous=''
 for arg in "$@"; do

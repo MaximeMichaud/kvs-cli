@@ -155,6 +155,63 @@ HELP
             return self::FAILURE;
         }
 
+        $plan = $this->prepareScreenshotGeneration($input, $videoId);
+        if ($plan === null) {
+            return self::FAILURE;
+        }
+
+        $screenshotsPath = $plan['screenshots_path'];
+        if (!$this->ensureDirectoryExists($screenshotsPath)) {
+            return self::FAILURE;
+        }
+
+        return $this->generateScreenshotsToDirectory($plan, $screenshotsPath);
+    }
+
+    private function regenerateScreenshots(InputInterface $input, ?string $videoId): int
+    {
+        if ($videoId === null) {
+            $this->io()->error('Video ID is required');
+            $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
+            return self::FAILURE;
+        }
+
+        $plan = $this->prepareScreenshotGeneration($input, $videoId);
+        if ($plan === null) {
+            return self::FAILURE;
+        }
+
+        $screenshotsPath = $plan['screenshots_path'];
+        $stagingPath = $this->createTemporarySiblingDirectory($screenshotsPath, 'regenerate');
+        if ($stagingPath === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $result = $this->generateScreenshotsToDirectory($plan, $stagingPath);
+            if ($result !== self::SUCCESS) {
+                $this->io()->warning('Existing screenshots were not changed.');
+                return $result;
+            }
+
+            $this->io()->text('Replacing existing screenshots...');
+            $deleted = $this->replaceScreenshotsWithStaging($stagingPath, $screenshotsPath);
+            if ($deleted === null) {
+                return self::FAILURE;
+            }
+
+            $this->io()->text("Deleted $deleted existing screenshots");
+            return self::SUCCESS;
+        } finally {
+            $this->removeDirectoryTree($stagingPath);
+        }
+    }
+
+    /**
+     * @return array{ffmpeg_path: string, video_file: string, screenshots_path: string, duration: float, count: int}|null
+     */
+    private function prepareScreenshotGeneration(InputInterface $input, string $videoId): ?array
+    {
         $ffmpegPath = $this->config->getFfmpegPath();
         $ffprobePath = $this->config->getFfprobePath();
 
@@ -168,14 +225,14 @@ HELP
             $this->io()->text('  • Arch/CachyOS:  pacman -S ffmpeg');
             $this->io()->text('  • RHEL/CentOS:   yum install ffmpeg');
             $this->io()->text('  • macOS:         brew install ffmpeg');
-            return self::FAILURE;
+            return null;
         }
 
         $videoSourcesPath = $this->config->getVideoSourcesPath();
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($videoSourcesPath === '' || $screenshotsBasePath === '') {
             $this->io()->error('Content paths not configured');
-            return self::FAILURE;
+            return null;
         }
 
         $videoPath = $this->getVideoContentDir($videoSourcesPath, $videoId);
@@ -186,26 +243,37 @@ HELP
         if ($videoFile === null) {
             $this->io()->error("No video file found in: $videoPath");
             $this->io()->note("Make sure video files exist before generating screenshots.");
-            return self::FAILURE;
-        }
-
-        // Create screenshots directory if it doesn't exist
-        if (!is_dir($screenshotsPath)) {
-            if (!mkdir($screenshotsPath, 0755, true)) {
-                $this->io()->error("Failed to create screenshots directory: $screenshotsPath");
-                return self::FAILURE;
-            }
-            $this->io()->text("Created screenshots directory: $screenshotsPath");
+            return null;
         }
 
         // Get video duration
         $duration = $this->getVideoDuration($videoFile, $ffprobePath);
         if ($duration === null) {
             $this->io()->error("Failed to get video duration for: $videoFile");
-            return self::FAILURE;
+            return null;
         }
 
         $count = $this->getIntOptionOrDefault($input, 'count', 10);
+
+        return [
+            'ffmpeg_path' => $ffmpegPath,
+            'video_file' => $videoFile,
+            'screenshots_path' => $screenshotsPath,
+            'duration' => $duration,
+            'count' => $count,
+        ];
+    }
+
+    /**
+     * @param array{ffmpeg_path: string, video_file: string, screenshots_path: string, duration: float, count: int} $plan
+     */
+    private function generateScreenshotsToDirectory(array $plan, string $screenshotsPath): int
+    {
+        $ffmpegPath = $plan['ffmpeg_path'];
+        $videoFile = $plan['video_file'];
+        $duration = $plan['duration'];
+        $count = $plan['count'];
+
         $this->io()->text("Generating $count screenshots from video (duration: {$duration}s)...");
 
         // Generate screenshots
@@ -247,46 +315,6 @@ HELP
         }
 
         return self::SUCCESS;
-    }
-
-    private function regenerateScreenshots(InputInterface $input, ?string $videoId): int
-    {
-        if ($videoId === null) {
-            $this->io()->error('Video ID is required');
-            $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
-            return self::FAILURE;
-        }
-
-        $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
-        if ($screenshotsBasePath === '') {
-            $this->io()->error('Screenshots path not configured');
-            return self::FAILURE;
-        }
-
-        $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
-
-        // Delete existing screenshots
-        if (is_dir($screenshotsPath)) {
-            $this->io()->text("Deleting existing screenshots...");
-
-            $extensions = ['jpg', 'jpeg', 'png', 'webp'];
-            $deleted = 0;
-
-            $files = $this->findImageFiles($screenshotsPath, $extensions);
-            foreach ($files as $file) {
-                if (unlink($file)) {
-                    $deleted++;
-                }
-            }
-
-            $this->removeEmptyDirectories($screenshotsPath);
-
-            $this->io()->text("Deleted $deleted existing screenshots");
-            $this->io()->newLine();
-        }
-
-        // Generate new screenshots
-        return $this->generateScreenshots($input, $videoId);
     }
 
     /**
@@ -359,6 +387,149 @@ HELP
         return $files;
     }
 
+    private function ensureDirectoryExists(string $path): bool
+    {
+        if (is_dir($path)) {
+            return true;
+        }
+
+        if (!mkdir($path, 0755, true)) {
+            $this->io()->error("Failed to create screenshots directory: $path");
+            return false;
+        }
+
+        $this->io()->text("Created screenshots directory: $path");
+        return true;
+    }
+
+    private function createTemporarySiblingDirectory(string $path, string $purpose): ?string
+    {
+        $parent = dirname($path);
+        if (!is_dir($parent) && !mkdir($parent, 0755, true)) {
+            $this->io()->error("Failed to create temporary screenshots parent directory: $parent");
+            return null;
+        }
+
+        for ($i = 0; $i < 10; $i++) {
+            $suffix = str_replace('.', '', uniqid('', true));
+            $candidate = $parent . '/.' . basename($path) . '-' . $purpose . '-' . $suffix;
+            if (@mkdir($candidate, 0700)) {
+                return $candidate;
+            }
+        }
+
+        $this->io()->error("Failed to create temporary screenshots directory below: $parent");
+        return null;
+    }
+
+    private function replaceScreenshotsWithStaging(string $stagingPath, string $screenshotsPath): ?int
+    {
+        $extensions = ['jpg', 'jpeg', 'png', 'webp'];
+        $existingFiles = $this->findImageFiles($screenshotsPath, $extensions);
+        $backupPath = null;
+        $generatedMoved = [];
+
+        try {
+            if ($existingFiles !== []) {
+                $backupPath = $this->createTemporarySiblingDirectory($screenshotsPath, 'backup');
+                if ($backupPath === null) {
+                    return null;
+                }
+
+                foreach ($existingFiles as $file) {
+                    $this->moveFilePreservingRelativePath($file, $screenshotsPath, $backupPath);
+                }
+
+                $this->removeEmptyDirectories($screenshotsPath);
+            }
+
+            if (!is_dir($screenshotsPath) && !mkdir($screenshotsPath, 0755, true)) {
+                throw new \RuntimeException("Failed to create screenshots directory: $screenshotsPath");
+            }
+
+            foreach ($this->findAllFiles($stagingPath) as $file) {
+                $generatedMoved[] = $this->moveFilePreservingRelativePath($file, $stagingPath, $screenshotsPath);
+            }
+
+            if ($backupPath !== null) {
+                $this->removeDirectoryTree($backupPath);
+            }
+
+            return count($existingFiles);
+        } catch (\RuntimeException $exception) {
+            foreach ($generatedMoved as $relativePath) {
+                @unlink($screenshotsPath . '/' . $relativePath);
+            }
+
+            if ($backupPath !== null) {
+                $this->restoreFilesFromDirectory($backupPath, $screenshotsPath);
+                $this->removeDirectoryTree($backupPath);
+            }
+
+            $this->io()->error($exception->getMessage());
+            return null;
+        }
+    }
+
+    private function moveFilePreservingRelativePath(string $file, string $sourceBasePath, string $targetBasePath): string
+    {
+        $relativePath = $this->getRelativePath($sourceBasePath, $file);
+        $target = $targetBasePath . '/' . $relativePath;
+        $targetDir = dirname($target);
+
+        if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true)) {
+            throw new \RuntimeException("Failed to create screenshots directory: $targetDir");
+        }
+
+        if (file_exists($target) && !unlink($target)) {
+            throw new \RuntimeException("Failed to replace screenshot: $target");
+        }
+
+        if (!rename($file, $target)) {
+            throw new \RuntimeException("Failed to move screenshot into place: $target");
+        }
+
+        return $relativePath;
+    }
+
+    private function restoreFilesFromDirectory(string $sourceBasePath, string $targetBasePath): void
+    {
+        foreach ($this->findAllFiles($sourceBasePath) as $file) {
+            try {
+                $this->moveFilePreservingRelativePath($file, $sourceBasePath, $targetBasePath);
+            } catch (\RuntimeException) {
+            }
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function findAllFiles(string $path): array
+    {
+        if (!is_dir($path)) {
+            return [];
+        }
+
+        $files = [];
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file instanceof \SplFileInfo || !$file->isFile()) {
+                continue;
+            }
+
+            $realPath = $file->getRealPath();
+            if (is_string($realPath)) {
+                $files[] = $realPath;
+            }
+        }
+
+        return $files;
+    }
+
     private function removeEmptyDirectories(string $path): void
     {
         if (!is_dir($path)) {
@@ -377,6 +548,33 @@ HELP
 
             @rmdir($file->getPathname());
         }
+    }
+
+    private function removeDirectoryTree(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file instanceof \SplFileInfo) {
+                continue;
+            }
+
+            if ($file->isDir()) {
+                @rmdir($file->getPathname());
+                continue;
+            }
+
+            @unlink($file->getPathname());
+        }
+
+        @rmdir($path);
     }
 
     private function getRelativePath(string $basePath, string $file): string
