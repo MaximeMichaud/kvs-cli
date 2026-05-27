@@ -20,6 +20,10 @@ class StatsSettingsCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    /** @var list<string>|null */
+    private ?array $knownCountryCodes = null;
+    private bool $knownCountryCodesLoaded = false;
+
     protected function configure(): void
     {
         $this
@@ -663,8 +667,17 @@ HELP
                     $this->io()->error("--$option requires --$modeOption=include or --$modeOption=exclude.");
                     return self::FAILURE;
                 }
-                $params[$paramKey] = $this->parseCountryCodes($value);
-                $changes[] = "$label: $value";
+                $parsed = $this->parseCountryCodes($value);
+                if ($parsed['invalid'] !== []) {
+                    $this->io()->error(
+                        "Invalid country code(s) for --$option: "
+                        . implode(', ', $parsed['invalid'])
+                        . ' (use KVS country codes such as US, CA, GB)'
+                    );
+                    return self::FAILURE;
+                }
+                $params[$paramKey] = $parsed['codes'];
+                $changes[] = "$label: " . implode(', ', array_map('strtoupper', $parsed['codes']));
             }
         }
 
@@ -752,23 +765,74 @@ HELP
     }
 
     /**
-     * @return list<string>
+     * @return array{codes: list<string>, invalid: list<string>}
      */
     private function parseCountryCodes(string $value): array
     {
         if ($value === '') {
-            return [];
+            return ['codes' => [], 'invalid' => []];
         }
 
+        $knownCodes = $this->getKnownCountryCodes();
         $codes = array_map('trim', explode(',', $value));
         $result = [];
+        $invalid = [];
         foreach ($codes as $code) {
-            $code = strtoupper($code);
-            if ($code !== '' && strlen($code) === 2) {
-                $result[] = $code;
+            $normalized = strtolower($code);
+            $display = strtoupper($code);
+            if ($normalized === '') {
+                continue;
             }
+            if (preg_match('/^[a-z]{2}$/', $normalized) !== 1) {
+                $invalid[] = $display;
+                continue;
+            }
+            if ($knownCodes !== null && !in_array($normalized, $knownCodes, true)) {
+                $invalid[] = $display;
+                continue;
+            }
+            $result[] = $normalized;
         }
-        return $result;
+        return [
+            'codes' => array_values(array_unique($result)),
+            'invalid' => array_values(array_unique($invalid)),
+        ];
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private function getKnownCountryCodes(): ?array
+    {
+        if ($this->knownCountryCodesLoaded) {
+            return $this->knownCountryCodes;
+        }
+
+        $this->knownCountryCodesLoaded = true;
+        $path = $this->config->getKvsPath() . '/admin/include/list_countries.php';
+        if (!is_file($path) || !is_readable($path)) {
+            return null;
+        }
+
+        $content = file_get_contents($path);
+        if ($content === false) {
+            return null;
+        }
+
+        preg_match_all(
+            '/\\$list_countries\\[[\'"]code[\'"]\\]\\[\\d+\\]\\s*=\\s*[\'"]([a-z]{2})[\'"]\\s*;/i',
+            $content,
+            $matches
+        );
+
+        if ($matches[1] === []) {
+            return null;
+        }
+
+        $codes = array_map('strtolower', $matches[1]);
+        $this->knownCountryCodes = array_values(array_unique($codes));
+
+        return $this->knownCountryCodes;
     }
 
     private function formatBool(int $value): string

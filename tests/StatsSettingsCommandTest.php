@@ -23,6 +23,15 @@ class StatsSettingsCommandTest extends TestCase
             $this->kvsPath . '/admin/include/setup.php',
             '<?php $config = ["project_version" => "7.0.0", "tables_prefix" => "ktvs_"];'
         );
+        file_put_contents(
+            $this->kvsPath . '/admin/include/list_countries.php',
+            <<<'PHP'
+<?php
+$list_countries['code'][1] = 'us';
+$list_countries['code'][2] = 'ca';
+$list_countries['code'][3] = 'gb';
+PHP
+        );
         $this->writeStatsParams([
             'videos_stats_limit_countries_option' => '',
             'videos_stats_limit_countries' => [],
@@ -74,7 +83,29 @@ class StatsSettingsCommandTest extends TestCase
 
         $params = $this->readStatsParams();
         $this->assertSame('include', $params['videos_stats_limit_countries_option'] ?? null);
-        $this->assertSame(['US', 'CA'], $params['videos_stats_limit_countries'] ?? null);
+        $this->assertSame(['us', 'ca'], $params['videos_stats_limit_countries'] ?? null);
+    }
+
+    public function testCountryListRejectsCodesMissingFromKvsCountryList(): void
+    {
+        $this->writeStatsParams([
+            'videos_stats_limit_countries_option' => 'include',
+            'videos_stats_limit_countries' => ['us'],
+        ]);
+
+        $this->tester->execute([
+            'action' => 'set',
+            '--videos-countries' => 'US,ZZ',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Invalid country code(s) for --videos-countries: ZZ', $display);
+
+        $params = $this->readStatsParams();
+        $this->assertSame('include', $params['videos_stats_limit_countries_option'] ?? null);
+        $this->assertSame(['us'], $params['videos_stats_limit_countries'] ?? null);
     }
 
     public function testSetDefaultValuePreservesSparseStatsParamsFile(): void
