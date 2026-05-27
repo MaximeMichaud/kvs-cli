@@ -72,6 +72,33 @@ class CategoryCommandMergeAssignGroupTest extends TestCase
         );
     }
 
+    public function testMergeWithoutInteractiveConfirmationFailsWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+        $this->insertCategories($db, [
+            1 => ['Source', 0],
+            2 => ['Target', 0],
+        ]);
+        $db->exec('INSERT INTO ktvs_categories_videos (category_id, video_id) VALUES (1, 100), (2, 200)');
+
+        $tester = new CommandTester($this->createCategoryCommand($db));
+        $tester->execute(
+            ['action' => 'merge', 'id' => '1', 'values' => ['2']],
+            ['interactive' => false]
+        );
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString(
+            'Category merge cancelled because confirmation was not provided.',
+            $tester->getDisplay()
+        );
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_categories WHERE category_id = 1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = 1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_categories_videos WHERE category_id = 2'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_admin_audit_log'));
+    }
+
     public function testMergeWithSameIdFailsWithoutWrites(): void
     {
         $db = $this->createDatabase();

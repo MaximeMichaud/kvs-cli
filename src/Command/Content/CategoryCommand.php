@@ -680,7 +680,12 @@ HELP
             $this->io()->newLine();
             $this->io()->warning('All associations will be moved to the target category, then source category will be deleted.');
 
-            if ($input->isInteractive() && $this->io()->confirm('Continue with merge?', false) !== true) {
+            if ($this->io()->confirm('Continue with merge?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Category merge cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
                 $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }
