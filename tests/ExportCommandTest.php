@@ -283,6 +283,40 @@ PHP)
         $this->assertSame(32 * 1024 * 1024, filesize($outputFile));
     }
 
+    public function testExportDetectsToolsWhenShellExecIsDisabled(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-no-shell-exec';
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 15.1 Distrib 10.11.0-MariaDB'\n");
+        chmod($mysql, 0755);
+
+        $mariadbDump = $toolsDir . '/mariadb-dump';
+        file_put_contents($mariadbDump, "#!/bin/sh\necho 'SQL dump'\n");
+        chmod($mariadbDump, 0755);
+
+        $gzip = $toolsDir . '/gzip';
+        file_put_contents($gzip, "#!/bin/sh\ncat\n");
+        chmod($gzip, 0755);
+
+        $outputFile = $this->tempDir . '/exports/no-shell-exec.sql.gz';
+        $path = $toolsDir . PATH_SEPARATOR . (getenv('PATH') !== false ? getenv('PATH') : '');
+        $command = sprintf(
+            'PATH=%s %s -d disable_functions=shell_exec %s --path=%s db:export --compress=gzip --output=%s --no-ansi 2>&1',
+            escapeshellarg($path),
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg(dirname(__DIR__) . '/bin/kvs'),
+            escapeshellarg($this->tempDir),
+            escapeshellarg($outputFile)
+        );
+
+        exec($command, $output, $exitCode);
+
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+        $this->assertSame("SQL dump\n", file_get_contents($outputFile));
+    }
+
     public function testExportWithTablesOption(): void
     {
         $outputFile = $this->tempDir . '/exports/tables_backup.sql';

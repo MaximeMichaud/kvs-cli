@@ -9,6 +9,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
 #[AsCommand(
@@ -202,7 +203,7 @@ EOT
         $outputRedirect = '> ' . escapeshellarg($outputFile);
         $shellCommand = $compressor === null
             ? "{$dumpCommand} {$outputRedirect}"
-            : "{$dumpCommand} | " . escapeshellcmd($compressor['command']) . " {$outputRedirect}";
+            : "{$dumpCommand} | " . escapeshellarg($compressor['command']) . " {$outputRedirect}";
 
         $process = new Process(['bash', '-o', 'pipefail', '-c', $shellCommand], null, $env);
         $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
@@ -263,57 +264,47 @@ EOT
      */
     private function getDumpCommand(): ?string
     {
-        // First, detect database type by running mysql --version
-        $mysqlPathResult = shell_exec('which mysql 2>/dev/null');
-        if ($mysqlPathResult === null || $mysqlPathResult === false) {
-            return $this->tryAlternateDumpCommands();
-        }
-        $mysqlPath = trim($mysqlPathResult);
+        $executableFinder = new ExecutableFinder();
 
-        if ($mysqlPath !== '') {
-            $versionOutputResult = shell_exec("$mysqlPath --version 2>/dev/null");
-            if ($versionOutputResult === null || $versionOutputResult === false) {
-                return $this->tryAlternateDumpCommands();
-            }
-            $versionOutput = trim($versionOutputResult);
+        // First, detect database type by running mysql --version
+        $mysqlPath = $executableFinder->find('mysql');
+
+        if ($mysqlPath !== null) {
+            $versionProcess = new Process([$mysqlPath, '--version']);
+            $versionProcess->setTimeout(10);
+            $versionProcess->run();
 
             // Check if it's MariaDB
-            if (stripos($versionOutput, 'MariaDB') !== false) {
+            if (
+                $versionProcess->isSuccessful()
+                && stripos($versionProcess->getOutput() . $versionProcess->getErrorOutput(), 'MariaDB') !== false
+            ) {
                 // Try mariadb-dump first
-                $mariadbDumpResult = shell_exec('which mariadb-dump 2>/dev/null');
-                if ($mariadbDumpResult !== null && $mariadbDumpResult !== false) {
-                    $mariadbDump = trim($mariadbDumpResult);
-                    if ($mariadbDump !== '') {
-                        return $mariadbDump;
-                    }
+                $mariadbDump = $executableFinder->find('mariadb-dump');
+                if ($mariadbDump !== null) {
+                    return $mariadbDump;
                 }
             }
         }
 
-        return $this->tryAlternateDumpCommands();
+        return $this->tryAlternateDumpCommands($executableFinder);
     }
 
     /**
      * Try alternate dump commands
      */
-    private function tryAlternateDumpCommands(): ?string
+    private function tryAlternateDumpCommands(ExecutableFinder $executableFinder): ?string
     {
         // Fallback to mysqldump
-        $mysqldumpResult = shell_exec('which mysqldump 2>/dev/null');
-        if ($mysqldumpResult !== null && $mysqldumpResult !== false) {
-            $mysqldump = trim($mysqldumpResult);
-            if ($mysqldump !== '') {
-                return $mysqldump;
-            }
+        $mysqldump = $executableFinder->find('mysqldump');
+        if ($mysqldump !== null) {
+            return $mysqldump;
         }
 
         // Try mariadb-dump as last resort
-        $mariadbDumpResult = shell_exec('which mariadb-dump 2>/dev/null');
-        if ($mariadbDumpResult !== null && $mariadbDumpResult !== false) {
-            $mariadbDump = trim($mariadbDumpResult);
-            if ($mariadbDump !== '') {
-                return $mariadbDump;
-            }
+        $mariadbDump = $executableFinder->find('mariadb-dump');
+        if ($mariadbDump !== null) {
+            return $mariadbDump;
         }
 
         return null;
@@ -339,15 +330,12 @@ EOT
 
         $compressor = $compressors[$format];
 
-        // Check if command exists
-        $pathResult = shell_exec("which {$compressor['command']} 2>/dev/null");
-        if ($pathResult === null || $pathResult === false) {
+        $path = (new ExecutableFinder())->find($compressor['command']);
+        if ($path === null) {
             return null;
         }
-        $path = trim($pathResult);
-        if ($path === '') {
-            return null;
-        }
+
+        $compressor['command'] = $path;
 
         return $compressor;
     }
