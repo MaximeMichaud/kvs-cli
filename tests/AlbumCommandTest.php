@@ -69,6 +69,22 @@ class AlbumCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testAlbumListUsesStoredPhotosAmount(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,images',
+            '--format' => 'json',
+            '--limit' => 2,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertSame(3, (int) $rows[0]['images']);
+        $this->assertSame(7, (int) $rows[1]['images']);
+    }
+
     public function testAlbumListFormats(): void
     {
         // Test JSON format
@@ -148,7 +164,7 @@ class AlbumCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('albums') . ' (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('albums_images') . ' (album_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
@@ -156,9 +172,9 @@ class AlbumCommandTest extends TestCase
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
         $db->exec(
             "INSERT INTO " . TestHelper::table('albums') .
-            " (album_id, user_id, title, status_id, is_private, post_date, album_viewed, rating, rating_amount) VALUES " .
-            "(10, 1, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10), " .
-            "(20, 2, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5)"
+            " (album_id, user_id, title, status_id, is_private, post_date, album_viewed, rating, rating_amount, photos_amount) VALUES " .
+            "(10, 1, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10, 7), " .
+            "(20, 2, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5, 3)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('albums_images') . " VALUES (10), (10), (20)");
 

@@ -307,14 +307,14 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(4, 1, 'Weekend Outdoor Set', 1, 2, '2024-01-02 00:00:00', 15, 20, 5)"
+            "(4, 1, 'Weekend Outdoor Set', 1, 2, '2024-01-02 00:00:00', 15, 20, 5, 0)"
         );
 
         $tester = new CommandTester($this->createAlbumCommand($db));
@@ -351,14 +351,14 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(4, 1, 'Weekend Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5)"
+            "(4, 1, 'Weekend Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5, 0)"
         );
 
         $tester = new CommandTester($this->createAlbumCommand($db));
@@ -378,15 +378,15 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(4, 1, 'Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5), " .
-            "(5, 1, 'Indoor Set', 1, 0, '2024-01-03 00:00:00', 20, 20, 5)"
+            "(4, 1, 'Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5, 0), " .
+            "(5, 1, 'Indoor Set', 1, 0, '2024-01-03 00:00:00', 20, 20, 5, 0)"
         );
 
         $searchTester = new CommandTester($this->createAlbumCommand($db));
@@ -429,14 +429,14 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(4, 1, 'Imported rating', 1, 0, '2024-01-02 00:00:00', 15, 70, 4)"
+            "(4, 1, 'Imported rating', 1, 0, '2024-01-02 00:00:00', 15, 70, 4, 0)"
         );
 
         $tester = new CommandTester($this->createAlbumCommand($db));

@@ -91,7 +91,7 @@ HELP
         }
 
         $query = "SELECT a.*, u.username,
-                 (SELECT COUNT(*) FROM {$this->table('albums')}_images WHERE album_id = a.album_id) as image_count
+                 a.photos_amount as image_count
                  FROM {$this->table('albums')} a
                  LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
                  WHERE 1=1";

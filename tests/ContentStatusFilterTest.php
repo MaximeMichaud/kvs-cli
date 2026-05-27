@@ -130,15 +130,15 @@ class ContentStatusFilterTest extends TestCase
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
             'album_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, ' .
-            'album_viewed INTEGER, rating_amount INTEGER, rating REAL)'
+            'album_viewed INTEGER, rating_amount INTEGER, rating REAL, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users (user_id, username) VALUES (1, 'user')");
         $db->exec(
-            "INSERT INTO ktvs_albums (album_id, user_id, status_id, title, post_date, album_viewed, rating_amount, rating) VALUES " .
-            "(1, 1, 1, 'Active', '2024-01-02 00:00:00', 0, 0, 0), " .
-            "(2, 1, 0, 'Disabled', '2024-01-01 00:00:00', 0, 0, 0)"
+            "INSERT INTO ktvs_albums (album_id, user_id, status_id, title, post_date, album_viewed, rating_amount, rating, photos_amount) VALUES " .
+            "(1, 1, 1, 'Active', '2024-01-02 00:00:00', 0, 0, 0, 0), " .
+            "(2, 1, 0, 'Disabled', '2024-01-01 00:00:00', 0, 0, 0, 0)"
         );
 
         $tester = new CommandTester($this->createAlbumCommand($db));
