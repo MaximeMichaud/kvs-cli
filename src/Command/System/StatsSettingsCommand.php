@@ -156,12 +156,12 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'show';
 
         return match ($action) {
             'show' => $this->showSettings($input),
             'set' => $this->setSettings($input),
-            default => $this->showSettings($input),
+            default => $this->failUnknownAction('stats-settings', $action, ['show', 'set']),
         };
     }
 

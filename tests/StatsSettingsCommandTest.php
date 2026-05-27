@@ -150,6 +150,18 @@ PHP
         $this->assertArrayNotHasKey('collect_player_stats', $params);
     }
 
+    public function testRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'unknown_action',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Unknown stats-settings action "unknown_action"', $display);
+    }
+
     /**
      * @param array<string, mixed> $params
      */
