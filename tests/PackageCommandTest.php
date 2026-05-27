@@ -7,6 +7,8 @@ use KVS\CLI\Command\Migrate\PackageCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 class PackageCommandTest extends TestCase
 {
@@ -153,6 +155,62 @@ SH
             $this->assertStringContainsString('empty or invalid dump', $output);
             $this->assertStringContainsString('dump connection failed', $output);
             $this->assertFileDoesNotExist($package);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testCopyContentDoesNotWriteCarriageReturnProgressInPlainOutput(): void
+    {
+        $toolsDir = $this->tempDir . '/tools';
+        mkdir($toolsDir, 0755, true);
+
+        $rsync = $toolsDir . '/rsync';
+        file_put_contents(
+            $rsync,
+            <<<'SH'
+#!/bin/sh
+previous=''
+for arg in "$@"; do
+  source="$previous"
+  target="$arg"
+  previous="$arg"
+done
+source="${source%/}"
+target="${target%/}"
+mkdir -p "$target"
+cp -R "$source/." "$target/"
+printf '          1,024 100%%    1.00kB/s    0:00:00\r'
+SH
+        );
+        chmod($rsync, 0755);
+
+        mkdir($this->tempDir . '/contents/videos_sources/1000', 0755, true);
+        file_put_contents($this->tempDir . '/contents/videos_sources/1000/source.mp4', 'video');
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $input = new ArrayInput([]);
+            $output = new BufferedOutput(decorated: false);
+
+            $initialize = new \ReflectionMethod($this->command, 'initialize');
+            $initialize->invoke($this->command, $input, $output);
+
+            $copyContent = new \ReflectionMethod($this->command, 'copyContent');
+            $contentDir = $copyContent->invoke($this->command, $this->config, $this->tempDir . '/package-work');
+
+            $display = $output->fetch();
+
+            $this->assertIsString($contentDir);
+            $this->assertFileExists($contentDir . '/videos_sources/1000/source.mp4');
+            $this->assertStringNotContainsString("\r", $display);
+            $this->assertStringContainsString('Content copied: 1 files', $display);
         } finally {
             if ($previousPath === false) {
                 putenv('PATH');

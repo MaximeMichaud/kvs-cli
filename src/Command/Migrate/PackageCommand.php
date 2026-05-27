@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Migrate;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
+use KVS\CLI\Command\Traits\RsyncProgressTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -23,6 +24,7 @@ use function KVS\CLI\Utils\format_bytes;
 class PackageCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
+    use RsyncProgressTrait;
 
     protected function configure(): void
     {
@@ -327,10 +329,7 @@ EOT
             ]);
             $process->setTimeout(3600);
             $process->run(function (string $type, string $buffer): void {
-                // Show rsync progress
-                if ($type === Process::OUT && str_contains($buffer, '%')) {
-                    $this->io()->write("\r" . trim($buffer));
-                }
+                $this->writeRsyncProgress($type, $buffer);
             });
             $this->io()->newLine();
 
