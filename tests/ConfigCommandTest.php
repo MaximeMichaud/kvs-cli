@@ -266,9 +266,9 @@ $config["player_license_code"] = "secret-player-license";
         $this->tester->execute(['action' => 'invalid']);
 
         $output = $this->tester->getDisplay();
-        // Should show help for invalid action
-        $this->assertStringContainsString('Usage', $output);
-        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown config action "invalid"', $output);
+        $this->assertMatchesRegularExpression('/Available actions: list, get, set,\s+edit/', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testConfigListShowsAllPaths(): void

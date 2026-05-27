@@ -48,14 +48,14 @@ class ConfigCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'get' => $this->getConfig($input),
             'set' => $this->setConfig($input),
             'list' => $this->listConfig($input),
             'edit' => $this->editConfig($input),
-            default => $this->showHelp(),
+            default => $this->failUnknownAction('config', $action, ['list', 'get', 'set', 'edit']),
         };
     }
 
@@ -760,43 +760,5 @@ class ConfigCommand extends BaseCommand
             return (string) $value;
         }
         return $nullOnFailure ? null : '';
-    }
-
-    private function showHelp(): int
-    {
-        $this->io()->info('Usage: kvs config <action> [key] [value] [options]');
-        $this->io()->newLine();
-
-        $this->io()->section('Actions');
-        $this->io()->listing([
-            'get <key> : Get a configuration value',
-            'set <key> <value> : Set a configuration value',
-            'list : List all configurations',
-            'edit : Open config file in editor',
-        ]);
-
-        $this->io()->section('Examples');
-        $this->io()->listing([
-            'kvs config get db.host',
-            'kvs config set db.host 127.0.0.1',
-            'kvs config set db.port 3307',
-            'kvs config list',
-            'kvs config list --file=db',
-            'kvs config list --json',
-            'kvs config edit --file=db',
-        ]);
-
-        $this->io()->section('Available Keys');
-        $this->io()->listing([
-            'db.host : Database host',
-            'db.login : Database username',
-            'db.pass : Database password (protected)',
-            'db.device : Database name',
-            'main.project_version : KVS version',
-            'main.project_url : Site URL',
-            'main.admin_url : Admin panel URL',
-        ]);
-
-        return self::SUCCESS;
     }
 }
