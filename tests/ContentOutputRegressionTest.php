@@ -466,12 +466,12 @@ class ContentOutputRegressionTest extends TestCase
             'CREATE TABLE ktvs_models (' .
             'model_id INTEGER, title TEXT, status_id INTEGER, rating REAL, rating_amount INTEGER, ' .
             'model_viewed INTEGER, country TEXT, birth_date TEXT, measurements TEXT, ' .
-            'height TEXT, weight TEXT, rank INTEGER)'
+            'height TEXT, weight TEXT, rank INTEGER, total_videos INTEGER, total_albums INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_models_videos (model_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_models_albums (model_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_list_countries (country_code TEXT, language_code TEXT, title TEXT)');
-        $db->exec("INSERT INTO ktvs_models VALUES (7, 'Lina Moreau', 1, 70, 5, 100, '', '', '', '', '', 0)");
+        $db->exec("INSERT INTO ktvs_models VALUES (7, 'Lina Moreau', 1, 70, 5, 100, '', '', '', '', '', 0, 0, 0)");
 
         $tester = new CommandTester($this->createModelCommand($db));
         $tester->execute([

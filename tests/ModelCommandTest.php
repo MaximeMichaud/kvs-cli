@@ -116,6 +116,29 @@ class ModelCommandTest extends TestCase
         $this->assertStringNotContainsString('Disabled Model', $output);
     }
 
+    public function testListModelsUsesStoredContentCounts(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('models') .
+            ' SET total_videos = 9, total_albums = 8 WHERE model_id = 30'
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,videos,albums',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame(9, (int) $rows[0]['videos']);
+        $this->assertSame(8, (int) $rows[0]['albums']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListModelsFormats(string $format): void
     {
@@ -221,7 +244,7 @@ class ModelCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('models') . ' (' .
             'model_id INTEGER, title TEXT, status_id INTEGER, model_viewed INTEGER, country TEXT, ' .
             'birth_date TEXT, age INTEGER, measurements TEXT, height TEXT, weight TEXT, rank INTEGER, ' .
-            'rating INTEGER, rating_amount INTEGER, description TEXT)'
+            'rating INTEGER, rating_amount INTEGER, description TEXT, total_videos INTEGER, total_albums INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models_videos') . ' (' .
@@ -239,10 +262,10 @@ class ModelCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
             ' (model_id, title, status_id, model_viewed, country, birth_date, age, measurements, height, ' .
-            'weight, rank, rating, rating_amount, description) VALUES ' .
-            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', '55 kg', 7, 40, 10, 'Main model profile'), " .
-            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, ''), " .
-            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '')"
+            'weight, rank, rating, rating_amount, description, total_videos, total_albums) VALUES ' .
+            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', '55 kg', 7, 40, 10, 'Main model profile', 2, 1), " .
+            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1), " .
+            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models_videos') .

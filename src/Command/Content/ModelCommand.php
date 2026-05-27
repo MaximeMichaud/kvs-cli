@@ -84,10 +84,10 @@ HELP
             return self::FAILURE;
         }
 
-        // Build query with video count and country
+        // Build query with stored content counts and country.
         $query = "SELECT m.*,
-                 (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
-                 (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
+                 m.total_videos as video_count,
+                 m.total_albums as album_count,
                  c.title as country_name
                  FROM {$this->table('models')} m
                  LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
