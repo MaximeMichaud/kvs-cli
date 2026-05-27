@@ -143,13 +143,15 @@ HELP
                 return self::FAILURE;
             }
 
-            $usageSelectors = $this->getTagUsageSelectors();
-            $totalUsageCondition = $this->getTagTotalUsageCondition();
+            $usageSelectors = $this->getTagUsageAggregateSelectors();
+            $usageJoins = $this->getTagUsageAggregateJoins();
+            $totalUsageCondition = $this->getTagTotalUsageJoinCondition();
 
             $sql = "
                 SELECT t.*,
                        {$usageSelectors}
                 FROM {$this->table('tags')} t
+                {$usageJoins}
                 WHERE $whereClause
             ";
 
@@ -392,9 +394,51 @@ HELP
         return $this->getRelationTotalUsageAliasExpression(self::TAG_RELATION_TABLES);
     }
 
-    private function getTagTotalUsageCondition(): string
+    private function getTagUsageAggregateSelectors(): string
     {
-        return $this->getRelationTotalUsageSubqueryExpression('tags', 't', 'tag_id', self::TAG_RELATION_TABLES);
+        $selectors = [];
+        foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
+            $selectors[] = sprintf(
+                'COALESCE(%s.usage_count, 0) as %s',
+                $this->getTagUsageAggregateAlias($suffix),
+                $this->getRelationUsageAlias($suffix)
+            );
+        }
+
+        return implode(",\n                       ", $selectors);
+    }
+
+    private function getTagUsageAggregateJoins(): string
+    {
+        $joins = [];
+        foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
+            $alias = $this->getTagUsageAggregateAlias($suffix);
+            $joins[] = sprintf(
+                'LEFT JOIN (SELECT tag_id, COUNT(*) as usage_count FROM %s_%s GROUP BY tag_id) %s ON %s.tag_id = t.tag_id',
+                $this->table('tags'),
+                $suffix,
+                $alias,
+                $alias
+            );
+        }
+
+        return implode("\n                ", $joins);
+    }
+
+    private function getTagTotalUsageJoinCondition(): string
+    {
+        return implode(' + ', array_map(
+            fn(string $suffix): string => sprintf(
+                'COALESCE(%s.usage_count, 0)',
+                $this->getTagUsageAggregateAlias($suffix)
+            ),
+            array_keys(self::TAG_RELATION_TABLES)
+        ));
+    }
+
+    private function getTagUsageAggregateAlias(string $suffix): string
+    {
+        return 'tag_usage_' . $suffix;
     }
 
     /**

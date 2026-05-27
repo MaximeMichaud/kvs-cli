@@ -141,6 +141,43 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(0, (int) $rows[0]['total_usage']);
     }
 
+    public function testListCountsEveryTagRelationTable(): void
+    {
+        $this->db->exec('INSERT INTO ' . TestHelper::table('tags_posts') . ' (tag_id, post_id) VALUES (10, 300)');
+        $this->db->exec('INSERT INTO ' . TestHelper::table('tags_playlists') . ' (tag_id, playlist_id) VALUES (10, 400)');
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('tags_content_sources') .
+            ' (tag_id, content_source_id) VALUES (10, 500)'
+        );
+        $this->db->exec('INSERT INTO ' . TestHelper::table('tags_models') . ' (tag_id, model_id) VALUES (10, 600)');
+        $this->db->exec('INSERT INTO ' . TestHelper::table('tags_dvds') . ' (tag_id, dvd_id) VALUES (10, 700)');
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('tags_dvds_groups') .
+            ' (tag_id, dvd_group_id) VALUES (10, 800)'
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '4K',
+            '--fields' => 'tag_id,videos,albums,posts,playlists,content_sources,models,dvds,dvds_groups,total_usage',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame(2, (int) $rows[0]['videos']);
+        $this->assertSame(1, (int) $rows[0]['albums']);
+        $this->assertSame(1, (int) $rows[0]['posts']);
+        $this->assertSame(1, (int) $rows[0]['playlists']);
+        $this->assertSame(1, (int) $rows[0]['content_sources']);
+        $this->assertSame(1, (int) $rows[0]['models']);
+        $this->assertSame(1, (int) $rows[0]['dvds']);
+        $this->assertSame(1, (int) $rows[0]['dvds_groups']);
+        $this->assertSame(9, (int) $rows[0]['total_usage']);
+    }
+
     public function testShowTagDetails(): void
     {
         $this->tester->execute([
