@@ -215,6 +215,45 @@ class ExportCommandTest extends TestCase
         }
     }
 
+    public function testCompressedExportStreamsDumpUnderLowPhpMemory(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-streaming-export';
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 15.1 Distrib 10.11.0-MariaDB'\n");
+        chmod($mysql, 0755);
+
+        $mariadbDump = $toolsDir . '/mariadb-dump';
+        file_put_contents(
+            $mariadbDump,
+            "#!/bin/sh\n"
+            . "dd if=/dev/zero bs=1M count=16 2>/dev/null | tr '\\000' 'A'\n"
+        );
+        chmod($mariadbDump, 0755);
+
+        $gzip = $toolsDir . '/gzip';
+        file_put_contents($gzip, "#!/bin/sh\ncat\n");
+        chmod($gzip, 0755);
+
+        $outputFile = $this->tempDir . '/exports/streamed.sql.gz';
+        $path = $toolsDir . PATH_SEPARATOR . (getenv('PATH') !== false ? getenv('PATH') : '');
+        $command = sprintf(
+            'PATH=%s %s -d memory_limit=8M %s --path=%s db:export --compress=gzip --output=%s --no-ansi 2>&1',
+            escapeshellarg($path),
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg(dirname(__DIR__) . '/bin/kvs'),
+            escapeshellarg($this->tempDir),
+            escapeshellarg($outputFile)
+        );
+
+        exec($command, $output, $exitCode);
+
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+        $this->assertFileExists($outputFile);
+        $this->assertSame(16 * 1024 * 1024, filesize($outputFile));
+    }
+
     public function testExportWithTablesOption(): void
     {
         $outputFile = $this->tempDir . '/exports/tables_backup.sql';

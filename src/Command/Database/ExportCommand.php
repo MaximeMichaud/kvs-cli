@@ -112,7 +112,7 @@ EOT
 
         // Parse host and port
         $host = $dbConfig['host'];
-        $port = Constants::DEFAULT_MYSQL_PORT;
+        $port = (string) Constants::DEFAULT_MYSQL_PORT;
         if (str_contains($host, ':')) {
             [$host, $port] = explode(':', $host, 2);
         }
@@ -129,8 +129,7 @@ EOT
             '--default-character-set=' . Constants::DB_CHARSET,
         ];
 
-        // Merge with current env to preserve PATH, etc.
-        $env = array_merge($_ENV, getenv(), ['MYSQL_PWD' => $dbConfig['password']]);
+        $env = $this->createProcessEnvironment($dbConfig['password']);
 
         if ($this->getBoolOption($input, 'no-data')) {
             $command[] = '--no-data';
@@ -139,25 +138,21 @@ EOT
         $tables = $this->getStringOption($input, 'tables');
         if ($tables !== null) {
             $command[] = $dbConfig['database'];
-            $command = array_merge($command, explode(',', $tables));
+            foreach (explode(',', $tables) as $table) {
+                $command[] = $table;
+            }
         } else {
             $command[] = $dbConfig['database'];
         }
 
-        $process = new Process($command, null, $env);
-        $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
+        if ($compressor !== null) {
+            $this->io()->info("Streaming export through $compressFormat...");
+        }
 
-        $progressBar = $this->io()->createProgressBar();
-        $progressBar->start();
+        $process = $this->createStreamingExportProcess($command, $env, $outputFile, $compressor);
+        $exportSucceeded = $this->runStreamingExport($process, $outputFile);
 
-        $process->run(function ($type, $buffer) use ($progressBar) {
-            $progressBar->advance();
-        });
-
-        $progressBar->finish();
-        $this->io()->newLine();
-
-        if (!$process->isSuccessful()) {
+        if ($exportSucceeded === false) {
             $this->io()->error('Database export failed');
             $this->io()->newLine();
 
@@ -177,31 +172,6 @@ EOT
             return self::FAILURE;
         }
 
-        $sqlContent = $process->getOutput();
-
-        // Compress if requested
-        if ($compressor !== null) {
-            $this->io()->info("Compressing with $compressFormat...");
-            $compressProcess = new Process([$compressor['command']]);
-            $compressProcess->setInput($sqlContent);
-            $compressProcess->run();
-
-            if (!$compressProcess->isSuccessful()) {
-                $this->io()->error("Compression failed");
-                return self::FAILURE;
-            }
-
-            if (!$this->writeSecureFile($outputFile, $compressProcess->getOutput())) {
-                $this->io()->error('Failed to write export file');
-                return self::FAILURE;
-            }
-        } else {
-            if (!$this->writeSecureFile($outputFile, $sqlContent)) {
-                $this->io()->error('Failed to write export file');
-                return self::FAILURE;
-            }
-        }
-
         $fileSize = filesize($outputFile);
         if ($fileSize === false) {
             $this->io()->error('Failed to get file size');
@@ -215,6 +185,77 @@ EOT
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param list<string> $command
+     * @param array<string, string|false> $env
+     * @param array{command: string, test: string, extension: string}|null $compressor
+     */
+    private function createStreamingExportProcess(
+        array $command,
+        array $env,
+        string $outputFile,
+        ?array $compressor
+    ): Process {
+        $dumpCommand = implode(' ', array_map('escapeshellarg', $command));
+        $outputRedirect = '> ' . escapeshellarg($outputFile);
+        $shellCommand = $compressor === null
+            ? "{$dumpCommand} {$outputRedirect}"
+            : "{$dumpCommand} | " . escapeshellcmd($compressor['command']) . " {$outputRedirect}";
+
+        $process = new Process(['bash', '-o', 'pipefail', '-c', $shellCommand], null, $env);
+        $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
+
+        return $process;
+    }
+
+    private function runStreamingExport(Process $process, string $outputFile): bool
+    {
+        $progressBar = $this->io()->createProgressBar();
+        $progressBar->start();
+
+        $this->withSecureFileUmask(function () use ($process, $outputFile, $progressBar): void {
+            if (is_file($outputFile)) {
+                @unlink($outputFile);
+            }
+
+            $process->run(function () use ($progressBar): void {
+                $progressBar->advance();
+            });
+        });
+
+        $progressBar->finish();
+        $this->io()->newLine();
+
+        if (!$process->isSuccessful()) {
+            if (is_file($outputFile)) {
+                @unlink($outputFile);
+            }
+            return false;
+        }
+
+        return $this->restrictFilePermissions($outputFile);
+    }
+
+    /**
+     * @return array<string, string|false>
+     */
+    private function createProcessEnvironment(string $password): array
+    {
+        $environment = [];
+
+        foreach ([$_ENV, getenv()] as $source) {
+            foreach ($source as $key => $value) {
+                if (is_string($key) && (is_string($value) || $value === false)) {
+                    $environment[$key] = $value;
+                }
+            }
+        }
+
+        $environment['MYSQL_PWD'] = $password;
+
+        return $environment;
     }
 
     /**
