@@ -92,7 +92,7 @@ HELP
             'list' => $this->listUsers($input),
             'show' => $this->showUser($this->getStringArgument($input, 'id')),
             'create' => $this->createUser($input),
-            'delete' => $this->deleteUser($this->getStringArgument($input, 'id')),
+            'delete' => $this->deleteUser($this->getStringArgument($input, 'id'), $input),
             'stats' => $this->showStats(),
             default => $this->failUnknownAction('user', $action, ['list', 'show', 'create', 'delete', 'stats']),
         };
@@ -433,7 +433,7 @@ HELP
         return \crypt($password, '$2a$07$aa5f7b4693ccdbdd792f6a998e9ed446$');
     }
 
-    private function deleteUser(?string $id): int
+    private function deleteUser(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('User ID or username is required');
@@ -444,6 +444,12 @@ HELP
         $this->io()->warning('Associated videos and albums will be queued for KVS background deletion.');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+            if (!$input->isInteractive()) {
+                $this->io()->error('User deletion cancelled because confirmation was not provided.');
+                return self::FAILURE;
+            }
+
+            $this->io()->warning('User deletion cancelled');
             return self::SUCCESS;
         }
 

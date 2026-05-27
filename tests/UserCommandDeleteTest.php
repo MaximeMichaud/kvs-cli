@@ -75,6 +75,46 @@ class UserCommandDeleteTest extends TestCase
         $this->assertSame(1, $this->countRows($db, 'ktvs_comments'));
     }
 
+    public function testDeleteUserNoInteractionFailsWithoutCleanup(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+        $db->exec("INSERT INTO ktvs_users (user_id, username, status_id) VALUES (1, 'member', 2)");
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends UserCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:user');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deleteUsersWithKvs(array $userIds): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'delete',
+            'id' => '1',
+        ], ['interactive' => false]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('confirmation was not provided', $tester->getDisplay());
+        $this->assertSame(1, $this->countRows($db, 'ktvs_users'));
+    }
+
     private function createDeleteSchema(\PDO $db): void
     {
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT, status_id INTEGER)');
