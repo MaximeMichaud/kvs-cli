@@ -39,6 +39,8 @@ class CommentCommandTest extends TestCase
         $help = $this->command->getHelp();
 
         $this->assertStringContainsString('Output format: table, csv, json, yaml, count, ids', $help);
+        $this->assertStringContainsString('content is the parent object ID', $help);
+        $this->assertStringContainsString('Use comment for the comment text', $help);
     }
 
     public function testListCommentsDefault(): void

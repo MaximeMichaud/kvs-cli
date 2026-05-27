@@ -51,6 +51,9 @@ Manage KVS comments.
 <info>AVAILABLE FIELDS:</info>
   id, user, username, type, content, content_title, comment, date, added_date
 
+<info>FIELD NOTES:</info>
+  content is the parent object ID. Use comment for the comment text.
+
 <info>EXAMPLES:</info>
   <comment>kvs comment list</comment>
   <comment>kvs comment pending</comment>
