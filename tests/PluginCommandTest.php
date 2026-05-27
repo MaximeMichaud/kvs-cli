@@ -718,14 +718,13 @@ class PluginCommandTest extends TestCase
     // ERROR HANDLING TESTS (2 tests)
     // ========================================
 
-    public function testInvalidAction(): void
+    public function testRejectsUnknownAction(): void
     {
         $exitCode = $this->tester->execute(['action' => 'invalid_action']);
         $output = $this->tester->getDisplay();
 
-        // Invalid action should default to list
-        $this->assertEquals(0, $exitCode);
-        $this->assertStringContainsString('Name', $output);
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Unknown plugin action "invalid_action"', $output);
     }
 
     public function testInvalidFormatThrowsException(): void

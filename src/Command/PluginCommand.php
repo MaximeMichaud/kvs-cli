@@ -65,7 +65,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
@@ -73,7 +73,11 @@ HELP
             'show' => $this->showPlugin($id),
             'path' => $this->showPluginPath($id),
             'status' => $this->showStatus(),
-            default => $this->listPlugins($input),
+            default => $this->failUnknownAction(
+                'plugin',
+                $action,
+                ['list', 'show', 'path', 'status']
+            ),
         };
     }
 
