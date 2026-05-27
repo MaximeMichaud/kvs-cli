@@ -92,7 +92,7 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'show';
 
         return match ($action) {
             'show' => $this->showSettings($input),
@@ -100,7 +100,7 @@ HELP
             'set' => $this->setSettings($input),
             'log' => $this->showLog($input),
             'templates' => $this->showTemplates($input),
-            default => $this->showSettings($input),
+            default => $this->failUnknownAction('email', $action, ['show', 'test', 'set', 'log', 'templates']),
         };
     }
 

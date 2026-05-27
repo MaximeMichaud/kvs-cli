@@ -67,6 +67,18 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testEmailRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'unknown_action',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Unknown email action "unknown_action"', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testEmailCommandMetadata(): void
     {
         $this->assertEquals('system:email', $this->command->getName());
