@@ -142,6 +142,25 @@ class LogCommandTest extends TestCase
         $this->assertSame($originalContent, file_get_contents($logFile));
     }
 
+    public function testFollowReadsReplacementLogFromBeginning(): void
+    {
+        $logFile = $this->tempDir . '/admin/logs/system.log';
+        file_put_contents($logFile, "old\n");
+        $lastPosition = (int) filesize($logFile);
+        $lastInode = fileinode($logFile);
+
+        rename($logFile, $logFile . '.1');
+        file_put_contents($logFile, "ROTATED-BEGIN-LONG-LINE\n");
+
+        $method = new \ReflectionMethod(LogCommand::class, 'readNewFollowLines');
+        $args = [$logFile, &$lastPosition, &$lastInode];
+        $lines = $method->invokeArgs($this->command, $args);
+
+        $this->assertSame(["ROTATED-BEGIN-LONG-LINE\n"], $lines);
+        $this->assertSame((int) filesize($logFile), $lastPosition);
+        $this->assertSame(fileinode($logFile), $lastInode);
+    }
+
     public function testLogNotFound(): void
     {
         $this->tester->execute(['type' => 'nonexistent']);

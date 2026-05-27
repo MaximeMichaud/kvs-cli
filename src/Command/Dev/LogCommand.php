@@ -161,43 +161,72 @@ class LogCommand extends BaseCommand
         }
 
         $lastPosition = $initialSize;
+        $lastInode = fileinode($logFile);
 
         while (true) {
-            clearstatcache(false, $logFile);
-            $currentSize = filesize($logFile);
-
-            if ($currentSize === false) {
-                $this->io()->error('Unable to read log file size');
+            $lines = $this->readNewFollowLines($logFile, $lastPosition, $lastInode);
+            if ($lines === null) {
+                $this->io()->error('Unable to read log file');
                 return self::FAILURE;
             }
 
-            if ($currentSize > $lastPosition) {
-                $fp = fopen($logFile, 'r');
-                if ($fp === false) {
-                    $this->io()->error('Unable to open log file');
-                    return self::FAILURE;
-                }
-
-                fseek($fp, $lastPosition);
-
-                while (!feof($fp)) {
-                    $line = fgets($fp);
-                    if ($line !== false) {
-                        $this->formatLogLine($line);
-                    }
-                }
-
-                $position = ftell($fp);
-                if ($position !== false) {
-                    $lastPosition = $position;
-                }
-                fclose($fp);
-            } elseif ($currentSize < $lastPosition) {
-                $lastPosition = $currentSize;
+            foreach ($lines as $line) {
+                $this->formatLogLine($line);
             }
 
             sleep(1);
         }
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    private function readNewFollowLines(string $logFile, int &$lastPosition, int|false &$lastInode): ?array
+    {
+        clearstatcache(false, $logFile);
+        $currentSize = filesize($logFile);
+        if ($currentSize === false) {
+            return null;
+        }
+
+        $currentInode = fileinode($logFile);
+        if ($currentInode !== false && $lastInode !== false && $currentInode !== $lastInode) {
+            $lastPosition = 0;
+            $lastInode = $currentInode;
+        } elseif ($currentSize < $lastPosition) {
+            $lastPosition = 0;
+        }
+
+        if ($currentSize <= $lastPosition) {
+            return [];
+        }
+
+        $fp = fopen($logFile, 'r');
+        if ($fp === false) {
+            return null;
+        }
+
+        if (fseek($fp, $lastPosition) !== 0) {
+            fclose($fp);
+            return null;
+        }
+
+        $lines = [];
+        while (($line = fgets($fp)) !== false) {
+            $lines[] = $line;
+        }
+
+        $position = ftell($fp);
+        if ($position !== false) {
+            $lastPosition = $position;
+        }
+        if ($currentInode !== false) {
+            $lastInode = $currentInode;
+        }
+
+        fclose($fp);
+
+        return $lines;
     }
 
     private function clearLog(?string $type, InputInterface $input): int
