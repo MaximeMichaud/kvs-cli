@@ -63,6 +63,29 @@ class ContentStatusFilterTest extends TestCase
         $this->assertSame([1], $this->columnAsInts($this->decodeJsonRows($tester->getDisplay()), 'category_id'));
     }
 
+    public function testCategoryListAcceptsInactiveStatusAlias(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT, status_id INTEGER)');
+        $this->createCategoryRelationTables($db);
+        $db->exec(
+            "INSERT INTO ktvs_categories (category_id, title, status_id) VALUES " .
+            "(1, 'Active', 1), (2, 'Inactive', 0)"
+        );
+
+        $tester = new CommandTester($this->createCategoryCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'inactive',
+            '--format' => 'json',
+            '--fields' => 'category_id,status_id',
+            '--limit' => '10',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame([2], $this->columnAsInts($this->decodeJsonRows($tester->getDisplay()), 'category_id'));
+    }
+
     public function testTagListTreatsNumericActiveStatusAsActive(): void
     {
         $db = $this->createSqliteConnection();
