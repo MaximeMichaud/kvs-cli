@@ -367,8 +367,11 @@ class StackScorer
      */
     private function scoreWebServer(): array
     {
-        $serverSoftwareRaw = $this->systemInfo['server_software'] ?? '';
-        $serverSoftware = is_string($serverSoftwareRaw) ? $serverSoftwareRaw : '';
+        $serverSoftwareRaw = $this->systemInfo['server_software'] ?? null;
+        if (!is_string($serverSoftwareRaw) || trim($serverSoftwareRaw) === '') {
+            $serverSoftwareRaw = $this->systemInfo['web_server'] ?? '';
+        }
+        $serverSoftware = is_string($serverSoftwareRaw) ? trim($serverSoftwareRaw) : '';
         $phpSapiRaw = $this->systemInfo['php_sapi'] ?? PHP_SAPI;
         $phpSapi = is_string($phpSapiRaw) ? $phpSapiRaw : PHP_SAPI;
 

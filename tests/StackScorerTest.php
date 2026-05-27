@@ -35,6 +35,32 @@ class StackScorerTest extends TestCase
         $this->assertSame('8.2', $php['version']);
     }
 
+    public function testWebServerScoreUsesDetectedHttpServerHeader(): void
+    {
+        $scorer = new StackScorer(null, ['web_server' => 'nginx']);
+
+        $webServer = $this->scoreWebServer($scorer);
+
+        $this->assertSame('nginx', $webServer['name']);
+        $this->assertSame('nginx', $webServer['type']);
+        $this->assertSame(100, $webServer['score']);
+        $this->assertNull($webServer['recommendation']);
+    }
+
+    public function testWebServerScoreFallsBackFromEmptyServerSoftwareToWebServer(): void
+    {
+        $scorer = new StackScorer(null, [
+            'server_software' => '',
+            'web_server' => 'Caddy',
+        ]);
+
+        $webServer = $this->scoreWebServer($scorer);
+
+        $this->assertSame('Caddy', $webServer['name']);
+        $this->assertSame('caddy', $webServer['type']);
+        $this->assertSame(100, $webServer['score']);
+    }
+
     /**
      * @param list<array<string, mixed>> $phpEolData
      */
@@ -58,6 +84,20 @@ class StackScorerTest extends TestCase
         $this->assertIsArray($result);
 
         /** @var array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string} $result */
+        return $result;
+    }
+
+    /**
+     * @return array{name: string, type: string, score: int, recommendation: ?string}
+     */
+    private function scoreWebServer(StackScorer $scorer): array
+    {
+        $method = new \ReflectionMethod(StackScorer::class, 'scoreWebServer');
+        $result = $method->invoke($scorer);
+
+        $this->assertIsArray($result);
+
+        /** @var array{name: string, type: string, score: int, recommendation: ?string} $result */
         return $result;
     }
 }
