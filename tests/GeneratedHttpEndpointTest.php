@@ -34,7 +34,32 @@ class GeneratedHttpEndpointTest extends TestCase
         $this->assertStringNotContainsString('die(', $code);
     }
 
-    private function includeGeneratedEndpoint(string $code, string $token): string
+    public function testFpmConfigEndpointReportsServerSoftware(): void
+    {
+        $reader = new FpmConfigReader(TestHelper::createTestConfiguration(TestHelper::createTestKvsInstallation()));
+        $method = new \ReflectionMethod(FpmConfigReader::class, 'generatePhpCode');
+        $code = $method->invoke($reader, 'expected-token');
+        $this->assertIsString($code);
+
+        $previousServerSoftware = $_SERVER['SERVER_SOFTWARE'] ?? null;
+        $_SERVER['SERVER_SOFTWARE'] = 'nginx';
+
+        try {
+            $output = $this->includeGeneratedEndpoint($code, 'expected-token', false);
+        } finally {
+            if ($previousServerSoftware === null) {
+                unset($_SERVER['SERVER_SOFTWARE']);
+            } else {
+                $_SERVER['SERVER_SOFTWARE'] = $previousServerSoftware;
+            }
+        }
+
+        $decoded = json_decode($output, true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('nginx', $decoded['server_software'] ?? null);
+    }
+
+    private function includeGeneratedEndpoint(string $code, string $token, bool $expectEarlyReturn = true): string
     {
         $dir = TestHelper::createTempDir('generated-endpoint-');
         $file = $dir . '/endpoint.php';
@@ -56,7 +81,11 @@ class GeneratedHttpEndpointTest extends TestCase
             TestHelper::removeDir($dir);
         }
 
-        $this->assertNull($result);
+        if ($expectEarlyReturn) {
+            $this->assertNull($result);
+        } else {
+            $this->assertSame(1, $result);
+        }
 
         return $output;
     }

@@ -29,6 +29,7 @@ class StatusCommand extends BaseCommand
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
      *     source: string
      * }|null
@@ -311,9 +312,9 @@ HELP
         $info = [];
 
         $info[] = ['Operating System', $this->getOsInfo()];
-        $info[] = ['Web Server', $_SERVER['SERVER_SOFTWARE'] ?? 'CLI'];
 
         $fpmConfig = $this->getPhpRuntimeConfig();
+        $info[] = ['Web Server', $fpmConfig['server_software']];
 
         $phpVersion = $this->getKvsPhpVersion();
         $sourceLabel = match ($fpmConfig['source']) {
@@ -1214,6 +1215,7 @@ HELP
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
      *     source: string
      * }

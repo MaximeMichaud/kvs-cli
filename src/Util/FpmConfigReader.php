@@ -43,6 +43,7 @@ class FpmConfigReader
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
      *     source: string
      * }
@@ -83,6 +84,7 @@ class FpmConfigReader
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null
      * }|null
      */
@@ -125,6 +127,9 @@ class FpmConfigReader
             'max_execution_time' => $maxExec !== null ? (int) $maxExec : 0,
             'max_input_vars' => $maxInputVars !== null ? (int) $maxInputVars : 1000,
             'display_errors' => $displayErrors ?? '0',
+            'server_software' => $this->detectDockerWebServerSoftware()
+                ?? $this->detectHttpServerSoftware()
+                ?? 'Unknown',
             'opcache' => $opcache,
         ];
     }
@@ -155,6 +160,7 @@ class FpmConfigReader
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null
      * }|null
      */
@@ -240,6 +246,7 @@ header('Cache-Control: no-store');
     'max_execution_time' => (int) ini_get('max_execution_time'),
     'max_input_vars' => (int) ini_get('max_input_vars'),
     'display_errors' => ini_get('display_errors') ?: '0',
+    'server_software' => \$_SERVER['SERVER_SOFTWARE'] ?? 'unknown',
     'opcache' => null,
 ];
 
@@ -317,6 +324,7 @@ PHP;
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null
      * }
      */
@@ -347,6 +355,7 @@ PHP;
             'max_execution_time' => is_int($maxExec) ? $maxExec : 30,
             'max_input_vars' => is_int($maxInputVars) ? $maxInputVars : 1000,
             'display_errors' => is_string($data['display_errors'] ?? null) ? $data['display_errors'] : '0',
+            'server_software' => $this->normalizeServerSoftware($data['server_software'] ?? null),
             'opcache' => $opcache,
         ];
     }
@@ -361,6 +370,7 @@ PHP;
      *     max_execution_time: int,
      *     max_input_vars: int,
      *     display_errors: string,
+     *     server_software: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
      *     source: string
      * }
@@ -395,8 +405,79 @@ PHP;
             'max_execution_time' => (int) ini_get('max_execution_time'),
             'max_input_vars' => (int) ini_get('max_input_vars'),
             'display_errors' => is_string($displayErrors) && $displayErrors !== '' ? $displayErrors : '0',
+            'server_software' => $this->normalizeServerSoftware($_SERVER['SERVER_SOFTWARE'] ?? 'CLI'),
             'opcache' => $opcache,
             'source' => 'cli',
         ];
+    }
+
+    private function detectDockerWebServerSoftware(): ?string
+    {
+        if ($this->docker === null || !$this->docker->isRunning('nginx')) {
+            return null;
+        }
+
+        $output = $this->docker->exec('nginx', 'nginx -v 2>&1');
+        if (!is_string($output) || trim($output) === '') {
+            return null;
+        }
+
+        if (preg_match('/nginx version:\s*(.+)/i', $output, $matches) !== 1) {
+            return null;
+        }
+
+        return $this->normalizeServerSoftware($matches[1]);
+    }
+
+    private function detectHttpServerSoftware(): ?string
+    {
+        $projectUrl = $this->config->get('project_url');
+        if (!is_string($projectUrl) || trim($projectUrl) === '') {
+            return null;
+        }
+
+        if (!function_exists('curl_init')) {
+            return null;
+        }
+
+        $ch = curl_init(rtrim($projectUrl, '/') . '/');
+        if ($ch === false) {
+            return null;
+        }
+
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
+            CURLOPT_NOBODY => true,
+            CURLOPT_TIMEOUT => 2,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_USERAGENT => 'KVS-CLI/1.0',
+        ]);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        if (!is_string($response)) {
+            return null;
+        }
+
+        if (preg_match('/^server:\s*([^\r\n]+)/im', $response, $matches) !== 1) {
+            return null;
+        }
+
+        return $this->normalizeServerSoftware($matches[1]);
+    }
+
+    private function normalizeServerSoftware(mixed $value): string
+    {
+        if (!is_string($value) && !is_numeric($value)) {
+            return 'Unknown';
+        }
+
+        $serverSoftware = trim((string) $value);
+
+        return $serverSoftware !== '' ? $serverSoftware : 'Unknown';
     }
 }

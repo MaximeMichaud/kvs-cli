@@ -219,6 +219,8 @@ class StatusCommandTest extends TestCase
             $display = $tester->getDisplay();
             $normalizedDisplay = $this->normalizeStatusOutput($display);
             $this->assertSame(0, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Web Server PHP', $normalizedDisplay);
+            $this->assertStringContainsString('Development Server', $normalizedDisplay);
             $this->assertStringContainsString('PHP Version ' . PHP_VERSION . ' FPM', $normalizedDisplay);
             $this->assertStringContainsString('PHP display_errors DISABLED', $normalizedDisplay);
             $this->assertStringNotContainsString('PHP display_errors ENABLED', $normalizedDisplay);
