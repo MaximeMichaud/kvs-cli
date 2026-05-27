@@ -66,7 +66,7 @@ HELP
             'list' => $this->listScreenshots($input, $videoId),
             'generate' => $this->generateScreenshots($input, $videoId),
             'regenerate' => $this->regenerateScreenshots($input, $videoId),
-            default => $this->listScreenshots($input, null),
+            default => $this->failUnknownAction('screenshots', $action, ['list', 'generate', 'regenerate']),
         };
     }
 

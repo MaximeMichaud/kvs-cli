@@ -161,6 +161,21 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('preview.png', $this->tester->getDisplay());
     }
 
+    public function testUnknownActionFailsEvenWithVideoId(): void
+    {
+        $this->createScreenshotFixture('1234');
+
+        $this->tester->execute([
+            'action' => 'unknown_action',
+            'video_id' => '1234',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown screenshots action "unknown_action"', $output);
+        $this->assertStringNotContainsString('preview.png', $output);
+    }
+
     public function testCommandHasExpectedOptions(): void
     {
         $definition = $this->command->getDefinition();
