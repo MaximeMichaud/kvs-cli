@@ -110,53 +110,54 @@ class StackScorer
      * Score PHP version
      *
      * PHP 8.1 is the minimum supported version across all KVS releases (6.3-7.0).
-     * Don't penalize users on 8.1 even if it reaches EOL from PHP's perspective.
+     * Keep the KVS-compatible label only while the upstream PHP branch is still supported.
      *
      * @return array{version: string, status: string, score: int, eol_date: ?string, recommendation: ?string}
      */
     private function scorePhp(): array
     {
-        $version = PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+        $version = $this->detectPhpVersion();
         $eolData = $this->fetchEolData('php');
+        $scored = $this->scoreVersion('php', $version, $eolData);
 
         // PHP 8.1 is the minimum for all supported KVS versions
-        // Don't penalize users on the minimum supported version
         if ($version === '8.1') {
+            if ($scored['status'] === 'eol') {
+                $scored['status'] = 'kvs_supported_eol';
+                $scored['recommendation'] = 'PHP 8.1 is KVS-compatible but upstream end-of-life; '
+                    . 'plan an upgrade to a newer KVS-supported PHP runtime.';
+                return $scored;
+            }
+
+            if ($scored['status'] === 'eol_soon') {
+                $scored['status'] = 'kvs_supported_eol_soon';
+                $scored['recommendation'] = 'PHP 8.1 is KVS-compatible but near upstream end-of-life; '
+                    . 'plan an upgrade to a newer KVS-supported PHP runtime.';
+                return $scored;
+            }
+
             return [
                 'version' => $version,
                 'status' => 'kvs_optimal',
                 'score' => self::SCORE_ACTIVE,
-                'eol_date' => $this->getEolDateForVersion($eolData, $version),
+                'eol_date' => $scored['eol_date'],
                 'recommendation' => null, // No upgrade possible for KVS
             ];
         }
 
-        $scored = $this->scoreVersion('php', $version, $eolData);
         $scored['recommendation'] = null; // PHP upgrades depend on KVS support
 
         return $scored;
     }
 
-    /**
-     * Get EOL date for a specific version from EOL data
-     *
-     * @param list<array<string, mixed>> $eolData
-     */
-    private function getEolDateForVersion(array $eolData, string $version): ?string
+    private function detectPhpVersion(): string
     {
-        foreach ($eolData as $entry) {
-            if (!isset($entry['cycle']) || !is_scalar($entry['cycle'])) {
-                continue;
-            }
-            $cycle = (string) $entry['cycle'];
-            if ($cycle === $version || str_starts_with($version, $cycle . '.')) {
-                $eol = $entry['eol'] ?? null;
-                if (is_string($eol)) {
-                    return $eol;
-                }
-            }
+        $phpVersion = $this->systemInfo['php_version'] ?? null;
+        if (is_string($phpVersion) && preg_match('/(\d+\.\d+)/', $phpVersion, $matches) === 1) {
+            return $matches[1];
         }
-        return null;
+
+        return PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
     }
 
     /**
@@ -1031,6 +1032,8 @@ class StackScorer
             'rolling' => '<fg=green>Rolling Release</>',
             'lts_current' => '<fg=green>LTS Current</>',
             'kvs_optimal' => '<fg=green>KVS Optimal</>',
+            'kvs_supported_eol_soon' => '<fg=yellow>KVS Compatible, EOL Soon</>',
+            'kvs_supported_eol' => '<fg=red>KVS Compatible, EOL</>',
             'outdated' => '<fg=yellow>Outdated</>',
             'security' => '<fg=yellow>Security Only</>',
             'eol_soon' => '<fg=yellow>EOL Soon</>',
