@@ -1,6 +1,7 @@
 name: CI
 permissions:
   contents: read
+  id-token: write
 
 on:
   push:
@@ -98,8 +99,10 @@ jobs:
         if: matrix.coverage
         uses: codecov/codecov-action@v6
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+          use_oidc: true
+          files: build/coverage/clover.xml
+          disable_search: true
+          fail_ci_if_error: true
 
   lint:
     name: Lint & Static Analysis

@@ -44,7 +44,7 @@
         "test-unit": "phpunit --configuration phpunit.xml.dist --testsuite=\"Unit Tests\"",
         "test-integration": "phpunit --configuration phpunit.xml.dist --testsuite=\"Integration Tests\"",
         "test-functional": "phpunit --configuration phpunit.xml.dist --testsuite=\"Functional Tests\"",
-        "coverage": "XDEBUG_MODE=coverage phpunit --configuration phpunit.xml.dist --coverage-text",
+        "coverage": "mkdir -p build/coverage && XDEBUG_MODE=coverage phpunit --configuration phpunit.xml.dist --coverage-text --coverage-clover build/coverage/clover.xml",
         "coverage-html": "XDEBUG_MODE=coverage phpunit --configuration phpunit.xml.dist --coverage-html coverage-report",
         "phpcs": "phpcs --standard=phpcs.xml",
         "phpcbf": "phpcbf --standard=phpcs.xml",
