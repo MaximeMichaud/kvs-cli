@@ -108,12 +108,24 @@ class CategoryCommandTest extends TestCase
         $testerCount = new CommandTester($this->command);
         $testerCount->execute([
             'action' => 'list',
-            '--format' => 'count'
+            '--format' => 'count',
+            '--limit' => 1,
         ]);
 
         $output = trim($testerCount->getDisplay());
         $this->assertSame('3', $output);
         $this->assertEquals(0, $testerCount->getStatusCode());
+
+        $testerActiveCount = new CommandTester($this->command);
+        $testerActiveCount->execute([
+            'action' => 'list',
+            '--status' => 'active',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertSame('2', trim($testerActiveCount->getDisplay()));
+        $this->assertEquals(0, $testerActiveCount->getStatusCode());
     }
 
     public function testCategoryShow(): void

@@ -154,17 +154,22 @@ HELP
                 $params['group'] = (int) $groupId;
             }
 
-            $usageSelectors = $this->getCategoryUsageSelectors();
             $usageJoins = $this->getCategoryUsageJoins();
-            if ($this->getBoolOption($input, 'unused')) {
+            $unusedOnly = $this->getBoolOption($input, 'unused');
+            if ($unusedOnly) {
                 $conditions[] = $this->getCategoryTotalUsageCondition() . ' = 0';
             }
 
             $whereClause = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
+            if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+                return $this->countCategories($db, $whereClause, $params, $unusedOnly ? $usageJoins : '');
+            }
+
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
             if ($limit === null) {
                 return self::FAILURE;
             }
+            $usageSelectors = $this->getCategoryUsageSelectors();
 
             $sql = "
                 SELECT c.*,
@@ -211,6 +216,33 @@ HELP
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch categories: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function countCategories(\PDO $db, string $whereClause, array $params, string $usageJoins): int
+    {
+        try {
+            $stmt = $db->prepare("
+                SELECT COUNT(*)
+                FROM {$this->table('categories')} c
+                {$usageJoins}
+                $whereClause
+            ");
+            foreach ($params as $key => $value) {
+                $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
+            }
+            $stmt->execute();
+
+            $total = $stmt->fetchColumn();
+            $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to count categories: ' . $e->getMessage());
             return self::FAILURE;
         }
     }
