@@ -103,6 +103,36 @@ class ServerCommandTest extends TestCase
         $this->assertSame('Local', $rows[0]['connection']);
     }
 
+    public function testServerListWithConnectionFiltersForRemoteTypes(): void
+    {
+        $this->insertS3StorageServer();
+
+        $cases = [
+            ['mount', 2, 'Mount'],
+            ['ftp', 3, 'FTP'],
+            ['s3', 4, 'S3'],
+        ];
+
+        foreach ($cases as [$connection, $serverId, $label]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'list',
+                '--connection' => $connection,
+                '--limit' => 10,
+                '--format' => 'json',
+                '--fields' => 'server_id,title,connection',
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertEquals(0, $tester->getStatusCode());
+            $this->assertCount(1, $rows);
+            $this->assertSame($serverId, (int) $rows[0]['server_id']);
+            $this->assertSame($label, $rows[0]['connection']);
+        }
+    }
+
     public function testServerListWithGroupFilterIsolatesGroups(): void
     {
         $this->tester->execute([
@@ -195,6 +225,70 @@ class ServerCommandTest extends TestCase
         $this->assertStringContainsString('6 GB', $output);
         $this->assertStringContainsString('/data/videos', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testServerShowDisplaysMountConnectionInfo(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '2',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Server #2', $output);
+        $this->assertStringContainsString('Video Disabled', $output);
+        $this->assertStringContainsString('Mount', $output);
+        $this->assertStringContainsString('/mnt/videos', $output);
+        $this->assertStringNotContainsString('FTP Host', $output);
+        $this->assertStringNotContainsString('S3 Bucket', $output);
+    }
+
+    public function testServerShowDisplaysFtpConnectionInfo(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '3',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Server #3', $output);
+        $this->assertStringContainsString('Album Error', $output);
+        $this->assertStringContainsString('FTP', $output);
+        $this->assertStringContainsString('FTP Host', $output);
+        $this->assertStringContainsString('ftp.example.test:21', $output);
+        $this->assertStringContainsString('FTP User', $output);
+        $this->assertStringContainsString('ftp-user', $output);
+        $this->assertStringContainsString('FTP Folder', $output);
+        $this->assertStringContainsString('/albums', $output);
+    }
+
+    public function testServerShowDisplaysS3ConnectionInfoWithoutCredentials(): void
+    {
+        $this->insertS3StorageServer();
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '4',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Server #4', $output);
+        $this->assertStringContainsString('Album S3', $output);
+        $this->assertStringContainsString('S3', $output);
+        $this->assertStringContainsString('S3 Region', $output);
+        $this->assertStringContainsString('ca-central-1', $output);
+        $this->assertStringContainsString('S3 Bucket', $output);
+        $this->assertStringContainsString('album-bucket', $output);
+        $this->assertStringContainsString('S3 Endpoint', $output);
+        $this->assertStringContainsString('https://s3.example.test', $output);
+        $this->assertStringNotContainsString('hidden-fixture-value-a', $output);
+        $this->assertStringNotContainsString('hidden-fixture-value-b', $output);
     }
 
     public function testServerShowNotFound(): void
@@ -381,7 +475,8 @@ class ServerCommandTest extends TestCase
             '`load` REAL, error_iteration INTEGER, error_streaming_iteration INTEGER, error_id INTEGER, ' .
             'error_streaming_id INTEGER, is_debug_enabled INTEGER, urls TEXT, path TEXT, ftp_host TEXT, ' .
             'ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, s3_region TEXT, s3_bucket TEXT, s3_endpoint TEXT, ' .
-            'control_script_url TEXT, control_script_url_version TEXT, added_date TEXT)'
+            's3_api_key TEXT, s3_api_secret TEXT, control_script_url TEXT, control_script_url_version TEXT, ' .
+            'added_date TEXT)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('videos') . ' (server_group_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('albums') . ' (server_group_id INTEGER)');
@@ -410,6 +505,22 @@ class ServerCommandTest extends TestCase
         $db->exec('INSERT INTO ' . TestHelper::table('albums') . ' VALUES (20), (20)');
 
         return $db;
+    }
+
+    private function insertS3StorageServer(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_servers') .
+            ' (server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, ' .
+            'total_space, free_space, `load`, error_iteration, error_streaming_iteration, error_id, ' .
+            'error_streaming_id, is_debug_enabled, urls, path, ftp_host, ftp_port, ftp_user, ftp_folder, ' .
+            's3_region, s3_bucket, s3_endpoint, s3_api_key, s3_api_secret, control_script_url, ' .
+            'control_script_url_version, added_date) VALUES ' .
+            "(4, 20, 2, 'Album S3', 1, 3, 4, 3221225472, 1073741824, 0.25, 0, 0, 0, 0, 0, " .
+            "'https://s3-cdn.example.test', '', '', '', '', '', 'ca-central-1', 'album-bucket', " .
+            "'https://s3.example.test', 'hidden-fixture-value-a', 'hidden-fixture-value-b', '', '', " .
+            "'2026-05-23 10:00:00')"
+        );
     }
 
     private function createCommand(PDO $db): ServerCommand
