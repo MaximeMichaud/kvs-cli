@@ -94,6 +94,79 @@ class ScreenshotsPathTest extends TestCase
 
     public function testGenerateUsesConfiguredFfmpegAndFfprobePaths(): void
     {
+        [$ffmpeg, $ffprobe] = $this->createMockVideoTools();
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
+        mkdir($sourcesPath . '/1000/1234', 0755, true);
+        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $screenshotsPath,
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . dirname($ffmpeg) . '/empty');
+
+        try {
+            $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+            $tester = new CommandTester($command);
+            $tester->execute([
+                'action' => 'generate',
+                'video_id' => '1234',
+                '--count' => '1',
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertFileExists($screenshotsPath . '/1000/1234/001.jpg');
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testRegenerateRemovesEmptyScreenshotSubdirectories(): void
+    {
+        [$ffmpeg, $ffprobe] = $this->createMockVideoTools();
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
+        mkdir($sourcesPath . '/1000/1234', 0755, true);
+        mkdir($screenshotsPath . '/1000/1234/320x180', 0755, true);
+        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
+        file_put_contents($screenshotsPath . '/1000/1234/320x180/001.jpg', 'old screenshot');
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $screenshotsPath,
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($screenshotsPath . '/1000/1234/001.jpg');
+        $this->assertDirectoryDoesNotExist($screenshotsPath . '/1000/1234/320x180');
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function createMockVideoTools(): array
+    {
         $toolsDir = $this->tempDir . '/tools';
         mkdir($toolsDir, 0755, true);
 
@@ -119,38 +192,6 @@ SH
         );
         chmod($ffmpeg, 0755);
 
-        $sourcesPath = $this->tempDir . '/contents/videos_sources';
-        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
-        mkdir($sourcesPath . '/1000/1234', 0755, true);
-        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
-
-        TestHelper::createMockSetupConfig($this->tempDir, [
-            'content_path_videos_sources' => $sourcesPath,
-            'content_path_videos_screenshots' => $screenshotsPath,
-            'ffmpeg_path' => $ffmpeg,
-            'ffprobe_path' => $ffprobe,
-        ]);
-
-        $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . '/empty');
-
-        try {
-            $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
-            $tester = new CommandTester($command);
-            $tester->execute([
-                'action' => 'generate',
-                'video_id' => '1234',
-                '--count' => '1',
-            ]);
-
-            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
-            $this->assertFileExists($screenshotsPath . '/1000/1234/001.jpg');
-        } finally {
-            if ($previousPath === false) {
-                putenv('PATH');
-            } else {
-                putenv('PATH=' . $previousPath);
-            }
-        }
+        return [$ffmpeg, $ffprobe];
     }
 }

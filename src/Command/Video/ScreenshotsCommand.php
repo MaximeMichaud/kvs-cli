@@ -279,6 +279,8 @@ HELP
                 }
             }
 
+            $this->removeEmptyDirectories($screenshotsPath);
+
             $this->io()->text("Deleted $deleted existing screenshots");
             $this->io()->newLine();
         }
@@ -355,6 +357,26 @@ HELP
         }
 
         return $files;
+    }
+
+    private function removeEmptyDirectories(string $path): void
+    {
+        if (!is_dir($path)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file instanceof \SplFileInfo || !$file->isDir()) {
+                continue;
+            }
+
+            @rmdir($file->getPathname());
+        }
     }
 
     private function getRelativePath(string $basePath, string $file): string
