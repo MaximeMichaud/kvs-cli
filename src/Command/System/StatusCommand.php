@@ -21,6 +21,19 @@ class StatusCommand extends BaseCommand
 {
     private bool $statusDatabaseConnectionResolved = false;
     private ?\PDO $statusDatabaseConnection = null;
+    /**
+     * @var array{
+     *     upload_max_filesize: string,
+     *     post_max_size: string,
+     *     memory_limit: string,
+     *     max_execution_time: int,
+     *     max_input_vars: int,
+     *     display_errors: string,
+     *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
+     *     source: string
+     * }|null
+     */
+    private ?array $phpRuntimeConfig = null;
 
     protected function configure(): void
     {
@@ -300,10 +313,7 @@ HELP
         $info[] = ['Operating System', $this->getOsInfo()];
         $info[] = ['Web Server', $_SERVER['SERVER_SOFTWARE'] ?? 'CLI'];
 
-        // Use FpmConfigReader to get real PHP-FPM settings (not CLI)
-        $docker = $this->isDockerMode() ? $this->docker() : null;
-        $fpmReader = new FpmConfigReader($this->config, $docker);
-        $fpmConfig = $fpmReader->getConfig();
+        $fpmConfig = $this->getPhpRuntimeConfig();
 
         $phpVersion = $this->getKvsPhpVersion();
         $sourceLabel = match ($fpmConfig['source']) {
@@ -1090,9 +1100,8 @@ HELP
             }
         }
 
-        // Check PHP display_errors (should be off in production) - Docker-aware
-        $displayErrors = $this->getPhpSetting('display_errors');
-        if ($displayErrors !== false && $displayErrors !== '' && $displayErrors !== 'Off' && $displayErrors !== '0') {
+        $displayErrors = $this->getPhpRuntimeConfig()['display_errors'];
+        if ($this->isPhpDisplayErrorsEnabled($displayErrors)) {
             $security[] = ['⚠', 'PHP display_errors', 'ENABLED (should be disabled in production)'];
         } else {
             $security[] = ['✓', 'PHP display_errors', 'DISABLED'];
@@ -1192,6 +1201,37 @@ HELP
         }
 
         return false;
+    }
+
+    /**
+     * @return array{
+     *     upload_max_filesize: string,
+     *     post_max_size: string,
+     *     memory_limit: string,
+     *     max_execution_time: int,
+     *     max_input_vars: int,
+     *     display_errors: string,
+     *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
+     *     source: string
+     * }
+     */
+    private function getPhpRuntimeConfig(): array
+    {
+        if ($this->phpRuntimeConfig === null) {
+            // CLI and FPM can load different ini files, so security status must use the KVS runtime.
+            $docker = $this->isDockerMode() ? $this->docker() : null;
+            $fpmReader = new FpmConfigReader($this->config, $docker);
+            $this->phpRuntimeConfig = $fpmReader->getConfig();
+        }
+
+        return $this->phpRuntimeConfig;
+    }
+
+    private function isPhpDisplayErrorsEnabled(string $value): bool
+    {
+        $normalized = strtolower(trim($value));
+
+        return !in_array($normalized, ['', '0', 'off', 'false', 'no'], true);
     }
 
     private function getStatusDatabaseConnection(bool $quiet = false): ?\PDO

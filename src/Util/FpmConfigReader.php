@@ -42,6 +42,7 @@ class FpmConfigReader
      *     memory_limit: string,
      *     max_execution_time: int,
      *     max_input_vars: int,
+     *     display_errors: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
      *     source: string
      * }
@@ -81,6 +82,7 @@ class FpmConfigReader
      *     memory_limit: string,
      *     max_execution_time: int,
      *     max_input_vars: int,
+     *     display_errors: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null
      * }|null
      */
@@ -95,6 +97,7 @@ class FpmConfigReader
         $memLimit = $this->docker->getPhpIni('memory_limit');
         $maxExec = $this->docker->getPhpIni('max_execution_time');
         $maxInputVars = $this->docker->getPhpIni('max_input_vars');
+        $displayErrors = $this->docker->getPhpIni('display_errors');
 
         // If we can't get basic settings, Docker isn't working
         if ($uploadMax === null || $memLimit === null) {
@@ -121,6 +124,7 @@ class FpmConfigReader
             'memory_limit' => $memLimit,
             'max_execution_time' => $maxExec !== null ? (int) $maxExec : 0,
             'max_input_vars' => $maxInputVars !== null ? (int) $maxInputVars : 1000,
+            'display_errors' => $displayErrors ?? '0',
             'opcache' => $opcache,
         ];
     }
@@ -150,6 +154,7 @@ class FpmConfigReader
      *     memory_limit: string,
      *     max_execution_time: int,
      *     max_input_vars: int,
+     *     display_errors: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null
      * }|null
      */
@@ -234,6 +239,7 @@ header('Cache-Control: no-store');
     'memory_limit' => ini_get('memory_limit') ?: '128M',
     'max_execution_time' => (int) ini_get('max_execution_time'),
     'max_input_vars' => (int) ini_get('max_input_vars'),
+    'display_errors' => ini_get('display_errors') ?: '0',
     'opcache' => null,
 ];
 
@@ -270,7 +276,6 @@ PHP;
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $error = curl_error($ch);
-            curl_close($ch);
 
             if ($response === false || $httpCode !== 200) {
                 $this->lastError = "HTTP request failed (code {$httpCode}): {$error}";
@@ -311,6 +316,7 @@ PHP;
      *     memory_limit: string,
      *     max_execution_time: int,
      *     max_input_vars: int,
+     *     display_errors: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null
      * }
      */
@@ -340,6 +346,7 @@ PHP;
                 ? $data['memory_limit'] : '128M',
             'max_execution_time' => is_int($maxExec) ? $maxExec : 30,
             'max_input_vars' => is_int($maxInputVars) ? $maxInputVars : 1000,
+            'display_errors' => is_string($data['display_errors'] ?? null) ? $data['display_errors'] : '0',
             'opcache' => $opcache,
         ];
     }
@@ -353,6 +360,7 @@ PHP;
      *     memory_limit: string,
      *     max_execution_time: int,
      *     max_input_vars: int,
+     *     display_errors: string,
      *     opcache: array{enable: bool, memory_consumption: int, interned_strings_buffer: int}|null,
      *     source: string
      * }
@@ -377,6 +385,7 @@ PHP;
         $uploadMax = ini_get('upload_max_filesize');
         $postMax = ini_get('post_max_size');
         $memLimit = ini_get('memory_limit');
+        $displayErrors = ini_get('display_errors');
 
         return [
             'upload_max_filesize' => is_string($uploadMax) && $uploadMax !== '' ? $uploadMax : '2M',
@@ -385,6 +394,7 @@ PHP;
             'memory_limit' => $memLimit !== '' && $memLimit !== false ? $memLimit : '128M',
             'max_execution_time' => (int) ini_get('max_execution_time'),
             'max_input_vars' => (int) ini_get('max_input_vars'),
+            'display_errors' => is_string($displayErrors) && $displayErrors !== '' ? $displayErrors : '0',
             'opcache' => $opcache,
             'source' => 'cli',
         ];

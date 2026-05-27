@@ -162,6 +162,87 @@ class StatusCommandTest extends TestCase
         $this->assertStringContainsString('Debug mode ENABLED', $this->normalizeStatusOutput($display));
     }
 
+    public function testStatusSecurityUsesFpmDisplayErrorsSetting(): void
+    {
+        $previousDisplayErrors = ini_get('display_errors');
+        ini_set('display_errors', '1');
+
+        $process = null;
+        $pipes = [];
+
+        try {
+            $port = $this->reserveLocalPort();
+            file_put_contents(
+                $this->tempDir . '/admin/include/setup.php',
+                '<?php $config = ' . var_export([
+                    'project_version' => '6.3.2',
+                    'project_name' => 'Test KVS',
+                    'project_path' => $this->tempDir,
+                    'project_url' => 'http://127.0.0.1:' . $port,
+                ], true) . ';'
+            );
+
+            $process = proc_open(
+                [PHP_BINARY, '-d', 'display_errors=0', '-S', '127.0.0.1:' . $port, '-t', $this->tempDir],
+                [
+                    0 => ['pipe', 'r'],
+                    1 => ['pipe', 'w'],
+                    2 => ['pipe', 'w'],
+                ],
+                $pipes
+            );
+            $this->assertIsResource($process);
+
+            $this->waitForHttpServer('http://127.0.0.1:' . $port . '/admin/include/setup.php');
+
+            $db = new PDO('sqlite::memory:');
+            $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $db->exec('CREATE TABLE ktvs_background_tasks (task_id INTEGER, status_id INTEGER, added_date TEXT)');
+            $db->exec('CREATE TABLE ktvs_background_tasks_history (task_id INTEGER, status_id INTEGER, effective_duration INTEGER)');
+
+            $command = new class (TestHelper::createTestConfiguration($this->tempDir), $db) extends StatusCommand {
+                public function __construct(Configuration $config, private PDO $testDb)
+                {
+                    parent::__construct($config);
+                }
+
+                protected function getDatabaseConnection(bool $quiet = false): ?PDO
+                {
+                    return $this->testDb;
+                }
+            };
+            $tester = new CommandTester($command);
+
+            $tester->execute([]);
+
+            $display = $tester->getDisplay();
+            $normalizedDisplay = $this->normalizeStatusOutput($display);
+            $this->assertSame(0, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('PHP Version ' . PHP_VERSION . ' FPM', $normalizedDisplay);
+            $this->assertStringContainsString('PHP display_errors DISABLED', $normalizedDisplay);
+            $this->assertStringNotContainsString('PHP display_errors ENABLED', $normalizedDisplay);
+        } finally {
+            if ($previousDisplayErrors !== false) {
+                ini_set('display_errors', $previousDisplayErrors);
+            }
+
+            foreach ($pipes as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+
+            if (is_resource($process)) {
+                $status = proc_get_status($process);
+                if (($status['running'] ?? false) === true) {
+                    proc_terminate($process);
+                }
+                proc_close($process);
+            }
+        }
+    }
+
     public function testCheckCommandEscapesCommandName(): void
     {
         $marker = $this->tempDir . '/status-command-injection';
@@ -439,6 +520,35 @@ PHP
         }
 
         $this->fail('Redis test server did not start');
+    }
+
+    private function reserveLocalPort(): int
+    {
+        $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+        $this->assertIsResource($server, $errstr);
+
+        $address = stream_socket_get_name($server, false);
+        fclose($server);
+        $this->assertIsString($address);
+
+        $parts = explode(':', $address);
+        $port = (int) end($parts);
+        $this->assertGreaterThan(0, $port);
+
+        return $port;
+    }
+
+    private function waitForHttpServer(string $url): void
+    {
+        $deadline = microtime(true) + 5;
+        while (microtime(true) < $deadline) {
+            if (@file_get_contents($url) !== false) {
+                return;
+            }
+            usleep(10000);
+        }
+
+        $this->fail('PHP test server did not start');
     }
 
     private function normalizeStatusOutput(string $output): string
