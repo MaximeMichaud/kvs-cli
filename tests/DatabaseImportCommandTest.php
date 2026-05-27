@@ -119,14 +119,59 @@ class DatabaseImportCommandTest extends TestCase
         $this->assertSame((string) (32 * 1024 * 1024), trim((string) file_get_contents($bytesFile)));
     }
 
-    private function createFakeMysql(string $toolsDir, string $bytesFile): void
+    public function testImportSuppressesMariaDbSslPasswordWarning(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-mariadb-warning';
+        $bytesFile = $this->tempDir . '/mariadb-warning.bytes';
+        $this->createFakeMysql($toolsDir, $bytesFile, [
+            'WARNING: option --ssl-verify-server-cert is disabled, because of an insecure passwordless login.',
+            'real mysql stderr',
+        ]);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+            $tester->setInputs(['yes']);
+
+            $tester->execute(['file' => $this->sqlFile], ['decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(0, $tester->getStatusCode(), $display);
+            $this->assertStringNotContainsString('ssl-verify-server-cert', $display);
+            $this->assertStringContainsString('real mysql stderr', $display);
+            $this->assertSame((string) strlen("SELECT 1;\n"), trim((string) file_get_contents($bytesFile)));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    /**
+     * @param list<string> $stderrLines
+     */
+    private function createFakeMysql(string $toolsDir, string $bytesFile, array $stderrLines = []): void
     {
         mkdir($toolsDir, 0755, true);
 
         $mysql = $toolsDir . '/mysql';
+        $stderrScript = '';
+        foreach ($stderrLines as $line) {
+            $stderrScript .= 'echo ' . escapeshellarg($line) . " >&2\n";
+        }
+
         file_put_contents(
             $mysql,
             "#!/bin/sh\n"
+            . $stderrScript
             . 'wc -c < /dev/stdin > ' . escapeshellarg($bytesFile) . "\n"
         );
         chmod($mysql, 0755);

@@ -118,7 +118,10 @@ EOT
         try {
             $process->run(function ($type, $buffer) use ($progressBar) {
                 if ($type === Process::ERR && is_string($buffer) && trim($buffer) !== '') {
-                    $this->io()->warning($buffer);
+                    $filteredBuffer = $this->filterMysqlClientStderr($buffer);
+                    if (trim($filteredBuffer) !== '') {
+                        $this->io()->warning($filteredBuffer);
+                    }
                 }
                 $progressBar->advance();
             });
@@ -215,6 +218,20 @@ EOT
         }
 
         return $path;
+    }
+
+    private function filterMysqlClientStderr(string $buffer): string
+    {
+        $lines = preg_split('/\R/', $buffer);
+        if ($lines === false) {
+            return $buffer;
+        }
+
+        $filtered = array_filter($lines, static function (string $line): bool {
+            return trim($line) !== 'WARNING: option --ssl-verify-server-cert is disabled, because of an insecure passwordless login.';
+        });
+
+        return implode(PHP_EOL, $filtered);
     }
 
     /**
