@@ -21,6 +21,21 @@ class OptionsCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     /**
+     * Serialized KVS settings files that duplicate selected ktvs_options values.
+     *
+     * @var list<string>
+     */
+    private const MIRRORED_SETTINGS_FILES = [
+        'mixed_options.dat',
+        'website_ui_params.dat',
+        'blocked_words.dat',
+        'memberzone_params.dat',
+        'hotlink_info.dat',
+        'rotator.dat',
+        'api.dat',
+    ];
+
+    /**
      * Option category mappings based on KVS admin/options.php pages
      * @var array<string, list<string>>
      */
@@ -94,6 +109,7 @@ Manage KVS system options (ktvs_options table).
 
 <fg=yellow>NOTE:</>
   Options are stored in the ktvs_options table as key-value pairs.
+  Some KVS runtime files mirror selected options and are synchronized on set.
   Long list values are truncated in table view unless --no-truncate is used.
   Use with caution - changing options can affect site behavior.
 HELP
@@ -345,15 +361,21 @@ HELP
                 return self::SUCCESS;
             }
 
+            $mirroredSettingsFiles = $this->loadMirroredSettingsFiles($name);
+
             // Update the option
             $stmt = $db->prepare(
                 "UPDATE {$this->table('options')} SET value = :value WHERE variable = :name"
             );
             $stmt->execute(['value' => $value, 'name' => $name]);
+            $syncedFiles = $this->writeMirroredSettingsFiles($mirroredSettingsFiles, $name, $value);
 
             $this->io()->success("Option '$name' updated successfully");
             $this->io()->text("Changed from: $oldValue");
             $this->io()->text("Changed to: $value");
+            if ($syncedFiles !== []) {
+                $this->io()->text('Synchronized KVS settings file(s): ' . implode(', ', $syncedFiles));
+            }
 
             // Warn about cache
             $this->io()->note('You may need to clear cache for changes to take effect: kvs cache clear');
@@ -363,6 +385,92 @@ HELP
             $this->io()->error('Failed to update option: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return list<array{file: string, path: string, data: array<string, mixed>}>
+     */
+    private function loadMirroredSettingsFiles(string $name): array
+    {
+        $systemDir = $this->config->getAdminPath() . '/data/system';
+        $matches = [];
+
+        foreach (self::MIRRORED_SETTINGS_FILES as $file) {
+            $path = $systemDir . '/' . $file;
+            if (!is_file($path)) {
+                continue;
+            }
+
+            $contents = file_get_contents($path);
+            if ($contents === false) {
+                throw new \RuntimeException("Cannot read mirrored KVS settings file: $path");
+            }
+
+            $data = @unserialize($contents, ['allowed_classes' => false]);
+            if (!is_array($data) || !array_key_exists($name, $data)) {
+                continue;
+            }
+
+            if (!is_writable($path)) {
+                throw new \RuntimeException("Cannot update mirrored KVS settings file: $path");
+            }
+
+            if (is_array($data[$name])) {
+                throw new \RuntimeException(
+                    "Cannot safely update array-valued mirrored KVS setting '$name' in $path"
+                );
+            }
+
+            /** @var array<string, mixed> $data */
+            $matches[] = [
+                'file' => $file,
+                'path' => $path,
+                'data' => $data,
+            ];
+        }
+
+        return $matches;
+    }
+
+    /**
+     * @param list<array{file: string, path: string, data: array<string, mixed>}> $settingsFiles
+     * @return list<string>
+     */
+    private function writeMirroredSettingsFiles(array $settingsFiles, string $name, string $value): array
+    {
+        $syncedFiles = [];
+
+        foreach ($settingsFiles as $settingsFile) {
+            $data = $settingsFile['data'];
+            $data[$name] = $this->castMirroredOptionValue($value, $data[$name]);
+
+            if (file_put_contents($settingsFile['path'], serialize($data), LOCK_EX) === false) {
+                throw new \RuntimeException(
+                    "Cannot update mirrored KVS settings file: {$settingsFile['path']}"
+                );
+            }
+
+            $syncedFiles[] = $settingsFile['file'];
+        }
+
+        return $syncedFiles;
+    }
+
+    private function castMirroredOptionValue(string $value, mixed $currentValue): mixed
+    {
+        if (is_int($currentValue)) {
+            return (int) $value;
+        }
+
+        if (is_float($currentValue)) {
+            return (float) $value;
+        }
+
+        if (is_bool($currentValue)) {
+            return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? ($value !== '' && $value !== '0');
+        }
+
+        return $value;
     }
 
     /**

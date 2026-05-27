@@ -257,6 +257,36 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame('1', $this->db->query("SELECT value FROM ktvs_options WHERE variable = 'CODEX_OPTION'")->fetchColumn());
     }
 
+    public function testOptionsSetSynchronizesMirroredKvsSettingsFile(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('ALBUMS_SOURCE_FILES_ACCESS_LEVEL', '0')");
+
+        $settingsFile = $this->tempDir . '/admin/data/system/mixed_options.dat';
+        file_put_contents($settingsFile, serialize(['ALBUMS_SOURCE_FILES_ACCESS_LEVEL' => 0]));
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'set',
+            'name' => 'ALBUMS_SOURCE_FILES_ACCESS_LEVEL',
+            'value' => '2',
+            '--force' => true,
+            '--yes' => true,
+        ], ['interactive' => false]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(
+            '2',
+            $this->db->query("SELECT value FROM ktvs_options WHERE variable = 'ALBUMS_SOURCE_FILES_ACCESS_LEVEL'")
+                ->fetchColumn()
+        );
+
+        $mirroredSettings = unserialize((string) file_get_contents($settingsFile), ['allowed_classes' => false]);
+        $this->assertIsArray($mirroredSettings);
+        $this->assertSame(2, $mirroredSettings['ALBUMS_SOURCE_FILES_ACCESS_LEVEL']);
+        $this->assertStringContainsString('mixed_options.dat', $tester->getDisplay());
+    }
+
     public function testServerRejectsInvalidTypeStatusAndConnection(): void
     {
         foreach (['type', 'status', 'connection'] as $option) {
