@@ -117,8 +117,27 @@ class ConversionCommandTest extends TestCase
         ]);
 
         $output = trim($testerCount->getDisplay());
-        $this->assertSame('3', $output);
+        $this->assertSame('4', $output);
         $this->assertEquals(0, $testerCount->getStatusCode());
+    }
+
+    public function testConversionListWithInitStatusFilter(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--status' => 'init',
+            '--format' => 'json',
+            '--fields' => 'server_id,title,status',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(4, (int) $rows[0]['server_id']);
+        $this->assertSame('Init Converter', $rows[0]['title']);
+        $this->assertSame('Initializing', $rows[0]['status']);
     }
 
     public function testConversionShow(): void
@@ -139,6 +158,27 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('10 GB', $output);
         $this->assertStringContainsString('6 GB', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConversionShowDisplaysFtpConnectionInfo(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '2'
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Connection', $output);
+        $this->assertStringContainsString('FTP', $output);
+        $this->assertStringContainsString('FTP Host', $output);
+        $this->assertStringContainsString('ftp.example.test:21', $output);
+        $this->assertStringContainsString('FTP User', $output);
+        $this->assertStringContainsString('ftp-user', $output);
+        $this->assertStringContainsString('FTP Folder', $output);
+        $this->assertStringContainsString('/incoming', $output);
     }
 
     public function testConversionShowNotFound(): void
@@ -175,11 +215,12 @@ class ConversionCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Conversion Statistics', $output);
-        $this->assertMatchesRegularExpression('/Total Servers\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Total Servers\W+4/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
         $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Initializing\W+1/', $output);
         $this->assertMatchesRegularExpression('/With Errors\W+1/', $output);
-        $this->assertStringContainsString('10 concurrent tasks', $output);
+        $this->assertStringContainsString('11 concurrent tasks', $output);
         $this->assertMatchesRegularExpression('/Pending\W+1/', $output);
         $this->assertMatchesRegularExpression('/Processing\W+1/', $output);
         $this->assertMatchesRegularExpression('/Completed \(history\)\W+3/', $output);
@@ -252,6 +293,20 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testConversionLogRejectsFtpServer(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '2'
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertStringContainsString('Log viewing only available for Local/Mount servers', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testConversionDebugOnMissingId(): void
     {
         $this->tester->execute([
@@ -286,6 +341,20 @@ class ConversionCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Conversion server not found: 999999', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionConfigRejectsFtpServer(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '2'
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertStringContainsString('Config viewing only available for Local/Mount servers', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
@@ -377,7 +446,10 @@ class ConversionCommandTest extends TestCase
             "'0000-00-00 00:00:00', '7.0.0', 0, 0, '2026-05-21 10:00:00'), " .
             "(3, 'Error Converter', 1, '', 1, 4, 0, 4, 1, 1, 1, 0, " .
             "'/tmp/kvs-error-converter', '', '', '', '', 2147483648, 536870912, 3.50, " .
-            "'2026-05-26 10:00:00', '7.0.0', 4, 3, '2026-05-22 10:00:00')"
+            "'2026-05-26 10:00:00', '7.0.0', 4, 3, '2026-05-22 10:00:00'), " .
+            "(4, 'Init Converter', 2, '', 1, 1, 0, 19, 0, 0, 0, 1, " .
+            "'/mnt/kvs-init-converter', '', '', '', '', 1073741824, 536870912, 0.00, " .
+            "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-23 10:00:00')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('background_tasks') .
