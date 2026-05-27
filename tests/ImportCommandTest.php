@@ -184,4 +184,58 @@ SH
             TestHelper::removeDir($rootDir);
         }
     }
+
+    public function testImportContentFailsWhenChownFails(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-import-chown-');
+        $extractDir = $rootDir . '/extract';
+        $contentDir = $extractDir . '/content';
+        $toolsDir = $rootDir . '/tools';
+        mkdir($contentDir, 0755, true);
+        mkdir($toolsDir, 0755, true);
+
+        file_put_contents($contentDir . '/video.mp4', 'video');
+        file_put_contents($toolsDir . '/cp', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/cp', 0755);
+        file_put_contents($toolsDir . '/chown', "#!/bin/sh\necho 'permission denied' >&2\nexit 1\n");
+        chmod($toolsDir . '/chown', 0755);
+
+        $previousPath = getenv('PATH');
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        putenv('PATH=' . $toolsDir);
+        $_SERVER['PATH'] = $toolsDir;
+        $_ENV['PATH'] = $toolsDir;
+
+        try {
+            $command = new ImportCommand();
+            $output = new BufferedOutput();
+            $ioProperty = new \ReflectionProperty($command, 'io');
+            $ioProperty->setValue($command, new SymfonyStyle(new ArrayInput([]), $output));
+
+            $method = new \ReflectionMethod($command, 'importContent');
+            $domain = '../../' . ltrim($rootDir, '/') . '/target';
+            $result = $method->invoke($command, $extractDir, $domain);
+
+            $this->assertFalse($result);
+            $this->assertStringContainsString('Failed to set content permissions', $output->fetch());
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
+            }
+            TestHelper::removeDir($rootDir);
+        }
+    }
 }

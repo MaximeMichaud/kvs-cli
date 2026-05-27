@@ -677,8 +677,8 @@ EOT
         $process->run();
 
         if (!$process->isSuccessful()) {
-            $this->io()->warning('Failed to set permissions: ' . $process->getErrorOutput());
-            // Don't fail on permission errors, just warn
+            $this->io()->error('Failed to set content permissions: ' . $process->getErrorOutput());
+            return false;
         }
 
         $this->io()->text('Content imported');

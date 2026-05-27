@@ -5,6 +5,9 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Migrate\ToDockerCommand;
 use KVS\CLI\Config\Configuration;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -269,5 +272,63 @@ class ToDockerCommandTest extends TestCase
 
         $this->assertStringContainsString('Include Content', $output);
         $this->assertStringContainsString('No', $output);
+    }
+
+    public function testImportDataFailsWhenChownFails(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-to-docker-chown-');
+        $targetDir = $rootDir . '/target';
+        $toolsDir = $rootDir . '/tools';
+        mkdir($targetDir . '/docker', 0755, true);
+        mkdir($toolsDir, 0755, true);
+
+        file_put_contents($targetDir . '/docker/.env', "MARIADB_DATABASE=test_db\n");
+        $dumpFile = $rootDir . '/dump.sql';
+        file_put_contents($dumpFile, 'CREATE TABLE test(id int);');
+        file_put_contents($this->tempDir . '/contents/video.mp4', 'video');
+
+        file_put_contents($toolsDir . '/docker', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/docker', 0755);
+        file_put_contents($toolsDir . '/cp', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/cp', 0755);
+        file_put_contents($toolsDir . '/chown', "#!/bin/sh\necho 'permission denied' >&2\nexit 1\n");
+        chmod($toolsDir . '/chown', 0755);
+
+        $previousPath = getenv('PATH');
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        putenv('PATH=' . $toolsDir);
+        $_SERVER['PATH'] = $toolsDir;
+        $_ENV['PATH'] = $toolsDir;
+
+        try {
+            $output = new BufferedOutput();
+            $ioProperty = new \ReflectionProperty(\KVS\CLI\Command\BaseCommand::class, 'io');
+            $ioProperty->setValue($this->command, new SymfonyStyle(new ArrayInput([]), $output));
+
+            $method = new \ReflectionMethod($this->command, 'importData');
+            $domain = '../../' . ltrim($rootDir, '/') . '/site';
+            $result = $method->invoke($this->command, $targetDir, $domain, $dumpFile, $this->config, false);
+
+            $this->assertFalse($result);
+            $this->assertStringContainsString('Failed to set content permissions', $output->fetch());
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
+            }
+            TestHelper::removeDir($rootDir);
+        }
     }
 }
