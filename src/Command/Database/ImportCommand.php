@@ -4,11 +4,11 @@ namespace KVS\CLI\Command\Database;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
-use KVS\CLI\Service\TempFileManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
 #[AsCommand(
@@ -75,25 +75,9 @@ EOT
 
         $this->io()->info('Starting database import...');
 
-        // Detect compression format and decompress if needed
         $compressionFormat = $this->detectCompressionFormat($file);
-
         if ($compressionFormat !== null && $compressionFormat !== '') {
-            $this->io()->info("Decompressing file ($compressionFormat)...");
-            try {
-                $sqlContent = $this->decompressFile($file, $compressionFormat);
-            } catch (\RuntimeException $e) {
-                $this->io()->error($e->getMessage());
-                return self::FAILURE;
-            }
-
-            if ($sqlContent === false) {
-                $this->io()->error("Failed to decompress file");
-                return self::FAILURE;
-            }
-
-            // Create temp file with secure permissions and automatic cleanup
-            $file = TempFileManager::createWithContent($sqlContent, 'kvs_import_', '.sql');
+            $this->io()->info("Streaming decompression ($compressionFormat)...");
         }
 
         // Parse host and port (host may be in "host:port" format)
@@ -113,30 +97,39 @@ EOT
         ];
 
         $env = ['MYSQL_PWD' => $dbConfig['password']];
-        $process = new Process($command, null, $env);
-        $fileContents = file_get_contents($file);
-        if ($fileContents === false) {
-            $this->io()->error('Failed to read file contents');
-            // Note: Temp file cleanup is automatic via TempFileManager
+
+        try {
+            ['process' => $process, 'input' => $input] = $this->createImportProcess(
+                $command,
+                $env,
+                $file,
+                $compressionFormat
+            );
+        } catch (\RuntimeException $e) {
+            $this->io()->error($e->getMessage());
             return self::FAILURE;
         }
-        $process->setInput($fileContents);
+
         $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
 
         $progressBar = $this->io()->createProgressBar();
         $progressBar->start();
 
-        $process->run(function ($type, $buffer) use ($progressBar) {
-            if ($type === Process::ERR && is_string($buffer) && trim($buffer) !== '') {
-                $this->io()->warning($buffer);
+        try {
+            $process->run(function ($type, $buffer) use ($progressBar) {
+                if ($type === Process::ERR && is_string($buffer) && trim($buffer) !== '') {
+                    $this->io()->warning($buffer);
+                }
+                $progressBar->advance();
+            });
+        } finally {
+            if (is_resource($input)) {
+                fclose($input);
             }
-            $progressBar->advance();
-        });
+        }
 
         $progressBar->finish();
         $this->io()->newLine();
-
-        // Note: Temp file cleanup is automatic via TempFileManager shutdown handler
 
         if (!$process->isSuccessful()) {
             $this->io()->error('Database import failed');
@@ -170,62 +163,92 @@ EOT
     }
 
     /**
-     * Decompress file based on format
+     * @param list<string> $mysqlCommand
+     * @param array<string, string> $env
+     * @return array{process: Process, input: resource|null}
      */
-    private function decompressFile(string $file, string $format): string|false
+    private function createImportProcess(array $mysqlCommand, array $env, string $file, ?string $compressionFormat): array
     {
-        switch ($format) {
-            case 'gzip':
-                $fileContents = file_get_contents($file);
-                if ($fileContents === false) {
-                    return false;
-                }
-                return gzdecode($fileContents);
+        if ($compressionFormat === null || $compressionFormat === '') {
+            $mysqlCommand[0] = $this->requireImportCommand();
+            $input = fopen($file, 'rb');
+            if ($input === false) {
+                throw new \RuntimeException('Failed to open SQL file for import');
+            }
 
-            case 'zstd':
-                // Use zstd command-line tool
-                $this->requireDecompressionCommand('zstd', 'zstd');
-                $process = new Process(['zstd', '-d', '-c', $file]);
-                $process->run();
-                if (!$process->isSuccessful()) {
-                    return false;
-                }
-                return $process->getOutput();
+            $process = new Process($mysqlCommand, null, $env);
+            $process->setInput($input);
 
-            case 'xz':
-                // Use xz command-line tool
-                $this->requireDecompressionCommand('xz', 'xz-utils');
-                $process = new Process(['xz', '-d', '-c', $file]);
-                $process->run();
-                if (!$process->isSuccessful()) {
-                    return false;
-                }
-                return $process->getOutput();
-
-            case 'bzip2':
-                // Use bzip2 command-line tool
-                $this->requireDecompressionCommand('bzip2', 'bzip2');
-                $process = new Process(['bzip2', '-d', '-c', $file]);
-                $process->run();
-                if (!$process->isSuccessful()) {
-                    return false;
-                }
-                return $process->getOutput();
-
-            default:
-                return false;
+            return ['process' => $process, 'input' => $input];
         }
+
+        if ($compressionFormat === 'gzip') {
+            $mysqlCommand[0] = $this->requireImportCommand();
+            $input = fopen('compress.zlib://' . $file, 'rb');
+            if ($input === false) {
+                throw new \RuntimeException('Failed to open gzip file for import');
+            }
+
+            $process = new Process($mysqlCommand, null, $env);
+            $process->setInput($input);
+
+            return ['process' => $process, 'input' => $input];
+        }
+
+        $decompressCommand = $this->getExternalDecompressionCommand($file, $compressionFormat);
+        $mysqlCommand[0] = $this->requireImportCommand();
+        $shellCommand = $this->buildShellCommand($decompressCommand) . ' | ' . $this->buildShellCommand($mysqlCommand);
+
+        return [
+            'process' => new Process(['bash', '-o', 'pipefail', '-c', $shellCommand], null, $env),
+            'input' => null,
+        ];
     }
 
-    private function requireDecompressionCommand(string $command, string $package): void
+    private function requireImportCommand(): string
     {
-        $path = shell_exec('command -v ' . escapeshellarg($command) . ' 2>/dev/null');
-        if (!is_string($path) || trim($path) === '') {
+        $path = (new ExecutableFinder())->find('mysql');
+        if ($path === null) {
+            throw new \RuntimeException(
+                "Required import tool 'mysql' was not found in PATH. Install mysql-client or mariadb-client and try again."
+            );
+        }
+
+        return $path;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getExternalDecompressionCommand(string $file, string $format): array
+    {
+        return match ($format) {
+            'zstd' => [$this->requireDecompressionCommand('zstd', 'zstd'), '-d', '-c', $file],
+            'xz' => [$this->requireDecompressionCommand('xz', 'xz-utils'), '-d', '-c', $file],
+            'bzip2' => [$this->requireDecompressionCommand('bzip2', 'bzip2'), '-d', '-c', $file],
+            default => throw new \RuntimeException('Unsupported compression format'),
+        };
+    }
+
+    private function requireDecompressionCommand(string $command, string $package): string
+    {
+        $path = (new ExecutableFinder())->find($command);
+        if ($path === null) {
             throw new \RuntimeException(sprintf(
                 "Required decompression tool '%s' was not found in PATH. Install %s and try again.",
                 $command,
                 $package
             ));
         }
+
+        return $path;
+    }
+
+    /**
+     * @param list<string> $command
+     */
+    private function buildShellCommand(array $command): string
+    {
+        return implode(' ', array_map('escapeshellarg', $command));
     }
 }
