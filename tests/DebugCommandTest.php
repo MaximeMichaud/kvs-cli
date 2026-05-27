@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Dev\DebugCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -95,6 +96,34 @@ class DebugCommandTest extends TestCase
         // Status code depends on checks passing
     }
 
+    public function testDebugCheckUsesConfiguredPhpRuntimeHelpers(): void
+    {
+        $tester = new CommandTester($this->createRuntimeAwareDebugCommand());
+
+        $tester->execute(['--check' => true]);
+
+        $output = $tester->getDisplay();
+        $this->assertStringContainsString('9.9.9-container', $output);
+        $this->assertMatchesRegularExpression('/PHP Extension: pdo\s*│\s*Missing\s*│\s*ERROR/', $output);
+        $this->assertMatchesRegularExpression('/PHP Extension: json\s*│\s*Installed\s*│\s*OK/', $output);
+    }
+
+    public function testDebugInfoUsesConfiguredPhpRuntimeHelpers(): void
+    {
+        $tester = new CommandTester($this->createRuntimeAwareDebugCommand());
+
+        $tester->execute(['--info' => true]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('9.9.9-container', $output);
+        $this->assertStringContainsString('512M', $output);
+        $this->assertStringContainsString('0 (unlimited)', $output);
+        $this->assertMatchesRegularExpression('/Display Errors\s*│\s*Off/', $output);
+        $this->assertMatchesRegularExpression('/Log Errors\s*│\s*On/', $output);
+        $this->assertStringContainsString('/container/error.log', $output);
+    }
+
     public function testDebugTestDb(): void
     {
         $this->tester->execute(['--test-db' => true]);
@@ -102,5 +131,37 @@ class DebugCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Database Connection Test', $output);
         // Will show config or error depending on DB setup
+    }
+
+    private function createRuntimeAwareDebugCommand(): DebugCommand
+    {
+        return new class ($this->config) extends DebugCommand {
+            protected function getKvsPhpVersion(): string
+            {
+                return '9.9.9-container';
+            }
+
+            protected function isExtensionLoaded(string $extension): bool
+            {
+                return $extension !== 'pdo';
+            }
+
+            protected function getPhpSetting(string $name): string|false
+            {
+                return match ($name) {
+                    'memory_limit' => '512M',
+                    'max_execution_time' => '0',
+                    'display_errors' => '0',
+                    'log_errors' => '1',
+                    'error_log' => '/container/error.log',
+                    default => false,
+                };
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return new PDO('sqlite::memory:');
+            }
+        };
     }
 }

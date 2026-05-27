@@ -49,14 +49,15 @@ class DebugCommand extends BaseCommand
 
         $checks = [];
 
-        $checks[] = ['PHP Version', PHP_VERSION, 'OK'];
+        $checks[] = ['PHP Version', $this->getKvsPhpVersion(), 'OK'];
 
         $requiredExtensions = ['pdo', 'pdo_mysql', 'json', 'mbstring', 'gd', 'curl'];
         foreach ($requiredExtensions as $ext) {
+            $loaded = $this->isExtensionLoaded($ext);
             $checks[] = [
                 "PHP Extension: $ext",
-                extension_loaded($ext) ? 'Installed' : 'Missing',
-                extension_loaded($ext) ? 'OK' : 'ERROR',
+                $loaded ? 'Installed' : 'Missing',
+                $loaded ? 'OK' : 'ERROR',
             ];
         }
 
@@ -153,24 +154,17 @@ class DebugCommand extends BaseCommand
         $kvsPathValue = $this->config->getKvsPath();
         $cwd = getcwd();
 
-        // Note: ini_get() can return false, but PHPDoc says string|numeric-string
-        /** @phpstan-ignore-next-line */
-        $memoryLimitValue = @ini_get('memory_limit') ?: 'Unknown';
-        $maxExecTimeRaw = @ini_get('max_execution_time');
+        $memoryLimitValue = $this->getPhpSettingOrDefault('memory_limit', 'Unknown');
+        $maxExecTimeRaw = $this->getPhpSettingOrDefault('max_execution_time', 'Unknown');
         $maxExecTimeValue = $maxExecTimeRaw === '0'
             ? '0 (unlimited)'
-            : $maxExecTimeRaw . 's';
-        /** @phpstan-ignore-next-line */
-        $displayErrorsRaw = @ini_get('display_errors') ?: '0';
-        /** @phpstan-ignore-next-line */
-        $logErrorsRaw = @ini_get('log_errors') ?: '0';
-        /** @phpstan-ignore-next-line */
-        $errorLogRaw = @ini_get('error_log') ?: '';
+            : ($maxExecTimeRaw === 'Unknown' ? 'Unknown' : $maxExecTimeRaw . 's');
+        $displayErrorsRaw = $this->getPhpSettingOrDefault('display_errors', '0');
+        $logErrorsRaw = $this->getPhpSettingOrDefault('log_errors', '0');
+        $errorLogRaw = $this->getPhpSettingOrDefault('error_log', '');
 
-        /** @phpstan-ignore-next-line */
-        $displayErrorsValue = ($displayErrorsRaw !== '0' && $displayErrorsRaw !== '') ? 'On' : 'Off';
-        /** @phpstan-ignore-next-line */
-        $logErrorsValue = ($logErrorsRaw !== '0' && $logErrorsRaw !== '') ? 'On' : 'Off';
+        $displayErrorsValue = $this->isTruthyPhpIniSetting($displayErrorsRaw) ? 'On' : 'Off';
+        $logErrorsValue = $this->isTruthyPhpIniSetting($logErrorsRaw) ? 'On' : 'Off';
         $errorLogValue = $errorLogRaw !== '' ? $errorLogRaw : 'Not set';
 
         /** @var list<list<string|int|null>> $info */
@@ -180,7 +174,7 @@ class DebugCommand extends BaseCommand
             ['KVS Path', $kvsPathValue !== '' ? $kvsPathValue : 'Not found'],
             ['Admin Path', $this->config->getAdminPath()],
             ['Content Path', $this->config->getContentPath()],
-            ['PHP Version', PHP_VERSION],
+            ['PHP Version', $this->getKvsPhpVersion()],
             ['PHP SAPI', PHP_SAPI],
             ['Memory Limit', $memoryLimitValue],
             ['Max Execution Time', $maxExecTimeValue],
@@ -211,5 +205,17 @@ class DebugCommand extends BaseCommand
         $this->renderTable(['Variable', 'Value'], $rows);
 
         return self::SUCCESS;
+    }
+
+    private function getPhpSettingOrDefault(string $name, string $default): string
+    {
+        $value = $this->getPhpSetting($name);
+
+        return $value !== false && $value !== '' ? $value : $default;
+    }
+
+    private function isTruthyPhpIniSetting(string $value): bool
+    {
+        return !in_array(strtolower($value), ['', '0', 'off', 'false', 'no'], true);
     }
 }
