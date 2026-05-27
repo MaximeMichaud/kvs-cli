@@ -194,7 +194,7 @@ HELP
         $this->renderTable($headers, $rows);
 
         $this->io()->newLine();
-        $this->io()->text(sprintf('<info>Total:</info> %d users', $count));
+        $this->io()->text(sprintf('<info>Total:</info> %s', $this->formatUserCount($count)));
 
         if ($confirm === false) {
             $this->io()->newLine();
@@ -205,7 +205,7 @@ HELP
         // Confirmation
         if ($yes === false) {
             $this->io()->newLine();
-            $this->io()->warning(sprintf('You are about to DELETE %d users permanently!', $count));
+            $this->io()->warning(sprintf('You are about to DELETE %s permanently!', $this->formatUserCount($count)));
 
             if ($this->io()->confirm('Are you sure you want to continue?', false) !== true) {
                 $this->io()->text('Operation cancelled.');
@@ -224,7 +224,7 @@ HELP
                 }
             }
 
-            $this->io()->text(sprintf('Deleting %d users...', $count));
+            $this->io()->text(sprintf('Deleting %s...', $this->formatUserCount($count)));
 
             $this->deleteUsersWithKvs($userIds);
 
@@ -235,7 +235,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->success(sprintf('Successfully deleted %d users.', $count));
+            $this->io()->success(sprintf('Successfully deleted %s.', $this->formatUserCount($count)));
             return self::SUCCESS;
         } catch (\Throwable $e) {
             $this->io()->error('Failed to delete users: ' . $e->getMessage());
@@ -280,5 +280,10 @@ HELP
         $remaining = $stmt->fetchColumn();
 
         return is_numeric($remaining) ? (int) $remaining : 0;
+    }
+
+    private function formatUserCount(int $count): string
+    {
+        return sprintf('%d %s', $count, $count === 1 ? 'user' : 'users');
     }
 }
