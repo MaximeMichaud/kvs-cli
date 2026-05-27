@@ -146,6 +146,53 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertContains('USE_POST_DATE_RANDOMIZATION', $websiteVariables);
     }
 
+    public function testOptionsKnownKvsSettingsAreCategorized(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $expected = [
+            'AFFILIATE_PARAM_NAME' => 'Memberzone',
+            'AUTO_DELETE_UNCONFIRMED' => 'Memberzone',
+            'AUTO_DELETE_UNCONFIRMED_AFTER' => 'Memberzone',
+            'CRON_TIME' => 'System',
+            'CRON_UID' => 'System',
+            'FAILED_TASKS_AUTO_RESTART' => 'System',
+            'GENERATED_USERS_REUSE_PROBABILITY' => 'Memberzone',
+            'INITIAL_VERSION' => 'System',
+            'KEEP_VIDEO_SOURCE_FILES' => 'System',
+            'MAIN_SERVER_MIN_FREE_SPACE_MB' => 'System',
+            'PLAYER_POSTER_FORMAT' => 'Website',
+            'SERVER_GROUP_MIN_FREE_SPACE_MB' => 'System',
+            'STATUS_AFTER_PREMIUM' => 'Memberzone',
+            'UPDATE_VERSION' => 'System',
+        ];
+
+        $stmt = $this->db->prepare('INSERT INTO ktvs_options VALUES (:variable, :value)');
+        foreach (array_keys($expected) as $variable) {
+            $stmt->execute(['variable' => $variable, 'value' => '1']);
+        }
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'variable,category',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $actual = [];
+        foreach ($rows as $row) {
+            $this->assertIsArray($row);
+            $variable = $row['variable'] ?? null;
+            if (is_string($variable)) {
+                $actual[$variable] = $row['category'] ?? null;
+            }
+        }
+
+        $this->assertSame($expected, $actual);
+    }
+
     public function testOptionsListNoTruncateShowsFullLongValues(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');

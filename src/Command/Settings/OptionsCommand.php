@@ -29,11 +29,12 @@ class OptionsCommand extends BaseCommand
             'ALBUM_', 'ALBUMS_', 'VIDEO_', 'VIDEOS_', 'SCREENSHOTS_',
             'CATEGORY_', 'TAG_', 'TAGS_', 'MODEL_', 'MODELS_',
             'DVD_', 'CS_', 'POST_', 'ROTATOR_', 'DEFAULT_',
-            'USE_POST_DATE_RANDOMIZATION',
+            'USE_POST_DATE_RANDOMIZATION', 'PLAYER_',
         ],
         'memberzone' => [
             'USER_', 'TOKENS_', 'PREMIUM_', 'PRIVATE_', 'PUBLIC_',
-            'AWARDS_', 'FEEDBACK_', 'LIMIT_',
+            'AWARDS_', 'FEEDBACK_', 'LIMIT_', 'AFFILIATE_',
+            'AUTO_DELETE_', 'GENERATED_USERS_', 'STATUS_AFTER_PREMIUM',
         ],
         'antispam' => [
             'ANTISPAM_',
@@ -43,7 +44,9 @@ class OptionsCommand extends BaseCommand
         ],
         'system' => [
             'ENABLE_', 'SYSTEM_', 'API_', 'DIRECTORIES_',
-            'ANTI_HOTLINK_', 'REFERER_',
+            'ANTI_HOTLINK_', 'REFERER_', 'CRON_', 'FAILED_TASKS_',
+            'INITIAL_VERSION', 'UPDATE_VERSION', 'KEEP_VIDEO_SOURCE_FILES',
+            'MAIN_SERVER_MIN_FREE_SPACE_MB', 'SERVER_GROUP_MIN_FREE_SPACE_MB',
         ],
     ];
 
