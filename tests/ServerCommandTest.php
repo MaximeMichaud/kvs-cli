@@ -282,6 +282,17 @@ class ServerCommandTest extends TestCase
         $this->assertStringContainsString('Video Local', $this->tester->getDisplay());
     }
 
+    public function testServerRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'unknown_action',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown server action "unknown_action"', $this->tester->getDisplay());
+    }
+
     public function testServerEnableMissingId(): void
     {
         $this->tester->execute([

@@ -86,7 +86,7 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
@@ -96,7 +96,11 @@ HELP
             'disable', 'deactivate' => $this->disableServer($id),
             'stats' => $this->showStats(),
             'group' => $id !== null ? $this->showGroup($id) : $this->listGroups($input),
-            default => $this->listServers($input),
+            default => $this->failUnknownAction(
+                'server',
+                $action,
+                ['list', 'show', 'enable', 'disable', 'stats', 'group']
+            ),
         };
     }
 
