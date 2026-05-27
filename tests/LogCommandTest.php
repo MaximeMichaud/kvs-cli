@@ -78,6 +78,18 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogListIncludesAdminDataLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/data/logs', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/logs/email.txt', "[2024-01-01] INFO: Email sent\n");
+
+        $this->tester->execute(['--list' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertMatchesRegularExpression('/│\s*email\s*│\s*email\.txt\s*│/', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
     public function testLogViewSpecificType(): void
     {
         $this->tester->execute(['type' => 'system']);
@@ -94,6 +106,20 @@ class LogCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Debug message', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewReadsAdminDataLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/data/logs', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/logs/email.txt', "[2024-01-01] INFO: Email sent\n");
+
+        $this->tester->execute(['type' => 'email']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Email sent', $output);
+        $this->assertStringContainsString('data', $output);
+        $this->assertStringContainsString('/logs/email.txt', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
