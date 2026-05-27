@@ -90,11 +90,9 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT a.*, u.username,
-                 a.photos_amount as image_count
-                 FROM {$this->table('albums')} a
-                 LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
-                 WHERE 1=1";
+        $fromClause = "FROM {$this->table('albums')} a
+                 LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id";
+        $whereClause = 'WHERE 1=1';
 
         $params = [];
 
@@ -106,26 +104,43 @@ HELP
                 'inactive' => StatusFormatter::ALBUM_DISABLED,
             ], [0, 1, 2, 3, 4, 5]);
             if ($statusId !== null) {
-                $query .= " AND a.status_id = :status";
+                $whereClause .= " AND a.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
 
         $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
-            $query .= " AND a.user_id = :user";
+            $whereClause .= " AND a.user_id = :user";
             $params['user'] = $user;
         }
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND a.title LIKE :search";
+            $whereClause .= " AND a.title LIKE :search";
             $params['search'] = '%' . $search . '%';
         }
 
-        $query .= " ORDER BY a.post_date DESC LIMIT :limit";
-
         try {
+            if ($this->getStringOption($input, 'format') === 'count') {
+                $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue($key, $value);
+                }
+                $stmt->execute();
+
+                $total = $stmt->fetchColumn();
+                $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+                return self::SUCCESS;
+            }
+
+            $query = "SELECT a.*, u.username,
+                 a.photos_amount as image_count
+                 {$fromClause}
+                 {$whereClause}
+                 ORDER BY a.post_date DESC LIMIT :limit";
+
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
                 $stmt->bindValue($key, $value);
