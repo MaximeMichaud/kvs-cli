@@ -593,40 +593,40 @@ HELP
     /**
      * Recompute counters after a fav_videos change for a playlist.
      * Mirrors fav_videos_changed() in kvs/admin/include/functions.php:652
-     * but scoped to a single playlist + video + owner.
+     * but scoped to the changed video and owner.
      */
-    private function recountAfterFavChange(\PDO $db, int $playlistId, int $videoId, int $ownerUserId): void
+    private function recountAfterFavChange(\PDO $db, int $videoId, int $ownerUserId): void
     {
-        // 1) playlists.total_videos for this playlist
+        // 1) playlists.total_videos for all playlists owned by this user
         $stmt = $db->prepare(
-            "UPDATE {$this->table('playlists')} p
-             SET p.total_videos = (
+            "UPDATE {$this->table('playlists')}
+             SET total_videos = (
                  SELECT COUNT(*) FROM {$this->table('fav_videos')} f
-                 WHERE f.playlist_id = p.playlist_id
+                 WHERE f.playlist_id = {$this->table('playlists')}.playlist_id
              )
-             WHERE p.playlist_id = :id"
+             WHERE user_id = :user_id"
         );
-        $stmt->execute(['id' => $playlistId]);
+        $stmt->execute(['user_id' => $ownerUserId]);
 
         // 2) videos.favourites_count for this video (counts every fav_type incl. 10)
         $stmt = $db->prepare(
-            "UPDATE {$this->table('videos')} v
-             SET v.favourites_count = (
+            "UPDATE {$this->table('videos')}
+             SET favourites_count = (
                  SELECT COUNT(*) FROM {$this->table('fav_videos')} f
-                 WHERE f.video_id = v.video_id
+                 WHERE f.video_id = {$this->table('videos')}.video_id
              )
-             WHERE v.video_id = :id"
+             WHERE video_id = :id"
         );
         $stmt->execute(['id' => $videoId]);
 
         // 3) users.favourite_videos_count for the playlist owner
         $stmt = $db->prepare(
-            "UPDATE {$this->table('users')} u
-             SET u.favourite_videos_count = (
+            "UPDATE {$this->table('users')}
+             SET favourite_videos_count = (
                  SELECT COUNT(*) FROM {$this->table('fav_videos')} f
-                 WHERE f.user_id = u.user_id
+                 WHERE f.user_id = {$this->table('users')}.user_id
              )
-             WHERE u.user_id = :id"
+             WHERE user_id = :id"
         );
         $stmt->execute(['id' => $ownerUserId]);
     }
@@ -708,7 +708,7 @@ HELP
             );
             $stmt->execute(['now' => date('Y-m-d H:i:s'), 'id' => $playlistId]);
 
-            $this->recountAfterFavChange($db, $playlistId, $videoId, $ownerUserId);
+            $this->recountAfterFavChange($db, $videoId, $ownerUserId);
 
             $db->commit();
             $this->io()->success("Video #$videoId added to playlist #$playlistId");
@@ -778,7 +778,7 @@ HELP
                 return self::SUCCESS;
             }
 
-            $this->recountAfterFavChange($db, $playlistId, $videoId, $ownerUserId);
+            $this->recountAfterFavChange($db, $videoId, $ownerUserId);
 
             $db->commit();
             $this->io()->success("Video #$videoId removed from playlist #$playlistId");

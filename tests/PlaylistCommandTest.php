@@ -314,6 +314,43 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('Video not found: 999999', $output);
     }
 
+    public function testPlaylistAddRecountsAllOwnerPlaylists(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('playlists') . ' SET total_videos = 99 WHERE playlist_id = 20');
+
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 30,
+            '--video' => 102,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(
+            3,
+            (int) $this->db->query(
+                'SELECT total_videos FROM ' . TestHelper::table('playlists') . ' WHERE playlist_id = 30'
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            1,
+            (int) $this->db->query(
+                'SELECT total_videos FROM ' . TestHelper::table('playlists') . ' WHERE playlist_id = 20'
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            2,
+            (int) $this->db->query(
+                'SELECT favourites_count FROM ' . TestHelper::table('videos') . ' WHERE video_id = 102'
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            4,
+            (int) $this->db->query(
+                'SELECT favourite_videos_count FROM ' . TestHelper::table('users') . ' WHERE user_id = 1'
+            )->fetchColumn()
+        );
+    }
+
     public function testPlaylistRemoveMissingId(): void
     {
         $this->tester->execute([
