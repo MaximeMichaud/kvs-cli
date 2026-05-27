@@ -57,7 +57,7 @@ HELP
         }
 
         if ($this->getBoolOption($input, 'list')) {
-            return $this->listBackups();
+            return $this->listBackups($this->getStringOption($input, 'output'));
         }
 
         $this->io()->info('Available options:');
@@ -67,6 +67,7 @@ HELP
             '--create --type=files : Create files backup only',
             '--restore=backup.tar.gz : Restore from backup',
             '--list : List available backups',
+            '--list --output=/var/backups/kvs : List backups in a custom directory',
         ]);
 
         return self::SUCCESS;
@@ -346,9 +347,9 @@ HELP
         return self::FAILURE;
     }
 
-    private function listBackups(): int
+    private function listBackups(?string $outputDir = null): int
     {
-        $backupDir = dirname($this->config->getKvsPath()) . '/backups';
+        $backupDir = $outputDir ?? dirname($this->config->getKvsPath()) . '/backups';
 
         if (!is_dir($backupDir)) {
             $this->io()->warning('No backups directory found');

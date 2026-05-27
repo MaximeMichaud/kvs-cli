@@ -413,6 +413,23 @@ SH
         unlink($backupsDir . '/kvs_backup_db_2024-01-02.sql.gz');
     }
 
+    public function testBackupListUsesOutputDirectory(): void
+    {
+        $customBackupsDir = $this->rootDir . '/custom-backups';
+        mkdir($customBackupsDir, 0755, true);
+        file_put_contents($customBackupsDir . '/kvs_backup_db_2026-05-27.sql.gz', 'test');
+
+        $this->tester->execute([
+            '--list' => true,
+            '--output' => $customBackupsDir,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('kvs_backup_db_2026-05-27.sql.gz', $output);
+        $this->assertStringNotContainsString('No backups directory found', $output);
+    }
+
     public function testBackupRestore(): void
     {
         // Create a mock backup file
