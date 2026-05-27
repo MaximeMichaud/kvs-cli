@@ -108,6 +108,15 @@ class PackageCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testPackageHelpDoesNotAdvertiseChecksums(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString('metadata.json', $help);
+        $this->assertStringContainsString('version, paths, sizes', $help);
+        $this->assertStringNotContainsString('checksums', $help);
+    }
+
     public function testPackageCommandRejectsTinyDatabaseDump(): void
     {
         $toolsDir = $this->tempDir . '/tools';

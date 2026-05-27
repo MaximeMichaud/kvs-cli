@@ -39,7 +39,7 @@ Create a portable migration package containing database and content files.
 The package is a tar archive compressed with zstd containing:
   • database.sql.zst  - Database dump (compressed)
   • content/          - Content files (videos, screenshots, etc.)
-  • metadata.json     - Package metadata (version, paths, checksums)
+  • metadata.json     - Package metadata (version, paths, sizes)
 
 <info>Examples:</info>
   kvs migrate:package                              # Package current installation
