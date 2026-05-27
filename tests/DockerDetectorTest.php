@@ -97,6 +97,35 @@ class DockerDetectorTest extends TestCase
         $this->assertSame([], $summary['containers']);
     }
 
+    public function testDetectsCurrentPhpContainerWithoutDockerCli(): void
+    {
+        $detector = new class extends DockerDetector {
+            public function isDockerAvailable(): bool
+            {
+                return false;
+            }
+
+            protected function isCurrentProcessInContainer(): bool
+            {
+                return true;
+            }
+
+            protected function getCurrentContainerName(): ?string
+            {
+                return 'current-php-container';
+            }
+        };
+
+        $this->assertTrue($detector->isKvsInDocker());
+        $this->assertSame(['php' => 'current-php-container'], $detector->getRunningContainers());
+        $this->assertSame('local-ok', trim((string) $detector->exec('php', 'printf local-ok')));
+
+        $summary = $detector->getSummary();
+        $this->assertFalse($summary['docker_available']);
+        $this->assertTrue($summary['kvs_in_docker']);
+        $this->assertTrue($summary['containers']['php']);
+    }
+
     public function testCheckCacheReturnsUnavailableWithoutDocker(): void
     {
         $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
@@ -110,6 +139,33 @@ class DockerDetectorTest extends TestCase
         $this->assertFalse($result['available']);
         $this->assertNull($result['type']);
         $this->assertNull($result['memory_mb']);
+    }
+
+    public function testCheckCacheProbesDragonflyFromCurrentContainerWithoutDockerCli(): void
+    {
+        $detector = new class extends DockerDetector {
+            public function isDockerAvailable(): bool
+            {
+                return false;
+            }
+
+            public function execPhp(string $phpCode): ?string
+            {
+                return str_contains($phpCode, "fsockopen('dragonfly', 6379") ? '536870912' : null;
+            }
+
+            protected function isCurrentProcessInContainer(): bool
+            {
+                return true;
+            }
+        };
+
+        $result = $detector->checkCache();
+
+        $this->assertTrue($result['available']);
+        $this->assertSame('Dragonfly', $result['type']);
+        $this->assertSame(512, $result['memory_mb']);
+        $this->assertSame('dragonfly:6379', $result['server']);
     }
 
     public function testExecReturnsNullWithoutDocker(): void

@@ -819,10 +819,14 @@ HELP
         // Detect cache type (Dragonfly vs Memcached) before printing section
         $cacheType = 'Memcached';
         $cacheInfo = null;
+        $cacheServer = "$server:$port";
         if ($this->isDockerMode()) {
             $cacheInfo = $this->docker()->checkCache();
             if ($cacheInfo['type'] !== null) {
                 $cacheType = $cacheInfo['type'];
+            }
+            if (isset($cacheInfo['server']) && $cacheInfo['server'] !== '') {
+                $cacheServer = $cacheInfo['server'];
             }
         }
 
@@ -837,7 +841,7 @@ HELP
         }
 
         $result['configured'] = true;
-        $result['server'] = "$server:$port";
+        $result['server'] = $cacheServer;
         $result['type'] = $cacheType;
 
         // Try to connect and get stats (reuse cacheInfo if available)
@@ -849,7 +853,7 @@ HELP
         }
 
         if ($memoryMb === null) {
-            $this->printStatus("Connection ($server:$port)", 'Failed to connect', 'error');
+            $this->printStatus("Connection ($cacheServer)", 'Failed to connect', 'error');
             $this->errors++;
             $result['status'] = 'error';
             return $result;
@@ -874,7 +878,7 @@ HELP
         }
 
         if (!$quietOk || $result['status'] !== 'ok') {
-            $this->printStatus("Connection", "OK ($server:$port)", 'ok');
+            $this->printStatus("Connection", "OK ($cacheServer)", 'ok');
         }
 
         return $result;

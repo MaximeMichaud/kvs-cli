@@ -556,6 +556,9 @@ HELP
             if ($cacheInfo['type'] !== null) {
                 $result['type'] = $cacheInfo['type'];
             }
+            if (isset($cacheInfo['server']) && $cacheInfo['server'] !== '') {
+                $result['host'] = $cacheInfo['server'];
+            }
             if ($cacheInfo['available']) {
                 $result['available'] = true;
                 $result['status'] = 'Connected';

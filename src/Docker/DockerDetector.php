@@ -93,6 +93,15 @@ class DockerDetector
         $this->containerPrefix = null;
 
         if (!$this->isDockerAvailable()) {
+            if ($this->isCurrentProcessInContainer()) {
+                $this->runningContainers['php'] = true;
+
+                $containerName = $this->getCurrentContainerName();
+                if ($containerName !== null) {
+                    $this->containerNames['php'] = $containerName;
+                }
+            }
+
             return;
         }
 
@@ -266,6 +275,11 @@ class DockerDetector
             return null;
         }
 
+        if (!$this->isDockerAvailable() && $service === 'php' && $this->isCurrentProcessInContainer()) {
+            $output = @shell_exec($command);
+            return $output !== null && $output !== false ? $output : null;
+        }
+
         $fullCommand = sprintf(
             'docker exec %s %s 2>/dev/null',
             escapeshellarg($containerName),
@@ -365,7 +379,7 @@ class DockerDetector
     /**
      * Check cache connectivity (Dragonfly or Memcached).
      *
-     * @return array{available: bool, type: string|null, memory_mb: int|null}
+     * @return array{available: bool, type: string|null, memory_mb: int|null, server?: string}
      */
     public function checkCache(): array
     {
@@ -375,12 +389,35 @@ class DockerDetector
             'memory_mb' => null,
         ];
 
+        if (!$this->isDockerAvailable() && $this->isCurrentProcessInContainer()) {
+            $phpCheck = $this->checkDragonflyViaPhp('dragonfly', 6379);
+            if ($phpCheck !== null) {
+                return [
+                    'available' => true,
+                    'type' => 'Dragonfly',
+                    'memory_mb' => $phpCheck,
+                    'server' => 'dragonfly:6379',
+                ];
+            }
+
+            $memoryMb = $this->getCacheMemoryViaPhp('memcached', Constants::DEFAULT_MEMCACHE_PORT);
+            if ($memoryMb !== null) {
+                return [
+                    'available' => true,
+                    'type' => 'Memcached',
+                    'memory_mb' => $memoryMb,
+                    'server' => 'memcached:' . Constants::DEFAULT_MEMCACHE_PORT,
+                ];
+            }
+        }
+
         // Try Dragonfly first (uses Redis protocol)
         if ($this->isRunning('dragonfly')) {
             $pingResult = $this->exec('dragonfly', 'redis-cli PING 2>/dev/null');
             if ($pingResult !== null && str_contains(trim($pingResult), 'PONG')) {
                 $result['available'] = true;
                 $result['type'] = 'Dragonfly';
+                $result['server'] = ($this->containerNames['dragonfly'] ?? 'dragonfly') . ':6379';
 
                 // Get memory info
                 $memResult = $this->exec('dragonfly', 'redis-cli INFO memory 2>/dev/null');
@@ -397,6 +434,7 @@ class DockerDetector
                 $result['available'] = true;
                 $result['type'] = 'Dragonfly';
                 $result['memory_mb'] = $phpCheck;
+                $result['server'] = 'dragonfly:6379';
                 return $result;
             }
         }
@@ -407,6 +445,7 @@ class DockerDetector
             if ($statsResult !== null && str_contains($statsResult, 'STAT')) {
                 $result['available'] = true;
                 $result['type'] = 'Memcached';
+                $result['server'] = ($this->containerNames['memcached'] ?? 'memcached') . ':' . Constants::DEFAULT_MEMCACHE_PORT;
 
                 if (preg_match('/STAT limit_maxbytes (\d+)/', $statsResult, $matches) === 1) {
                     $result['memory_mb'] = (int) ((int) $matches[1] / 1024 / 1024);
@@ -420,6 +459,7 @@ class DockerDetector
                 $result['available'] = true;
                 $result['type'] = 'Memcached';
                 $result['memory_mb'] = $memoryMb;
+                $result['server'] = 'memcached:' . Constants::DEFAULT_MEMCACHE_PORT;
                 return $result;
             }
         }
@@ -442,7 +482,7 @@ fwrite(\$fp, "PING\\r\\n");
 if (strpos(\$pong, 'PONG') === false) { fclose(\$fp); echo 'FAIL'; exit; }
 fwrite(\$fp, "INFO memory\\r\\n");
 \$response = '';
-while (!\feof(\$fp)) {
+while (!feof(\$fp)) {
     \$line = fgets(\$fp, 512);
     if (\$line === false || trim(\$line) === '') break;
     \$response .= \$line;
@@ -525,5 +565,30 @@ PHP;
         }
 
         return ['settings' => [], 'extensions' => [], 'version' => ''];
+    }
+
+    protected function isCurrentProcessInContainer(): bool
+    {
+        if (is_file('/.dockerenv')) {
+            return true;
+        }
+
+        $cgroup = @file_get_contents('/proc/1/cgroup');
+        return is_string($cgroup) && preg_match('/docker|containerd|kubepods/', $cgroup) === 1;
+    }
+
+    protected function getCurrentContainerName(): ?string
+    {
+        $hostname = getenv('HOSTNAME');
+        if (is_string($hostname) && trim($hostname) !== '') {
+            return trim($hostname);
+        }
+
+        $detected = gethostname();
+        if (is_string($detected) && trim($detected) !== '') {
+            return trim($detected);
+        }
+
+        return null;
     }
 }
