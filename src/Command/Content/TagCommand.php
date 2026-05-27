@@ -94,7 +94,7 @@ HELP
             'update' => $this->updateTag($identifier, $input),
             'enable' => $this->toggleStatus($identifier, 1),
             'disable' => $this->toggleStatus($identifier, 0),
-            'merge' => $this->mergeTags($identifier, $target),
+            'merge' => $this->mergeTags($identifier, $target, $input),
             'stats' => $this->showStats(),
             default => $this->failUnknownAction(
                 'tag',
@@ -477,7 +477,7 @@ HELP
         return $this->extractRelationUsageCounts($tag, self::TAG_RELATION_TABLES);
     }
 
-    private function mergeTags(?string $sourceId, ?string $targetId): int
+    private function mergeTags(?string $sourceId, ?string $targetId, InputInterface $input): int
     {
         if ($sourceId === null || $sourceId === '' || $targetId === null || $targetId === '') {
             $this->io()->error('Both source and target tag IDs are required');
@@ -545,6 +545,11 @@ HELP
             $this->io()->warning('All associations will be moved to the target tag, then source tag will be deleted.');
 
             if ($this->io()->confirm('Continue with merge?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Tag merge cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
                 $this->io()->info('Operation cancelled');
                 return self::SUCCESS;
             }

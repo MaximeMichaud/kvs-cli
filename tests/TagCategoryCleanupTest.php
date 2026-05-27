@@ -164,6 +164,30 @@ class TagCategoryCleanupTest extends TestCase
         }
     }
 
+    public function testTagMergeWithoutInteractiveConfirmationFailsWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createTagSchema($db);
+
+        $db->exec("INSERT INTO ktvs_tags (tag_id, tag) VALUES (1, 'Source'), (2, 'Target')");
+        $db->exec('INSERT INTO ktvs_tags_videos (tag_id, video_id) VALUES (1, 100), (2, 200)');
+
+        $tester = new CommandTester($this->createTagCommand($db));
+        $tester->execute(
+            ['action' => 'merge', 'identifier' => '1', 'target' => '2'],
+            ['interactive' => false]
+        );
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString(
+            'Tag merge cancelled because confirmation was not provided.',
+            $tester->getDisplay()
+        );
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags WHERE tag_id = 1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags_videos WHERE tag_id = 1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags_videos WHERE tag_id = 2'));
+    }
+
     private function createDatabase(): \PDO
     {
         $db = new \PDO('sqlite::memory:');
