@@ -121,6 +121,15 @@ class EmailCommandTest extends TestCase
         $this->assertStringContainsString('For SMTP test emails, use the KVS admin panel.', $output);
     }
 
+    public function testEmailHelpDocumentsJsonLastTestMetadata(): void
+    {
+        $output = $this->command->getHelp();
+
+        $this->assertStringContainsString('show --format=json includes KVS admin last-test metadata:', $output);
+        $this->assertStringContainsString('test_email, test_subject, test_body.', $output);
+        $this->assertStringContainsString('kvs email set does not write these fields.', $output);
+    }
+
     public function testEmailTestWithSmtpMailerReportsCliLimitation(): void
     {
         $this->tester->execute([

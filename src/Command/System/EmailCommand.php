@@ -66,6 +66,10 @@ Manage KVS email settings.
   The test action can send only through PHP mail().
   For SMTP test emails, use the KVS admin panel.
 
+<fg=yellow>JSON SETTINGS:</>
+  show --format=json includes KVS admin last-test metadata:
+  test_email, test_subject, test_body. kvs email set does not write these fields.
+
 <fg=yellow>DEBUG LEVELS:</>
   0             None (default)
   1             Basic logging
