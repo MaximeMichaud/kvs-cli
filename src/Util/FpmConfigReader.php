@@ -380,14 +380,12 @@ PHP;
         $opcache = null;
         if (function_exists('opcache_get_configuration')) {
             $oc = opcache_get_configuration();
-            if (is_array($oc) && isset($oc['directives']) && is_array($oc['directives'])) {
+            if ($oc !== false) {
                 $d = $oc['directives'];
-                $memConsumption = $d['opcache.memory_consumption'] ?? 0;
-                $stringsBuffer = $d['opcache.interned_strings_buffer'] ?? 0;
                 $opcache = [
-                    'enable' => isset($d['opcache.enable']) && $d['opcache.enable'] === true,
-                    'memory_consumption' => is_int($memConsumption) ? $memConsumption : 0,
-                    'interned_strings_buffer' => is_int($stringsBuffer) ? $stringsBuffer : 0,
+                    'enable' => $d['opcache.enable'],
+                    'memory_consumption' => $d['opcache.memory_consumption'],
+                    'interned_strings_buffer' => $d['opcache.interned_strings_buffer'],
                 ];
             }
         }

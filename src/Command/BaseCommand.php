@@ -153,7 +153,6 @@ abstract class BaseCommand extends Command
         if ($config === false) {
             return false;
         }
-        /** @var array<string, mixed> $config */
         return $config;
     }
 

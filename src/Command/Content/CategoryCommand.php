@@ -189,7 +189,7 @@ HELP
             $stmt->execute();
 
             /** @var list<array<string, mixed>> $categories */
-            $categories = array_values($stmt->fetchAll(\PDO::FETCH_ASSOC));
+            $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             $categories = array_map(function (array $category): array {
                 $counts = $this->extractCategoryUsageCounts($category);
                 $statusIdVal = $category['status_id'] ?? 0;

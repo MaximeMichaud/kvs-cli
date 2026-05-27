@@ -232,24 +232,20 @@ HELP
     {
         // Check --path option if passed via argv
         global $argv;
-        if (isset($argv) && is_array($argv)) {
-            foreach ($argv as $index => $arg) {
-                if (!is_string($arg)) {
-                    continue;
+
+        foreach ($argv as $index => $arg) {
+            if (str_starts_with($arg, '--path=')) {
+                $path = substr($arg, 7);
+                if ($this->isValidKvsPath($path)) {
+                    $realPath = realpath($path);
+                    return $realPath !== false ? $realPath : $path;
                 }
-                if (str_starts_with($arg, '--path=')) {
-                    $path = substr($arg, 7);
-                    if ($this->isValidKvsPath($path)) {
-                        $realPath = realpath($path);
-                        return $realPath !== false ? $realPath : $path;
-                    }
-                }
-                if ($arg === '--path') {
-                    $path = $argv[$index + 1] ?? null;
-                    if (is_string($path) && $path !== '' && $this->isValidKvsPath($path)) {
-                        $realPath = realpath($path);
-                        return $realPath !== false ? $realPath : $path;
-                    }
+            }
+            if ($arg === '--path') {
+                $path = $argv[$index + 1] ?? null;
+                if (is_string($path) && $path !== '' && $this->isValidKvsPath($path)) {
+                    $realPath = realpath($path);
+                    return $realPath !== false ? $realPath : $path;
                 }
             }
         }
