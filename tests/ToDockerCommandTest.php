@@ -82,6 +82,7 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('Clone KVS-Install', $output);
         $this->assertStringContainsString('Export source database', $output);
         $this->assertStringContainsString('KVS-Install setup (headless)', $output);
+        $this->assertStringContainsString('STOP_EXISTING=n', $output);
         $this->assertStringContainsString('Import database', $output);
     }
 
@@ -272,6 +273,38 @@ class ToDockerCommandTest extends TestCase
 
         $this->assertStringContainsString('Include Content', $output);
         $this->assertStringContainsString('No', $output);
+    }
+
+    public function testToDockerSetupDoesNotAutoStopExistingContainers(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-to-docker-setup-env-');
+        $targetDir = $rootDir . '/target';
+        $dockerDir = $targetDir . '/docker';
+        mkdir($dockerDir, 0755, true);
+
+        file_put_contents(
+            $dockerDir . '/setup.sh',
+            <<<'SH'
+#!/bin/sh
+printf '%s\n' "$STOP_EXISTING" > captured-stop-existing
+exit 0
+SH
+        );
+        chmod($dockerDir . '/setup.sh', 0755);
+
+        try {
+            $output = new BufferedOutput();
+            $ioProperty = new \ReflectionProperty(\KVS\CLI\Command\BaseCommand::class, 'io');
+            $ioProperty->setValue($this->command, new SymfonyStyle(new ArrayInput([]), $output));
+
+            $method = new \ReflectionMethod($this->command, 'runKvsInstallSetup');
+            $result = $method->invoke($this->command, $targetDir, 'example.com', 'admin@example.com', '1', '1');
+
+            $this->assertTrue($result, $output->fetch());
+            $this->assertSame('n', trim((string) file_get_contents($dockerDir . '/captured-stop-existing')));
+        } finally {
+            TestHelper::removeDir($rootDir);
+        }
     }
 
     public function testImportDataFailsWhenChownFails(): void

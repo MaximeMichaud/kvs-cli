@@ -527,7 +527,7 @@ EOT
             'IONCUBE_CHOICE' => '1',
             'CACHE_CHOICE' => '1',
             'MODE_CHOICE' => '1',
-            'STOP_EXISTING' => 'Y',
+            'STOP_EXISTING' => 'n',
             'SKIP_PRESS_ENTER' => '1',
             'PATH' => (getenv('PATH') !== false ? getenv('PATH') : '/usr/local/bin:/usr/bin:/bin'),
         ];

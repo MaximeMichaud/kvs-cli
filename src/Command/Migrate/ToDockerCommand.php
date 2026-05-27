@@ -385,6 +385,7 @@ EOT
         $this->io()->text("  EMAIL={$email} \\");
         $this->io()->text("  SSL_CHOICE={$sslChoice} \\");
         $this->io()->text("  DB_CHOICE={$dbChoice} \\");
+        $this->io()->text("  STOP_EXISTING=n \\");
         $this->io()->text("  ./setup.sh");
         $this->io()->newLine();
 
@@ -546,7 +547,7 @@ EOT
             'IONCUBE_CHOICE' => '1',
             'CACHE_CHOICE' => '1',
             'MODE_CHOICE' => '1',
-            'STOP_EXISTING' => 'Y',
+            'STOP_EXISTING' => 'n',
             'SKIP_PRESS_ENTER' => '1',
             'PATH' => getenv('PATH'),
         ];
