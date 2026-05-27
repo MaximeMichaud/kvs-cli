@@ -73,7 +73,7 @@ class StatsCommand extends BaseCommand
                 'period',
                 'p',
                 InputOption::VALUE_REQUIRED,
-                'Time period: today, week, month, year, all',
+                'Filter items by creation date: today, week, month, year, all',
                 'all'
             );
     }

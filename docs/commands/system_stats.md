@@ -24,16 +24,21 @@ The `system:stats` command displays comprehensive site statistics including cont
 | `--models` | Show model/performer statistics |
 | `--dvds` | Show DVD/channel statistics |
 | `-t, --top=N` | Number of top items to show (default: 10) |
-| `-p, --period=PERIOD` | Time period: `today`, `week`, `month`, `year`, `all` (default: `all`) |
+| `-p, --period=PERIOD` | Filter items by creation date: `today`, `week`, `month`, `year`, `all` (default: `all`) |
 
 ## Time Periods
 
+The period filter applies to item creation dates (`added_date`) for videos, albums,
+users, comments, categories, tags, models, and DVDs. View counters are the stored
+total counters for the matched items, not traffic events that happened during the
+selected period.
+
 | Period | Description |
 |--------|-------------|
-| `today` | Statistics for today only |
-| `week` | Last 7 days |
-| `month` | Last 30 days |
-| `year` | Last 365 days |
+| `today` | Items created today |
+| `week` | Items created in the last 7 days |
+| `month` | Items created in the last 30 days |
+| `year` | Items created in the last 365 days |
 | `all` | All-time statistics (default) |
 
 ## Examples
@@ -98,13 +103,13 @@ kvs stats --videos --albums --users --models
 ### Time-Based Statistics
 
 ```bash
-# This week's top videos
+# Top videos created this week
 kvs stats --videos --period=week
 
-# This month's stats
+# Items created this month
 kvs stats --period=month --videos --albums
 
-# Today's activity
+# Items created today
 kvs stats --period=today
 ```
 
@@ -213,7 +218,7 @@ Top 5 Categories (by content)
 # Identify popular categories
 kvs stats --categories
 
-# Find trending tags
+# Tags created this month
 kvs stats --tags --period=month
 
 # Top performing models
@@ -223,20 +228,20 @@ kvs stats --models --top=20
 ### Performance Monitoring
 
 ```bash
-# Track weekly growth
+# Track weekly content growth
 kvs stats --period=week
 
-# Compare monthly stats
+# Compare monthly content stats
 kvs stats --period=month --videos --albums
 ```
 
 ### User Engagement
 
 ```bash
-# Active users this week
+# Users created this week
 kvs stats --users --period=week
 
-# Comment activity
+# Comments and content created this month
 kvs stats --period=month
 ```
 
@@ -248,7 +253,7 @@ kvs stats --period=month
 
 - Statistics are calculated in real-time
 - Large sites may take a few seconds to generate stats
-- Use `--period` to focus on recent activity
+- Use `--period` to focus on recently created items, not traffic events
 - Combine multiple flags to see comprehensive stats
 
 ## See Also

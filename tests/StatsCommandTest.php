@@ -227,6 +227,21 @@ class StatsCommandTest extends TestCase
         $this->assertStringContainsString('Invalid period', $tester->getDisplay());
     }
 
+    public function testStatsHelpDocumentsPeriodCreationDateSemantics(): void
+    {
+        $command = $this->createStatsCommand($this->createSqliteConnection());
+        $periodOptionDescription = $command->getDefinition()->getOption('period')->getDescription();
+
+        $this->assertSame(
+            'Filter items by creation date: today, week, month, year, all',
+            $periodOptionDescription
+        );
+        $this->assertNotSame(
+            'Time period: today, week, month, year, all',
+            $periodOptionDescription
+        );
+    }
+
     private function createSqliteConnection(): \PDO
     {
         $db = new \PDO('sqlite::memory:');
