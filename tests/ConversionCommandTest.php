@@ -203,6 +203,18 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('Main Converter', $this->tester->getDisplay());
     }
 
+    public function testConversionRejectsUnknownAction(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'unknown_action',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Unknown conversion action "unknown_action"', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testConversionEnableMissingId(): void
     {
         $this->tester->execute([

@@ -92,7 +92,7 @@ HELP
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
@@ -105,7 +105,11 @@ HELP
             'log' => $this->showLog($id),
             'config' => $this->showConfig($id),
             'stats' => $this->showStats(),
-            default => $this->listServers($input),
+            default => $this->failUnknownAction(
+                'conversion',
+                $action,
+                ['list', 'show', 'enable', 'disable', 'debug-on', 'debug-off', 'log', 'config', 'stats']
+            ),
         };
     }
 
