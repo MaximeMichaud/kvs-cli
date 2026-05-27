@@ -149,9 +149,7 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT bt.*,
-                  cs.title as server_name
-                  FROM {$this->table('background_tasks')} bt
+        $fromClause = "FROM {$this->table('background_tasks')} bt
                   LEFT JOIN {$this->table('admin_conversion_servers')} cs
                       ON bt.server_id = cs.server_id
                   WHERE 1=1";
@@ -173,34 +171,44 @@ HELP
                 $this->io()->error('Invalid status "' . $status . '". Valid values: pending, processing, failed');
                 return self::FAILURE;
             }
-            $query .= " AND bt.status_id = :status";
+            $fromClause .= " AND bt.status_id = :status";
             $params['status'] = $statusMap[$statusKey];
         }
 
         $type = $this->getIntOption($input, 'type');
         if ($type !== null) {
-            $query .= " AND bt.type_id = :type";
+            $fromClause .= " AND bt.type_id = :type";
             $params['type'] = $type;
         }
 
         $videoId = $this->getIntOption($input, 'video');
         if ($videoId !== null) {
-            $query .= " AND bt.video_id = :video_id";
+            $fromClause .= " AND bt.video_id = :video_id";
             $params['video_id'] = $videoId;
         }
 
         $albumId = $this->getIntOption($input, 'album');
         if ($albumId !== null) {
-            $query .= " AND bt.album_id = :album_id";
+            $fromClause .= " AND bt.album_id = :album_id";
             $params['album_id'] = $albumId;
         }
 
         $serverId = $this->getIntOption($input, 'server');
         if ($serverId !== null) {
-            $query .= " AND bt.server_id = :server_id";
+            $fromClause .= " AND bt.server_id = :server_id";
             $params['server_id'] = $serverId;
         }
 
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
+            return $this->countQueueTasks($db, $fromClause, $params);
+        }
+
+        $query = "SELECT bt.*,
+                  cs.title as server_name
+                  $fromClause";
         $query .= " ORDER BY bt.priority DESC, bt.added_date ASC LIMIT :limit";
 
         try {
@@ -629,7 +637,7 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT * FROM {$this->table('background_tasks_history')} WHERE 1=1";
+        $fromClause = "FROM {$this->table('background_tasks_history')} WHERE 1=1";
         $params = [];
 
         $status = $this->getStringOption($input, 'status');
@@ -645,34 +653,42 @@ HELP
                 $this->io()->error('Invalid status "' . $status . '". Valid values: completed, deleted');
                 return self::FAILURE;
             }
-            $query .= " AND status_id = :status";
+            $fromClause .= " AND status_id = :status";
             $params['status'] = $statusMap[$statusKey];
         }
 
         $type = $this->getIntOption($input, 'type');
         if ($type !== null) {
-            $query .= " AND type_id = :type";
+            $fromClause .= " AND type_id = :type";
             $params['type'] = $type;
         }
 
         $videoId = $this->getIntOption($input, 'video');
         if ($videoId !== null) {
-            $query .= " AND video_id = :video_id";
+            $fromClause .= " AND video_id = :video_id";
             $params['video_id'] = $videoId;
         }
 
         $albumId = $this->getIntOption($input, 'album');
         if ($albumId !== null) {
-            $query .= " AND album_id = :album_id";
+            $fromClause .= " AND album_id = :album_id";
             $params['album_id'] = $albumId;
         }
 
         $serverId = $this->getIntOption($input, 'server');
         if ($serverId !== null) {
-            $query .= " AND server_id = :server_id";
+            $fromClause .= " AND server_id = :server_id";
             $params['server_id'] = $serverId;
         }
 
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
+            return $this->countQueueHistory($db, $fromClause, $params);
+        }
+
+        $query = "SELECT * $fromClause";
         $query .= " ORDER BY end_date DESC LIMIT :limit";
 
         try {
@@ -778,6 +794,42 @@ HELP
         ]);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, int> $params
+     */
+    private function countQueueTasks(\PDO $db, string $fromClause, array $params): int
+    {
+        return $this->countRows($db, "SELECT COUNT(*) $fromClause", $params, 'queue tasks');
+    }
+
+    /**
+     * @param array<string, int> $params
+     */
+    private function countQueueHistory(\PDO $db, string $fromClause, array $params): int
+    {
+        return $this->countRows($db, "SELECT COUNT(*) $fromClause", $params, 'queue history');
+    }
+
+    /**
+     * @param array<string, int> $params
+     */
+    private function countRows(\PDO $db, string $query, array $params, string $label): int
+    {
+        try {
+            $stmt = $db->prepare($query);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+
+            $this->io()->writeln((string) (int) $stmt->fetchColumn());
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to count ' . $label . ': ' . $e->getMessage());
+            return self::FAILURE;
+        }
     }
 
     private function formatDuration(int $seconds): string

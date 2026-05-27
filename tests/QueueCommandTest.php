@@ -121,6 +121,28 @@ class QueueCommandTest extends TestCase
         $this->assertSame('Conversion Failed', $rows[0]['error']);
     }
 
+    public function testQueueListCountFormatIgnoresLimitButAppliesFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame("3\n", $this->tester->getDisplay());
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'pending',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame("1\n", $this->tester->getDisplay());
+    }
+
     public function testQueueStats(): void
     {
         $this->tester->execute([
@@ -159,6 +181,28 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('New Video', $output);
         $this->assertStringContainsString('New Album', $output);
         $this->assertStringNotContainsString('Create Video Format', $output);
+    }
+
+    public function testQueueHistoryCountFormatIgnoresLimitButAppliesFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame("3\n", $this->tester->getDisplay());
+
+        $this->tester->execute([
+            'action' => 'history',
+            '--status' => 'completed',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame("2\n", $this->tester->getDisplay());
     }
 
     public function testQueueShowRequiresId(): void
