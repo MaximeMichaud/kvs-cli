@@ -262,6 +262,7 @@ class ApplicationComprehensiveTest extends TestCase
         $this->assertArrayHasKey('content:user', $commands);
         $this->assertArrayHasKey('content:album', $commands);
         $this->assertArrayHasKey('content:category', $commands);
+        $this->assertArrayHasKey('content:source', $commands);
 
         // Check database commands
         $this->assertArrayHasKey('db:export', $commands);

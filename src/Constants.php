@@ -66,6 +66,7 @@ final class Constants
         'comment_id',
         'category_id',
         'tag_id',
+        'content_source_id',
         'model_id',
         'dvd_id',
     ];

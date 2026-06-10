@@ -104,6 +104,7 @@ kvs user show <id>
 kvs album list
 kvs category list
 kvs tag list
+kvs source create "Sample Source" --dir=sample-source --url=https://sample-source.example/
 kvs comment list
 kvs model list
 kvs dvd list
