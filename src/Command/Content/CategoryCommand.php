@@ -394,6 +394,13 @@ HELP
             $groupId = $this->getCategoryGroupInput($input);
             $statusId = StatusFormatter::CATEGORY_ACTIVE;
 
+            // Reject non-numeric group IDs before any SELECT/cast: on MySQL a value like
+            // "1abc" would otherwise be coerced to row 1 and silently mis-assigned.
+            if ($groupId !== null && $groupId !== '' && !ctype_digit($groupId)) {
+                $this->io()->error('Category group ID must be numeric');
+                return self::FAILURE;
+            }
+
             // KVS category_group_id points to categories_groups, not another category.
             if ($groupId !== null && $groupId !== '') {
                 $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
@@ -408,10 +415,27 @@ HELP
             $dir = preg_replace('/[^a-z0-9]+/', '-', strtolower($title));
             $dir = trim((string) $dir, '-');
 
+            $table = $this->table('categories');
+            $db->beginTransaction();
+
+            // Lock the target group row (MySQL) so a concurrent category-group delete cannot
+            // remove it between the check above and this insert, which would otherwise leave
+            // the new category pointing at a non-existent group.
+            if ($groupId !== null && $groupId !== '') {
+                $lockStmt = $db->prepare(
+                    "SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id"
+                    . $this->rowLockClause($db)
+                );
+                $lockStmt->execute(['id' => $groupId]);
+                if ($lockStmt->fetch() === false) {
+                    $db->rollBack();
+                    $this->io()->error("Category group not found: $groupId");
+                    return self::FAILURE;
+                }
+            }
+
             // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
             $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
-
-            $table = $this->table('categories');
             $stmt = $db->prepare("
                 INSERT INTO {$table}
                     (title, dir, description, synonyms, category_group_id,
@@ -432,6 +456,7 @@ HELP
             $categoryId = $db->lastInsertId();
 
             $db->exec("SET sql_mode = @old_sql_mode");
+            $db->commit();
 
             $this->io()->success("Category created successfully!");
             $this->renderTable(
@@ -445,6 +470,9 @@ HELP
                 ]
             );
         } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             $this->io()->error('Failed to create category: ' . $e->getMessage());
             return self::FAILURE;
         }
@@ -842,6 +870,23 @@ HELP
             }
 
             $db->beginTransaction();
+
+            // Lock the target group row (MySQL) so a concurrent category-group delete
+            // cannot remove it between the existence check above and this assignment.
+            // Degrades to a plain SELECT on drivers without row locking (e.g. SQLite).
+            if ($groupId !== '0') {
+                $lockStmt = $db->prepare(
+                    "SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id"
+                    . $this->rowLockClause($db)
+                );
+                $lockStmt->execute(['id' => $groupId]);
+                if ($lockStmt->fetch() === false) {
+                    $db->rollBack();
+                    $this->io()->error("Category group not found: $groupId");
+                    return self::FAILURE;
+                }
+            }
+
             $params = ['group_id' => (int) $groupId];
             $placeholders = $this->buildIdPlaceholders($categoryIds, $params);
             $stmt = $db->prepare("
@@ -1054,6 +1099,10 @@ HELP
             // Category group
             $groupId = $this->getCategoryGroupInput($input);
             if ($groupId !== null) {
+                if ($groupId !== '' && !ctype_digit($groupId)) {
+                    $this->io()->error('Category group ID must be numeric');
+                    return self::FAILURE;
+                }
                 if ($groupId !== '') {
                     $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
                     $stmt->execute(['id' => $groupId]);
@@ -1083,16 +1132,38 @@ HELP
                 return self::FAILURE;
             }
 
+            // When (re)assigning to a group, serialize against a concurrent category-group
+            // delete by locking the target group row (MySQL) and re-checking it inside the
+            // same transaction as the update.
+            $lockGroupId = ($groupId !== null && $groupId !== '') ? (int) $groupId : null;
+            $db->beginTransaction();
+            if ($lockGroupId !== null) {
+                $lockStmt = $db->prepare(
+                    "SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id"
+                    . $this->rowLockClause($db)
+                );
+                $lockStmt->execute(['id' => $lockGroupId]);
+                if ($lockStmt->fetch() === false) {
+                    $db->rollBack();
+                    $this->io()->error("Category group not found: $lockGroupId");
+                    return self::FAILURE;
+                }
+            }
+
             // Update category
             $sql = "UPDATE {$this->table('categories')} SET " . implode(', ', $updates) . " WHERE category_id = :id";
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
+            $db->commit();
 
             $this->io()->success("Category updated successfully!");
 
             // Show updated category
             return $this->showCategory($id);
         } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             $this->io()->error('Failed to update category: ' . $e->getMessage());
             return self::FAILURE;
         }

@@ -271,6 +271,32 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Category group not found: 99999', $output);
     }
 
+    public function testCreateRejectsNonNumericGroup(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Brand New Category',
+            '--group' => '1abc',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category group ID must be numeric', $output);
+    }
+
+    public function testUpdateRejectsNonNumericGroup(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--group' => '2,3',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category group ID must be numeric', $output);
+    }
+
     public function testCyclicParentPrevention(): void
     {
         $exitCode = $this->tester->execute([
