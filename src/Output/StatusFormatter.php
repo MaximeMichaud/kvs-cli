@@ -38,6 +38,8 @@ class StatusFormatter
     // Category/Tag status constants
     public const CATEGORY_INACTIVE = 0;
     public const CATEGORY_ACTIVE = 1;
+    public const CATEGORY_GROUP_DISABLED = 0;
+    public const CATEGORY_GROUP_ACTIVE = 1;
     public const TAG_INACTIVE = 0;
     public const TAG_ACTIVE = 1;
 
@@ -182,6 +184,23 @@ class StatusFormatter
         $labels = [
             self::CATEGORY_INACTIVE => ['text' => 'Inactive', 'color' => 'yellow'],
             self::CATEGORY_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for category groups
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function categoryGroup(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::CATEGORY_GROUP_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::CATEGORY_GROUP_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);

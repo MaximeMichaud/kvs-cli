@@ -546,6 +546,20 @@ abstract class BaseCommand extends Command
         return $this->config->getMultiTablePrefix() . $name;
     }
 
+    /**
+     * Return a row-lock clause (" FOR UPDATE") for drivers that support it (MySQL),
+     * or an empty string otherwise (e.g. SQLite used by tests). Lets callers serialize
+     * concurrent mutations on the same row without breaking non-locking drivers.
+     */
+    protected function rowLockClause(\PDO $db): string
+    {
+        try {
+            return $db->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        } catch (\PDOException) {
+            return '';
+        }
+    }
+
     protected function writeAdminAuditLog(
         \PDO $db,
         int $actionId,
