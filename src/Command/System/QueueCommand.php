@@ -45,6 +45,7 @@ class QueueCommand extends BaseCommand
         17 => 'Delete Screenshots ZIP',
         18 => 'Create Images ZIP',
         19 => 'Delete Images ZIP',
+        20 => 'Delete Timeline Screenshots',
         22 => 'Album Images Manipulation',
         23 => 'Change Storage (Album)',
         24 => 'Create Overview Screenshots',
