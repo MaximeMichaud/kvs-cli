@@ -783,13 +783,32 @@ HELP
             // Name
             $name = $this->getStringOption($input, 'name');
             if ($name !== null) {
-                // Check if new name already exists
-                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
+                $stmt = $db->prepare("SELECT tag_id, tag FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
-                if ($stmt->fetch() !== false) {
-                    $this->io()->error("Tag name already exists: $name");
-                    $this->io()->text('Hint: Use merge command to combine duplicate tags');
-                    return self::FAILURE;
+                $existingTag = $stmt->fetch(\PDO::FETCH_ASSOC);
+                if (is_array($existingTag)) {
+                    $targetIdValue = $existingTag['tag_id'] ?? null;
+                    $targetId = is_scalar($targetIdValue) ? (string) $targetIdValue : '';
+                    if ($targetId === '') {
+                        $this->io()->error("Tag name already exists: $name");
+                        return self::FAILURE;
+                    }
+
+                    $db->beginTransaction();
+                    $this->mergeTagRelations($db, $id, $targetId);
+                    $deleteStmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
+                    $deleteStmt->execute(['id' => $id]);
+                    $db->commit();
+
+                    $tagValue = $tag['tag'] ?? '';
+                    $sourceName = is_scalar($tagValue) ? (string) $tagValue : '';
+                    $targetNameValue = $existingTag['tag'] ?? $name;
+                    $targetName = is_scalar($targetNameValue) ? (string) $targetNameValue : $name;
+
+                    $this->io()->success('Tags merged successfully!');
+                    $this->io()->text("'$sourceName' has been merged into '$targetName'");
+
+                    return self::SUCCESS;
                 }
                 $updates[] = 'tag = :tag';
                 $params['tag'] = $name;
