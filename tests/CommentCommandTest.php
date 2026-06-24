@@ -151,6 +151,23 @@ class CommentCommandTest extends TestCase
         $this->assertSame('alice', $rows[0]['user']);
     }
 
+    public function testListCommentsUsesAnonymousUsernameForAnonymousUser(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Album feedback',
+            '--format' => 'json',
+            '--fields' => 'comment_id,user',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['comment_id']);
+        $this->assertSame('GuestUser', $rows[0]['user']);
+    }
+
     public function testListCommentsSearch(): void
     {
         $this->tester->execute([

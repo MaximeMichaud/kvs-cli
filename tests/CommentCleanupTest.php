@@ -363,6 +363,37 @@ class CommentCleanupTest extends TestCase
         $this->assertStringNotContainsString('Usage: kvs comment approve ID', $output);
     }
 
+    public function testApproveRejectsDecimalCommentIdWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 0)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_albums_count, comments_total_count
+            ) VALUES (5, 'tester', 0, 0)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (8, 1, 0, 2, 5, 'Approve decimal id', 0, 1)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'approve',
+            'id' => '8.9',
+            '--yes' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Invalid comment ID: 8.9', $tester->getDisplay());
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id = 8'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id = 8'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT comments_count FROM ktvs_albums WHERE album_id = 1'));
+    }
+
     private function createCommand(\PDO $db): CommentCommand
     {
         return new class ($this->createConfig(), $db) extends CommentCommand {

@@ -72,6 +72,39 @@ class ConfigurationTest extends TestCase
         TestHelper::removeDir($tempDir);
     }
 
+    public function testDatabaseConfigKeepsEmptyPassword(): void
+    {
+        $tempDir = TestHelper::createTempDir();
+        mkdir($tempDir . '/admin/include', 0755, true);
+        file_put_contents(
+            $tempDir . '/admin/include/setup_db.php',
+            <<<'PHP'
+<?php
+define('DB_HOST', '127.0.0.1');
+define('DB_LOGIN', 'root');
+define('DB_PASS', '');
+define('DB_DEVICE', 'kvs_test');
+
+PHP
+        );
+        file_put_contents($tempDir . '/admin/include/setup.php', '<?php $config = [];');
+
+        try {
+            $config = new Configuration([
+                'path' => $tempDir,
+                'disable_db_env_overrides' => true,
+            ]);
+
+            $dbConfig = $config->getDatabaseConfig();
+
+            $this->assertArrayHasKey('password', $dbConfig);
+            $this->assertSame('', $dbConfig['password']);
+            $this->assertTrue($config->isKvsInstalled());
+        } finally {
+            TestHelper::removeDir($tempDir);
+        }
+    }
+
     public function testDatabasePortEnvironmentOverrideIsAppliedToHost(): void
     {
         $tempDir = TestHelper::createTempDir();
