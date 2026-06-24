@@ -95,7 +95,7 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   list     List active tasks in queue (default)
   show     Show details for a specific task
   stats    Show queue statistics
-  history  Show completed/deleted tasks history
+  history  Show completed/deleted/failed tasks history
 
 <fg=yellow>STATUS VALUES:</>
   pending     Tasks waiting to be processed (status_id=0)
@@ -118,7 +118,7 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   <fg=green>kvs queue list --type=1</>                List new video tasks
   <fg=green>kvs queue show 123</>                     Show task #123 details
   <fg=green>kvs queue stats</>                        Show queue statistics
-  <fg=green>kvs queue history --limit=50</>           Show last 50 completed tasks
+  <fg=green>kvs queue history --limit=50</>           Show last 50 history tasks
   <fg=green>kvs queue history --album=12</>           Show history for album #12
 HELP
             );
@@ -643,14 +643,16 @@ HELP
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = [
+                'failed' => StatusFormatter::TASK_FAILED,
                 'completed' => StatusFormatter::TASK_COMPLETED,
                 'deleted' => StatusFormatter::TASK_DELETED,
+                '2' => StatusFormatter::TASK_FAILED,
                 '3' => StatusFormatter::TASK_COMPLETED,
                 '4' => StatusFormatter::TASK_DELETED,
             ];
             $statusKey = strtolower($status);
             if (!array_key_exists($statusKey, $statusMap)) {
-                $this->io()->error('Invalid status "' . $status . '". Valid values: completed, deleted');
+                $this->io()->error('Invalid status "' . $status . '". Valid values: failed, completed, deleted');
                 return self::FAILURE;
             }
             $fromClause .= " AND status_id = :status";
@@ -730,7 +732,8 @@ HELP
                 $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
 
                 $task['id'] = $task['task_id'];
-                $task['status'] = $statusId === StatusFormatter::TASK_COMPLETED ? 'Completed' : 'Deleted';
+                $task['status_id'] = $statusId;
+                $task['status'] = StatusFormatter::task($statusId, false);
                 $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
                 $task['content_id'] = $videoId > 0
                     ? "Video #{$videoId}"
@@ -744,7 +747,13 @@ HELP
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];
                 foreach ($tasks as $task) {
-                    $statusColor = $task['status_id'] === StatusFormatter::TASK_COMPLETED ? 'green' : 'yellow';
+                    $statusId = $task['status_id'];
+                    $statusColor = match ($statusId) {
+                        StatusFormatter::TASK_COMPLETED => 'green',
+                        StatusFormatter::TASK_FAILED => 'red',
+                        StatusFormatter::TASK_DELETED => 'gray',
+                        default => 'yellow',
+                    };
                     $endDate = $task['end_date'] ?? '';
                     $timestamp = $endDate !== '' ? strtotime($endDate) : false;
                     $endDateStr = $timestamp !== false ? date('Y-m-d H:i', $timestamp) : '-';
@@ -781,7 +790,7 @@ HELP
             'list : List active tasks in queue',
             'show <id> : Show details for a specific task',
             'stats : Show queue statistics',
-            'history : Show completed/deleted tasks history',
+            'history : Show completed/deleted/failed tasks history',
         ]);
 
         $this->io()->section('Examples');
