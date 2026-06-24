@@ -181,6 +181,8 @@ HELP
                 $load = $this->getFloatField($server, 'load');
                 $errorIter = $this->getNumericField($server, 'error_iteration');
                 $isDebug = $this->getNumericField($server, 'is_debug_enabled');
+                $maxTasks = $this->getNumericField($server, 'max_tasks');
+                $isMaxTasksPriority = $this->getNumericField($server, 'max_tasks_priority') === 1;
 
                 return [
                     'server_id' => $server['server_id'] ?? 0,
@@ -189,7 +191,7 @@ HELP
                     'status_id' => $statusId,
                     'status' => StatusFormatter::conversion($statusId, false),
                     'priority' => StatusFormatter::conversionPriority($priority, false),
-                    'max_tasks' => $server['max_tasks'] ?? 0,
+                    'max_tasks' => $isMaxTasksPriority ? "{$maxTasks} (prioritize)" : $maxTasks,
                     'tasks_pending' => $server['tasks_pending'] ?? 0,
                     'tasks_completed' => $server['tasks_completed'] ?? 0,
                     'free_space' => $this->formatBytes($freeSpace),

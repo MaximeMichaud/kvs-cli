@@ -86,6 +86,24 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('Yes', $rows[0]['has_error']);
     }
 
+    public function testConversionListMarksPrioritizedMaxTasksLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,max_tasks',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('4 (prioritize)', $rowsById[1]['max_tasks']);
+        $this->assertSame(2, (int) $rowsById[2]['max_tasks']);
+    }
+
     public function testConversionListIgnoresDisabledServerErrorsLikeKvsAdmin(): void
     {
         $this->db->exec(
