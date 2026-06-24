@@ -245,6 +245,21 @@ class ConversionCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/\x{2713}\s+New videos from admins/u', $output);
     }
 
+    public function testConversionShowTreatsEmptyTaskTypesAsAllTypesLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '2',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('No specific task types assigned (processes all types)', $output);
+        $this->assertMatchesRegularExpression('/\x{2713}\s+Process any available task when free/u', $output);
+    }
+
     public function testConversionShowDisplaysFtpConnectionInfo(): void
     {
         $this->tester->execute([

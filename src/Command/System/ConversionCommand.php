@@ -410,7 +410,7 @@ HELP
         $this->io()->newLine();
         $this->io()->section('Task Types');
 
-        if ($enabledTypes === [] && !$isAllowAny) {
+        if ($enabledTypes === []) {
             $this->io()->text('<fg=yellow>No specific task types assigned (processes all types)</>');
         } else {
             foreach ($taskTypeLabels as $type => $label) {
