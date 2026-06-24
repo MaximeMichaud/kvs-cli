@@ -310,9 +310,7 @@ HELP
                 return self::FAILURE;
             }
 
-            // Create tag - tag_dir is URL slug of tag name
-            $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($tagName));
-            $tagDir = trim((string) $tagDir, '-');
+            $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($tagName));
 
             // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
             $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
@@ -813,8 +811,7 @@ HELP
                 $updates[] = 'tag = :tag';
                 $params['tag'] = $name;
                 // Also update tag_dir (URL slug)
-                $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($name));
-                $tagDir = trim((string) $tagDir, '-');
+                $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), $id);
                 $updates[] = 'tag_dir = :tag_dir';
                 $params['tag_dir'] = $tagDir;
             }
@@ -880,5 +877,34 @@ HELP
             status: $status,
             commandName: 'content:tag'
         );
+    }
+
+    private function slugifyTagDir(string $tagName): string
+    {
+        $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($tagName));
+
+        return trim((string) $tagDir, '-');
+    }
+
+    private function getUniqueTagDir(\PDO $db, string $baseDir, ?string $excludeId = null): string
+    {
+        for ($i = 1; $i < 999999; $i++) {
+            $tagDir = $i === 1 ? $baseDir : $baseDir . $i;
+            $sql = "SELECT COUNT(*) FROM {$this->table('tags')} WHERE tag_dir = :tag_dir";
+            $params = ['tag_dir' => $tagDir];
+
+            if ($excludeId !== null) {
+                $sql .= ' AND tag_id != :id';
+                $params['id'] = $excludeId;
+            }
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            if ((int) $stmt->fetchColumn() === 0) {
+                return $tagDir;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique tag directory');
     }
 }

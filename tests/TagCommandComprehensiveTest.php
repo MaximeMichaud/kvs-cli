@@ -250,6 +250,22 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Tag already exists: 4K', $output);
     }
 
+    public function testUpdateUsesUniqueTagDirectoryLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '20',
+            '--name' => '4K!',
+        ]);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertSame(
+            '4k2',
+            $this->db->query('SELECT tag_dir FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 20')
+                ->fetchColumn()
+        );
+    }
+
     public function testUpdateWithoutChanges(): void
     {
         $exitCode = $this->tester->execute([
