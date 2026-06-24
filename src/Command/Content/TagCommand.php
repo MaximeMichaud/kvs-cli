@@ -819,7 +819,14 @@ HELP
             // Status
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? StatusFormatter::TAG_ACTIVE : StatusFormatter::TAG_INACTIVE;
+                $statusId = $this->parseStatusFilter($input, [
+                    'active' => StatusFormatter::TAG_ACTIVE,
+                    'inactive' => StatusFormatter::TAG_INACTIVE,
+                    'disabled' => StatusFormatter::TAG_INACTIVE,
+                ]);
+                if ($statusId === null) {
+                    throw new \InvalidArgumentException('Status is required');
+                }
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }

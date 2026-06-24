@@ -266,6 +266,24 @@ class TagCommandComprehensiveTest extends TestCase
         );
     }
 
+    public function testUpdateRejectsInvalidStatusWithoutChangingTag(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '10',
+            '--status' => 'bogus',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Invalid status "bogus"', $output);
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT status_id FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 10')
+                ->fetchColumn()
+        );
+    }
+
     public function testUpdateWithoutChanges(): void
     {
         $exitCode = $this->tester->execute([

@@ -177,6 +177,24 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertSame(
             1,
             (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('categories') . " WHERE title = 'Action'")
+            ->fetchColumn()
+        );
+    }
+
+    public function testUpdateRejectsInvalidStatusWithoutChangingCategory(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--status' => 'bogus',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Invalid status "bogus"', $output);
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT status_id FROM ' . TestHelper::table('categories') . ' WHERE category_id = 10')
                 ->fetchColumn()
         );
     }

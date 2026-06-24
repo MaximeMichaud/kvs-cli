@@ -1084,7 +1084,14 @@ HELP
             // Status
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? StatusFormatter::CATEGORY_ACTIVE : StatusFormatter::CATEGORY_INACTIVE;
+                $statusId = $this->parseStatusFilter($input, [
+                    'active' => StatusFormatter::CATEGORY_ACTIVE,
+                    'inactive' => StatusFormatter::CATEGORY_INACTIVE,
+                    'disabled' => StatusFormatter::CATEGORY_INACTIVE,
+                ]);
+                if ($statusId === null) {
+                    throw new \InvalidArgumentException('Status is required');
+                }
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }
