@@ -214,7 +214,9 @@ HELP
 
         try {
             $stmt = $db->prepare("
-                SELECT f.*, g.title as group_title
+                SELECT f.*,
+                       CASE WHEN f.is_hotlink_protection_disabled = 1 THEN 0 ELSE 1 END as is_hotlink_protection_enabled,
+                       g.title as group_title
                 FROM {$this->table('formats_videos')} f
                 LEFT JOIN {$this->table('formats_videos_groups')} g
                     ON f.format_video_group_id = g.format_video_group_id
@@ -258,8 +260,9 @@ HELP
             $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id'])
                 ? (int) $format['access_level_id'] : 0;
             $downloadEnabled = isset($format['is_download_enabled']) && (bool) $format['is_download_enabled'];
-            $hotlinkProtection = isset($format['hotlink_protection']) && is_numeric($format['hotlink_protection'])
-                ? (int) $format['hotlink_protection'] : 0;
+            $hotlinkProtection = isset($format['is_hotlink_protection_enabled'])
+                && is_numeric($format['is_hotlink_protection_enabled'])
+                ? (int) $format['is_hotlink_protection_enabled'] : 0;
 
             $accessInfo = [
                 ['Access Level', StatusFormatter::formatAccessLevel($accessId)],

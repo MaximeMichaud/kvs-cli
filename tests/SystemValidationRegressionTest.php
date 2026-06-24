@@ -375,6 +375,20 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
     }
 
+    public function testVideoFormatShowUsesKvsHotlinkProtectionFlag(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Hotlink Protection\W+Yes/', $tester->getDisplay());
+    }
+
     public function testVideoFormatGroupsRejectsListFilters(): void
     {
         $this->createVideoFormatTables();
@@ -500,6 +514,7 @@ class SystemValidationRegressionTest extends TestCase
             is_download_enabled INTEGER,
             is_timeline_enabled INTEGER,
             format_video_group_id INTEGER,
+            is_hotlink_protection_disabled INTEGER,
             ffmpeg_options TEXT
         )');
         $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
@@ -515,8 +530,8 @@ class SystemValidationRegressionTest extends TestCase
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos " .
             "(format_video_id, title, postfix, status_id, size, access_level_id, is_download_enabled, " .
-            "is_timeline_enabled, format_video_group_id, ffmpeg_options) " .
-            "VALUES (1, 'MP4 480p', '.mp4', 1, '848x480', 0, 0, 1, 1, '-vcodec libx264')"
+            "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, ffmpeg_options) " .
+            "VALUES (1, 'MP4 480p', '.mp4', 1, '848x480', 0, 0, 1, 1, 0, '-vcodec libx264')"
         );
     }
 
