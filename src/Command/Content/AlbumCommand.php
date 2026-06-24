@@ -285,11 +285,28 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT album_id FROM {$this->table('albums')} WHERE album_id = :id");
+            $stmt = $db->prepare("SELECT album_id, status_id FROM {$this->table('albums')} WHERE album_id = :id");
             $stmt->execute(['id' => $id]);
-            $albumId = $stmt->fetchColumn();
-            if (!is_numeric($albumId)) {
+            /** @var array{album_id: int|string, status_id: int|string}|false $album */
+            $album = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($album === false || !is_numeric($album['album_id'])) {
                 $this->io()->error("Album not found: #$id");
+                return self::FAILURE;
+            }
+
+            $albumId = (int) $album['album_id'];
+            $statusId = is_numeric($album['status_id']) ? (int) $album['status_id'] : -1;
+            $deletableStatuses = [
+                StatusFormatter::ALBUM_DISABLED,
+                StatusFormatter::ALBUM_ACTIVE,
+                StatusFormatter::ALBUM_ERROR,
+            ];
+            if (!in_array($statusId, $deletableStatuses, true)) {
+                $this->io()->error(sprintf(
+                    'Album cannot be deleted in its current status: #%d (%s)',
+                    $albumId,
+                    StatusFormatter::album($statusId, false)
+                ));
                 return self::FAILURE;
             }
 
@@ -306,7 +323,7 @@ HELP
                 return self::SUCCESS;
             }
 
-            $this->deleteAlbumWithKvs((int) $albumId);
+            $this->deleteAlbumWithKvs($albumId);
             $this->io()->success("Album #$id queued for KVS deletion");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete album: ' . $e->getMessage());

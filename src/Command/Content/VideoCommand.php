@@ -329,11 +329,28 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT video_id FROM {$this->table('videos')} WHERE video_id = :id");
+            $stmt = $db->prepare("SELECT video_id, status_id FROM {$this->table('videos')} WHERE video_id = :id");
             $stmt->execute(['id' => $id]);
-            $videoId = $stmt->fetchColumn();
-            if (!is_numeric($videoId)) {
+            /** @var array{video_id: int|string, status_id: int|string}|false $video */
+            $video = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($video === false || !is_numeric($video['video_id'])) {
                 $this->io()->error("Video not found: #$id");
+                return self::FAILURE;
+            }
+
+            $videoId = (int) $video['video_id'];
+            $statusId = is_numeric($video['status_id']) ? (int) $video['status_id'] : -1;
+            $deletableStatuses = [
+                StatusFormatter::VIDEO_DISABLED,
+                StatusFormatter::VIDEO_ACTIVE,
+                StatusFormatter::VIDEO_ERROR,
+            ];
+            if (!in_array($statusId, $deletableStatuses, true)) {
+                $this->io()->error(sprintf(
+                    'Video cannot be deleted in its current status: #%d (%s)',
+                    $videoId,
+                    StatusFormatter::video($statusId, false)
+                ));
                 return self::FAILURE;
             }
 
@@ -350,7 +367,7 @@ HELP
                 return self::SUCCESS;
             }
 
-            $this->deleteVideoWithKvs((int) $videoId);
+            $this->deleteVideoWithKvs($videoId);
             $this->io()->success("Video #$id queued for KVS deletion");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete video: ' . $e->getMessage());
