@@ -136,6 +136,22 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Category group not found: 99999', $output);
     }
 
+    public function testCreateGeneratesUniqueDirectoryLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Action!',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $exitCode, $output);
+        $this->assertSame(
+            'action2',
+            $this->db->query('SELECT dir FROM ' . TestHelper::table('categories') . " WHERE title = 'Action!'")
+                ->fetchColumn()
+        );
+    }
+
     public function testUpdateWithoutId(): void
     {
         $exitCode = $this->tester->execute(['action' => 'update']);
@@ -452,7 +468,7 @@ class CategoryCommandComprehensiveTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
-            'category_id INTEGER, title TEXT, dir TEXT, description TEXT, category_group_id INTEGER, ' .
+            'category_id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, dir TEXT, description TEXT, synonyms TEXT, category_group_id INTEGER, ' .
             'status_id INTEGER, added_date TEXT, last_content_date TEXT)'
         );
         $db->exec(
