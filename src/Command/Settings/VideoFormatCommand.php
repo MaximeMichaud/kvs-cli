@@ -107,6 +107,9 @@ HELP
                 f.access_level_id,
                 f.is_download_enabled,
                 f.is_timeline_enabled,
+                f.timeline_option,
+                f.timeline_amount,
+                f.timeline_interval,
                 f.format_video_group_id,
                 g.title as group_title
             FROM {$this->table('formats_videos')} f
@@ -188,7 +191,7 @@ HELP
                 $isDownload = isset($format['is_download_enabled']) && (bool) $format['is_download_enabled'];
                 $format['download'] = $isDownload ? 'Yes' : 'No';
                 $isTimeline = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
-                $format['timeline'] = $isTimeline ? 'Yes' : 'No';
+                $format['timeline'] = $isTimeline ? $this->formatKvsTimelineValue($format) : 'No';
 
                 return $format;
             }, $formats);
@@ -302,12 +305,10 @@ HELP
             // Timeline Settings section
             $this->io()->section('Timeline Settings');
             $timelineEnabled = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
-            $timelineInterval = isset($format['timeline_interval']) && is_numeric($format['timeline_interval'])
-                ? (int) $format['timeline_interval'] : 0;
 
             $timelineInfo = [
                 ['Timeline Enabled', $timelineEnabled ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
-                ['Timeline Interval', $timelineInterval > 0 ? "{$timelineInterval}s" : 'Default'],
+                ['Timeline Interval', $timelineEnabled ? $this->formatKvsTimelineValue($format) : 'Default'],
             ];
             $this->renderTable(['Property', 'Value'], $timelineInfo);
 
@@ -450,6 +451,22 @@ HELP
         }
 
         return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsTimelineValue(array $format): string
+    {
+        if ($this->getIntField($format, 'timeline_option') === 1) {
+            $amount = $this->getIntField($format, 'timeline_amount');
+
+            return $amount > 0 ? "x{$amount}" : 'Default';
+        }
+
+        $interval = $this->getIntField($format, 'timeline_interval');
+
+        return $interval > 0 ? "{$interval}s" : 'Default';
     }
 
     /**

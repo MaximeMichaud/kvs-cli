@@ -444,6 +444,23 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/End Offset\W+10s/', $output);
     }
 
+    public function testVideoFormatListShowsKvsTimelineValue(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'format_video_id,timeline',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('10s', $rows[0]['timeline']);
+    }
+
     public function testVideoFormatGroupsRejectsListFilters(): void
     {
         $this->createVideoFormatTables();
@@ -580,6 +597,9 @@ class SystemValidationRegressionTest extends TestCase
             limit_offset_start_unit_id INTEGER,
             limit_offset_end INTEGER,
             limit_offset_end_unit_id INTEGER,
+            timeline_option INTEGER,
+            timeline_amount INTEGER,
+            timeline_interval INTEGER,
             ffmpeg_options TEXT
         )');
         $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
@@ -598,10 +618,10 @@ class SystemValidationRegressionTest extends TestCase
             "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, limit_total_duration, " .
             "limit_total_duration_unit_id, limit_total_min_duration_sec, limit_total_max_duration_sec, " .
             "limit_number_parts, limit_offset_start, limit_offset_start_unit_id, limit_offset_end, " .
-            "limit_offset_end_unit_id, ffmpeg_options) " .
+            "limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, ffmpeg_options) " .
             "VALUES " .
-            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, '-vcodec libx264'), " .
-            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, '')"
+            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, 2, 0, 10, '-vcodec libx264'), " .
+            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, '')"
         );
     }
 
