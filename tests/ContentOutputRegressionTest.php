@@ -534,7 +534,7 @@ class ContentOutputRegressionTest extends TestCase
         $durationRows = $this->decodeJsonRows($durationTester->getDisplay());
 
         $this->assertSame(0, $durationTester->getStatusCode());
-        $this->assertSame('1h 11m', $durationRows[0]['duration']);
+        $this->assertSame('1:11:00', $durationRows[0]['duration']);
 
         $ratingTester = new CommandTester($this->createDvdCommand($db));
         $ratingTester->execute([

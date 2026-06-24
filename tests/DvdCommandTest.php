@@ -115,7 +115,7 @@ class DvdCommandTest extends TestCase
         $this->assertSame('Test Series', $rows[0]['title']);
         $this->assertSame(2, (int) $rows[0]['videos']);
         $this->assertSame(3690, (int) $rows[0]['total_videos_duration']);
-        $this->assertSame('1h 1m', $rows[0]['duration']);
+        $this->assertSame('1:01:30', $rows[0]['duration']);
     }
 
     public function testListDvdsDisabledStatus(): void
@@ -187,7 +187,7 @@ class DvdCommandTest extends TestCase
         $this->assertStringContainsString('DVD: Test Series', $output);
         $this->assertStringContainsString('DVD ID', $output);
         $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Total Duration\W+1h 1m/', $output);
+        $this->assertMatchesRegularExpression('/Total Duration\W+1:01:30/', $output);
         $this->assertStringContainsString('4.0/5 (10 votes)', $output);
         $this->assertStringContainsString('Long running series', $output);
     }

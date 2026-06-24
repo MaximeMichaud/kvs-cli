@@ -336,9 +336,15 @@ HELP
     private function formatDvdDuration(int $seconds): string
     {
         $hours = intdiv($seconds, 3600);
-        $minutes = intdiv($seconds % 3600, 60);
+        $remainingSeconds = $seconds - ($hours * 3600);
+        $minutes = intdiv($remainingSeconds, 60);
+        $remainingSeconds = $seconds - ($hours * 3600) - ($minutes * 60);
 
-        return sprintf('%dh %dm', $hours, $minutes);
+        if ($hours > 0) {
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $remainingSeconds);
+        }
+
+        return sprintf('%d:%02d', $minutes, $remainingSeconds);
     }
 
     private function showStats(): int
