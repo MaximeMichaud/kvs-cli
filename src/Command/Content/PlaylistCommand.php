@@ -783,6 +783,7 @@ HELP
             $deleted = $stmt->rowCount();
 
             if ($deleted === 0) {
+                $this->recountAfterFavChange($db, $videoId, $ownerUserId);
                 $db->commit();
                 $this->io()->note("Video #$videoId is not in playlist #$playlistId");
                 return self::SUCCESS;
