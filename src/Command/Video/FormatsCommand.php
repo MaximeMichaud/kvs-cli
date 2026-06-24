@@ -327,6 +327,7 @@ HELP
                     title,
                     postfix,
                     CASE
+                        WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " AND COALESCE(is_conditional, 0) = 1 THEN 'Conditional'
                         WHEN status_id = " . StatusFormatter::FORMAT_DISABLED . " THEN 'Disabled'
                         WHEN status_id = " . StatusFormatter::FORMAT_REQUIRED . " THEN 'Required'
                         WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " THEN 'Optional'

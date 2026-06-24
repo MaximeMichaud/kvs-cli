@@ -38,6 +38,7 @@ class FormatsPathTest extends TestCase
             title TEXT,
             postfix TEXT,
             status_id INTEGER,
+            is_conditional INTEGER,
             format_video_group_id INTEGER,
             access_level_id INTEGER
         )');
@@ -51,8 +52,8 @@ class FormatsPathTest extends TestCase
         );
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos
-                (format_video_id, title, postfix, status_id, format_video_group_id, access_level_id)
-             VALUES (1, 'MP4 480p', '.mp4', 1, 1, 0)"
+                (format_video_id, title, postfix, status_id, is_conditional, format_video_group_id, access_level_id)
+             VALUES (1, 'MP4 480p', '.mp4', 1, 0, 1, 0)"
         );
     }
 
