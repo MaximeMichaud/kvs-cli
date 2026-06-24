@@ -752,7 +752,21 @@ HELP
 
             $ownerUserId = $playlist['user_id'];
 
-            if (!$this->videoExists($db, $videoId)) {
+            $relationParams = [
+                'user_id' => $ownerUserId,
+                'video_id' => $videoId,
+                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
+                'playlist_id' => $playlistId,
+            ];
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM {$this->table('fav_videos')}
+                 WHERE user_id = :user_id AND video_id = :video_id
+                   AND fav_type = :fav_type AND playlist_id = :playlist_id"
+            );
+            $stmt->execute($relationParams);
+            $relationExists = ((int) $stmt->fetchColumn()) > 0;
+
+            if (!$relationExists && !$this->videoExists($db, $videoId)) {
                 $this->io()->error("Video not found: $videoId");
                 return self::FAILURE;
             }
@@ -764,12 +778,7 @@ HELP
                  WHERE user_id = :user_id AND video_id = :video_id
                    AND fav_type = :fav_type AND playlist_id = :playlist_id"
             );
-            $stmt->execute([
-                'user_id' => $ownerUserId,
-                'video_id' => $videoId,
-                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
-                'playlist_id' => $playlistId,
-            ]);
+            $stmt->execute($relationParams);
             $deleted = $stmt->rowCount();
 
             if ($deleted === 0) {

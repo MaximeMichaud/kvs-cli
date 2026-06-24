@@ -405,6 +405,29 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('Video not found: 999999', $output);
     }
 
+    public function testPlaylistRemoveDeletesStaleVideoRelationLikeKvsAdmin(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('fav_videos') .
+            ' (user_id, video_id, fav_type, playlist_id, playlist_sort_id, added_date) VALUES ' .
+            "(1, 999, 10, 30, 3, '2026-05-26 10:30:00')"
+        );
+
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 30,
+            '--video' => 999,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(
+            0,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('fav_videos') . ' WHERE playlist_id = 30 AND video_id = 999'
+            )->fetchColumn()
+        );
+    }
+
     public function testPlaylistCommandMetadata(): void
     {
         $this->assertEquals('content:playlist', $this->command->getName());
