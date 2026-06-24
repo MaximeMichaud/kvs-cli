@@ -426,6 +426,24 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame('Conditional', $rows[0]['status']);
     }
 
+    public function testVideoFormatShowUsesKvsDurationAndOffsetColumns(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--force' => true,
+        ]);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Total Duration\W+20s/', $output);
+        $this->assertMatchesRegularExpression('/Start Offset\W+5s/', $output);
+        $this->assertMatchesRegularExpression('/End Offset\W+10s/', $output);
+    }
+
     public function testVideoFormatGroupsRejectsListFilters(): void
     {
         $this->createVideoFormatTables();
@@ -553,6 +571,15 @@ class SystemValidationRegressionTest extends TestCase
             is_timeline_enabled INTEGER,
             format_video_group_id INTEGER,
             is_hotlink_protection_disabled INTEGER,
+            limit_total_duration INTEGER,
+            limit_total_duration_unit_id INTEGER,
+            limit_total_min_duration_sec INTEGER,
+            limit_total_max_duration_sec INTEGER,
+            limit_number_parts INTEGER,
+            limit_offset_start INTEGER,
+            limit_offset_start_unit_id INTEGER,
+            limit_offset_end INTEGER,
+            limit_offset_end_unit_id INTEGER,
             ffmpeg_options TEXT
         )');
         $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
@@ -568,10 +595,13 @@ class SystemValidationRegressionTest extends TestCase
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos " .
             "(format_video_id, title, postfix, status_id, is_conditional, size, access_level_id, is_download_enabled, " .
-            "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, ffmpeg_options) " .
+            "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, limit_total_duration, " .
+            "limit_total_duration_unit_id, limit_total_min_duration_sec, limit_total_max_duration_sec, " .
+            "limit_number_parts, limit_offset_start, limit_offset_start_unit_id, limit_offset_end, " .
+            "limit_offset_end_unit_id, ffmpeg_options) " .
             "VALUES " .
-            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, '-vcodec libx264'), " .
-            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, '')"
+            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, '-vcodec libx264'), " .
+            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, '')"
         );
     }
 

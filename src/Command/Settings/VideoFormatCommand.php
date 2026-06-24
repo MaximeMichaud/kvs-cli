@@ -286,20 +286,16 @@ HELP
 
             // Duration & Offset Limits section
             $this->io()->section('Duration & Offset Limits');
-            $durationMin = isset($format['video_duration_from']) && is_numeric($format['video_duration_from'])
-                ? (int) $format['video_duration_from'] : 0;
-            $durationMax = isset($format['video_duration_to']) && is_numeric($format['video_duration_to'])
-                ? (int) $format['video_duration_to'] : 0;
-            $offsetStart = isset($format['video_start_offset']) && is_numeric($format['video_start_offset'])
-                ? (int) $format['video_start_offset'] : 0;
-            $offsetEnd = isset($format['video_end_offset']) && is_numeric($format['video_end_offset'])
-                ? (int) $format['video_end_offset'] : 0;
-
             $durationInfo = [
-                ['Duration Min (sec)', $durationMin > 0 ? (string) $durationMin : 'No limit'],
-                ['Duration Max (sec)', $durationMax > 0 ? (string) $durationMax : 'No limit'],
-                ['Start Offset (sec)', $offsetStart > 0 ? (string) $offsetStart : '0'],
-                ['End Offset (sec)', $offsetEnd > 0 ? (string) $offsetEnd : '0'],
+                ['Total Duration', $this->formatKvsDurationLimit($format)],
+                [
+                    'Start Offset',
+                    $this->formatKvsLimitValue($format, 'limit_offset_start', 'limit_offset_start_unit_id', '0'),
+                ],
+                [
+                    'End Offset',
+                    $this->formatKvsLimitValue($format, 'limit_offset_end', 'limit_offset_end_unit_id', '0'),
+                ],
             ];
             $this->renderTable(['Property', 'Value'], $durationInfo);
 
@@ -406,5 +402,63 @@ HELP
             $this->io()->error('Failed to fetch format groups: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsDurationLimit(array $format): string
+    {
+        $duration = $this->getIntField($format, 'limit_total_duration');
+        if ($duration <= 0) {
+            return 'Source';
+        }
+
+        $unitId = $this->getIntField($format, 'limit_total_duration_unit_id');
+        if ($unitId === 1) {
+            $parts = [];
+            $minDuration = $this->getIntField($format, 'limit_total_min_duration_sec');
+            if ($minDuration > 0) {
+                $parts[] = "{$minDuration}s <=";
+            }
+            $parts[] = "{$duration}%";
+            $maxDuration = $this->getIntField($format, 'limit_total_max_duration_sec');
+            if ($maxDuration > 0) {
+                $parts[] = "<= {$maxDuration}s";
+            }
+            $durationLabel = implode(' ', $parts);
+        } else {
+            $durationLabel = "{$duration}s";
+        }
+
+        $numberParts = $this->getIntField($format, 'limit_number_parts');
+        if ($numberParts > 1) {
+            $durationLabel .= " / {$numberParts}";
+        }
+
+        return $durationLabel;
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsLimitValue(array $format, string $valueKey, string $unitKey, string $zeroLabel): string
+    {
+        $value = $this->getIntField($format, $valueKey);
+        if ($value <= 0) {
+            return $zeroLabel;
+        }
+
+        return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function getIntField(array $row, string $key): int
+    {
+        $value = $row[$key] ?? 0;
+
+        return is_numeric($value) ? (int) $value : 0;
     }
 }
