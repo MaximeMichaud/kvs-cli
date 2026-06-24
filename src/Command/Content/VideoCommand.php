@@ -524,10 +524,10 @@ HELP
 
     private function formatResolutionType(int $resolutionType, bool $withColor = true): string
     {
-        $label = match ($resolutionType) {
-            1 => 'HD',
-            2 => 'FHD',
-            3 => '4K',
+        $label = match (true) {
+            $resolutionType === 1 => 'HD',
+            $resolutionType === 2 => 'FHD',
+            $resolutionType > 2 => "{$resolutionType}K",
             default => 'SD',
         };
 
@@ -535,10 +535,10 @@ HELP
             return $label;
         }
 
-        $color = match ($resolutionType) {
-            1 => 'green',
-            2 => 'cyan',
-            3 => 'magenta',
+        $color = match (true) {
+            $resolutionType === 1 => 'green',
+            $resolutionType === 2 => 'cyan',
+            $resolutionType > 2 => 'magenta',
             default => 'gray',
         };
 

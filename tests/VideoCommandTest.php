@@ -137,6 +137,35 @@ class VideoCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testVideoListFormatsKvsResolutionTypesAboveFhd(): void
+    {
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('videos') .
+            " (video_id, user_id, title, status_id, resolution_type, is_private, duration, file_size, " .
+            "file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, description) VALUES " .
+            "(40, 1, '4K Clip', 1, 4, 0, 60, 1048576, '3840x2160', '2026-05-27 10:00:00', 0, 0, 0, 0, ''), " .
+            "(50, 1, '5K Clip', 1, 5, 0, 60, 1048576, '5120x2880', '2026-05-27 09:00:00', 0, 0, 0, 0, ''), " .
+            "(60, 1, '6K Clip', 1, 6, 0, 60, 1048576, '6144x3456', '2026-05-27 08:00:00', 0, 0, 0, 0, ''), " .
+            "(80, 1, '8K Clip', 1, 8, 0, 60, 1048576, '7680x4320', '2026-05-27 07:00:00', 0, 0, 0, 0, '')"
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'video_id,resolution',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $resolutionById = array_column($rows, 'resolution', 'video_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('4K', $resolutionById[40] ?? null);
+        $this->assertSame('5K', $resolutionById[50] ?? null);
+        $this->assertSame('6K', $resolutionById[60] ?? null);
+        $this->assertSame('8K', $resolutionById[80] ?? null);
+    }
+
     public function testVideoCommandMetadata(): void
     {
         $this->assertEquals('content:video', $this->command->getName());
