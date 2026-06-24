@@ -152,6 +152,43 @@ class PlaylistCommandDeleteTest extends TestCase
         $this->assertStringContainsString('locked', $tester->getDisplay());
     }
 
+    public function testDeletePlaylistTreatsStringLockedFlagAsLocked(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(\PDO::ATTR_STRINGIFY_FETCHES, true);
+        $this->createDeleteSchema($db);
+        $db->exec("INSERT INTO ktvs_playlists (playlist_id, title, is_locked) VALUES (1, 'Locked', 1)");
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends PlaylistCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:playlist');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deletePlaylistWithKvs(int $playlistId): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->execute(['action' => 'delete', 'id' => '1']);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('locked', $tester->getDisplay());
+    }
+
     public function testDeletePlaylistNoInteractionFailsWithoutCleanup(): void
     {
         $db = new \PDO('sqlite::memory:');

@@ -823,7 +823,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT playlist_id, title, is_locked FROM {$this->table('playlists')} WHERE playlist_id = :id");
             $stmt->execute(['id' => $id]);
-            /** @var array{playlist_id: int, title: string, is_locked: int}|false $playlist */
+            /** @var array{playlist_id: int|string, title: string, is_locked: int|string}|false $playlist */
             $playlist = $stmt->fetch();
 
             if ($playlist === false) {
@@ -831,8 +831,9 @@ HELP
                 return self::FAILURE;
             }
 
-            // Check if locked
-            if ($playlist['is_locked'] === 1) {
+            $playlistId = (int) $playlist['playlist_id'];
+            $isLocked = is_numeric($playlist['is_locked']) ? (int) $playlist['is_locked'] : 0;
+            if ($isLocked === 1) {
                 $this->io()->error("Playlist #$id is locked and cannot be deleted");
                 return self::FAILURE;
             }
@@ -855,7 +856,7 @@ HELP
         }
 
         try {
-            $this->deletePlaylistWithKvs($playlist['playlist_id']);
+            $this->deletePlaylistWithKvs($playlistId);
             $this->io()->success("Playlist #$id deleted with KVS cleanup");
 
             return self::SUCCESS;
