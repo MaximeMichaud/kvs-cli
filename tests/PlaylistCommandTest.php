@@ -351,6 +351,33 @@ class PlaylistCommandTest extends TestCase
         );
     }
 
+    public function testPlaylistAddExistingVideoRecountsLikeKvsAdmin(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('playlists') . ' SET total_videos = 99 WHERE playlist_id = 30');
+
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 30,
+            '--video' => 100,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('already in playlist', $this->tester->getDisplay());
+        $this->assertSame(
+            2,
+            (int) $this->db->query(
+                'SELECT total_videos FROM ' . TestHelper::table('playlists') . ' WHERE playlist_id = 30'
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            1,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('fav_videos') .
+                ' WHERE playlist_id = 30 AND video_id = 100'
+            )->fetchColumn()
+        );
+    }
+
     public function testPlaylistRemoveMissingId(): void
     {
         $this->tester->execute([

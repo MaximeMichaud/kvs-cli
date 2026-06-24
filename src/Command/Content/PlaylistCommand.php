@@ -682,6 +682,7 @@ HELP
             $alreadyExists = ((int) $stmt->fetchColumn()) > 0;
 
             if ($alreadyExists) {
+                $this->recountAfterFavChange($db, $videoId, $ownerUserId);
                 $db->commit();
                 $this->io()->note("Video #$videoId is already in playlist #$playlistId");
                 return self::SUCCESS;
