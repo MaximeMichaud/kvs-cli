@@ -403,7 +403,7 @@ HELP
             'album_update' => 'Updating album files',
         ];
 
-        $enabledTypes = $taskTypesStr !== '' ? explode(',', $taskTypesStr) : [];
+        $enabledTypes = $this->parseTaskTypes($taskTypesStr);
 
         $this->io()->newLine();
         $this->io()->section('Task Types');
@@ -423,6 +423,32 @@ HELP
             $this->io()->newLine();
             $this->io()->text('<fg=cyan>✓ Process any available task when free</>');
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parseTaskTypes(string $taskTypes): array
+    {
+        if ($taskTypes === '') {
+            return [];
+        }
+
+        $unserialized = @unserialize($taskTypes, ['allowed_classes' => false]);
+        if (is_array($unserialized)) {
+            $types = [];
+            foreach ($unserialized as $value) {
+                if (is_string($value)) {
+                    $types[] = $value;
+                }
+            }
+            return $types;
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode(',', $taskTypes)),
+            static fn (string $value): bool => $value !== ''
+        ));
     }
 
     /**

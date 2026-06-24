@@ -160,6 +160,20 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testConversionShowParsesSerializedTaskTypes(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/\x{2713}\s+New videos from admins/u', $output);
+    }
+
     public function testConversionShowDisplaysFtpConnectionInfo(): void
     {
         $this->tester->execute([
