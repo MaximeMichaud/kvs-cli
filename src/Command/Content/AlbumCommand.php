@@ -227,11 +227,6 @@ HELP
 
             $this->io()->section("Album #$id");
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')}_images WHERE album_id = :id");
-            $stmt->execute(['id' => $id]);
-            $imageCount = $stmt->fetchColumn();
-            $imageCountValue = is_numeric($imageCount) ? (int) $imageCount : 0;
-
             $title = isset($album['title']) && is_string($album['title']) ? $album['title'] : '';
             $statusIdVal = $album['status_id'] ?? 0;
             $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
@@ -241,6 +236,8 @@ HELP
             $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
             $viewedVal = $album['album_viewed'] ?? 0;
             $views = is_numeric($viewedVal) ? (int) $viewedVal : 0;
+            $photosAmountVal = $album['photos_amount'] ?? 0;
+            $imageCountValue = is_numeric($photosAmountVal) ? (int) $photosAmountVal : 0;
             $username = isset($album['username']) && is_string($album['username']) && $album['username'] !== ''
                 ? $album['username']
                 : 'N/A';

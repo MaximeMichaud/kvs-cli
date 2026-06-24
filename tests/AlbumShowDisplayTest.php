@@ -36,20 +36,20 @@ class AlbumShowDisplayTest extends TestCase
         }
     }
 
-    public function testAlbumShowDisplaysCountedImages(): void
+    public function testAlbumShowDisplaysStoredPhotosAmountLikeKvsAdmin(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating INTEGER, rating_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating INTEGER, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec("INSERT INTO ktvs_users VALUES (7, 'owner')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(1, 7, 'Album With Images', 1, 1, '2024-01-01 00:00:00', 12, 40, 10)"
+            "(1, 7, 'Album With Images', 1, 1, '2024-01-01 00:00:00', 12, 40, 10, 7)"
         );
         $db->exec('INSERT INTO ktvs_albums_images VALUES (1), (1), (1)');
 
@@ -62,7 +62,7 @@ class AlbumShowDisplayTest extends TestCase
         $this->assertStringContainsString('Images', $output);
         $this->assertMatchesRegularExpression('/Access\s*│\s*Private/', $output);
         $this->assertMatchesRegularExpression('/User\s*│\s*owner/', $output);
-        $this->assertMatchesRegularExpression('/Images\s*│\s*3/', $output);
+        $this->assertMatchesRegularExpression('/Images\s*│\s*7/', $output);
     }
 
     private function createSqliteConnection(): \PDO
