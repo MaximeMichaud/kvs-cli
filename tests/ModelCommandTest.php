@@ -138,7 +138,7 @@ class ModelCommandTest extends TestCase
         $this->assertStringNotContainsString('Disabled Model', $output);
     }
 
-    public function testListModelsUsesStoredContentCounts(): void
+    public function testListModelsUsesKvsAdminRelationContentCounts(): void
     {
         $this->db->exec(
             'UPDATE ' . TestHelper::table('models') .
@@ -157,8 +157,8 @@ class ModelCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame(30, (int) $rows[0]['model_id']);
-        $this->assertSame(9, (int) $rows[0]['videos']);
-        $this->assertSame(8, (int) $rows[0]['albums']);
+        $this->assertSame(2, (int) $rows[0]['videos']);
+        $this->assertSame(1, (int) $rows[0]['albums']);
     }
 
     #[DataProvider('provideOutputFormats')]

@@ -114,10 +114,10 @@ HELP
             return $this->countModels($db, $fromClause, $whereClause, $params);
         }
 
-        // Build query with stored content counts and country.
+        // Match KVS admin model listing counters, which are derived from relation tables.
         $query = "SELECT m.*,
-                 m.total_videos as video_count,
-                 m.total_albums as album_count,
+                 (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
+                 (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
                  c.title as country_name
                  $fromClause
                  LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
