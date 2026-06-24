@@ -153,7 +153,7 @@ HELP
 
         // Errors filter
         if ($input->getOption('errors')) {
-            $query .= " AND s.error_iteration > 1";
+            $query .= " AND s.status_id != 0 AND s.error_iteration > 1";
         }
 
         $query .= " ORDER BY s.server_id ASC LIMIT :limit";
@@ -196,7 +196,7 @@ HELP
                     'load' => number_format($load, 2),
                     'api_version' => $server['api_version'] ?? '',
                     'heartbeat' => $this->formatHeartbeat($this->getStringField($server, 'heartbeat_date')),
-                    'has_error' => $errorIter > 1 ? 'Yes' : 'No',
+                    'has_error' => $statusId !== 0 && $errorIter > 1 ? 'Yes' : 'No',
                     'debug' => $isDebug === 1 ? 'On' : 'Off',
                 ];
             }, $servers);
@@ -737,7 +737,7 @@ HELP
                     SUM(free_space) as free_space,
                     AVG(`load`) as avg_load,
                     SUM(max_tasks) as total_capacity,
-                    SUM(CASE WHEN error_iteration > 1 THEN 1 ELSE 0 END) as servers_with_errors,
+                    SUM(CASE WHEN status_id != 0 AND error_iteration > 1 THEN 1 ELSE 0 END) as servers_with_errors,
                     SUM(CASE WHEN is_debug_enabled = 1 THEN 1 ELSE 0 END) as debug_enabled
                 FROM {$this->table('admin_conversion_servers')}
             ");

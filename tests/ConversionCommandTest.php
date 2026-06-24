@@ -86,6 +86,59 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('Yes', $rows[0]['has_error']);
     }
 
+    public function testConversionListIgnoresDisabledServerErrorsLikeKvsAdmin(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
+            ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
+            'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_folder, total_space, free_space, `load`, heartbeat_date, ' .
+            'api_version, error_id, error_iteration, added_date) VALUES ' .
+            "(5, 'Disabled Error Converter', 0, '', 1, 1, 0, 14, 0, 0, 0, 0, " .
+            "'/tmp/kvs-disabled-error-converter', '', '', '', '', 1073741824, 536870912, 0.10, " .
+            "'2026-05-26 10:00:00', '7.0.0', 2, 3, '2026-05-24 10:00:00')"
+        );
+
+        $testerList = new CommandTester($this->command);
+        $testerList->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title,has_error',
+        ]);
+
+        $rows = json_decode($testerList->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $testerList->getStatusCode());
+        $this->assertSame('No', $rowsById[5]['has_error']);
+
+        $testerErrors = new CommandTester($this->command);
+        $testerErrors->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--errors' => true,
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,title,has_error',
+        ]);
+
+        $errorRows = json_decode($testerErrors->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $testerErrors->getStatusCode());
+        $this->assertSame([3], array_map(static fn (array $row): int => (int) $row['server_id'], $errorRows));
+
+        $testerStats = new CommandTester($this->command);
+        $testerStats->execute([
+            '--force' => true,
+            'action' => 'stats',
+        ]);
+
+        $this->assertEquals(0, $testerStats->getStatusCode());
+        $this->assertMatchesRegularExpression('/With Errors\W+1/', $testerStats->getDisplay());
+    }
+
     public function testConversionListJsonFormat(): void
     {
         $testerJson = new CommandTester($this->command);
