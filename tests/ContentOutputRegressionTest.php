@@ -750,7 +750,7 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
     }
 
-    public function testUserListUsesKvsMaintainedContentCounters(): void
+    public function testUserListUsesKvsAdminContentCounts(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -779,8 +779,8 @@ class ContentOutputRegressionTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame(1, (int) $rows[0]['id']);
-        $this->assertSame(0, (int) $rows[0]['videos']);
-        $this->assertSame(0, (int) $rows[0]['albums']);
+        $this->assertSame(3, (int) $rows[0]['videos']);
+        $this->assertSame(2, (int) $rows[0]['albums']);
     }
 
     public function testUserShowUsesKvsGenderLabels(): void
