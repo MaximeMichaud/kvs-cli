@@ -1040,6 +1040,17 @@ HELP
             // Title
             $title = $this->getStringOption($input, 'title');
             if ($title !== null) {
+                $stmt = $db->prepare("
+                    SELECT category_id
+                    FROM {$this->table('categories')}
+                    WHERE title = :title AND category_id != :id
+                ");
+                $stmt->execute(['title' => $title, 'id' => $id]);
+                if ($stmt->fetch() !== false) {
+                    $this->io()->error("Category already exists: $title");
+                    return self::FAILURE;
+                }
+
                 $updates[] = 'title = :title';
                 $params['title'] = $title;
             }

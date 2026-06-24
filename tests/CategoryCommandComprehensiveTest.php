@@ -158,6 +158,29 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Category not found: 99999', $output);
     }
 
+    public function testUpdatePreventsDuplicateTitlesLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '20',
+            '--title' => 'Action',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category already exists: Action', $output);
+        $this->assertSame(
+            'Drama',
+            $this->db->query('SELECT title FROM ' . TestHelper::table('categories') . ' WHERE category_id = 20')
+                ->fetchColumn()
+        );
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('categories') . " WHERE title = 'Action'")
+                ->fetchColumn()
+        );
+    }
+
     public function testUpdateWithoutChanges(): void
     {
         $exitCode = $this->tester->execute([
