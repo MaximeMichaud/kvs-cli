@@ -323,19 +323,6 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will delete video #$id using KVS native cleanup");
-        $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
-
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
-            if (!$input->isInteractive()) {
-                $this->io()->error('Video deletion cancelled because confirmation was not provided.');
-                return self::FAILURE;
-            }
-
-            $this->io()->warning('Video deletion cancelled');
-            return self::SUCCESS;
-        }
-
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -348,6 +335,19 @@ HELP
             if (!is_numeric($videoId)) {
                 $this->io()->error("Video not found: #$id");
                 return self::FAILURE;
+            }
+
+            $this->io()->warning("This will delete video #$id using KVS native cleanup");
+            $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
+
+            if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Video deletion cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
+                $this->io()->warning('Video deletion cancelled');
+                return self::SUCCESS;
             }
 
             $this->deleteVideoWithKvs((int) $videoId);

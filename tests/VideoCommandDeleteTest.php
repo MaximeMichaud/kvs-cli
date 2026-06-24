@@ -119,6 +119,46 @@ class VideoCommandDeleteTest extends TestCase
         $this->assertStringContainsString('Video not found', $tester->getDisplay());
     }
 
+    public function testDeleteVideoNonInteractiveMissingVideoReportsNotFoundWithoutPrompt(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends VideoCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:video');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deleteVideoWithKvs(int $videoId): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'delete',
+            'id' => '999',
+        ], ['interactive' => false]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('Video not found: #999', $display);
+        $this->assertStringNotContainsString('This will delete video #999', $display);
+    }
+
     public function testDeleteVideoNoInteractionFailsWithoutCleanup(): void
     {
         $db = new \PDO('sqlite::memory:');
