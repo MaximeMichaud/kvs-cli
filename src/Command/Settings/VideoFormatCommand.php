@@ -102,6 +102,7 @@ HELP
                 f.title,
                 f.postfix,
                 f.status_id,
+                CASE WHEN f.status_id = 2 AND f.is_conditional = 1 THEN 9 ELSE f.status_id END as display_status_id,
                 f.size,
                 f.access_level_id,
                 f.is_download_enabled,
@@ -128,12 +129,11 @@ HELP
             $validStatusIds = array_values($statusMap);
             // Accept case-insensitive strings and numeric values
             $statusLower = strtolower($status);
+            $statusId = null;
             if (isset($statusMap[$statusLower])) {
-                $query .= " AND f.status_id = :status";
-                $params['status'] = $statusMap[$statusLower];
+                $statusId = $statusMap[$statusLower];
             } elseif (ctype_digit($status) && in_array((int) $status, $validStatusIds, true)) {
-                $query .= " AND f.status_id = :status";
-                $params['status'] = (int) $status;
+                $statusId = (int) $status;
             } else {
                 $this->io()->error(sprintf(
                     'Invalid value for --status: %s. Expected one of: %s.',
@@ -141,6 +141,17 @@ HELP
                     implode(', ', array_merge(array_keys($statusMap), array_map('strval', $validStatusIds)))
                 ));
                 return self::FAILURE;
+            }
+
+            if ($statusId === StatusFormatter::FORMAT_CONDITIONAL) {
+                $query .= " AND f.status_id = :status AND f.is_conditional = 1";
+                $params['status'] = StatusFormatter::FORMAT_OPTIONAL;
+            } else {
+                $query .= " AND f.status_id = :status";
+                $params['status'] = $statusId;
+                if ($statusId === StatusFormatter::FORMAT_OPTIONAL) {
+                    $query .= " AND COALESCE(f.is_conditional, 0) = 0";
+                }
             }
         }
 
@@ -167,7 +178,8 @@ HELP
             // Transform data for display
             $formats = array_map(function (array $format): array {
                 $format['id'] = $format['format_video_id'];
-                $statusId = isset($format['status_id']) && is_numeric($format['status_id']) ? (int) $format['status_id'] : 0;
+                $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
                 $format['status'] = StatusFormatter::videoFormat($statusId, false);
 
                 $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id']) ? (int) $format['access_level_id'] : 0;
@@ -215,6 +227,7 @@ HELP
         try {
             $stmt = $db->prepare("
                 SELECT f.*,
+                       CASE WHEN f.status_id = 2 AND f.is_conditional = 1 THEN 9 ELSE f.status_id END as display_status_id,
                        CASE WHEN f.is_hotlink_protection_disabled = 1 THEN 0 ELSE 1 END as is_hotlink_protection_enabled,
                        g.title as group_title
                 FROM {$this->table('formats_videos')} f
@@ -235,8 +248,8 @@ HELP
 
             // Basic Info section
             $this->io()->section('Basic Info');
-            $statusId = isset($format['status_id']) && is_numeric($format['status_id'])
-                ? (int) $format['status_id'] : 0;
+            $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
+            $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
             $groupId = isset($format['format_video_group_id']) && is_numeric($format['format_video_group_id'])
                 ? (int) $format['format_video_group_id'] : 0;
             $groupTitle = isset($format['group_title']) && is_string($format['group_title'])

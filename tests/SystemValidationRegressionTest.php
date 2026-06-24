@@ -389,6 +389,43 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/Hotlink Protection\W+Yes/', $tester->getDisplay());
     }
 
+    public function testVideoFormatListShowsConditionalStatusLikeKvsAdmin(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'format_video_id,status',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Conditional', $rows[1]['status']);
+    }
+
+    public function testVideoFormatListFiltersConditionalStatusLikeKvsAdmin(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'conditional',
+            '--fields' => 'format_video_id,status',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(2, (int) $rows[0]['format_video_id']);
+        $this->assertSame('Conditional', $rows[0]['status']);
+    }
+
     public function testVideoFormatGroupsRejectsListFilters(): void
     {
         $this->createVideoFormatTables();
@@ -509,6 +546,7 @@ class SystemValidationRegressionTest extends TestCase
             title TEXT,
             postfix TEXT,
             status_id INTEGER,
+            is_conditional INTEGER,
             size TEXT,
             access_level_id INTEGER,
             is_download_enabled INTEGER,
@@ -529,9 +567,11 @@ class SystemValidationRegressionTest extends TestCase
         );
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos " .
-            "(format_video_id, title, postfix, status_id, size, access_level_id, is_download_enabled, " .
+            "(format_video_id, title, postfix, status_id, is_conditional, size, access_level_id, is_download_enabled, " .
             "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, ffmpeg_options) " .
-            "VALUES (1, 'MP4 480p', '.mp4', 1, '848x480', 0, 0, 1, 1, 0, '-vcodec libx264')"
+            "VALUES " .
+            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, '-vcodec libx264'), " .
+            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, '')"
         );
     }
 
