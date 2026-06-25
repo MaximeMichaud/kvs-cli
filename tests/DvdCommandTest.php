@@ -153,6 +153,23 @@ class DvdCommandTest extends TestCase
         $this->assertSame(5, (int) $rows[0]['subscribers_amount']);
     }
 
+    public function testListDvdsExposesKvsAdminCommentsAmountField(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,comments_amount',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+    }
+
     public function testListDvdsDisabledStatus(): void
     {
         $this->tester->execute([
@@ -295,6 +312,10 @@ class DvdCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
             'dvd_id INTEGER, duration INTEGER)'
         );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
+            'object_type_id INTEGER, object_id INTEGER)'
+        );
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('dvds') .
@@ -305,6 +326,10 @@ class DvdCommandTest extends TestCase
             "(10, 'Other Channel', 1, 2024, 50, 2, 12, 3, '', 99, 99)"
         );
         $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (30, 3600), (30, 90), (20, 120), (10, 300)');
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('comments') .
+            ' VALUES (5, 30), (5, 30), (5, 20), (1, 30)'
+        );
 
         return $db;
     }

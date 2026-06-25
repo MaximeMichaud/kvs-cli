@@ -119,6 +119,13 @@ HELP
             return $this->countDvds($db, $fromClause, $whereClause, $params);
         }
 
+        $commentsSelect = '';
+        if ($this->isDvdFieldRequested($input, 'comments_amount')) {
+            $commentsSelect = ",
+                        (SELECT COUNT(*) FROM {$this->table('comments')} c
+                         WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id) as comments_amount";
+        }
+
         $dvdFields = [
             'dvd_id',
             'title',
@@ -132,7 +139,7 @@ HELP
         $fieldList = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         $groupBy = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
 
-        $query = "SELECT d.*,
+        $query = "SELECT d.*$commentsSelect,
                         COUNT(v.dvd_id) as video_count,
                         COALESCE(SUM(v.duration), 0) as video_duration
                  FROM (
@@ -183,6 +190,7 @@ HELP
                     'release_year' => $dvd['release_year'] ?? '',
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
+                    'comments_amount' => $dvd['comments_amount'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
                     'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
@@ -334,6 +342,27 @@ HELP
             $this->io()->error('Failed to fetch DVD: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function isDvdFieldRequested(InputInterface $input, string $field): bool
+    {
+        $singleField = $this->getStringOption($input, 'field');
+        if ($singleField === $field) {
+            return true;
+        }
+
+        $fields = $this->getStringOption($input, 'fields');
+        if ($fields === null) {
+            return false;
+        }
+
+        foreach (array_map('trim', explode(',', $fields)) as $requestedField) {
+            if ($requestedField === $field) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function formatDvdDuration(int $seconds): string
