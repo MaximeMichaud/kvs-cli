@@ -184,6 +184,7 @@ HELP
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
+                    'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
                     'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
                 ];

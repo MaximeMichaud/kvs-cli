@@ -136,6 +136,23 @@ class DvdCommandTest extends TestCase
         $this->assertSame('1:01:30', $rows[0]['total_duration']);
     }
 
+    public function testListDvdsExposesKvsAdminSubscribersAmountField(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,subscribers_amount',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame(5, (int) $rows[0]['subscribers_amount']);
+    }
+
     public function testListDvdsDisabledStatus(): void
     {
         $this->tester->execute([
