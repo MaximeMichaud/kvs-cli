@@ -161,6 +161,29 @@ class ModelCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['albums']);
     }
 
+    public function testListModelsExposesKvsAdminCountFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,videos_amount,albums_amount,posts_amount,other_amount,all_amount,comments_amount,subscribers_amount',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(2, (int) $rows[0]['posts_amount']);
+        $this->assertSame(7, (int) $rows[0]['other_amount']);
+        $this->assertSame(12, (int) $rows[0]['all_amount']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+        $this->assertSame(6, (int) $rows[0]['subscribers_amount']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListModelsFormats(string $format): void
     {
@@ -266,7 +289,8 @@ class ModelCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('models') . ' (' .
             'model_id INTEGER, title TEXT, status_id INTEGER, model_viewed INTEGER, country TEXT, ' .
             'birth_date TEXT, age INTEGER, measurements TEXT, height TEXT, weight TEXT, rank INTEGER, ' .
-            'rating INTEGER, rating_amount INTEGER, description TEXT, total_videos INTEGER, total_albums INTEGER)'
+            'rating INTEGER, rating_amount INTEGER, description TEXT, total_videos INTEGER, total_albums INTEGER, ' .
+            'total_dvds INTEGER, total_dvd_groups INTEGER, subscribers_count INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models_videos') . ' (' .
@@ -277,6 +301,14 @@ class ModelCommandTest extends TestCase
             'model_id INTEGER, album_id INTEGER)'
         );
         $db->exec(
+            'CREATE TABLE ' . TestHelper::table('models_posts') . ' (' .
+            'model_id INTEGER, post_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
+            'object_type_id INTEGER, object_id INTEGER)'
+        );
+        $db->exec(
             'CREATE TABLE ' . TestHelper::table('list_countries') . ' (' .
             'country_code TEXT, language_code TEXT, title TEXT)'
         );
@@ -284,16 +316,22 @@ class ModelCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
             ' (model_id, title, status_id, model_viewed, country, birth_date, age, measurements, height, ' .
-            'weight, rank, rating, rating_amount, description, total_videos, total_albums) VALUES ' .
-            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', '55 kg', 7, 40, 10, 'Main model profile', 2, 1), " .
-            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1), " .
-            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0)"
+            'weight, rank, rating, rating_amount, description, total_videos, total_albums, total_dvds, ' .
+            'total_dvd_groups, subscribers_count) VALUES ' .
+            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', '55 kg', 7, 40, 10, 'Main model profile', 2, 1, 3, 4, 6), " .
+            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1, 0, 0, 0), " .
+            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0, 0, 0, 1)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models_videos') .
             ' VALUES (30, 1), (30, 2), (20, 3), (10, 4)'
         );
         $db->exec('INSERT INTO ' . TestHelper::table('models_albums') . ' VALUES (30, 1), (20, 2)');
+        $db->exec('INSERT INTO ' . TestHelper::table('models_posts') . ' VALUES (30, 1), (30, 2), (20, 3)');
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('comments') .
+            ' VALUES (4, 30), (4, 30), (4, 20), (5, 30)'
+        );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('list_countries') .
             " VALUES ('CA', 'en', 'Canada'), ('US', 'en', 'United States')"

@@ -114,11 +114,13 @@ HELP
             return $this->countModels($db, $fromClause, $whereClause, $params);
         }
 
+        $extraSelectSql = $this->buildModelExtraSelectSql($input);
+
         // Match KVS admin model listing counters, which are derived from relation tables.
         $query = "SELECT m.*,
                  (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
                  (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
-                 c.title as country_name
+                 c.title as country_name$extraSelectSql
                  $fromClause
                  LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
                  $whereClause
@@ -152,8 +154,15 @@ HELP
                     'status' => StatusFormatter::model($statusId, false),
                     'video_count' => $model['video_count'] ?? 0,
                     'videos' => $model['video_count'] ?? 0,
+                    'videos_amount' => $model['video_count'] ?? 0,
                     'album_count' => $model['album_count'] ?? 0,
                     'albums' => $model['album_count'] ?? 0,
+                    'albums_amount' => $model['album_count'] ?? 0,
+                    'posts_amount' => $model['posts_amount'] ?? 0,
+                    'other_amount' => $model['other_amount'] ?? 0,
+                    'all_amount' => $model['all_amount'] ?? 0,
+                    'comments_amount' => $model['comments_amount'] ?? 0,
+                    'subscribers_amount' => $model['subscribers_count'] ?? 0,
                     'model_viewed' => $model['model_viewed'] ?? 0,
                     'views' => $model['model_viewed'] ?? 0,
                     'country_name' => $model['country_name'] ?? '',
@@ -290,6 +299,59 @@ HELP
             $this->io()->error('Failed to fetch model: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function buildModelExtraSelectSql(InputInterface $input): string
+    {
+        $extraSelects = [];
+        if ($this->isModelFieldRequested($input, 'posts_amount') || $this->isModelFieldRequested($input, 'all_amount')) {
+            $extraSelects[] = "(
+                SELECT COUNT(*)
+                FROM {$this->table('models_posts')} mp
+                WHERE mp.model_id = m.model_id
+            ) as posts_amount";
+        }
+        if ($this->isModelFieldRequested($input, 'other_amount') || $this->isModelFieldRequested($input, 'all_amount')) {
+            $extraSelects[] = "(m.total_dvds + m.total_dvd_groups) as other_amount";
+        }
+        if ($this->isModelFieldRequested($input, 'all_amount')) {
+            $extraSelects[] = "(
+                (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) +
+                (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) +
+                (SELECT COUNT(*) FROM {$this->table('models_posts')} mp_all WHERE mp_all.model_id = m.model_id) +
+                m.total_dvds + m.total_dvd_groups
+            ) as all_amount";
+        }
+        if ($this->isModelFieldRequested($input, 'comments_amount')) {
+            $extraSelects[] = "(
+                SELECT COUNT(*)
+                FROM {$this->table('comments')} cm
+                WHERE cm.object_type_id = 4 AND cm.object_id = m.model_id
+            ) as comments_amount";
+        }
+
+        return $extraSelects === [] ? '' : ",\n                 " . implode(",\n                 ", $extraSelects);
+    }
+
+    private function isModelFieldRequested(InputInterface $input, string $field): bool
+    {
+        $singleField = $this->getStringOption($input, 'field');
+        if ($singleField === $field) {
+            return true;
+        }
+
+        $fields = $this->getStringOption($input, 'fields');
+        if ($fields === null) {
+            return false;
+        }
+
+        foreach (array_map('trim', explode(',', $fields)) as $requestedField) {
+            if ($requestedField === $field) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function showStats(): int
