@@ -155,8 +155,15 @@ HELP
             return $this->countPlaylists($db, $fromClause, $params);
         }
 
+        $commentsTable = $this->table('comments');
+        $favVideosTable = $this->table('fav_videos');
+
         $query = "SELECT p.*, u.username,
-                        (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
+                        (SELECT COUNT(*) FROM $favVideosTable f WHERE f.playlist_id = p.playlist_id) as video_count,
+                        (
+                            SELECT COUNT(*) FROM $commentsTable c
+                            WHERE c.object_type_id = 13 AND c.object_id = p.playlist_id
+                        ) as comments_amount
                  $fromClause
                  ORDER BY p.added_date DESC LIMIT :limit";
 
@@ -194,7 +201,9 @@ HELP
                     'is_private' => $isPrivate,
                     'type' => $isPrivate !== 0 ? 'Private' : 'Public',  // Alias
                     'total_videos' => $playlist['video_count'] ?? 0,
+                    'videos_amount' => $playlist['video_count'] ?? 0,
                     'videos' => $playlist['video_count'] ?? 0,  // Alias
+                    'comments_amount' => $playlist['comments_amount'] ?? 0,
                     'username' => $playlist['username'] ?? '',
                     'user' => $playlist['username'] ?? '',  // Alias
                     'playlist_viewed' => $playlist['playlist_viewed'] ?? 0,

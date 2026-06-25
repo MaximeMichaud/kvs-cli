@@ -597,6 +597,7 @@ class ContentOutputRegressionTest extends TestCase
             'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -641,6 +642,7 @@ class ContentOutputRegressionTest extends TestCase
             'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(

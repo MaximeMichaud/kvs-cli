@@ -149,6 +149,24 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['videos']);
     }
 
+    public function testPlaylistListExposesKvsAdminCountFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,videos_amount,comments_amount',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+    }
+
     public function testPlaylistListCsvFormat(): void
     {
         ob_start();
@@ -527,6 +545,10 @@ class PlaylistCommandTest extends TestCase
             'playlist_sort_id INTEGER, added_date TEXT)'
         );
         $db->exec(
+            'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
+            'comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
+        );
+        $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
             'video_id INTEGER, title TEXT, favourites_count INTEGER)'
         );
@@ -574,6 +596,11 @@ class PlaylistCommandTest extends TestCase
             "(1, 100, 10, 30, 1, '2026-05-26 10:10:00'), " .
             "(1, 101, 10, 30, 2, '2026-05-26 10:20:00'), " .
             "(1, 102, 10, 20, 1, '2026-05-25 10:10:00')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('comments') .
+            ' (comment_id, object_type_id, object_id) VALUES ' .
+            '(1, 13, 30), (2, 13, 30), (3, 1, 30), (4, 13, 20)'
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories') .
