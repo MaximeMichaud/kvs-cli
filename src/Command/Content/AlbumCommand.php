@@ -135,8 +135,14 @@ HELP
                 return self::SUCCESS;
             }
 
+            $commentsTable = $this->table('comments');
+
             $query = "SELECT a.*, u.username,
-                 a.photos_amount as image_count
+                 a.photos_amount as image_count,
+                 (
+                     SELECT COUNT(*) FROM $commentsTable c
+                     WHERE c.object_type_id = 2 AND c.object_id = a.album_id
+                 ) as comments_count
                  {$fromClause}
                  {$whereClause}
                  ORDER BY a.post_date DESC LIMIT :limit";
@@ -170,6 +176,7 @@ HELP
                     'id' => $album['album_id'] ?? 0,  // Alias
                     'title' => $album['title'] ?? '',
                     'image_count' => $album['image_count'] ?? 0,
+                    'photos_amount' => $album['photos_amount'] ?? 0,
                     'images' => $album['image_count'] ?? 0,  // Alias
                     'status_id' => $statusId,
                     'status' => StatusFormatter::album($statusId, false),  // Alias
@@ -179,6 +186,9 @@ HELP
                     'post_date' => $album['post_date'] ?? '',
                     'album_viewed' => $album['album_viewed'] ?? 0,
                     'views' => $album['album_viewed'] ?? 0,  // Alias
+                    'comments_count' => $album['comments_count'] ?? 0,
+                    'favourites_count' => $album['favourites_count'] ?? 0,
+                    'purchases_count' => $album['purchases_count'] ?? 0,
                     'rating' => $calculatedRating,
                 ];
             }, $albums);

@@ -156,6 +156,7 @@ class ContentStatusFilterTest extends TestCase
             'album_viewed INTEGER, rating_amount INTEGER, rating REAL, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users (user_id, username) VALUES (1, 'user')");
         $db->exec(

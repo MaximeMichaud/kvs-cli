@@ -310,6 +310,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -354,6 +355,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -381,6 +383,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -432,6 +435,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
