@@ -125,6 +125,14 @@ HELP
                         (SELECT COUNT(*) FROM {$this->table('comments')} c
                          WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id) as comments_amount";
         }
+        $includeGroupFields = $this->isDvdFieldRequested($input, 'dvd_group')
+            || $this->isDvdFieldRequested($input, 'dvd_group_status_id');
+        $groupSelect = $includeGroupFields ? ",
+                        dg.title as dvd_group,
+                        dg.status_id as dvd_group_status_id" : '';
+        $groupJoin = $includeGroupFields
+            ? "LEFT JOIN {$this->table('dvds_groups')} dg ON dg.dvd_group_id = d.dvd_group_id"
+            : '';
 
         $dvdFields = [
             'dvd_id',
@@ -136,10 +144,16 @@ HELP
             'rating',
             'rating_amount',
         ];
+        if ($includeGroupFields) {
+            $dvdFields[] = 'dvd_group_id';
+        }
         $fieldList = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         $groupBy = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
+        if ($includeGroupFields) {
+            $groupBy .= ', dg.title, dg.status_id';
+        }
 
-        $query = "SELECT d.*$commentsSelect,
+        $query = "SELECT d.*$commentsSelect$groupSelect,
                         COUNT(v.dvd_id) as video_count,
                         COALESCE(SUM(v.duration), 0) as video_duration
                  FROM (
@@ -148,6 +162,7 @@ HELP
                      $whereClause
                      ORDER BY d.dvd_id DESC LIMIT :limit
                  ) d
+                 $groupJoin
                  LEFT JOIN {$this->table('videos')} v ON v.dvd_id = d.dvd_id
                  GROUP BY $groupBy
                  ORDER BY d.dvd_id DESC";
@@ -190,6 +205,8 @@ HELP
                     'release_year' => $this->formatDvdReleaseYear($dvd['release_year'] ?? null),
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
+                    'dvd_group' => $dvd['dvd_group'] ?? '',
+                    'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
                     'comments_amount' => $dvd['comments_amount'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
                     'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
