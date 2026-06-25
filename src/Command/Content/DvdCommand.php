@@ -187,7 +187,7 @@ HELP
                     'total_videos_duration' => $duration,
                     'total_duration' => $this->formatDvdDuration($duration),
                     'duration' => $this->formatDvdDuration($duration),
-                    'release_year' => $dvd['release_year'] ?? '',
+                    'release_year' => $this->formatDvdReleaseYear($dvd['release_year'] ?? null),
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
                     'comments_amount' => $dvd['comments_amount'] ?? 0,
@@ -311,7 +311,7 @@ HELP
 
             // Release year
             $releaseYear = $dvd['release_year'] ?? null;
-            if ($releaseYear !== null && $releaseYear !== '') {
+            if ($this->hasDvdReleaseYear($releaseYear)) {
                 $info[] = ['Release Year', is_scalar($releaseYear) ? (string) $releaseYear : ''];
             }
 
@@ -363,6 +363,29 @@ HELP
         }
 
         return false;
+    }
+
+    private function formatDvdReleaseYear(mixed $releaseYear): int|string
+    {
+        if (is_numeric($releaseYear)) {
+            $year = (int) $releaseYear;
+            return $year === 0 ? '-' : $year;
+        }
+
+        if ($releaseYear === null || $releaseYear === '') {
+            return '-';
+        }
+
+        return is_scalar($releaseYear) ? (string) $releaseYear : '-';
+    }
+
+    private function hasDvdReleaseYear(mixed $releaseYear): bool
+    {
+        if (is_numeric($releaseYear)) {
+            return (int) $releaseYear > 0;
+        }
+
+        return $releaseYear !== null && $releaseYear !== '';
     }
 
     private function formatDvdDuration(int $seconds): string

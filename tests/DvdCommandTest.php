@@ -170,6 +170,24 @@ class DvdCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['comments_amount']);
     }
 
+    public function testListDvdsFormatsZeroReleaseYearLikeKvsAdmin(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('dvds') . ' SET release_year = 0 WHERE dvd_id = 10');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,release_year',
+            '--limit' => '3',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'dvd_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('-', $rowsById[10]['release_year']);
+    }
+
     public function testListDvdsDisabledStatus(): void
     {
         $this->tester->execute([
@@ -242,6 +260,22 @@ class DvdCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/Total Duration\W+1:01:30/', $output);
         $this->assertStringContainsString('4.0/5 (10 votes)', $output);
         $this->assertStringContainsString('Long running series', $output);
+    }
+
+    public function testShowDvdOmitsZeroReleaseYearLikeKvsAdmin(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('dvds') . ' SET release_year = 0 WHERE dvd_id = 10');
+
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('DVD: Other Channel', $output);
+        $this->assertStringNotContainsString('Release Year', $output);
     }
 
     public function testShowDvdNotFound(): void
