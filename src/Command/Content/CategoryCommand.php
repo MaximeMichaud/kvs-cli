@@ -199,6 +199,12 @@ HELP
                 $category['album_count'] = $counts['albums'];
                 $category['total_usage'] = array_sum($counts);
                 $category['status'] = StatusFormatter::category($statusId, false);
+                $otherAmount = $this->getCategoryStoredOtherAmount($category);
+                $category['videos_amount'] = $counts['videos'];
+                $category['albums_amount'] = $counts['albums'];
+                $category['posts_amount'] = $counts['posts'];
+                $category['other_amount'] = $otherAmount;
+                $category['all_amount'] = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
 
                 return [
                     ...$category,
@@ -1170,6 +1176,20 @@ HELP
         }
 
         return $this->getStringOption($input, 'parent');
+    }
+
+    /**
+     * @param array<string, mixed> $category
+     */
+    private function getCategoryStoredOtherAmount(array $category): int
+    {
+        $total = 0;
+        foreach (['total_content_sources', 'total_playlists', 'total_models', 'total_dvds', 'total_dvd_groups'] as $field) {
+            $value = $category[$field] ?? 0;
+            $total += is_numeric($value) ? (int) $value : 0;
+        }
+
+        return $total;
     }
 
     /**
