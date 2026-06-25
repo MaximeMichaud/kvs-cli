@@ -184,6 +184,25 @@ class ModelCommandTest extends TestCase
         $this->assertSame(6, (int) $rows[0]['subscribers_amount']);
     }
 
+    public function testListModelsExposesKvsAdminLocationAndDeathDateFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,city,state,death_date',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame('Montreal', $rows[0]['city']);
+        $this->assertSame('Quebec', $rows[0]['state']);
+        $this->assertSame('2026-01-01', $rows[0]['death_date']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListModelsFormats(string $format): void
     {
@@ -290,7 +309,8 @@ class ModelCommandTest extends TestCase
             'model_id INTEGER, title TEXT, status_id INTEGER, model_viewed INTEGER, country TEXT, ' .
             'birth_date TEXT, age INTEGER, measurements TEXT, height TEXT, weight TEXT, rank INTEGER, ' .
             'rating INTEGER, rating_amount INTEGER, description TEXT, total_videos INTEGER, total_albums INTEGER, ' .
-            'total_dvds INTEGER, total_dvd_groups INTEGER, subscribers_count INTEGER)'
+            'total_dvds INTEGER, total_dvd_groups INTEGER, subscribers_count INTEGER, city TEXT, state TEXT, ' .
+            'death_date TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models_videos') . ' (' .
@@ -317,10 +337,11 @@ class ModelCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('models') .
             ' (model_id, title, status_id, model_viewed, country, birth_date, age, measurements, height, ' .
             'weight, rank, rating, rating_amount, description, total_videos, total_albums, total_dvds, ' .
-            'total_dvd_groups, subscribers_count) VALUES ' .
-            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', '55 kg', 7, 40, 10, 'Main model profile', 2, 1, 3, 4, 6), " .
-            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1, 0, 0, 0), " .
-            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0, 0, 0, 1)"
+            'total_dvd_groups, subscribers_count, city, state, death_date) VALUES ' .
+            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', " .
+            "'55 kg', 7, 40, 10, 'Main model profile', 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01'), " .
+            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1, 0, 0, 0, '', '', '0000-00-00'), " .
+            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0, 0, 0, 1, '', '', '0000-00-00')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models_videos') .
