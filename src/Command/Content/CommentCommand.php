@@ -174,6 +174,22 @@ HELP
                        END as object_type";
     }
 
+    private function isCommentFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        $fields = array_map('trim', explode(',', $fieldsOption));
+        return in_array($field, $fields, true);
+    }
+
     private function listComments(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
@@ -245,12 +261,23 @@ HELP
                 return self::SUCCESS;
             }
 
+            $countrySelect = '';
+            $countryJoin = '';
+            if ($this->isCommentFieldRequested($input, 'country')) {
+                $countrySelect = ', lc.title as country';
+                $countryJoin = "
+                LEFT JOIN {$this->table('list_countries')} lc
+                    ON c.country_code = lc.country_code AND lc.language_code = 'en'";
+            }
+
             $sql = "
                 SELECT c.*,
                        u.username,
                        {$this->getCommentObjectSelectSql()}
+                       $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
+                $countryJoin
                 WHERE $whereClause
                 ORDER BY $orderBy
                 LIMIT :limit
@@ -279,7 +306,12 @@ HELP
                     'object_id' => $comment['object_id'] ?? 0,
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
+                    'object' => $comment['object_title'] ?? '',
                     'comment' => $comment['comment'] ?? '',
+                    'comment_full' => $comment['comment'] ?? '',
+                    'country' => $comment['country'] ?? '',
+                    'rating' => $comment['rating'] ?? 0,
+                    'is_approved' => $comment['is_approved'] ?? 0,
                     'added_date' => $comment['added_date'] ?? '',
                 ];
             }, $comments);
@@ -546,12 +578,23 @@ HELP
                 return self::FAILURE;
             }
 
+            $countrySelect = '';
+            $countryJoin = '';
+            if ($this->isCommentFieldRequested($input, 'country')) {
+                $countrySelect = ', lc.title as country';
+                $countryJoin = "
+                LEFT JOIN {$this->table('list_countries')} lc
+                    ON c.country_code = lc.country_code AND lc.language_code = 'en'";
+            }
+
             $sql = "
                 SELECT c.*,
                        u.username,
                        {$this->getCommentObjectSelectSql()}
+                       $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
+                $countryJoin
                 WHERE $whereClause
                 ORDER BY $orderBy
                 LIMIT :limit
@@ -581,7 +624,12 @@ HELP
                     'username' => $comment['username'] ?? $comment['anonymous_username'] ?? 'Guest',
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
+                    'object' => $comment['object_title'] ?? '',
                     'comment' => $comment['comment'] ?? '',
+                    'comment_full' => $comment['comment'] ?? '',
+                    'country' => $comment['country'] ?? '',
+                    'rating' => $comment['rating'] ?? 0,
+                    'is_approved' => $comment['is_approved'] ?? 0,
                     'added_date' => $comment['added_date'] ?? '',
                 ];
             }, $comments);
