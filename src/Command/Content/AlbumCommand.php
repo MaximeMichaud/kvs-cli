@@ -136,14 +136,16 @@ HELP
             }
 
             $commentsTable = $this->table('comments');
+            [$relationSelectSql, $relationJoinSql] = $this->buildAlbumRelationSql($input);
 
-            $query = "SELECT a.*, u.username,
+            $query = "SELECT a.*, u.username$relationSelectSql,
                  a.photos_amount as image_count,
                  (
                      SELECT COUNT(*) FROM $commentsTable c
                      WHERE c.object_type_id = 2 AND c.object_id = a.album_id
                  ) as comments_count
                  {$fromClause}
+                 {$relationJoinSql}
                  {$whereClause}
                  ORDER BY a.post_date DESC LIMIT :limit";
 
@@ -171,26 +173,29 @@ HELP
                 $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
 
-                return [
-                    'album_id' => $album['album_id'] ?? 0,
-                    'id' => $album['album_id'] ?? 0,  // Alias
-                    'title' => $album['title'] ?? '',
-                    'image_count' => $album['image_count'] ?? 0,
-                    'photos_amount' => $album['photos_amount'] ?? 0,
-                    'images' => $album['image_count'] ?? 0,  // Alias
-                    'status_id' => $statusId,
-                    'status' => StatusFormatter::album($statusId, false),  // Alias
-                    'is_private' => $privacy,
-                    'access' => $privacy,
-                    'username' => $album['username'] ?? '',
-                    'post_date' => $album['post_date'] ?? '',
-                    'album_viewed' => $album['album_viewed'] ?? 0,
-                    'views' => $album['album_viewed'] ?? 0,  // Alias
-                    'comments_count' => $album['comments_count'] ?? 0,
-                    'favourites_count' => $album['favourites_count'] ?? 0,
-                    'purchases_count' => $album['purchases_count'] ?? 0,
-                    'rating' => $calculatedRating,
-                ];
+                return array_merge(
+                    [
+                        'album_id' => $album['album_id'] ?? 0,
+                        'id' => $album['album_id'] ?? 0,  // Alias
+                        'title' => $album['title'] ?? '',
+                        'image_count' => $album['image_count'] ?? 0,
+                        'photos_amount' => $album['photos_amount'] ?? 0,
+                        'images' => $album['image_count'] ?? 0,  // Alias
+                        'status_id' => $statusId,
+                        'status' => StatusFormatter::album($statusId, false),  // Alias
+                        'is_private' => $privacy,
+                        'access' => $privacy,
+                        'username' => $album['username'] ?? '',
+                        'post_date' => $album['post_date'] ?? '',
+                        'album_viewed' => $album['album_viewed'] ?? 0,
+                        'views' => $album['album_viewed'] ?? 0,  // Alias
+                        'comments_count' => $album['comments_count'] ?? 0,
+                        'favourites_count' => $album['favourites_count'] ?? 0,
+                        'purchases_count' => $album['purchases_count'] ?? 0,
+                        'rating' => $calculatedRating,
+                    ],
+                    $this->transformAlbumRelationFields($album)
+                );
             }, $albums);
 
             // Format and display output using centralized Formatter
@@ -205,6 +210,67 @@ HELP
             $this->io()->error('Failed to fetch albums: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function buildAlbumRelationSql(InputInterface $input): array
+    {
+        $selects = [];
+        $joins = [];
+
+        if ($this->isAlbumFieldRequested($input, 'content_source')) {
+            $selects[] = 'cs.title as content_source';
+            $selects[] = 'cs.status_id as content_source_status_id';
+            $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = a.content_source_id";
+        }
+
+        if ($this->isAlbumFieldRequested($input, 'admin_flag')) {
+            $selects[] = 'f.title as admin_flag';
+            $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = a.admin_flag_id";
+        }
+
+        if ($this->isAlbumFieldRequested($input, 'server_group')) {
+            $selects[] = 'sg.title as server_group';
+            $selects[] = 'sg.status_id as server_group_status_id';
+            $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = a.server_group_id";
+        }
+
+        return [
+            $selects === [] ? '' : ",\n                 " . implode(",\n                 ", $selects),
+            implode("\n                 ", $joins),
+        ];
+    }
+
+    private function isAlbumFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        return in_array($field, array_map('trim', explode(',', $fieldsOption)), true);
+    }
+
+    /**
+     * @param array<string, mixed> $album
+     * @return array<string, mixed>
+     */
+    private function transformAlbumRelationFields(array $album): array
+    {
+        return [
+            'content_source' => $album['content_source'] ?? '',
+            'content_source_status_id' => $album['content_source_status_id'] ?? '',
+            'admin_flag' => $album['admin_flag'] ?? '',
+            'server_group' => $album['server_group'] ?? '',
+            'server_group_status_id' => $album['server_group_status_id'] ?? '',
+        ];
     }
 
     private function showAlbum(?string $id): int

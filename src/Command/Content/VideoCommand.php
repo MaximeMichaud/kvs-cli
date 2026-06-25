@@ -103,8 +103,8 @@ HELP
         }
 
         $fromSql = "FROM {$this->table('videos')} v
-                 LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id
-                 WHERE 1=1";
+                 LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id";
+        $whereSql = 'WHERE 1=1';
 
         $params = [];
 
@@ -116,32 +116,32 @@ HELP
                 'error' => StatusFormatter::VIDEO_ERROR,
             ], [0, 1, 2, 3, 4, 5]);
             if ($statusId !== null) {
-                $fromSql .= " AND v.status_id = :status";
+                $whereSql .= " AND v.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $fromSql .= " AND v.title LIKE :search";
+            $whereSql .= " AND v.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
         $category = $this->getIntOption($input, 'category');
         if ($category !== null) {
-            $fromSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
                 . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
         $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
-            $fromSql .= " AND v.user_id = :user";
+            $whereSql .= " AND v.user_id = :user";
             $params['user'] = $user;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
-            return $this->countVideos($db, $fromSql, $params);
+            return $this->countVideos($db, "$fromSql $whereSql", $params);
         }
 
         $selectFields = [
@@ -149,6 +149,8 @@ HELP
             'u.username',
             'v.video_viewed as views',
         ];
+        [$relationSelects, $relationJoinSql] = $this->buildVideoRelationSql($input);
+        $selectFields = array_merge($selectFields, $relationSelects);
         if ($this->isFieldRequested($input, 'comments_count')) {
             $commentsTable = $this->table('comments');
             $selectFields[] = "(
@@ -159,6 +161,8 @@ HELP
 
         $query = 'SELECT ' . implode(",\n                 ", $selectFields) . "
                  $fromSql
+                 $relationJoinSql
+                 $whereSql
                  ORDER BY v.post_date DESC LIMIT :limit";
 
         try {
@@ -238,6 +242,46 @@ HELP
 
         $fields = array_map('trim', explode(',', $fieldsOption));
         return in_array($field, $fields, true);
+    }
+
+    /**
+     * @return array{0: list<string>, 1: string}
+     */
+    private function buildVideoRelationSql(InputInterface $input): array
+    {
+        $selects = [];
+        $joins = [];
+
+        if ($this->isFieldRequested($input, 'content_source')) {
+            $selects[] = 'cs.title as content_source';
+            $selects[] = 'cs.status_id as content_source_status_id';
+            $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = v.content_source_id";
+        }
+
+        if ($this->isFieldRequested($input, 'dvd')) {
+            $selects[] = 'd.title as dvd';
+            $selects[] = 'd.status_id as dvd_status_id';
+            $joins[] = "LEFT JOIN {$this->table('dvds')} d ON d.dvd_id = v.dvd_id";
+        }
+
+        if ($this->isFieldRequested($input, 'admin_flag')) {
+            $selects[] = 'f.title as admin_flag';
+            $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = v.admin_flag_id";
+        }
+
+        if ($this->isFieldRequested($input, 'server_group')) {
+            $selects[] = 'sg.title as server_group';
+            $selects[] = 'sg.status_id as server_group_status_id';
+            $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = v.server_group_id";
+        }
+
+        if ($this->isFieldRequested($input, 'format_video_group')) {
+            $selects[] = 'fvg.title as format_video_group';
+            $joins[] = "LEFT JOIN {$this->table('formats_videos_groups')} fvg "
+                . 'ON fvg.format_video_group_id = v.format_video_group_id';
+        }
+
+        return [$selects, implode("\n                 ", $joins)];
     }
 
     /**
