@@ -144,8 +144,20 @@ HELP
             return $this->countVideos($db, $fromSql, $params);
         }
 
-        $query = "SELECT v.*, u.username,
-                 v.video_viewed as views
+        $selectFields = [
+            'v.*',
+            'u.username',
+            'v.video_viewed as views',
+        ];
+        if ($this->isFieldRequested($input, 'comments_count')) {
+            $commentsTable = $this->table('comments');
+            $selectFields[] = "(
+                SELECT COUNT(*) FROM $commentsTable c
+                WHERE c.object_type_id = 1 AND c.object_id = v.video_id
+            ) as comments_count";
+        }
+
+        $query = 'SELECT ' . implode(",\n                 ", $selectFields) . "
                  $fromSql
                  ORDER BY v.post_date DESC LIMIT :limit";
 
@@ -189,6 +201,9 @@ HELP
                     $fileSize = is_numeric($fileSizeVal) ? (int) $fileSizeVal : 0;
                     $video['filesize'] = format_bytes($fileSize);
                 }
+                if (array_key_exists('r_ctr', $video) && is_numeric($video['r_ctr'])) {
+                    $video['r_ctr'] = round((float) $video['r_ctr'] * 100, 4);
+                }
 
                 $video['rating'] = format_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
@@ -207,6 +222,22 @@ HELP
             $this->io()->error('Failed to fetch videos: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function isFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        $fields = array_map('trim', explode(',', $fieldsOption));
+        return in_array($field, $fields, true);
     }
 
     /**
