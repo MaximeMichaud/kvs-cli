@@ -197,6 +197,7 @@ HELP
                 $counts = $this->extractTagUsageCounts($tag);
                 $statusIdVal = $tag['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $otherAmount = $this->getTagStoredOtherAmount($tag);
                 $transformedTags[] = [
                     'tag_id' => $tag['tag_id'] ?? 0,
                     'id' => $tag['tag_id'] ?? 0,
@@ -204,6 +205,11 @@ HELP
                     'video_count' => $counts['videos'],
                     'album_count' => $counts['albums'],
                     'total_usage' => array_sum($counts),
+                    'videos_amount' => $counts['videos'],
+                    'albums_amount' => $counts['albums'],
+                    'posts_amount' => $counts['posts'],
+                    'other_amount' => $otherAmount,
+                    'all_amount' => $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount,
                     'status_id' => $statusId,
                     'status' => StatusFormatter::tag($statusId, false),
                     ...$counts,
@@ -478,6 +484,20 @@ HELP
     private function extractTagUsageCounts(array $tag): array
     {
         return $this->extractRelationUsageCounts($tag, self::TAG_RELATION_TABLES);
+    }
+
+    /**
+     * @param array<string, mixed> $tag
+     */
+    private function getTagStoredOtherAmount(array $tag): int
+    {
+        $total = 0;
+        foreach (['total_content_sources', 'total_playlists', 'total_models', 'total_dvds', 'total_dvd_groups'] as $field) {
+            $value = $tag[$field] ?? 0;
+            $total += is_numeric($value) ? (int) $value : 0;
+        }
+
+        return $total;
     }
 
     private function mergeTags(?string $sourceId, ?string $targetId, InputInterface $input): int
