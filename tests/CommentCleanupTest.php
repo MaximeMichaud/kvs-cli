@@ -423,7 +423,6 @@ class CommentCleanupTest extends TestCase
         $tester->execute([
             'action' => 'approve',
             'id' => '8.9',
-            '--yes' => true,
         ]);
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
