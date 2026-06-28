@@ -205,6 +205,26 @@ class VideoCommandTest extends TestCase
         $this->assertSame('HD Formats', $rows[0]['format_video_group']);
     }
 
+    public function testVideoListExposesKvsAdminOwnerAndListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'video_id,title,admin_user,tags,categories,models',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(10, (int) $rows[0]['video_id']);
+        $this->assertSame('Featured Clip', $rows[0]['title']);
+        $this->assertSame('editor', $rows[0]['admin_user']);
+        $this->assertSame('tag-one, tag-two', $rows[0]['tags']);
+        $this->assertSame('Action', $rows[0]['categories']);
+        $this->assertSame('Model One', $rows[0]['models']);
+    }
+
     public function testVideoCommandMetadata(): void
     {
         $this->assertEquals('content:video', $this->command->getName());
@@ -223,13 +243,14 @@ class VideoCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
-            'video_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, resolution_type INTEGER, ' .
+            'video_id INTEGER, user_id INTEGER, admin_user_id INTEGER, title TEXT, status_id INTEGER, resolution_type INTEGER, ' .
             'is_private INTEGER, duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, ' .
             'rating INTEGER, rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, r_ctr REAL, ' .
             'description TEXT, content_source_id INTEGER, dvd_id INTEGER, admin_flag_id INTEGER, ' .
             'server_group_id INTEGER, format_video_group_id INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('admin_users') . ' (user_id INTEGER, login TEXT, is_superadmin INTEGER)');
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('content_sources') . ' (' .
             'content_source_id INTEGER, title TEXT, status_id INTEGER)'
@@ -254,21 +275,24 @@ class VideoCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('comments') .
             ' (comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
         );
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories_videos') . ' (category_id INTEGER, video_id INTEGER)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories_videos') . ' (id INTEGER, category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (id INTEGER, tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models_videos') . ' (id INTEGER, model_id INTEGER, video_id INTEGER)');
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
+        $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'editor', 0)");
         $db->exec(
             "INSERT INTO " . TestHelper::table('videos') .
-            " (video_id, user_id, title, status_id, resolution_type, is_private, duration, file_size, " .
+            " (video_id, user_id, admin_user_id, title, status_id, resolution_type, is_private, duration, file_size, " .
             "file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, r_ctr, description, " .
             "content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id) VALUES " .
-            "(10, 1, 'Featured Clip', 1, 2, 0, 125, 1048576, '1920x1080', " .
+            "(10, 1, 8, 'Featured Clip', 1, 2, 0, 125, 1048576, '1920x1080', " .
             "'2026-05-26 10:00:00', 40, 10, 123, 7, 0.125, 'Featured description', 3, 4, 5, 6, 7), " .
-            "(20, 2, 'Disabled Clip', 0, 0, 2, 61, 524288, '640x360', '2026-05-25 10:00:00', 0, 0, 5, 0, 0.050, '', 0, 0, 0, 0, 0), " .
-            "(30, 1, 'Older Active Clip', 1, 1, 1, 3600, 2097152, '1280x720', '2026-05-24 10:00:00', 15, 5, 20, 1, 0, '', 0, 0, 0, 0, 0)"
+            "(20, 2, 0, 'Disabled Clip', 0, 0, 2, 61, 524288, '640x360', '2026-05-25 10:00:00', 0, 0, 5, 0, 0.050, '', 0, 0, 0, 0, 0), " .
+            "(30, 1, 0, 'Older Active Clip', 1, 1, 1, 3600, 2097152, '1280x720', '2026-05-24 10:00:00', 15, 5, 20, 1, 0, '', 0, 0, 0, 0, 0)"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .
@@ -295,10 +319,12 @@ class VideoCommandTest extends TestCase
             ' (comment_id, object_type_id, object_id) VALUES ' .
             '(1, 1, 10), (2, 1, 10), (3, 2, 10), (4, 1, 20)'
         );
-        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Action'), (2, 'Drama')");
-        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 10), (2, 20)");
-        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one'), (2, 'tag-two')");
-        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 10), (2, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Action', 1), (2, 'Drama', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 1, 10), (2, 2, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one', 1), (2, 'tag-two', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 1, 10), (2, 2, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('models_videos') . " VALUES (1, 1, 10)");
 
         return $db;
     }

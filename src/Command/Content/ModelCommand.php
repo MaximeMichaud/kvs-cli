@@ -148,6 +148,7 @@ HELP
 
             /** @var list<array<string, mixed>> $models */
             $models = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $models = $this->appendModelListFields($db, $input, $models);
 
             // Transform models for display (field aliases)
             $transformedModels = array_map(fn (array $model): array => $this->transformModelForList($model), $models);
@@ -207,7 +208,67 @@ HELP
             'weight' => $model['weight'] ?? '',
             'rank' => $model['rank'] ?? '',
             'rating' => format_kvs_rating($model['rating'] ?? 0, $model['rating_amount'] ?? 0),
+            'tags' => $model['tags'] ?? '',
+            'categories' => $model['categories'] ?? '',
         ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $models
+     * @return list<array<string, mixed>>
+     */
+    private function appendModelListFields(\PDO $db, InputInterface $input, array $models): array
+    {
+        $fieldMaps = [
+            'categories' => ['categories', 'categories_models', 'category_id', 'model_id', 'title'],
+            'tags' => ['tags', 'tags_models', 'tag_id', 'model_id', 'tag'],
+        ];
+
+        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $modelIdColumn, $titleColumn]) {
+            if (!$this->isModelFieldRequested($input, $field)) {
+                continue;
+            }
+
+            foreach ($models as $index => $model) {
+                $modelId = $model['model_id'] ?? null;
+                $models[$index][$field] = is_numeric($modelId)
+                    ? $this->fetchModelListTitles(
+                        $db,
+                        $itemTable,
+                        $linkTable,
+                        $itemIdColumn,
+                        $modelIdColumn,
+                        $titleColumn,
+                        (int) $modelId
+                    )
+                    : '';
+            }
+        }
+
+        return $models;
+    }
+
+    private function fetchModelListTitles(
+        \PDO $db,
+        string $itemTable,
+        string $linkTable,
+        string $itemIdColumn,
+        string $modelIdColumn,
+        string $titleColumn,
+        int $modelId
+    ): string {
+        $query = "SELECT i.$titleColumn
+                  FROM {$this->table($itemTable)} i
+                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
+                  WHERE l.$modelIdColumn = :model_id
+                  ORDER BY l.id ASC";
+        $stmt = $db->prepare($query);
+        $stmt->execute(['model_id' => $modelId]);
+
+        return implode(', ', array_map(
+            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+            $stmt->fetchAll(\PDO::FETCH_COLUMN)
+        ));
     }
 
     /**

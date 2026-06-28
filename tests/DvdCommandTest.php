@@ -188,6 +188,25 @@ class DvdCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['dvd_group_status_id']);
     }
 
+    public function testListDvdsExposesKvsAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,tags,categories,models',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame('series, featured', $rows[0]['tags']);
+        $this->assertSame('Drama', $rows[0]['categories']);
+        $this->assertSame('Model One', $rows[0]['models']);
+    }
+
     public function testListDvdsFormatsZeroReleaseYearLikeKvsAdmin(): void
     {
         $this->db->exec('UPDATE ' . TestHelper::table('dvds') . ' SET release_year = 0 WHERE dvd_id = 10');
@@ -372,6 +391,24 @@ class DvdCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
             'object_type_id INTEGER, object_id INTEGER)'
         );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') .
+            ' (category_id INTEGER, title TEXT, status_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_dvds') .
+            ' (id INTEGER, category_id INTEGER, dvd_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags') .
+            ' (tag_id INTEGER, tag TEXT, status_id INTEGER)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_dvds') . ' (id INTEGER, tag_id INTEGER, dvd_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('models') .
+            ' (model_id INTEGER, title TEXT, status_id INTEGER)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('models_dvds') . ' (id INTEGER, model_id INTEGER, dvd_id INTEGER)');
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('dvds') .
@@ -390,6 +427,12 @@ class DvdCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('comments') .
             ' VALUES (5, 30), (5, 30), (5, 20), (1, 30)'
         );
+        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Drama', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_dvds') . " VALUES (1, 1, 30)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'series', 1), (2, 'featured', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_dvds') . " VALUES (1, 1, 30), (2, 2, 30)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('models_dvds') . " VALUES (1, 1, 30)");
 
         return $db;
     }

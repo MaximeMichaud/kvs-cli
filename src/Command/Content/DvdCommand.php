@@ -181,6 +181,7 @@ HELP
 
             /** @var list<array<string, mixed>> $dvds */
             $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $dvds = $this->appendDvdListFields($db, $input, $dvds);
 
             // Transform DVDs for display (field aliases)
             $transformedDvds = array_map(function (array $dvd): array {
@@ -212,6 +213,9 @@ HELP
                     'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
                     'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
+                    'tags' => $dvd['tags'] ?? '',
+                    'categories' => $dvd['categories'] ?? '',
+                    'models' => $dvd['models'] ?? '',
                 ];
             }, $dvds);
 
@@ -227,6 +231,65 @@ HELP
             $this->io()->error('Failed to fetch DVDs: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $dvds
+     * @return list<array<string, mixed>>
+     */
+    private function appendDvdListFields(\PDO $db, InputInterface $input, array $dvds): array
+    {
+        $fieldMaps = [
+            'categories' => ['categories', 'categories_dvds', 'category_id', 'dvd_id', 'title'],
+            'tags' => ['tags', 'tags_dvds', 'tag_id', 'dvd_id', 'tag'],
+            'models' => ['models', 'models_dvds', 'model_id', 'dvd_id', 'title'],
+        ];
+
+        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $dvdIdColumn, $titleColumn]) {
+            if (!$this->isDvdFieldRequested($input, $field)) {
+                continue;
+            }
+
+            foreach ($dvds as $index => $dvd) {
+                $dvdId = $dvd['dvd_id'] ?? null;
+                $dvds[$index][$field] = is_numeric($dvdId)
+                    ? $this->fetchDvdListTitles(
+                        $db,
+                        $itemTable,
+                        $linkTable,
+                        $itemIdColumn,
+                        $dvdIdColumn,
+                        $titleColumn,
+                        (int) $dvdId
+                    )
+                    : '';
+            }
+        }
+
+        return $dvds;
+    }
+
+    private function fetchDvdListTitles(
+        \PDO $db,
+        string $itemTable,
+        string $linkTable,
+        string $itemIdColumn,
+        string $dvdIdColumn,
+        string $titleColumn,
+        int $dvdId
+    ): string {
+        $query = "SELECT i.$titleColumn
+                  FROM {$this->table($itemTable)} i
+                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
+                  WHERE l.$dvdIdColumn = :dvd_id
+                  ORDER BY l.id ASC";
+        $stmt = $db->prepare($query);
+        $stmt->execute(['dvd_id' => $dvdId]);
+
+        return implode(', ', array_map(
+            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+            $stmt->fetchAll(\PDO::FETCH_COLUMN)
+        ));
     }
 
     /**

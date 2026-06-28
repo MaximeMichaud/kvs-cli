@@ -167,6 +167,24 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['comments_amount']);
     }
 
+    public function testPlaylistListExposesKvsAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,tags,categories',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame('training, featured', $rows[0]['tags']);
+        $this->assertSame('Featured', $rows[0]['categories']);
+    }
+
     public function testPlaylistListCsvFormat(): void
     {
         ob_start();
@@ -558,7 +576,7 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories_playlists') . ' (' .
-            'category_id INTEGER, playlist_id INTEGER)'
+            'id INTEGER, category_id INTEGER, playlist_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
@@ -566,7 +584,7 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags_playlists') . ' (' .
-            'tag_id INTEGER, playlist_id INTEGER)'
+            'id INTEGER, tag_id INTEGER, playlist_id INTEGER)'
         );
 
         $db->exec(
@@ -608,15 +626,15 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories_playlists') .
-            ' (category_id, playlist_id) VALUES (1, 30)'
+            ' (id, category_id, playlist_id) VALUES (1, 1, 30)'
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
-            " (tag_id, tag) VALUES (1, 'training')"
+            " (tag_id, tag) VALUES (1, 'training'), (2, 'featured')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_playlists') .
-            ' (tag_id, playlist_id) VALUES (1, 30)'
+            ' (id, tag_id, playlist_id) VALUES (1, 1, 30), (2, 2, 30)'
         );
 
         return $db;

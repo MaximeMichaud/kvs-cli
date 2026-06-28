@@ -130,6 +130,26 @@ class AlbumCommandTest extends TestCase
         $this->assertSame('Album Storage', $rows[0]['server_group']);
     }
 
+    public function testAlbumListExposesKvsAdminOwnerAndListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,title,admin_user,tags,categories,models',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame('Disabled Album', $rows[0]['title']);
+        $this->assertSame('album-editor', $rows[0]['admin_user']);
+        $this->assertSame('album-tag, album-extra', $rows[0]['tags']);
+        $this->assertSame('Gallery', $rows[0]['categories']);
+        $this->assertSame('Album Model', $rows[0]['models']);
+    }
+
     public function testAlbumListFormats(): void
     {
         // Test JSON format
@@ -209,7 +229,7 @@ class AlbumCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('albums') . ' (' .
-            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+            'album_id INTEGER, user_id INTEGER, admin_user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER, ' .
             'favourites_count INTEGER, purchases_count INTEGER, content_source_id INTEGER, admin_flag_id INTEGER, ' .
             'server_group_id INTEGER)'
@@ -220,6 +240,7 @@ class AlbumCommandTest extends TestCase
             ' (comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('admin_users') . ' (user_id INTEGER, login TEXT, is_superadmin INTEGER)');
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('content_sources') . ' (' .
             'content_source_id INTEGER, title TEXT, status_id INTEGER)'
@@ -232,15 +253,22 @@ class AlbumCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('admin_servers_groups') . ' (' .
             'group_id INTEGER, title TEXT, status_id INTEGER)'
         );
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories_albums') . ' (id INTEGER, category_id INTEGER, album_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_albums') . ' (id INTEGER, tag_id INTEGER, album_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models_albums') . ' (id INTEGER, model_id INTEGER, album_id INTEGER)');
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
+        $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (7, 'album-editor', 0)");
         $db->exec(
             "INSERT INTO " . TestHelper::table('albums') .
-            ' (album_id, user_id, title, status_id, is_private, post_date, album_viewed, rating, ' .
+            ' (album_id, user_id, admin_user_id, title, status_id, is_private, post_date, album_viewed, rating, ' .
             'rating_amount, photos_amount, favourites_count, purchases_count, content_source_id, admin_flag_id, ' .
             'server_group_id) VALUES ' .
-            "(10, 1, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10, 7, 5, 0, 0, 0, 0), " .
-            "(20, 2, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5, 3, 2, 1, 3, 4, 5)"
+            "(10, 1, 0, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10, 7, 5, 0, 0, 0, 0), " .
+            "(20, 2, 7, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5, 3, 2, 1, 3, 4, 5)"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .
@@ -260,6 +288,12 @@ class AlbumCommandTest extends TestCase
             ' (comment_id, object_type_id, object_id) VALUES ' .
             '(1, 2, 10), (2, 2, 10), (3, 2, 20), (4, 1, 20)'
         );
+        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Gallery', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_albums') . " VALUES (1, 1, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'album-tag', 1), (2, 'album-extra', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_albums') . " VALUES (1, 1, 20), (2, 2, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Album Model', 1)");
+        $db->exec("INSERT INTO " . TestHelper::table('models_albums') . " VALUES (1, 1, 20)");
 
         return $db;
     }

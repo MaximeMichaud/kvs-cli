@@ -181,6 +181,7 @@ HELP
 
             /** @var list<array<string, mixed>> $playlists */
             $playlists = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $playlists = $this->appendPlaylistListFields($db, $input, $playlists);
 
             // Transform playlists for display
             $transformedPlaylists = array_map(function (array $playlist): array {
@@ -211,6 +212,8 @@ HELP
                     'rating' => $calculatedRating,
                     'added_date' => $playlist['added_date'] ?? '',
                     'date' => $playlist['added_date'] ?? '',  // Alias
+                    'tags' => $playlist['tags'] ?? '',
+                    'categories' => $playlist['categories'] ?? '',
                 ];
             }, $playlists);
 
@@ -226,6 +229,79 @@ HELP
             $this->io()->error('Failed to fetch playlists: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $playlists
+     * @return list<array<string, mixed>>
+     */
+    private function appendPlaylistListFields(\PDO $db, InputInterface $input, array $playlists): array
+    {
+        $fieldMaps = [
+            'categories' => ['categories', 'categories_playlists', 'category_id', 'playlist_id', 'title'],
+            'tags' => ['tags', 'tags_playlists', 'tag_id', 'playlist_id', 'tag'],
+        ];
+
+        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $playlistIdColumn, $titleColumn]) {
+            if (!$this->isPlaylistFieldRequested($input, $field)) {
+                continue;
+            }
+
+            foreach ($playlists as $index => $playlist) {
+                $playlistId = $playlist['playlist_id'] ?? null;
+                $playlists[$index][$field] = is_numeric($playlistId)
+                    ? $this->fetchPlaylistListTitles(
+                        $db,
+                        $itemTable,
+                        $linkTable,
+                        $itemIdColumn,
+                        $playlistIdColumn,
+                        $titleColumn,
+                        (int) $playlistId
+                    )
+                    : '';
+            }
+        }
+
+        return $playlists;
+    }
+
+    private function isPlaylistFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        return in_array($field, array_map('trim', explode(',', $fieldsOption)), true);
+    }
+
+    private function fetchPlaylistListTitles(
+        \PDO $db,
+        string $itemTable,
+        string $linkTable,
+        string $itemIdColumn,
+        string $playlistIdColumn,
+        string $titleColumn,
+        int $playlistId
+    ): string {
+        $query = "SELECT i.$titleColumn
+                  FROM {$this->table($itemTable)} i
+                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
+                  WHERE l.$playlistIdColumn = :playlist_id
+                  ORDER BY l.id ASC";
+        $stmt = $db->prepare($query);
+        $stmt->execute(['playlist_id' => $playlistId]);
+
+        return implode(', ', array_map(
+            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+            $stmt->fetchAll(\PDO::FETCH_COLUMN)
+        ));
     }
 
     /**

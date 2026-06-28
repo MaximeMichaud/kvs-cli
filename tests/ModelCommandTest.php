@@ -202,6 +202,25 @@ class ModelCommandTest extends TestCase
         $this->assertSame('Featured Models', $rows[0]['model_group']);
     }
 
+    public function testListModelsExposesKvsAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,title,tags,categories',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame('Test Model', $rows[0]['title']);
+        $this->assertSame('model-tag, featured', $rows[0]['tags']);
+        $this->assertSame('Models Category', $rows[0]['categories']);
+    }
+
     public function testListModelsExposesKvsAdminLocationAndDeathDateFields(): void
     {
         $this->tester->execute([
@@ -354,6 +373,10 @@ class ModelCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('list_countries') . ' (' .
             'country_code TEXT, language_code TEXT, title TEXT)'
         );
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories_models') . ' (id INTEGER, category_id INTEGER, model_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_models') . ' (id INTEGER, tag_id INTEGER, model_id INTEGER)');
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
@@ -383,6 +406,10 @@ class ModelCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('list_countries') .
             " VALUES ('CA', 'en', 'Canada'), ('US', 'en', 'United States')"
         );
+        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Models Category')");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_models') . " VALUES (1, 1, 30)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'model-tag'), (2, 'featured')");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_models') . " VALUES (1, 1, 30), (2, 2, 30)");
 
         return $db;
     }

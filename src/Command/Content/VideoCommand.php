@@ -179,6 +179,7 @@ HELP
 
             /** @var list<array<string, mixed>> $videos */
             $videos = $stmt->fetchAll();
+            $videos = $this->appendVideoListFields($db, $input, $videos);
 
             // Transform data for display (field aliases and calculated values)
             $videos = array_map(function (array $video): array {
@@ -258,6 +259,12 @@ HELP
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = v.content_source_id";
         }
 
+        if ($this->isFieldRequested($input, 'admin_user')) {
+            $selects[] = 'au.login as admin_user';
+            $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
+            $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = v.admin_user_id";
+        }
+
         if ($this->isFieldRequested($input, 'dvd')) {
             $selects[] = 'd.title as dvd';
             $selects[] = 'd.status_id as dvd_status_id';
@@ -282,6 +289,65 @@ HELP
         }
 
         return [$selects, implode("\n                 ", $joins)];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $videos
+     * @return list<array<string, mixed>>
+     */
+    private function appendVideoListFields(\PDO $db, InputInterface $input, array $videos): array
+    {
+        $fieldMaps = [
+            'categories' => ['categories', 'categories_videos', 'category_id', 'video_id', 'title'],
+            'tags' => ['tags', 'tags_videos', 'tag_id', 'video_id', 'tag'],
+            'models' => ['models', 'models_videos', 'model_id', 'video_id', 'title'],
+        ];
+
+        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $videoIdColumn, $titleColumn]) {
+            if (!$this->isFieldRequested($input, $field)) {
+                continue;
+            }
+
+            foreach ($videos as $index => $video) {
+                $videoId = $video['video_id'] ?? null;
+                $videos[$index][$field] = is_numeric($videoId)
+                    ? $this->fetchVideoListTitles(
+                        $db,
+                        $itemTable,
+                        $linkTable,
+                        $itemIdColumn,
+                        $videoIdColumn,
+                        $titleColumn,
+                        (int) $videoId
+                    )
+                    : '';
+            }
+        }
+
+        return $videos;
+    }
+
+    private function fetchVideoListTitles(
+        \PDO $db,
+        string $itemTable,
+        string $linkTable,
+        string $itemIdColumn,
+        string $videoIdColumn,
+        string $titleColumn,
+        int $videoId
+    ): string {
+        $query = "SELECT i.$titleColumn
+                  FROM {$this->table($itemTable)} i
+                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
+                  WHERE l.$videoIdColumn = :video_id
+                  ORDER BY l.id ASC";
+        $stmt = $db->prepare($query);
+        $stmt->execute(['video_id' => $videoId]);
+
+        return implode(', ', array_map(
+            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+            $stmt->fetchAll(\PDO::FETCH_COLUMN)
+        ));
     }
 
     /**

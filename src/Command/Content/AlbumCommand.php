@@ -162,6 +162,7 @@ HELP
 
             /** @var list<array<string, mixed>> $albums */
             $albums = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $albums = $this->appendAlbumListFields($db, $input, $albums);
 
             // Transform albums for display (field aliases and calculated values)
             $transformedAlbums = array_map(function (array $album): array {
@@ -226,6 +227,12 @@ HELP
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = a.content_source_id";
         }
 
+        if ($this->isAlbumFieldRequested($input, 'admin_user')) {
+            $selects[] = 'au.login as admin_user';
+            $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
+            $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = a.admin_user_id";
+        }
+
         if ($this->isAlbumFieldRequested($input, 'admin_flag')) {
             $selects[] = 'f.title as admin_flag';
             $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = a.admin_flag_id";
@@ -267,10 +274,74 @@ HELP
         return [
             'content_source' => $album['content_source'] ?? '',
             'content_source_status_id' => $album['content_source_status_id'] ?? '',
+            'admin_user' => $album['admin_user'] ?? '',
+            'admin_user_is_superadmin' => $album['admin_user_is_superadmin'] ?? '',
             'admin_flag' => $album['admin_flag'] ?? '',
             'server_group' => $album['server_group'] ?? '',
             'server_group_status_id' => $album['server_group_status_id'] ?? '',
+            'tags' => $album['tags'] ?? '',
+            'categories' => $album['categories'] ?? '',
+            'models' => $album['models'] ?? '',
         ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $albums
+     * @return list<array<string, mixed>>
+     */
+    private function appendAlbumListFields(\PDO $db, InputInterface $input, array $albums): array
+    {
+        $fieldMaps = [
+            'categories' => ['categories', 'categories_albums', 'category_id', 'album_id', 'title'],
+            'tags' => ['tags', 'tags_albums', 'tag_id', 'album_id', 'tag'],
+            'models' => ['models', 'models_albums', 'model_id', 'album_id', 'title'],
+        ];
+
+        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $albumIdColumn, $titleColumn]) {
+            if (!$this->isAlbumFieldRequested($input, $field)) {
+                continue;
+            }
+
+            foreach ($albums as $index => $album) {
+                $albumId = $album['album_id'] ?? null;
+                $albums[$index][$field] = is_numeric($albumId)
+                    ? $this->fetchAlbumListTitles(
+                        $db,
+                        $itemTable,
+                        $linkTable,
+                        $itemIdColumn,
+                        $albumIdColumn,
+                        $titleColumn,
+                        (int) $albumId
+                    )
+                    : '';
+            }
+        }
+
+        return $albums;
+    }
+
+    private function fetchAlbumListTitles(
+        \PDO $db,
+        string $itemTable,
+        string $linkTable,
+        string $itemIdColumn,
+        string $albumIdColumn,
+        string $titleColumn,
+        int $albumId
+    ): string {
+        $query = "SELECT i.$titleColumn
+                  FROM {$this->table($itemTable)} i
+                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
+                  WHERE l.$albumIdColumn = :album_id
+                  ORDER BY l.id ASC";
+        $stmt = $db->prepare($query);
+        $stmt->execute(['album_id' => $albumId]);
+
+        return implode(', ', array_map(
+            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
+            $stmt->fetchAll(\PDO::FETCH_COLUMN)
+        ));
     }
 
     private function showAlbum(?string $id): int
