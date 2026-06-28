@@ -102,10 +102,14 @@ HELP
                 f.title,
                 f.postfix,
                 f.status_id,
+                CASE WHEN f.status_id = 2 AND f.is_conditional = 1 THEN 9 ELSE f.status_id END as display_status_id,
                 f.size,
                 f.access_level_id,
                 f.is_download_enabled,
                 f.is_timeline_enabled,
+                f.timeline_option,
+                f.timeline_amount,
+                f.timeline_interval,
                 f.format_video_group_id,
                 g.title as group_title
             FROM {$this->table('formats_videos')} f
@@ -128,12 +132,11 @@ HELP
             $validStatusIds = array_values($statusMap);
             // Accept case-insensitive strings and numeric values
             $statusLower = strtolower($status);
+            $statusId = null;
             if (isset($statusMap[$statusLower])) {
-                $query .= " AND f.status_id = :status";
-                $params['status'] = $statusMap[$statusLower];
+                $statusId = $statusMap[$statusLower];
             } elseif (ctype_digit($status) && in_array((int) $status, $validStatusIds, true)) {
-                $query .= " AND f.status_id = :status";
-                $params['status'] = (int) $status;
+                $statusId = (int) $status;
             } else {
                 $this->io()->error(sprintf(
                     'Invalid value for --status: %s. Expected one of: %s.',
@@ -141,6 +144,17 @@ HELP
                     implode(', ', array_merge(array_keys($statusMap), array_map('strval', $validStatusIds)))
                 ));
                 return self::FAILURE;
+            }
+
+            if ($statusId === StatusFormatter::FORMAT_CONDITIONAL) {
+                $query .= " AND f.status_id = :status AND f.is_conditional = 1";
+                $params['status'] = StatusFormatter::FORMAT_OPTIONAL;
+            } else {
+                $query .= " AND f.status_id = :status";
+                $params['status'] = $statusId;
+                if ($statusId === StatusFormatter::FORMAT_OPTIONAL) {
+                    $query .= " AND COALESCE(f.is_conditional, 0) = 0";
+                }
             }
         }
 
@@ -167,7 +181,8 @@ HELP
             // Transform data for display
             $formats = array_map(function (array $format): array {
                 $format['id'] = $format['format_video_id'];
-                $statusId = isset($format['status_id']) && is_numeric($format['status_id']) ? (int) $format['status_id'] : 0;
+                $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
+                $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
                 $format['status'] = StatusFormatter::videoFormat($statusId, false);
 
                 $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id']) ? (int) $format['access_level_id'] : 0;
@@ -176,7 +191,7 @@ HELP
                 $isDownload = isset($format['is_download_enabled']) && (bool) $format['is_download_enabled'];
                 $format['download'] = $isDownload ? 'Yes' : 'No';
                 $isTimeline = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
-                $format['timeline'] = $isTimeline ? 'Yes' : 'No';
+                $format['timeline'] = $isTimeline ? $this->formatKvsTimelineValue($format) : 'No';
 
                 return $format;
             }, $formats);
@@ -214,7 +229,10 @@ HELP
 
         try {
             $stmt = $db->prepare("
-                SELECT f.*, g.title as group_title
+                SELECT f.*,
+                       CASE WHEN f.status_id = 2 AND f.is_conditional = 1 THEN 9 ELSE f.status_id END as display_status_id,
+                       CASE WHEN f.is_hotlink_protection_disabled = 1 THEN 0 ELSE 1 END as is_hotlink_protection_enabled,
+                       g.title as group_title
                 FROM {$this->table('formats_videos')} f
                 LEFT JOIN {$this->table('formats_videos_groups')} g
                     ON f.format_video_group_id = g.format_video_group_id
@@ -233,8 +251,8 @@ HELP
 
             // Basic Info section
             $this->io()->section('Basic Info');
-            $statusId = isset($format['status_id']) && is_numeric($format['status_id'])
-                ? (int) $format['status_id'] : 0;
+            $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
+            $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
             $groupId = isset($format['format_video_group_id']) && is_numeric($format['format_video_group_id'])
                 ? (int) $format['format_video_group_id'] : 0;
             $groupTitle = isset($format['group_title']) && is_string($format['group_title'])
@@ -258,8 +276,9 @@ HELP
             $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id'])
                 ? (int) $format['access_level_id'] : 0;
             $downloadEnabled = isset($format['is_download_enabled']) && (bool) $format['is_download_enabled'];
-            $hotlinkProtection = isset($format['hotlink_protection']) && is_numeric($format['hotlink_protection'])
-                ? (int) $format['hotlink_protection'] : 0;
+            $hotlinkProtection = isset($format['is_hotlink_protection_enabled'])
+                && is_numeric($format['is_hotlink_protection_enabled'])
+                ? (int) $format['is_hotlink_protection_enabled'] : 0;
 
             $accessInfo = [
                 ['Access Level', StatusFormatter::formatAccessLevel($accessId)],
@@ -270,32 +289,26 @@ HELP
 
             // Duration & Offset Limits section
             $this->io()->section('Duration & Offset Limits');
-            $durationMin = isset($format['video_duration_from']) && is_numeric($format['video_duration_from'])
-                ? (int) $format['video_duration_from'] : 0;
-            $durationMax = isset($format['video_duration_to']) && is_numeric($format['video_duration_to'])
-                ? (int) $format['video_duration_to'] : 0;
-            $offsetStart = isset($format['video_start_offset']) && is_numeric($format['video_start_offset'])
-                ? (int) $format['video_start_offset'] : 0;
-            $offsetEnd = isset($format['video_end_offset']) && is_numeric($format['video_end_offset'])
-                ? (int) $format['video_end_offset'] : 0;
-
             $durationInfo = [
-                ['Duration Min (sec)', $durationMin > 0 ? (string) $durationMin : 'No limit'],
-                ['Duration Max (sec)', $durationMax > 0 ? (string) $durationMax : 'No limit'],
-                ['Start Offset (sec)', $offsetStart > 0 ? (string) $offsetStart : '0'],
-                ['End Offset (sec)', $offsetEnd > 0 ? (string) $offsetEnd : '0'],
+                ['Total Duration', $this->formatKvsDurationLimit($format)],
+                [
+                    'Start Offset',
+                    $this->formatKvsLimitValue($format, 'limit_offset_start', 'limit_offset_start_unit_id', '0'),
+                ],
+                [
+                    'End Offset',
+                    $this->formatKvsLimitValue($format, 'limit_offset_end', 'limit_offset_end_unit_id', '0'),
+                ],
             ];
             $this->renderTable(['Property', 'Value'], $durationInfo);
 
             // Timeline Settings section
             $this->io()->section('Timeline Settings');
             $timelineEnabled = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
-            $timelineInterval = isset($format['timeline_interval']) && is_numeric($format['timeline_interval'])
-                ? (int) $format['timeline_interval'] : 0;
 
             $timelineInfo = [
                 ['Timeline Enabled', $timelineEnabled ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
-                ['Timeline Interval', $timelineInterval > 0 ? "{$timelineInterval}s" : 'Default'],
+                ['Timeline Interval', $timelineEnabled ? $this->formatKvsTimelineValue($format) : 'Default'],
             ];
             $this->renderTable(['Property', 'Value'], $timelineInfo);
 
@@ -390,5 +403,79 @@ HELP
             $this->io()->error('Failed to fetch format groups: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsDurationLimit(array $format): string
+    {
+        $duration = $this->getIntField($format, 'limit_total_duration');
+        if ($duration <= 0) {
+            return 'Source';
+        }
+
+        $unitId = $this->getIntField($format, 'limit_total_duration_unit_id');
+        if ($unitId === 1) {
+            $parts = [];
+            $minDuration = $this->getIntField($format, 'limit_total_min_duration_sec');
+            if ($minDuration > 0) {
+                $parts[] = "{$minDuration}s <=";
+            }
+            $parts[] = "{$duration}%";
+            $maxDuration = $this->getIntField($format, 'limit_total_max_duration_sec');
+            if ($maxDuration > 0) {
+                $parts[] = "<= {$maxDuration}s";
+            }
+            $durationLabel = implode(' ', $parts);
+        } else {
+            $durationLabel = "{$duration}s";
+        }
+
+        $numberParts = $this->getIntField($format, 'limit_number_parts');
+        if ($numberParts > 1) {
+            $durationLabel .= " / {$numberParts}";
+        }
+
+        return $durationLabel;
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsLimitValue(array $format, string $valueKey, string $unitKey, string $zeroLabel): string
+    {
+        $value = $this->getIntField($format, $valueKey);
+        if ($value <= 0) {
+            return $zeroLabel;
+        }
+
+        return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsTimelineValue(array $format): string
+    {
+        if ($this->getIntField($format, 'timeline_option') === 1) {
+            $amount = $this->getIntField($format, 'timeline_amount');
+
+            return $amount > 0 ? "x{$amount}" : 'Default';
+        }
+
+        $interval = $this->getIntField($format, 'timeline_interval');
+
+        return $interval > 0 ? "{$interval}s" : 'Default';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function getIntField(array $row, string $key): int
+    {
+        $value = $row[$key] ?? 0;
+
+        return is_numeric($value) ? (int) $value : 0;
     }
 }

@@ -160,9 +160,8 @@ HELP
                 return self::SUCCESS;
             }
 
-            $query = "SELECT u.*,
-                 u.total_videos_count as video_count,
-                 u.total_albums_count as album_count
+            $counterSelects = $this->getRequestedUserCounterSelects($input);
+            $query = "SELECT u.*" . ($counterSelects !== [] ? ', ' . implode(', ', $counterSelects) : '') . "
                  {$fromClause}
                  {$whereClause}
                  ORDER BY u.added_date DESC LIMIT :limit";
@@ -206,6 +205,81 @@ HELP
             $this->io()->error('Failed to fetch users: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getRequestedUserCounterSelects(InputInterface $input): array
+    {
+        $requestedFields = [];
+        $fields = $this->getStringOption($input, 'fields');
+        if ($fields !== null) {
+            $requestedFields = array_merge($requestedFields, array_map('trim', explode(',', $fields)));
+        }
+
+        $field = $this->getStringOption($input, 'field');
+        if ($field !== null) {
+            $requestedFields[] = trim($field);
+        }
+
+        $selects = [];
+        if (in_array('videos', $requestedFields, true) || in_array('video_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s v WHERE v.user_id = u.user_id) as video_count',
+                $this->table('videos')
+            );
+        }
+        if (in_array('videos_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s v WHERE v.user_id = u.user_id) as videos_count',
+                $this->table('videos')
+            );
+        }
+        if (in_array('albums', $requestedFields, true) || in_array('album_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s a WHERE a.user_id = u.user_id) as album_count',
+                $this->table('albums')
+            );
+        }
+        if (in_array('albums_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s a WHERE a.user_id = u.user_id) as albums_count',
+                $this->table('albums')
+            );
+        }
+        if (in_array('posts_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s p WHERE p.user_id = u.user_id) as posts_count',
+                $this->table('posts')
+            );
+        }
+        if (in_array('dvds_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s d WHERE d.user_id = u.user_id) as dvds_count',
+                $this->table('dvds')
+            );
+        }
+        if (in_array('playlists_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s p WHERE p.user_id = u.user_id) as playlists_count',
+                $this->table('playlists')
+            );
+        }
+        if (in_array('comments_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s c WHERE c.user_id = u.user_id) as comments_count',
+                $this->table('comments')
+            );
+        }
+        if (in_array('favourite_category', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT title FROM %s c WHERE c.category_id = u.favourite_category_id) as favourite_category',
+                $this->table('categories')
+            );
+        }
+
+        return $selects;
     }
 
     /**

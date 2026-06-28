@@ -375,6 +375,92 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
     }
 
+    public function testVideoFormatShowUsesKvsHotlinkProtectionFlag(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Hotlink Protection\W+Yes/', $tester->getDisplay());
+    }
+
+    public function testVideoFormatListShowsConditionalStatusLikeKvsAdmin(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'format_video_id,status',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('Conditional', $rows[1]['status']);
+    }
+
+    public function testVideoFormatListFiltersConditionalStatusLikeKvsAdmin(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'conditional',
+            '--fields' => 'format_video_id,status',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(2, (int) $rows[0]['format_video_id']);
+        $this->assertSame('Conditional', $rows[0]['status']);
+    }
+
+    public function testVideoFormatShowUsesKvsDurationAndOffsetColumns(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--force' => true,
+        ]);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Total Duration\W+20s/', $output);
+        $this->assertMatchesRegularExpression('/Start Offset\W+5s/', $output);
+        $this->assertMatchesRegularExpression('/End Offset\W+10s/', $output);
+    }
+
+    public function testVideoFormatListShowsKvsTimelineValue(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'format_video_id,timeline',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame('10s', $rows[0]['timeline']);
+    }
+
     public function testVideoFormatGroupsRejectsListFilters(): void
     {
         $this->createVideoFormatTables();
@@ -495,11 +581,25 @@ class SystemValidationRegressionTest extends TestCase
             title TEXT,
             postfix TEXT,
             status_id INTEGER,
+            is_conditional INTEGER,
             size TEXT,
             access_level_id INTEGER,
             is_download_enabled INTEGER,
             is_timeline_enabled INTEGER,
             format_video_group_id INTEGER,
+            is_hotlink_protection_disabled INTEGER,
+            limit_total_duration INTEGER,
+            limit_total_duration_unit_id INTEGER,
+            limit_total_min_duration_sec INTEGER,
+            limit_total_max_duration_sec INTEGER,
+            limit_number_parts INTEGER,
+            limit_offset_start INTEGER,
+            limit_offset_start_unit_id INTEGER,
+            limit_offset_end INTEGER,
+            limit_offset_end_unit_id INTEGER,
+            timeline_option INTEGER,
+            timeline_amount INTEGER,
+            timeline_interval INTEGER,
             ffmpeg_options TEXT
         )');
         $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
@@ -514,9 +614,14 @@ class SystemValidationRegressionTest extends TestCase
         );
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos " .
-            "(format_video_id, title, postfix, status_id, size, access_level_id, is_download_enabled, " .
-            "is_timeline_enabled, format_video_group_id, ffmpeg_options) " .
-            "VALUES (1, 'MP4 480p', '.mp4', 1, '848x480', 0, 0, 1, 1, '-vcodec libx264')"
+            "(format_video_id, title, postfix, status_id, is_conditional, size, access_level_id, is_download_enabled, " .
+            "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, limit_total_duration, " .
+            "limit_total_duration_unit_id, limit_total_min_duration_sec, limit_total_max_duration_sec, " .
+            "limit_number_parts, limit_offset_start, limit_offset_start_unit_id, limit_offset_end, " .
+            "limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, ffmpeg_options) " .
+            "VALUES " .
+            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, 2, 0, 10, '-vcodec libx264'), " .
+            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, '')"
         );
     }
 

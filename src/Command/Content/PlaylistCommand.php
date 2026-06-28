@@ -155,8 +155,15 @@ HELP
             return $this->countPlaylists($db, $fromClause, $params);
         }
 
+        $commentsTable = $this->table('comments');
+        $favVideosTable = $this->table('fav_videos');
+
         $query = "SELECT p.*, u.username,
-                        (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
+                        (SELECT COUNT(*) FROM $favVideosTable f WHERE f.playlist_id = p.playlist_id) as video_count,
+                        (
+                            SELECT COUNT(*) FROM $commentsTable c
+                            WHERE c.object_type_id = 13 AND c.object_id = p.playlist_id
+                        ) as comments_amount
                  $fromClause
                  ORDER BY p.added_date DESC LIMIT :limit";
 
@@ -194,7 +201,9 @@ HELP
                     'is_private' => $isPrivate,
                     'type' => $isPrivate !== 0 ? 'Private' : 'Public',  // Alias
                     'total_videos' => $playlist['video_count'] ?? 0,
+                    'videos_amount' => $playlist['video_count'] ?? 0,
                     'videos' => $playlist['video_count'] ?? 0,  // Alias
+                    'comments_amount' => $playlist['comments_amount'] ?? 0,
                     'username' => $playlist['username'] ?? '',
                     'user' => $playlist['username'] ?? '',  // Alias
                     'playlist_viewed' => $playlist['playlist_viewed'] ?? 0,
@@ -682,6 +691,7 @@ HELP
             $alreadyExists = ((int) $stmt->fetchColumn()) > 0;
 
             if ($alreadyExists) {
+                $this->recountAfterFavChange($db, $videoId, $ownerUserId);
                 $db->commit();
                 $this->io()->note("Video #$videoId is already in playlist #$playlistId");
                 return self::SUCCESS;
@@ -752,7 +762,21 @@ HELP
 
             $ownerUserId = $playlist['user_id'];
 
-            if (!$this->videoExists($db, $videoId)) {
+            $relationParams = [
+                'user_id' => $ownerUserId,
+                'video_id' => $videoId,
+                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
+                'playlist_id' => $playlistId,
+            ];
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM {$this->table('fav_videos')}
+                 WHERE user_id = :user_id AND video_id = :video_id
+                   AND fav_type = :fav_type AND playlist_id = :playlist_id"
+            );
+            $stmt->execute($relationParams);
+            $relationExists = ((int) $stmt->fetchColumn()) > 0;
+
+            if (!$relationExists && !$this->videoExists($db, $videoId)) {
                 $this->io()->error("Video not found: $videoId");
                 return self::FAILURE;
             }
@@ -764,15 +788,11 @@ HELP
                  WHERE user_id = :user_id AND video_id = :video_id
                    AND fav_type = :fav_type AND playlist_id = :playlist_id"
             );
-            $stmt->execute([
-                'user_id' => $ownerUserId,
-                'video_id' => $videoId,
-                'fav_type' => Constants::FAV_TYPE_PLAYLIST,
-                'playlist_id' => $playlistId,
-            ]);
+            $stmt->execute($relationParams);
             $deleted = $stmt->rowCount();
 
             if ($deleted === 0) {
+                $this->recountAfterFavChange($db, $videoId, $ownerUserId);
                 $db->commit();
                 $this->io()->note("Video #$videoId is not in playlist #$playlistId");
                 return self::SUCCESS;
@@ -812,7 +832,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT playlist_id, title, is_locked FROM {$this->table('playlists')} WHERE playlist_id = :id");
             $stmt->execute(['id' => $id]);
-            /** @var array{playlist_id: int, title: string, is_locked: int}|false $playlist */
+            /** @var array{playlist_id: int|string, title: string, is_locked: int|string}|false $playlist */
             $playlist = $stmt->fetch();
 
             if ($playlist === false) {
@@ -820,8 +840,9 @@ HELP
                 return self::FAILURE;
             }
 
-            // Check if locked
-            if ($playlist['is_locked'] === 1) {
+            $playlistId = (int) $playlist['playlist_id'];
+            $isLocked = is_numeric($playlist['is_locked']) ? (int) $playlist['is_locked'] : 0;
+            if ($isLocked === 1) {
                 $this->io()->error("Playlist #$id is locked and cannot be deleted");
                 return self::FAILURE;
             }
@@ -844,7 +865,7 @@ HELP
         }
 
         try {
-            $this->deletePlaylistWithKvs($playlist['playlist_id']);
+            $this->deletePlaylistWithKvs($playlistId);
             $this->io()->success("Playlist #$id deleted with KVS cleanup");
 
             return self::SUCCESS;

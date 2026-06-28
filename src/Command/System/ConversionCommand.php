@@ -153,7 +153,7 @@ HELP
 
         // Errors filter
         if ($input->getOption('errors')) {
-            $query .= " AND s.error_iteration > 1";
+            $query .= " AND s.status_id != 0 AND s.error_iteration > 1";
         }
 
         $query .= " ORDER BY s.server_id ASC LIMIT :limit";
@@ -181,6 +181,8 @@ HELP
                 $load = $this->getFloatField($server, 'load');
                 $errorIter = $this->getNumericField($server, 'error_iteration');
                 $isDebug = $this->getNumericField($server, 'is_debug_enabled');
+                $maxTasks = $this->getNumericField($server, 'max_tasks');
+                $isMaxTasksPriority = $this->getNumericField($server, 'max_tasks_priority') === 1;
 
                 return [
                     'server_id' => $server['server_id'] ?? 0,
@@ -189,14 +191,14 @@ HELP
                     'status_id' => $statusId,
                     'status' => StatusFormatter::conversion($statusId, false),
                     'priority' => StatusFormatter::conversionPriority($priority, false),
-                    'max_tasks' => $server['max_tasks'] ?? 0,
+                    'max_tasks' => $isMaxTasksPriority ? "{$maxTasks} (prioritize)" : $maxTasks,
                     'tasks_pending' => $server['tasks_pending'] ?? 0,
                     'tasks_completed' => $server['tasks_completed'] ?? 0,
                     'free_space' => $this->formatBytes($freeSpace),
                     'load' => number_format($load, 2),
                     'api_version' => $server['api_version'] ?? '',
                     'heartbeat' => $this->formatHeartbeat($this->getStringField($server, 'heartbeat_date')),
-                    'has_error' => $errorIter > 1 ? 'Yes' : 'No',
+                    'has_error' => $statusId !== 0 && $errorIter > 1 ? 'Yes' : 'No',
                     'debug' => $isDebug === 1 ? 'On' : 'Off',
                 ];
             }, $servers);
@@ -403,12 +405,12 @@ HELP
             'album_update' => 'Updating album files',
         ];
 
-        $enabledTypes = $taskTypesStr !== '' ? explode(',', $taskTypesStr) : [];
+        $enabledTypes = $this->parseTaskTypes($taskTypesStr);
 
         $this->io()->newLine();
         $this->io()->section('Task Types');
 
-        if ($enabledTypes === [] && !$isAllowAny) {
+        if ($enabledTypes === []) {
             $this->io()->text('<fg=yellow>No specific task types assigned (processes all types)</>');
         } else {
             foreach ($taskTypeLabels as $type => $label) {
@@ -423,6 +425,32 @@ HELP
             $this->io()->newLine();
             $this->io()->text('<fg=cyan>✓ Process any available task when free</>');
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parseTaskTypes(string $taskTypes): array
+    {
+        if ($taskTypes === '') {
+            return [];
+        }
+
+        $unserialized = @unserialize($taskTypes, ['allowed_classes' => false]);
+        if (is_array($unserialized)) {
+            $types = [];
+            foreach ($unserialized as $value) {
+                if (is_string($value)) {
+                    $types[] = $value;
+                }
+            }
+            return $types;
+        }
+
+        return array_values(array_filter(
+            array_map('trim', explode(',', $taskTypes)),
+            static fn (string $value): bool => $value !== ''
+        ));
     }
 
     /**
@@ -711,7 +739,7 @@ HELP
                     SUM(free_space) as free_space,
                     AVG(`load`) as avg_load,
                     SUM(max_tasks) as total_capacity,
-                    SUM(CASE WHEN error_iteration > 1 THEN 1 ELSE 0 END) as servers_with_errors,
+                    SUM(CASE WHEN status_id != 0 AND error_iteration > 1 THEN 1 ELSE 0 END) as servers_with_errors,
                     SUM(CASE WHEN is_debug_enabled = 1 THEN 1 ELSE 0 END) as debug_enabled
                 FROM {$this->table('admin_conversion_servers')}
             ");

@@ -310,6 +310,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -354,6 +355,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -381,6 +383,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -432,6 +435,7 @@ class ContentOutputRegressionTest extends TestCase
             'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -534,7 +538,7 @@ class ContentOutputRegressionTest extends TestCase
         $durationRows = $this->decodeJsonRows($durationTester->getDisplay());
 
         $this->assertSame(0, $durationTester->getStatusCode());
-        $this->assertSame('1h 11m', $durationRows[0]['duration']);
+        $this->assertSame('1:11:00', $durationRows[0]['duration']);
 
         $ratingTester = new CommandTester($this->createDvdCommand($db));
         $ratingTester->execute([
@@ -597,6 +601,7 @@ class ContentOutputRegressionTest extends TestCase
             'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -641,6 +646,7 @@ class ContentOutputRegressionTest extends TestCase
             'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
@@ -750,7 +756,7 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertArrayNotHasKey('status_id', $defaultRows[0]);
     }
 
-    public function testUserListUsesKvsMaintainedContentCounters(): void
+    public function testUserListUsesKvsAdminContentCounts(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -779,8 +785,8 @@ class ContentOutputRegressionTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame(1, (int) $rows[0]['id']);
-        $this->assertSame(0, (int) $rows[0]['videos']);
-        $this->assertSame(0, (int) $rows[0]['albums']);
+        $this->assertSame(3, (int) $rows[0]['videos']);
+        $this->assertSame(2, (int) $rows[0]['albums']);
     }
 
     public function testUserShowUsesKvsGenderLabels(): void

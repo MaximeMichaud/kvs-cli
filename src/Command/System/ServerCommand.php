@@ -622,7 +622,7 @@ HELP
                     (SELECT COUNT(*) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as server_count,
                     (SELECT COUNT(*) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id AND status_id = 1) as active_count,
                     (SELECT COALESCE(MIN(free_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as min_free_space,
-                    (SELECT COALESCE(SUM(total_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as total_space
+                    (SELECT COALESCE(MIN(total_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as total_space
                 FROM {$this->table('admin_servers_groups')} g
                 ORDER BY g.group_id ASC
             ");

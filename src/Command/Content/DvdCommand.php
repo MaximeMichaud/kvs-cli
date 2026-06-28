@@ -119,6 +119,21 @@ HELP
             return $this->countDvds($db, $fromClause, $whereClause, $params);
         }
 
+        $commentsSelect = '';
+        if ($this->isDvdFieldRequested($input, 'comments_amount')) {
+            $commentsSelect = ",
+                        (SELECT COUNT(*) FROM {$this->table('comments')} c
+                         WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id) as comments_amount";
+        }
+        $includeGroupFields = $this->isDvdFieldRequested($input, 'dvd_group')
+            || $this->isDvdFieldRequested($input, 'dvd_group_status_id');
+        $groupSelect = $includeGroupFields ? ",
+                        dg.title as dvd_group,
+                        dg.status_id as dvd_group_status_id" : '';
+        $groupJoin = $includeGroupFields
+            ? "LEFT JOIN {$this->table('dvds_groups')} dg ON dg.dvd_group_id = d.dvd_group_id"
+            : '';
+
         $dvdFields = [
             'dvd_id',
             'title',
@@ -129,10 +144,16 @@ HELP
             'rating',
             'rating_amount',
         ];
+        if ($includeGroupFields) {
+            $dvdFields[] = 'dvd_group_id';
+        }
         $fieldList = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         $groupBy = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
+        if ($includeGroupFields) {
+            $groupBy .= ', dg.title, dg.status_id';
+        }
 
-        $query = "SELECT d.*,
+        $query = "SELECT d.*$commentsSelect$groupSelect,
                         COUNT(v.dvd_id) as video_count,
                         COALESCE(SUM(v.duration), 0) as video_duration
                  FROM (
@@ -141,6 +162,7 @@ HELP
                      $whereClause
                      ORDER BY d.dvd_id DESC LIMIT :limit
                  ) d
+                 $groupJoin
                  LEFT JOIN {$this->table('videos')} v ON v.dvd_id = d.dvd_id
                  GROUP BY $groupBy
                  ORDER BY d.dvd_id DESC";
@@ -175,13 +197,19 @@ HELP
                     'status_id' => $statusId,
                     'status' => StatusFormatter::dvd($statusId, false),
                     'total_videos' => $dvd['video_count'] ?? 0,
+                    'videos_amount' => $dvd['video_count'] ?? 0,
                     'videos' => $dvd['video_count'] ?? 0,
                     'total_videos_duration' => $duration,
+                    'total_duration' => $this->formatDvdDuration($duration),
                     'duration' => $this->formatDvdDuration($duration),
-                    'release_year' => $dvd['release_year'] ?? '',
+                    'release_year' => $this->formatDvdReleaseYear($dvd['release_year'] ?? null),
                     'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
                     'views' => $dvd['dvd_viewed'] ?? 0,
+                    'dvd_group' => $dvd['dvd_group'] ?? '',
+                    'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
+                    'comments_amount' => $dvd['comments_amount'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
+                    'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
                     'subscribers' => $dvd['subscribers_count'] ?? 0,
                     'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
                 ];
@@ -300,7 +328,7 @@ HELP
 
             // Release year
             $releaseYear = $dvd['release_year'] ?? null;
-            if ($releaseYear !== null && $releaseYear !== '') {
+            if ($this->hasDvdReleaseYear($releaseYear)) {
                 $info[] = ['Release Year', is_scalar($releaseYear) ? (string) $releaseYear : ''];
             }
 
@@ -333,12 +361,62 @@ HELP
         }
     }
 
+    private function isDvdFieldRequested(InputInterface $input, string $field): bool
+    {
+        $singleField = $this->getStringOption($input, 'field');
+        if ($singleField === $field) {
+            return true;
+        }
+
+        $fields = $this->getStringOption($input, 'fields');
+        if ($fields === null) {
+            return false;
+        }
+
+        foreach (array_map('trim', explode(',', $fields)) as $requestedField) {
+            if ($requestedField === $field) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function formatDvdReleaseYear(mixed $releaseYear): int|string
+    {
+        if (is_numeric($releaseYear)) {
+            $year = (int) $releaseYear;
+            return $year === 0 ? '-' : $year;
+        }
+
+        if ($releaseYear === null || $releaseYear === '') {
+            return '-';
+        }
+
+        return is_scalar($releaseYear) ? (string) $releaseYear : '-';
+    }
+
+    private function hasDvdReleaseYear(mixed $releaseYear): bool
+    {
+        if (is_numeric($releaseYear)) {
+            return (int) $releaseYear > 0;
+        }
+
+        return $releaseYear !== null && $releaseYear !== '';
+    }
+
     private function formatDvdDuration(int $seconds): string
     {
         $hours = intdiv($seconds, 3600);
-        $minutes = intdiv($seconds % 3600, 60);
+        $remainingSeconds = $seconds - ($hours * 3600);
+        $minutes = intdiv($remainingSeconds, 60);
+        $remainingSeconds = $seconds - ($hours * 3600) - ($minutes * 60);
 
-        return sprintf('%dh %dm', $hours, $minutes);
+        if ($hours > 0) {
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $remainingSeconds);
+        }
+
+        return sprintf('%d:%02d', $minutes, $remainingSeconds);
     }
 
     private function showStats(): int

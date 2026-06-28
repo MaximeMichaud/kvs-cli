@@ -149,6 +149,24 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['videos']);
     }
 
+    public function testPlaylistListExposesKvsAdminCountFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,videos_amount,comments_amount',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+    }
+
     public function testPlaylistListCsvFormat(): void
     {
         ob_start();
@@ -351,6 +369,33 @@ class PlaylistCommandTest extends TestCase
         );
     }
 
+    public function testPlaylistAddExistingVideoRecountsLikeKvsAdmin(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('playlists') . ' SET total_videos = 99 WHERE playlist_id = 30');
+
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 30,
+            '--video' => 100,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('already in playlist', $this->tester->getDisplay());
+        $this->assertSame(
+            2,
+            (int) $this->db->query(
+                'SELECT total_videos FROM ' . TestHelper::table('playlists') . ' WHERE playlist_id = 30'
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            1,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('fav_videos') .
+                ' WHERE playlist_id = 30 AND video_id = 100'
+            )->fetchColumn()
+        );
+    }
+
     public function testPlaylistRemoveMissingId(): void
     {
         $this->tester->execute([
@@ -405,6 +450,56 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('Video not found: 999999', $output);
     }
 
+    public function testPlaylistRemoveMissingRelationRecountsLikeKvsAdmin(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('playlists') . ' SET total_videos = 99 WHERE playlist_id = 30');
+
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 30,
+            '--video' => 102,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('not in playlist', $this->tester->getDisplay());
+        $this->assertSame(
+            2,
+            (int) $this->db->query(
+                'SELECT total_videos FROM ' . TestHelper::table('playlists') . ' WHERE playlist_id = 30'
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            0,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('fav_videos') .
+                ' WHERE playlist_id = 30 AND video_id = 102'
+            )->fetchColumn()
+        );
+    }
+
+    public function testPlaylistRemoveDeletesStaleVideoRelationLikeKvsAdmin(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('fav_videos') .
+            ' (user_id, video_id, fav_type, playlist_id, playlist_sort_id, added_date) VALUES ' .
+            "(1, 999, 10, 30, 3, '2026-05-26 10:30:00')"
+        );
+
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 30,
+            '--video' => 999,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(
+            0,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('fav_videos') . ' WHERE playlist_id = 30 AND video_id = 999'
+            )->fetchColumn()
+        );
+    }
+
     public function testPlaylistCommandMetadata(): void
     {
         $this->assertEquals('content:playlist', $this->command->getName());
@@ -448,6 +543,10 @@ class PlaylistCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('fav_videos') . ' (' .
             'user_id INTEGER, video_id INTEGER, fav_type INTEGER, playlist_id INTEGER, ' .
             'playlist_sort_id INTEGER, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
+            'comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
@@ -497,6 +596,11 @@ class PlaylistCommandTest extends TestCase
             "(1, 100, 10, 30, 1, '2026-05-26 10:10:00'), " .
             "(1, 101, 10, 30, 2, '2026-05-26 10:20:00'), " .
             "(1, 102, 10, 20, 1, '2026-05-25 10:10:00')"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('comments') .
+            ' (comment_id, object_type_id, object_id) VALUES ' .
+            '(1, 13, 30), (2, 13, 30), (3, 1, 30), (4, 13, 20)'
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories') .

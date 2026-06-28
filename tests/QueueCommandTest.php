@@ -263,7 +263,7 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('list : List active tasks in queue', $output);
         $this->assertStringContainsString('show <id> : Show details for a specific task', $output);
         $this->assertStringContainsString('stats : Show queue statistics', $output);
-        $this->assertStringContainsString('history : Show completed/deleted tasks history', $output);
+        $this->assertStringContainsString('history : Show completed/deleted/failed tasks history', $output);
     }
 
     public function testQueueRejectsUnknownAction(): void
@@ -312,6 +312,39 @@ class QueueCommandTest extends TestCase
         $this->assertSame('New Video', $rows[0]['type']);
     }
 
+    public function testQueueListNamesDeleteTimelineScreenshotsTaskType(): void
+    {
+        $this->insertTask($this->db, [
+            'task_id' => 40,
+            'status_id' => 0,
+            'type_id' => 20,
+            'video_id' => 100,
+            'album_id' => 0,
+            'server_id' => 1,
+            'error_code' => 0,
+            'priority' => 60,
+            'message' => 'Deleting timeline screenshots',
+            'data' => '',
+            'times_restarted' => 0,
+            'added_date' => '2026-05-26 11:00:00',
+            'start_date' => '0000-00-00 00:00:00',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--type' => '20',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(40, (int) $rows[0]['task_id']);
+        $this->assertSame('Delete Timeline Screenshots', $rows[0]['type']);
+    }
+
     public function testQueueHistoryWithStatusFilter(): void
     {
         $this->tester->execute([
@@ -337,6 +370,42 @@ class QueueCommandTest extends TestCase
         $this->assertCount(1, $deletedRows);
         $this->assertSame(302, (int) $deletedRows[0]['task_id']);
         $this->assertSame('Deleted', $deletedRows[0]['status']);
+    }
+
+    public function testQueueHistoryDisplaysFailedHistoryStatus(): void
+    {
+        $this->insertFailedHistoryTask();
+
+        $this->tester->execute([
+            'action' => 'history',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(304, (int) $rows[0]['task_id']);
+        $this->assertSame('Failed', $rows[0]['status']);
+    }
+
+    public function testQueueHistoryWithFailedStatusFilter(): void
+    {
+        $this->insertFailedHistoryTask();
+
+        $this->tester->execute([
+            'action' => 'history',
+            '--status' => 'failed',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(304, (int) $rows[0]['task_id']);
+        $this->assertSame('Failed', $rows[0]['status']);
     }
 
     public function testQueueHistoryWithAlbumFilter(): void
@@ -544,6 +613,25 @@ class QueueCommandTest extends TestCase
             ':message, :data, :start_date, :end_date, :effective_duration)'
         );
         $stmt->execute($task);
+    }
+
+    private function insertFailedHistoryTask(): void
+    {
+        $this->insertHistoryTask($this->db, [
+            'task_id' => 304,
+            'status_id' => 2,
+            'type_id' => 4,
+            'video_id' => 103,
+            'album_id' => 0,
+            'server_id' => 2,
+            'error_code' => 3,
+            'priority' => 40,
+            'message' => 'Failed and archived',
+            'data' => '',
+            'start_date' => date('Y-m-d H:i:s', time() - 600),
+            'end_date' => date('Y-m-d H:i:s', time() + 60),
+            'effective_duration' => 45,
+        ]);
     }
 
     private function createCommand(PDO $db): QueueCommand

@@ -236,6 +236,36 @@ class TagCategoryCleanupTest extends TestCase
         $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags_videos WHERE tag_id = 2'));
     }
 
+    public function testTagUpdateToExistingNameMergesRelationsLikeKvsAdmin(): void
+    {
+        $db = $this->createDatabase();
+        $this->createTagSchema($db);
+
+        $db->exec("INSERT INTO ktvs_tags (tag_id, tag) VALUES (1, 'Source'), (2, 'Target')");
+        foreach ($this->tagRelationTables() as $suffix => $objectColumn) {
+            $db->exec("INSERT INTO ktvs_tags_{$suffix} (tag_id, {$objectColumn}) VALUES (1, 100)");
+            $db->exec("INSERT INTO ktvs_tags_{$suffix} (tag_id, {$objectColumn}) VALUES (1, 101)");
+            $db->exec("INSERT INTO ktvs_tags_{$suffix} (tag_id, {$objectColumn}) VALUES (2, 100)");
+            $db->exec("INSERT INTO ktvs_tags_{$suffix} (tag_id, {$objectColumn}) VALUES (2, 200)");
+        }
+
+        $tester = new CommandTester($this->createTagCommand($db));
+        $tester->execute(['action' => 'update', 'identifier' => '1', '--name' => 'Target']);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags WHERE tag_id = 1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags WHERE tag_id = 2'));
+
+        foreach ($this->tagRelationTables() as $suffix => $objectColumn) {
+            $this->assertSame(0, $this->fetchInt($db, "SELECT COUNT(*) FROM ktvs_tags_{$suffix} WHERE tag_id = 1"));
+            $this->assertSame(3, $this->fetchInt($db, "SELECT COUNT(*) FROM ktvs_tags_{$suffix} WHERE tag_id = 2"));
+            $this->assertSame(
+                [100, 101, 200],
+                $this->fetchInts($db, "SELECT {$objectColumn} FROM ktvs_tags_{$suffix} WHERE tag_id = 2 ORDER BY {$objectColumn}")
+            );
+        }
+    }
+
     private function createDatabase(): \PDO
     {
         $db = new \PDO('sqlite::memory:');

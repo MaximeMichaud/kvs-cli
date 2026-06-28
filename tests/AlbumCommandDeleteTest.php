@@ -33,7 +33,7 @@ class AlbumCommandDeleteTest extends TestCase
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
 
-        $db->exec('INSERT INTO ktvs_albums (album_id) VALUES (1), (2)');
+        $db->exec('INSERT INTO ktvs_albums (album_id, status_id) VALUES (1, 1), (2, 1)');
         $db->exec('INSERT INTO ktvs_albums_images (album_id) VALUES (1)');
         $db->exec('INSERT INTO ktvs_categories_albums (album_id) VALUES (1)');
         $db->exec('INSERT INTO ktvs_tags_albums (album_id) VALUES (1)');
@@ -120,7 +120,7 @@ class AlbumCommandDeleteTest extends TestCase
         $db = new \PDO('sqlite::memory:');
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
-        $db->exec('INSERT INTO ktvs_albums (album_id) VALUES (1)');
+        $db->exec('INSERT INTO ktvs_albums (album_id, status_id) VALUES (1, 1)');
 
         $config = new Configuration(['path' => $this->tempDir]);
         $command = new class ($config, $db) extends AlbumCommand {
@@ -154,9 +154,48 @@ class AlbumCommandDeleteTest extends TestCase
         $this->assertStringContainsString('confirmation was not provided', $tester->getDisplay());
     }
 
+    public function testDeleteAlbumDoesNotCallKvsCleanupForDeletingStatus(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+        $db->exec('INSERT INTO ktvs_albums (album_id, status_id) VALUES (1, 4)');
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends AlbumCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:album');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deleteAlbumWithKvs(int $albumId): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->setInputs(['yes']);
+        $tester->execute(['action' => 'delete', 'id' => '1']);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('Album cannot be deleted in its current status: #1 (Deleting)', $display);
+        $this->assertStringNotContainsString('This will delete album #1', $display);
+    }
+
     private function createDeleteSchema(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER, status_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_categories_albums (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_tags_albums (album_id INTEGER)');

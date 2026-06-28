@@ -348,6 +348,23 @@ class ServerCommandTest extends TestCase
         $this->assertStringContainsString('1/2', $output);
     }
 
+    public function testServerGroupListUsesKvsAdminMinimumCapacity(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--format' => 'json',
+            '--fields' => 'group_id,total_space,min_free',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'group_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('5 GB', $rowsById[10]['total_space'] ?? null);
+        $this->assertSame('2 GB', $rowsById[10]['min_free'] ?? null);
+    }
+
     public function testServerGroupShow(): void
     {
         $this->tester->execute([

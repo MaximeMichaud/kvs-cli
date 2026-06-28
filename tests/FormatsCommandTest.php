@@ -143,6 +143,21 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('Premium', $output);
     }
 
+    public function testAvailableFormatsShowsConditionalStatusLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'available',
+            '--fields' => 'format_id,title,status',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $statusesByTitle = array_column($rows, 'status', 'title');
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertSame('Conditional', $statusesByTitle['Conditional MP4'] ?? null);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListFormatsOutputFormats(string $format): void
     {
@@ -234,7 +249,7 @@ class FormatsCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('formats_videos') . ' (' .
-            'format_video_id INTEGER, title TEXT, postfix TEXT, status_id INTEGER, ' .
+            'format_video_id INTEGER, title TEXT, postfix TEXT, status_id INTEGER, is_conditional INTEGER, ' .
             'format_video_group_id INTEGER, access_level_id INTEGER)'
         );
 
@@ -247,8 +262,9 @@ class FormatsCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('formats_videos') .
             " VALUES " .
-            "(1, '720p MP4', '_720p.mp4', 1, 1, 0), " .
-            "(2, '1080p MP4', '_1080p.mp4', 2, 1, 2)"
+            "(1, '720p MP4', '_720p.mp4', 1, 0, 1, 0), " .
+            "(2, '1080p MP4', '_1080p.mp4', 2, 0, 1, 2), " .
+            "(3, 'Conditional MP4', '_cond.mp4', 2, 1, 1, 0)"
         );
 
         return $db;

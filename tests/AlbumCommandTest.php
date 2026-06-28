@@ -85,6 +85,51 @@ class AlbumCommandTest extends TestCase
         $this->assertSame(7, (int) $rows[1]['images']);
     }
 
+    public function testAlbumListExposesKvsAdminCountFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,title,photos_amount,comments_count,favourites_count,purchases_count',
+            '--format' => 'json',
+            '--limit' => 2,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame('Disabled Album', $rows[0]['title']);
+        $this->assertSame(3, (int) $rows[0]['photos_amount']);
+        $this->assertSame(1, (int) $rows[0]['comments_count']);
+        $this->assertSame(2, (int) $rows[0]['favourites_count']);
+        $this->assertSame(1, (int) $rows[0]['purchases_count']);
+
+        $this->assertSame(10, (int) $rows[1]['album_id']);
+        $this->assertSame(7, (int) $rows[1]['photos_amount']);
+        $this->assertSame(2, (int) $rows[1]['comments_count']);
+        $this->assertSame(5, (int) $rows[1]['favourites_count']);
+        $this->assertSame(0, (int) $rows[1]['purchases_count']);
+    }
+
+    public function testAlbumListExposesKvsAdminRelationFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,title,content_source,admin_flag,server_group',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame('Disabled Album', $rows[0]['title']);
+        $this->assertSame('Gallery Studio', $rows[0]['content_source']);
+        $this->assertSame('Album Review', $rows[0]['admin_flag']);
+        $this->assertSame('Album Storage', $rows[0]['server_group']);
+    }
+
     public function testAlbumListFormats(): void
     {
         // Test JSON format
@@ -142,7 +187,7 @@ class AlbumCommandTest extends TestCase
         $this->assertStringContainsString('Active Album', $output);
         $this->assertMatchesRegularExpression('/Access\W+Public/', $output);
         $this->assertMatchesRegularExpression('/User\W+alice/', $output);
-        $this->assertMatchesRegularExpression('/Images\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Images\W+7/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -165,19 +210,56 @@ class AlbumCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('albums') . ' (' .
             'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
+            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER, ' .
+            'favourites_count INTEGER, purchases_count INTEGER, content_source_id INTEGER, admin_flag_id INTEGER, ' .
+            'server_group_id INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('albums_images') . ' (album_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('comments') .
+            ' (comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
+        );
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('content_sources') . ' (' .
+            'content_source_id INTEGER, title TEXT, status_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('flags') . ' (' .
+            'flag_id INTEGER, title TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_servers_groups') . ' (' .
+            'group_id INTEGER, title TEXT, status_id INTEGER)'
+        );
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
         $db->exec(
             "INSERT INTO " . TestHelper::table('albums') .
-            " (album_id, user_id, title, status_id, is_private, post_date, album_viewed, rating, rating_amount, photos_amount) VALUES " .
-            "(10, 1, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10, 7), " .
-            "(20, 2, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5, 3)"
+            ' (album_id, user_id, title, status_id, is_private, post_date, album_viewed, rating, ' .
+            'rating_amount, photos_amount, favourites_count, purchases_count, content_source_id, admin_flag_id, ' .
+            'server_group_id) VALUES ' .
+            "(10, 1, 'Active Album', 1, 0, '2026-05-25 10:00:00', 12, 40, 10, 7, 5, 0, 0, 0, 0), " .
+            "(20, 2, 'Disabled Album', 0, 2, '2026-05-26 10:00:00', 5, 10, 5, 3, 2, 1, 3, 4, 5)"
+        );
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('content_sources') .
+            " VALUES (3, 'Gallery Studio', 1)"
+        );
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('flags') .
+            " VALUES (4, 'Album Review')"
+        );
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('admin_servers_groups') .
+            " VALUES (5, 'Album Storage', 1)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('albums_images') . " VALUES (10), (10), (20)");
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('comments') .
+            ' (comment_id, object_type_id, object_id) VALUES ' .
+            '(1, 2, 10), (2, 2, 10), (3, 2, 20), (4, 1, 20)'
+        );
 
         return $db;
     }

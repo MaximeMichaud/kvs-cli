@@ -212,6 +212,30 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(9, (int) $rows[0]['total_usage']);
     }
 
+    public function testListExposesKvsAdminCountFields(): void
+    {
+        $this->db->exec('INSERT INTO ' . TestHelper::table('tags_posts') . ' (tag_id, post_id) VALUES (10, 300)');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '4K',
+            '--fields' => 'tag_id,tag,videos_amount,albums_amount,posts_amount,other_amount,all_amount',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4K', $rows[0]['tag']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(1, (int) $rows[0]['posts_amount']);
+        $this->assertSame(10, (int) $rows[0]['other_amount']);
+        $this->assertSame(14, (int) $rows[0]['all_amount']);
+    }
+
     public function testShowTagDetails(): void
     {
         $this->tester->execute([
@@ -248,6 +272,40 @@ class TagCommandComprehensiveTest extends TestCase
 
         $this->assertEquals(1, $exitCode);
         $this->assertStringContainsString('Tag already exists: 4K', $output);
+    }
+
+    public function testUpdateUsesUniqueTagDirectoryLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '20',
+            '--name' => '4K!',
+        ]);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertSame(
+            '4k2',
+            $this->db->query('SELECT tag_dir FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 20')
+                ->fetchColumn()
+        );
+    }
+
+    public function testUpdateRejectsInvalidStatusWithoutChangingTag(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '10',
+            '--status' => 'bogus',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Invalid status "bogus"', $output);
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT status_id FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 10')
+                ->fetchColumn()
+        );
     }
 
     public function testUpdateWithoutChanges(): void
@@ -469,7 +527,8 @@ class TagCommandComprehensiveTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
             'tag_id INTEGER, tag TEXT, tag_dir TEXT, synonyms TEXT, status_id INTEGER, ' .
-            'added_date TEXT, last_content_date TEXT)'
+            'added_date TEXT, last_content_date TEXT, total_content_sources INTEGER, total_playlists INTEGER, ' .
+            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
         );
 
         foreach ($this->relationTables() as $suffix => $objectColumn) {
@@ -481,11 +540,12 @@ class TagCommandComprehensiveTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
-            ' (tag_id, tag, tag_dir, synonyms, status_id, added_date, last_content_date) VALUES ' .
-            "(10, '4K', '4k', '', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00'), " .
-            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00'), " .
-            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00'), " .
-            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00')"
+            ' (tag_id, tag, tag_dir, synonyms, status_id, added_date, last_content_date, ' .
+            'total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES ' .
+            "(10, '4K', '4k', '', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0), " .
+            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
+            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0), " .
+            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_videos') .

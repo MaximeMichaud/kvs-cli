@@ -118,7 +118,7 @@ class Configuration
             if ($user !== null && $user !== '') {
                 $this->dbConfig['user'] = $user;
             }
-            if ($password !== null && $password !== '') {
+            if ($password !== null) {
                 $this->dbConfig['password'] = $password;
             }
             if ($database !== null && $database !== '') {
@@ -235,7 +235,7 @@ class Configuration
     {
         $escapedKey = preg_quote($key, '/');
 
-        $result = preg_match("/define\\(['\"]" . $escapedKey . "['\"],\\s*['\"]([^'\"]+)['\"]\\)/", $content, $matches);
+        $result = preg_match("/define\\(['\"]" . $escapedKey . "['\"],\\s*['\"]([^'\"]*)['\"]\\)/", $content, $matches);
         if ($result !== false && $result === 1) {
             return $matches[1];
         }

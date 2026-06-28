@@ -197,6 +197,7 @@ HELP
                 $counts = $this->extractTagUsageCounts($tag);
                 $statusIdVal = $tag['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $otherAmount = $this->getTagStoredOtherAmount($tag);
                 $transformedTags[] = [
                     'tag_id' => $tag['tag_id'] ?? 0,
                     'id' => $tag['tag_id'] ?? 0,
@@ -204,6 +205,11 @@ HELP
                     'video_count' => $counts['videos'],
                     'album_count' => $counts['albums'],
                     'total_usage' => array_sum($counts),
+                    'videos_amount' => $counts['videos'],
+                    'albums_amount' => $counts['albums'],
+                    'posts_amount' => $counts['posts'],
+                    'other_amount' => $otherAmount,
+                    'all_amount' => $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount,
                     'status_id' => $statusId,
                     'status' => StatusFormatter::tag($statusId, false),
                     ...$counts,
@@ -310,9 +316,7 @@ HELP
                 return self::FAILURE;
             }
 
-            // Create tag - tag_dir is URL slug of tag name
-            $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($tagName));
-            $tagDir = trim((string) $tagDir, '-');
+            $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($tagName));
 
             // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
             $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
@@ -480,6 +484,20 @@ HELP
     private function extractTagUsageCounts(array $tag): array
     {
         return $this->extractRelationUsageCounts($tag, self::TAG_RELATION_TABLES);
+    }
+
+    /**
+     * @param array<string, mixed> $tag
+     */
+    private function getTagStoredOtherAmount(array $tag): int
+    {
+        $total = 0;
+        foreach (['total_content_sources', 'total_playlists', 'total_models', 'total_dvds', 'total_dvd_groups'] as $field) {
+            $value = $tag[$field] ?? 0;
+            $total += is_numeric($value) ? (int) $value : 0;
+        }
+
+        return $total;
     }
 
     private function mergeTags(?string $sourceId, ?string $targetId, InputInterface $input): int
@@ -783,19 +801,37 @@ HELP
             // Name
             $name = $this->getStringOption($input, 'name');
             if ($name !== null) {
-                // Check if new name already exists
-                $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
+                $stmt = $db->prepare("SELECT tag_id, tag FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
-                if ($stmt->fetch() !== false) {
-                    $this->io()->error("Tag name already exists: $name");
-                    $this->io()->text('Hint: Use merge command to combine duplicate tags');
-                    return self::FAILURE;
+                $existingTag = $stmt->fetch(\PDO::FETCH_ASSOC);
+                if (is_array($existingTag)) {
+                    $targetIdValue = $existingTag['tag_id'] ?? null;
+                    $targetId = is_scalar($targetIdValue) ? (string) $targetIdValue : '';
+                    if ($targetId === '') {
+                        $this->io()->error("Tag name already exists: $name");
+                        return self::FAILURE;
+                    }
+
+                    $db->beginTransaction();
+                    $this->mergeTagRelations($db, $id, $targetId);
+                    $deleteStmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
+                    $deleteStmt->execute(['id' => $id]);
+                    $db->commit();
+
+                    $tagValue = $tag['tag'] ?? '';
+                    $sourceName = is_scalar($tagValue) ? (string) $tagValue : '';
+                    $targetNameValue = $existingTag['tag'] ?? $name;
+                    $targetName = is_scalar($targetNameValue) ? (string) $targetNameValue : $name;
+
+                    $this->io()->success('Tags merged successfully!');
+                    $this->io()->text("'$sourceName' has been merged into '$targetName'");
+
+                    return self::SUCCESS;
                 }
                 $updates[] = 'tag = :tag';
                 $params['tag'] = $name;
                 // Also update tag_dir (URL slug)
-                $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($name));
-                $tagDir = trim((string) $tagDir, '-');
+                $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), $id);
                 $updates[] = 'tag_dir = :tag_dir';
                 $params['tag_dir'] = $tagDir;
             }
@@ -803,7 +839,14 @@ HELP
             // Status
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? StatusFormatter::TAG_ACTIVE : StatusFormatter::TAG_INACTIVE;
+                $statusId = $this->parseStatusFilter($input, [
+                    'active' => StatusFormatter::TAG_ACTIVE,
+                    'inactive' => StatusFormatter::TAG_INACTIVE,
+                    'disabled' => StatusFormatter::TAG_INACTIVE,
+                ]);
+                if ($statusId === null) {
+                    throw new \InvalidArgumentException('Status is required');
+                }
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }
@@ -861,5 +904,34 @@ HELP
             status: $status,
             commandName: 'content:tag'
         );
+    }
+
+    private function slugifyTagDir(string $tagName): string
+    {
+        $tagDir = preg_replace('/[^a-z0-9]+/', '-', strtolower($tagName));
+
+        return trim((string) $tagDir, '-');
+    }
+
+    private function getUniqueTagDir(\PDO $db, string $baseDir, ?string $excludeId = null): string
+    {
+        for ($i = 1; $i < 999999; $i++) {
+            $tagDir = $i === 1 ? $baseDir : $baseDir . $i;
+            $sql = "SELECT COUNT(*) FROM {$this->table('tags')} WHERE tag_dir = :tag_dir";
+            $params = ['tag_dir' => $tagDir];
+
+            if ($excludeId !== null) {
+                $sql .= ' AND tag_id != :id';
+                $params['id'] = $excludeId;
+            }
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            if ((int) $stmt->fetchColumn() === 0) {
+                return $tagDir;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique tag directory');
     }
 }

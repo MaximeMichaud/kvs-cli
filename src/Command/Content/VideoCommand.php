@@ -103,8 +103,8 @@ HELP
         }
 
         $fromSql = "FROM {$this->table('videos')} v
-                 LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id
-                 WHERE 1=1";
+                 LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id";
+        $whereSql = 'WHERE 1=1';
 
         $params = [];
 
@@ -116,37 +116,53 @@ HELP
                 'error' => StatusFormatter::VIDEO_ERROR,
             ], [0, 1, 2, 3, 4, 5]);
             if ($statusId !== null) {
-                $fromSql .= " AND v.status_id = :status";
+                $whereSql .= " AND v.status_id = :status";
                 $params['status'] = $statusId;
             }
         }
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $fromSql .= " AND v.title LIKE :search";
+            $whereSql .= " AND v.title LIKE :search";
             $params['search'] = "%$search%";
         }
 
         $category = $this->getIntOption($input, 'category');
         if ($category !== null) {
-            $fromSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
                 . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
         $user = $this->getIntOption($input, 'user');
         if ($user !== null) {
-            $fromSql .= " AND v.user_id = :user";
+            $whereSql .= " AND v.user_id = :user";
             $params['user'] = $user;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
-            return $this->countVideos($db, $fromSql, $params);
+            return $this->countVideos($db, "$fromSql $whereSql", $params);
         }
 
-        $query = "SELECT v.*, u.username,
-                 v.video_viewed as views
+        $selectFields = [
+            'v.*',
+            'u.username',
+            'v.video_viewed as views',
+        ];
+        [$relationSelects, $relationJoinSql] = $this->buildVideoRelationSql($input);
+        $selectFields = array_merge($selectFields, $relationSelects);
+        if ($this->isFieldRequested($input, 'comments_count')) {
+            $commentsTable = $this->table('comments');
+            $selectFields[] = "(
+                SELECT COUNT(*) FROM $commentsTable c
+                WHERE c.object_type_id = 1 AND c.object_id = v.video_id
+            ) as comments_count";
+        }
+
+        $query = 'SELECT ' . implode(",\n                 ", $selectFields) . "
                  $fromSql
+                 $relationJoinSql
+                 $whereSql
                  ORDER BY v.post_date DESC LIMIT :limit";
 
         try {
@@ -189,6 +205,9 @@ HELP
                     $fileSize = is_numeric($fileSizeVal) ? (int) $fileSizeVal : 0;
                     $video['filesize'] = format_bytes($fileSize);
                 }
+                if (array_key_exists('r_ctr', $video) && is_numeric($video['r_ctr'])) {
+                    $video['r_ctr'] = round((float) $video['r_ctr'] * 100, 4);
+                }
 
                 $video['rating'] = format_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
@@ -207,6 +226,62 @@ HELP
             $this->io()->error('Failed to fetch videos: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function isFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        $fields = array_map('trim', explode(',', $fieldsOption));
+        return in_array($field, $fields, true);
+    }
+
+    /**
+     * @return array{0: list<string>, 1: string}
+     */
+    private function buildVideoRelationSql(InputInterface $input): array
+    {
+        $selects = [];
+        $joins = [];
+
+        if ($this->isFieldRequested($input, 'content_source')) {
+            $selects[] = 'cs.title as content_source';
+            $selects[] = 'cs.status_id as content_source_status_id';
+            $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = v.content_source_id";
+        }
+
+        if ($this->isFieldRequested($input, 'dvd')) {
+            $selects[] = 'd.title as dvd';
+            $selects[] = 'd.status_id as dvd_status_id';
+            $joins[] = "LEFT JOIN {$this->table('dvds')} d ON d.dvd_id = v.dvd_id";
+        }
+
+        if ($this->isFieldRequested($input, 'admin_flag')) {
+            $selects[] = 'f.title as admin_flag';
+            $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = v.admin_flag_id";
+        }
+
+        if ($this->isFieldRequested($input, 'server_group')) {
+            $selects[] = 'sg.title as server_group';
+            $selects[] = 'sg.status_id as server_group_status_id';
+            $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = v.server_group_id";
+        }
+
+        if ($this->isFieldRequested($input, 'format_video_group')) {
+            $selects[] = 'fvg.title as format_video_group';
+            $joins[] = "LEFT JOIN {$this->table('formats_videos_groups')} fvg "
+                . 'ON fvg.format_video_group_id = v.format_video_group_id';
+        }
+
+        return [$selects, implode("\n                 ", $joins)];
     }
 
     /**
@@ -323,34 +398,51 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will delete video #$id using KVS native cleanup");
-        $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
-
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
-            if (!$input->isInteractive()) {
-                $this->io()->error('Video deletion cancelled because confirmation was not provided.');
-                return self::FAILURE;
-            }
-
-            $this->io()->warning('Video deletion cancelled');
-            return self::SUCCESS;
-        }
-
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
         }
 
         try {
-            $stmt = $db->prepare("SELECT video_id FROM {$this->table('videos')} WHERE video_id = :id");
+            $stmt = $db->prepare("SELECT video_id, status_id FROM {$this->table('videos')} WHERE video_id = :id");
             $stmt->execute(['id' => $id]);
-            $videoId = $stmt->fetchColumn();
-            if (!is_numeric($videoId)) {
+            /** @var array{video_id: int|string, status_id: int|string}|false $video */
+            $video = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($video === false || !is_numeric($video['video_id'])) {
                 $this->io()->error("Video not found: #$id");
                 return self::FAILURE;
             }
 
-            $this->deleteVideoWithKvs((int) $videoId);
+            $videoId = (int) $video['video_id'];
+            $statusId = is_numeric($video['status_id']) ? (int) $video['status_id'] : -1;
+            $deletableStatuses = [
+                StatusFormatter::VIDEO_DISABLED,
+                StatusFormatter::VIDEO_ACTIVE,
+                StatusFormatter::VIDEO_ERROR,
+            ];
+            if (!in_array($statusId, $deletableStatuses, true)) {
+                $this->io()->error(sprintf(
+                    'Video cannot be deleted in its current status: #%d (%s)',
+                    $videoId,
+                    StatusFormatter::video($statusId, false)
+                ));
+                return self::FAILURE;
+            }
+
+            $this->io()->warning("This will delete video #$id using KVS native cleanup");
+            $this->io()->warning('Files, references and counters will be queued for KVS background deletion.');
+
+            if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Video deletion cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
+                $this->io()->warning('Video deletion cancelled');
+                return self::SUCCESS;
+            }
+
+            $this->deleteVideoWithKvs($videoId);
             $this->io()->success("Video #$id queued for KVS deletion");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete video: ' . $e->getMessage());
@@ -507,10 +599,10 @@ HELP
 
     private function formatResolutionType(int $resolutionType, bool $withColor = true): string
     {
-        $label = match ($resolutionType) {
-            1 => 'HD',
-            2 => 'FHD',
-            3 => '4K',
+        $label = match (true) {
+            $resolutionType === 1 => 'HD',
+            $resolutionType === 2 => 'FHD',
+            $resolutionType > 2 => "{$resolutionType}K",
             default => 'SD',
         };
 
@@ -518,10 +610,10 @@ HELP
             return $label;
         }
 
-        $color = match ($resolutionType) {
-            1 => 'green',
-            2 => 'cyan',
-            3 => 'magenta',
+        $color = match (true) {
+            $resolutionType === 1 => 'green',
+            $resolutionType === 2 => 'cyan',
+            $resolutionType > 2 => 'magenta',
             default => 'gray',
         };
 

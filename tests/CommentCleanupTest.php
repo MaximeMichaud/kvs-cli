@@ -156,6 +156,45 @@ class CommentCleanupTest extends TestCase
         );
     }
 
+    public function testApproveCommentGrantsKvsCommentAwardTokens(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+        $this->createMemberzoneParams([
+            'AWARDS_COMMENT_VIDEO' => '7',
+            'AWARDS_COMMENT_VIDEO_CONDITION' => '10',
+        ]);
+
+        $db->exec("INSERT INTO ktvs_videos (video_id, title, comments_count) VALUES (1, 'Video One', 0)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, status_id, tokens_available, comments_videos_count, comments_total_count
+            ) VALUES
+                (4, 'anonymous', 4, 0, 0, 0),
+                (5, 'tester', 2, 1, 0, 0)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (13, 1, 0, 1, 5, 'Long enough comment for award', 0, 1)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->setInputs(['yes']);
+        $tester->execute(['action' => 'approve', 'id' => '13']);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(8, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id = 5'));
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                $db,
+                'SELECT COUNT(*) FROM ktvs_log_awards_users
+                 WHERE award_type = 3 AND user_id = 5 AND comment_id = 13 AND tokens_granted = 7'
+            )
+        );
+    }
+
     public function testApproveWithoutInteractiveConfirmationFailsWithoutWrites(): void
     {
         $db = $this->createDatabase();
@@ -363,6 +402,66 @@ class CommentCleanupTest extends TestCase
         $this->assertStringNotContainsString('Usage: kvs comment approve ID', $output);
     }
 
+    public function testApproveRejectsDecimalCommentIdWithoutWrites(): void
+    {
+        $db = $this->createDatabase();
+        $this->createSchema($db);
+
+        $db->exec("INSERT INTO ktvs_albums (album_id, title, comments_count) VALUES (1, 'Album One', 0)");
+        $db->exec(
+            "INSERT INTO ktvs_users (
+                user_id, username, comments_albums_count, comments_total_count
+            ) VALUES (5, 'tester', 0, 0)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments (
+                comment_id, object_id, object_sub_id, object_type_id, user_id, comment, is_approved, is_review_needed
+            ) VALUES (8, 1, 0, 2, 5, 'Approve decimal id', 0, 1)"
+        );
+
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            'action' => 'approve',
+            'id' => '8.9',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Invalid comment ID: 8.9', $tester->getDisplay());
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id = 8'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id = 8'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT comments_count FROM ktvs_albums WHERE album_id = 1'));
+    }
+
+    /**
+     * @param array<string, string> $overrides
+     */
+    private function createMemberzoneParams(array $overrides): void
+    {
+        $dir = $this->tempDir . '/admin/data/system';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+
+        $defaults = [
+            'AWARDS_COMMENT_VIDEO' => '0',
+            'AWARDS_COMMENT_VIDEO_CONDITION' => '0',
+            'AWARDS_COMMENT_ALBUM' => '0',
+            'AWARDS_COMMENT_ALBUM_CONDITION' => '0',
+            'AWARDS_COMMENT_CS' => '0',
+            'AWARDS_COMMENT_CS_CONDITION' => '0',
+            'AWARDS_COMMENT_MODEL' => '0',
+            'AWARDS_COMMENT_MODEL_CONDITION' => '0',
+            'AWARDS_COMMENT_DVD' => '0',
+            'AWARDS_COMMENT_DVD_CONDITION' => '0',
+            'AWARDS_COMMENT_POST' => '0',
+            'AWARDS_COMMENT_POST_CONDITION' => '0',
+            'AWARDS_COMMENT_PLAYLIST' => '0',
+            'AWARDS_COMMENT_PLAYLIST_CONDITION' => '0',
+        ];
+
+        file_put_contents($dir . '/memberzone_params.dat', serialize(array_merge($defaults, $overrides)));
+    }
+
     private function createCommand(\PDO $db): CommentCommand
     {
         return new class ($this->createConfig(), $db) extends CommentCommand {
@@ -424,6 +523,8 @@ class CommentCleanupTest extends TestCase
             'CREATE TABLE ktvs_users (
                 user_id INTEGER,
                 username TEXT,
+                status_id INTEGER DEFAULT 2,
+                tokens_available INTEGER DEFAULT 0,
                 comments_videos_count INTEGER DEFAULT 0,
                 comments_albums_count INTEGER DEFAULT 0,
                 comments_cs_count INTEGER DEFAULT 0,
@@ -442,6 +543,15 @@ class CommentCleanupTest extends TestCase
                 object_id INTEGER,
                 object_type_id INTEGER,
                 action_details TEXT,
+                added_date TEXT
+            )'
+        );
+        $db->exec(
+            'CREATE TABLE ktvs_log_awards_users (
+                award_type INTEGER,
+                user_id INTEGER,
+                comment_id INTEGER,
+                tokens_granted INTEGER,
                 added_date TEXT
             )'
         );

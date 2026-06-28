@@ -174,6 +174,22 @@ HELP
                        END as object_type";
     }
 
+    private function isCommentFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        $fields = array_map('trim', explode(',', $fieldsOption));
+        return in_array($field, $fields, true);
+    }
+
     private function listComments(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
@@ -245,12 +261,23 @@ HELP
                 return self::SUCCESS;
             }
 
+            $countrySelect = '';
+            $countryJoin = '';
+            if ($this->isCommentFieldRequested($input, 'country')) {
+                $countrySelect = ', lc.title as country';
+                $countryJoin = "
+                LEFT JOIN {$this->table('list_countries')} lc
+                    ON c.country_code = lc.country_code AND lc.language_code = 'en'";
+            }
+
             $sql = "
                 SELECT c.*,
                        u.username,
                        {$this->getCommentObjectSelectSql()}
+                       $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
+                $countryJoin
                 WHERE $whereClause
                 ORDER BY $orderBy
                 LIMIT :limit
@@ -268,13 +295,23 @@ HELP
 
             // Transform comments to use standardized field names
             $transformedComments = array_map(function (array $comment): array {
+                $username = $comment['username'] ?? null;
+                if (!is_scalar($username) || (string) $username === '') {
+                    $username = $comment['anonymous_username'] ?? '';
+                }
+
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
-                    'username' => $comment['username'] ?? '',
+                    'username' => $username,
                     'object_id' => $comment['object_id'] ?? 0,
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
+                    'object' => $comment['object_title'] ?? '',
                     'comment' => $comment['comment'] ?? '',
+                    'comment_full' => $comment['comment'] ?? '',
+                    'country' => $comment['country'] ?? '',
+                    'rating' => $comment['rating'] ?? 0,
+                    'is_approved' => $comment['is_approved'] ?? 0,
                     'added_date' => $comment['added_date'] ?? '',
                 ];
             }, $comments);
@@ -541,12 +578,23 @@ HELP
                 return self::FAILURE;
             }
 
+            $countrySelect = '';
+            $countryJoin = '';
+            if ($this->isCommentFieldRequested($input, 'country')) {
+                $countrySelect = ', lc.title as country';
+                $countryJoin = "
+                LEFT JOIN {$this->table('list_countries')} lc
+                    ON c.country_code = lc.country_code AND lc.language_code = 'en'";
+            }
+
             $sql = "
                 SELECT c.*,
                        u.username,
                        {$this->getCommentObjectSelectSql()}
+                       $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
+                $countryJoin
                 WHERE $whereClause
                 ORDER BY $orderBy
                 LIMIT :limit
@@ -576,7 +624,12 @@ HELP
                     'username' => $comment['username'] ?? $comment['anonymous_username'] ?? 'Guest',
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
+                    'object' => $comment['object_title'] ?? '',
                     'comment' => $comment['comment'] ?? '',
+                    'comment_full' => $comment['comment'] ?? '',
+                    'country' => $comment['country'] ?? '',
+                    'rating' => $comment['rating'] ?? 0,
+                    'is_approved' => $comment['is_approved'] ?? 0,
                     'added_date' => $comment['added_date'] ?? '',
                 ];
             }, $comments);
@@ -679,11 +732,13 @@ HELP
 
             // Update comment counts on parent objects
             $this->updateCommentCounts($db, $comments);
+            $newlyApprovedComments = [];
             foreach ($comments as $comment) {
                 $commentId = $comment['comment_id'] ?? null;
                 $wasApproved = $comment['is_approved'] ?? 0;
                 $wasApprovedInt = is_numeric($wasApproved) ? (int) $wasApproved : 0;
                 if (is_numeric($commentId) && $wasApprovedInt === 0) {
+                    $newlyApprovedComments[] = $comment;
                     $this->writeAdminAuditLog(
                         $db,
                         150,
@@ -693,6 +748,7 @@ HELP
                     );
                 }
             }
+            $this->grantCommentAwardTokens($db, $newlyApprovedComments);
 
             $db->commit();
 
@@ -705,6 +761,143 @@ HELP
             $this->io()->error('Failed to approve comments: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Grant KVS memberzone awards for comments that just became approved.
+     *
+     * @param list<array<string, mixed>> $comments
+     */
+    private function grantCommentAwardTokens(\PDO $db, array $comments): void
+    {
+        if ($comments === []) {
+            return;
+        }
+
+        $memberzoneParams = $this->loadMemberzoneParams();
+        if ($memberzoneParams === []) {
+            return;
+        }
+
+        $awardMap = [
+            Constants::OBJECT_TYPE_VIDEO => ['AWARDS_COMMENT_VIDEO', 'AWARDS_COMMENT_VIDEO_CONDITION'],
+            Constants::OBJECT_TYPE_ALBUM => ['AWARDS_COMMENT_ALBUM', 'AWARDS_COMMENT_ALBUM_CONDITION'],
+            Constants::OBJECT_TYPE_CONTENT_SOURCE => ['AWARDS_COMMENT_CS', 'AWARDS_COMMENT_CS_CONDITION'],
+            Constants::OBJECT_TYPE_MODEL => ['AWARDS_COMMENT_MODEL', 'AWARDS_COMMENT_MODEL_CONDITION'],
+            Constants::OBJECT_TYPE_DVD => ['AWARDS_COMMENT_DVD', 'AWARDS_COMMENT_DVD_CONDITION'],
+            Constants::OBJECT_TYPE_POST => ['AWARDS_COMMENT_POST', 'AWARDS_COMMENT_POST_CONDITION'],
+            Constants::OBJECT_TYPE_PLAYLIST => ['AWARDS_COMMENT_PLAYLIST', 'AWARDS_COMMENT_PLAYLIST_CONDITION'],
+        ];
+
+        $anonymousUserId = $this->fetchAnonymousUserId($db);
+        $insertAward = $db->prepare("
+            INSERT INTO {$this->table('log_awards_users')}
+                (award_type, user_id, comment_id, tokens_granted, added_date)
+            VALUES
+                (3, :user_id, :comment_id, :tokens_granted, :added_date)
+        ");
+        $updateUser = $db->prepare("
+            UPDATE {$this->table('users')}
+            SET tokens_available = COALESCE(tokens_available, 0) + :tokens_granted
+            WHERE user_id = :user_id
+        ");
+
+        foreach ($comments as $comment) {
+            $objectTypeId = $this->getInt($comment['object_type_id'] ?? null);
+            if (!isset($awardMap[$objectTypeId])) {
+                continue;
+            }
+
+            $userId = $this->getInt($comment['user_id'] ?? null);
+            $commentId = $this->getInt($comment['comment_id'] ?? null);
+            if ($userId <= 0 || $commentId <= 0 || $userId === $anonymousUserId) {
+                continue;
+            }
+
+            [$awardKey, $conditionKey] = $awardMap[$objectTypeId];
+            $tokens = $this->getMemberzoneInt($memberzoneParams, $awardKey);
+            $minimumLength = $this->getMemberzoneInt($memberzoneParams, $conditionKey);
+            $commentText = $this->getStr($comment['comment'] ?? null);
+
+            if ($tokens <= 0 || strlen($commentText) < $minimumLength) {
+                continue;
+            }
+
+            $insertAward->execute([
+                'user_id' => $userId,
+                'comment_id' => $commentId,
+                'tokens_granted' => $tokens,
+                'added_date' => date('Y-m-d H:i:s'),
+            ]);
+            $updateUser->execute([
+                'tokens_granted' => $tokens,
+                'user_id' => $userId,
+            ]);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadMemberzoneParams(): array
+    {
+        $file = $this->config->getKvsPath() . '/admin/data/system/memberzone_params.dat';
+        if (!is_file($file)) {
+            return [];
+        }
+
+        $contents = file_get_contents($file);
+        if ($contents === false || $contents === '') {
+            return [];
+        }
+
+        $params = unserialize($contents, ['allowed_classes' => false]);
+        if (!is_array($params)) {
+            return [];
+        }
+
+        $stringKeyParams = [];
+        foreach ($params as $key => $value) {
+            if (is_string($key)) {
+                $stringKeyParams[$key] = $value;
+            }
+        }
+
+        return $stringKeyParams;
+    }
+
+    private function fetchAnonymousUserId(\PDO $db): ?int
+    {
+        try {
+            $stmt = $db->query("SELECT user_id FROM {$this->table('users')} WHERE status_id = 4 LIMIT 1");
+            if ($stmt === false) {
+                return null;
+            }
+
+            $userId = $stmt->fetchColumn();
+            return is_numeric($userId) ? (int) $userId : null;
+        } catch (\PDOException) {
+            return null;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private function getMemberzoneInt(array $params, string $key): int
+    {
+        $value = $params[$key] ?? 0;
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function getInt(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function getStr(mixed $value): string
+    {
+        return is_string($value) ? $value : '';
     }
 
     private function rejectComments(InputInterface $input, ?string $id, string $action): int
@@ -829,7 +1022,7 @@ HELP
             }
             $result = [];
             foreach ($ids as $fetchedId) {
-                if (is_numeric($fetchedId)) {
+                if (is_numeric($fetchedId) && (int) $fetchedId > 0) {
                     $result[] = (int) $fetchedId;
                 }
             }
@@ -853,7 +1046,7 @@ HELP
             if ($trimmed === '') {
                 continue;
             }
-            if (!is_numeric($trimmed)) {
+            if (preg_match('/^[1-9]\d*$/', $trimmed) !== 1) {
                 $this->io()->error("Invalid comment ID: $trimmed");
                 return null;
             }

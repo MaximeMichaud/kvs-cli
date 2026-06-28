@@ -136,6 +136,22 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Category group not found: 99999', $output);
     }
 
+    public function testCreateGeneratesUniqueDirectoryLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Action!',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $exitCode, $output);
+        $this->assertSame(
+            'action2',
+            $this->db->query('SELECT dir FROM ' . TestHelper::table('categories') . " WHERE title = 'Action!'")
+                ->fetchColumn()
+        );
+    }
+
     public function testUpdateWithoutId(): void
     {
         $exitCode = $this->tester->execute(['action' => 'update']);
@@ -156,6 +172,47 @@ class CategoryCommandComprehensiveTest extends TestCase
 
         $this->assertEquals(1, $exitCode);
         $this->assertStringContainsString('Category not found: 99999', $output);
+    }
+
+    public function testUpdatePreventsDuplicateTitlesLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '20',
+            '--title' => 'Action',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Category already exists: Action', $output);
+        $this->assertSame(
+            'Drama',
+            $this->db->query('SELECT title FROM ' . TestHelper::table('categories') . ' WHERE category_id = 20')
+                ->fetchColumn()
+        );
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('categories') . " WHERE title = 'Action'")
+            ->fetchColumn()
+        );
+    }
+
+    public function testUpdateRejectsInvalidStatusWithoutChangingCategory(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--status' => 'bogus',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Invalid status "bogus"', $output);
+        $this->assertSame(
+            1,
+            (int) $this->db->query('SELECT status_id FROM ' . TestHelper::table('categories') . ' WHERE category_id = 10')
+                ->fetchColumn()
+        );
     }
 
     public function testUpdateWithoutChanges(): void
@@ -411,7 +468,7 @@ class CategoryCommandComprehensiveTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
-            'category_id INTEGER, title TEXT, dir TEXT, description TEXT, category_group_id INTEGER, ' .
+            'category_id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, dir TEXT, description TEXT, synonyms TEXT, category_group_id INTEGER, ' .
             'status_id INTEGER, added_date TEXT, last_content_date TEXT)'
         );
         $db->exec(

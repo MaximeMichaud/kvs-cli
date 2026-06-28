@@ -199,6 +199,12 @@ HELP
                 $category['album_count'] = $counts['albums'];
                 $category['total_usage'] = array_sum($counts);
                 $category['status'] = StatusFormatter::category($statusId, false);
+                $otherAmount = $this->getCategoryStoredOtherAmount($category);
+                $category['videos_amount'] = $counts['videos'];
+                $category['albums_amount'] = $counts['albums'];
+                $category['posts_amount'] = $counts['posts'];
+                $category['other_amount'] = $otherAmount;
+                $category['all_amount'] = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
 
                 return [
                     ...$category,
@@ -404,34 +410,36 @@ HELP
                 }
             }
 
-            // Create category - dir is URL slug of title
-            $dir = preg_replace('/[^a-z0-9]+/', '-', strtolower($title));
-            $dir = trim((string) $dir, '-');
+            $dir = $this->getUniqueCategoryDir($db, $this->slugifyCategoryDir($title));
+            $now = date('Y-m-d H:i:s');
 
             // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
-            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
+            $restoreSqlMode = $this->relaxSqlMode($db);
+            try {
+                $table = $this->table('categories');
+                $stmt = $db->prepare("
+                    INSERT INTO {$table}
+                        (title, dir, description, synonyms, category_group_id,
+                         status_id, added_date, last_content_date)
+                    VALUES
+                        (:title, :dir, :description, '',
+                         :category_group_id, :status_id, :added_date, :last_content_date)
+                ");
 
-            $table = $this->table('categories');
-            $stmt = $db->prepare("
-                INSERT INTO {$table}
-                    (title, dir, description, synonyms, category_group_id,
-                     status_id, added_date, last_content_date)
-                VALUES
-                    (:title, :dir, :description, '',
-                     :category_group_id, :status_id, NOW(), NOW())
-            ");
+                $stmt->execute([
+                    'title' => $title,
+                    'dir' => $dir,
+                    'description' => $description,
+                    'category_group_id' => $groupId !== null && $groupId !== '' ? (int) $groupId : 0,
+                    'status_id' => $statusId,
+                    'added_date' => $now,
+                    'last_content_date' => $now,
+                ]);
 
-            $stmt->execute([
-                'title' => $title,
-                'dir' => $dir,
-                'description' => $description,
-                'category_group_id' => $groupId !== null && $groupId !== '' ? (int) $groupId : 0,
-                'status_id' => $statusId,
-            ]);
-
-            $categoryId = $db->lastInsertId();
-
-            $db->exec("SET sql_mode = @old_sql_mode");
+                $categoryId = $db->lastInsertId();
+            } finally {
+                $this->restoreSqlMode($db, $restoreSqlMode);
+            }
 
             $this->io()->success("Category created successfully!");
             $this->renderTable(
@@ -1010,6 +1018,50 @@ HELP
         @rmdir($path);
     }
 
+    private function slugifyCategoryDir(string $title): string
+    {
+        $dir = preg_replace('/[^a-z0-9]+/', '-', strtolower($title));
+        $dir = trim((string) $dir, '-');
+
+        return $dir !== '' ? $dir : 'category';
+    }
+
+    private function getUniqueCategoryDir(\PDO $db, string $baseDir): string
+    {
+        for ($i = 1; $i < 999999; $i++) {
+            $dir = $i === 1 ? $baseDir : $baseDir . $i;
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')} WHERE dir = :dir");
+            $stmt->execute(['dir' => $dir]);
+            if ((int) $stmt->fetchColumn() === 0) {
+                return $dir;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique category directory');
+    }
+
+    private function relaxSqlMode(\PDO $db): bool
+    {
+        if ($db->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+            return false;
+        }
+
+        $db->exec("SET @kvs_cli_old_sql_mode = @@sql_mode, sql_mode = ''");
+        return true;
+    }
+
+    private function restoreSqlMode(\PDO $db, bool $restore): void
+    {
+        if (!$restore) {
+            return;
+        }
+
+        try {
+            $db->exec('SET sql_mode = @kvs_cli_old_sql_mode');
+        } catch (\Exception) {
+        }
+    }
+
     private function updateCategory(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
@@ -1040,6 +1092,17 @@ HELP
             // Title
             $title = $this->getStringOption($input, 'title');
             if ($title !== null) {
+                $stmt = $db->prepare("
+                    SELECT category_id
+                    FROM {$this->table('categories')}
+                    WHERE title = :title AND category_id != :id
+                ");
+                $stmt->execute(['title' => $title, 'id' => $id]);
+                if ($stmt->fetch() !== false) {
+                    $this->io()->error("Category already exists: $title");
+                    return self::FAILURE;
+                }
+
                 $updates[] = 'title = :title';
                 $params['title'] = $title;
             }
@@ -1073,7 +1136,14 @@ HELP
             // Status
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = ($status === 'active') ? StatusFormatter::CATEGORY_ACTIVE : StatusFormatter::CATEGORY_INACTIVE;
+                $statusId = $this->parseStatusFilter($input, [
+                    'active' => StatusFormatter::CATEGORY_ACTIVE,
+                    'inactive' => StatusFormatter::CATEGORY_INACTIVE,
+                    'disabled' => StatusFormatter::CATEGORY_INACTIVE,
+                ]);
+                if ($statusId === null) {
+                    throw new \InvalidArgumentException('Status is required');
+                }
                 $updates[] = 'status_id = :status_id';
                 $params['status_id'] = $statusId;
             }
@@ -1106,6 +1176,20 @@ HELP
         }
 
         return $this->getStringOption($input, 'parent');
+    }
+
+    /**
+     * @param array<string, mixed> $category
+     */
+    private function getCategoryStoredOtherAmount(array $category): int
+    {
+        $total = 0;
+        foreach (['total_content_sources', 'total_playlists', 'total_models', 'total_dvds', 'total_dvd_groups'] as $field) {
+            $value = $category[$field] ?? 0;
+            $total += is_numeric($value) ? (int) $value : 0;
+        }
+
+        return $total;
     }
 
     /**

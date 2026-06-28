@@ -33,7 +33,7 @@ class VideoCommandDeleteTest extends TestCase
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
 
-        $db->exec('INSERT INTO ktvs_videos (video_id) VALUES (1), (2)');
+        $db->exec('INSERT INTO ktvs_videos (video_id, status_id) VALUES (1, 1), (2, 1)');
         $db->exec('INSERT INTO ktvs_categories_videos (video_id) VALUES (1)');
         $db->exec('INSERT INTO ktvs_tags_videos (video_id) VALUES (1)');
         $db->exec('INSERT INTO ktvs_models_videos (video_id) VALUES (1)');
@@ -119,12 +119,52 @@ class VideoCommandDeleteTest extends TestCase
         $this->assertStringContainsString('Video not found', $tester->getDisplay());
     }
 
+    public function testDeleteVideoNonInteractiveMissingVideoReportsNotFoundWithoutPrompt(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends VideoCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:video');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deleteVideoWithKvs(int $videoId): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'delete',
+            'id' => '999',
+        ], ['interactive' => false]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('Video not found: #999', $display);
+        $this->assertStringNotContainsString('This will delete video #999', $display);
+    }
+
     public function testDeleteVideoNoInteractionFailsWithoutCleanup(): void
     {
         $db = new \PDO('sqlite::memory:');
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->createDeleteSchema($db);
-        $db->exec('INSERT INTO ktvs_videos (video_id) VALUES (1)');
+        $db->exec('INSERT INTO ktvs_videos (video_id, status_id) VALUES (1, 1)');
 
         $config = new Configuration(['path' => $this->tempDir]);
         $command = new class ($config, $db) extends VideoCommand {
@@ -158,9 +198,48 @@ class VideoCommandDeleteTest extends TestCase
         $this->assertStringContainsString('confirmation was not provided', $tester->getDisplay());
     }
 
+    public function testDeleteVideoDoesNotCallKvsCleanupForDeletingStatus(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+        $db->exec('INSERT INTO ktvs_videos (video_id, status_id) VALUES (1, 4)');
+
+        $config = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($config, $db) extends VideoCommand {
+            public bool $kvsCleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+                $this->setName('content:video');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deleteVideoWithKvs(int $videoId): void
+            {
+                $this->kvsCleanupCalled = true;
+            }
+        };
+
+        $tester = new CommandTester($command);
+        $tester->setInputs(['yes']);
+        $tester->execute(['action' => 'delete', 'id' => '1']);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertFalse($command->kvsCleanupCalled);
+        $this->assertStringContainsString('Video cannot be deleted in its current status: #1 (Deleting)', $display);
+        $this->assertStringNotContainsString('This will delete video #1', $display);
+    }
+
     private function createDeleteSchema(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, status_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_categories_videos (video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_tags_videos (video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_models_videos (video_id INTEGER)');
