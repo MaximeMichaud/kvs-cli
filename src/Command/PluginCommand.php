@@ -158,7 +158,7 @@ HELP
             $plugins = $this->filterPluginsByStatus($plugins, $statusFilter);
         }
 
-        if ($typeFilter !== null && $typeFilter !== '') {
+        if ($typeFilter !== null) {
             $typeFilter = strtolower($typeFilter);
             $availableTypes = $this->getAvailableTypes($allPlugins);
             if (!in_array($typeFilter, $availableTypes, true)) {

@@ -1021,13 +1021,17 @@ HELP
             return null;
         }
 
-        $timestamp = strtotime($value);
-        if ($timestamp === false) {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $matches) !== 1) {
             $this->io()->error(sprintf('Invalid value for --%s (use: YYYY-MM-DD)', $name));
             return false;
         }
 
-        return date('Y-m-d', $timestamp);
+        if (!checkdate((int) $matches[2], (int) $matches[3], (int) $matches[1])) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: YYYY-MM-DD)', $name));
+            return false;
+        }
+
+        return $value;
     }
 
     /**

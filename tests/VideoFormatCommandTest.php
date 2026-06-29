@@ -123,6 +123,23 @@ class VideoFormatCommandTest extends TestCase
         $this->assertStringNotContainsString('No video formats found', $output);
     }
 
+    public function testListEmptyResultRejectsUnknownFieldsSelection(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--search' => '__missing_format__',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertNotSame("[]\n", $output);
+    }
+
     public function testListRejectsIgnoredFormatIdArgument(): void
     {
         $this->tester->execute([

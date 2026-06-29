@@ -245,14 +245,17 @@ class VideoCommandTest extends TestCase
 
     public function testVideoListRejectsInvalidIpFilter(): void
     {
-        $this->tester->execute([
-            'action' => 'list',
-            '--ip' => '999.999.999.999',
-            '--format' => 'json',
-        ]);
+        foreach (['999.999.999.999', '999999999999'] as $value) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--ip' => $value,
+                '--format' => 'json',
+            ]);
 
-        $this->assertSame(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Invalid value for --ip (use: IPv4 address)', $this->tester->getDisplay());
+            $this->assertSame(1, $tester->getStatusCode(), "--ip=$value");
+            $this->assertStringContainsString('Invalid value for --ip (use: IPv4 address)', $tester->getDisplay());
+        }
     }
 
     public function testVideoListFiltersByKvsAdminVideoProperties(): void
@@ -334,6 +337,57 @@ class VideoCommandTest extends TestCase
 
             $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
             $this->assertStringContainsString($expected, $tester->getDisplay());
+        }
+    }
+
+    public function testVideoListRejectsExplicitEmptyOptions(): void
+    {
+        $cases = [
+            ['--limit' => '', 'expected' => 'Invalid value for --limit'],
+            ['--format' => '', 'expected' => 'Invalid format:'],
+            ['--fields' => '', 'expected' => 'The --fields option cannot be empty.'],
+            ['--field' => '', 'expected' => 'The --field option cannot be empty.'],
+            ['--status' => '', 'expected' => 'Invalid status'],
+            ['--user' => '', 'expected' => 'Invalid value for --user'],
+            ['--post-date-from' => '', 'expected' => 'Invalid value for --post-date-from'],
+        ];
+
+        foreach ($cases as $case) {
+            $expected = $case['expected'];
+            unset($case['expected']);
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString($expected, $tester->getDisplay());
+        }
+    }
+
+    public function testVideoListRejectsNonCanonicalPostDateFilters(): void
+    {
+        $cases = [
+            '2026-02-30',
+            '2026-6-1',
+            'June 1 2026',
+        ];
+
+        foreach ($cases as $value) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--post-date-from' => $value,
+                '--format' => 'json',
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString(
+                'Invalid value for --post-date-from (use: YYYY-MM-DD)',
+                $tester->getDisplay()
+            );
         }
     }
 

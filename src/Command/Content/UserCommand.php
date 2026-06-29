@@ -433,7 +433,12 @@ HELP
     private function parseIpv4Option(string $ip): ?string
     {
         if (preg_match('/^\d+$/', $ip) === 1) {
-            return $ip;
+            if (!$this->isKvsIpv4IntegerInRange($ip)) {
+                $this->io()->error('Invalid value for --ip (use: IPv4 address)');
+                return null;
+            }
+
+            return (string) (int) $ip;
         }
 
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {

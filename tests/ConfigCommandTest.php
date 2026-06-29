@@ -145,6 +145,39 @@ $config["player_license_code"] = "secret-player-license";
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testConfigGetRejectsIgnoredOptions(): void
+    {
+        foreach (['file', 'backup'] as $option) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'get',
+                'key' => 'main.project_name',
+                '--' . $option => $option === 'file' ? 'db' : true,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), "--$option");
+            $this->assertStringContainsString(
+                "The get action does not support --$option",
+                $tester->getDisplay()
+            );
+        }
+    }
+
+    public function testConfigListRejectsIgnoredBackupOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--backup' => true,
+            '--json' => true,
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString(
+            'The list action does not support --backup',
+            $this->tester->getDisplay()
+        );
+    }
+
     public function testConfigEditValidatesFilePathWithSpaces(): void
     {
         $tempDir = TestHelper::createTempDir('kvs config test ');

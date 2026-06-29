@@ -19,6 +19,12 @@ use function KVS\CLI\Utils\truncate;
 )]
 class ConfigCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const GET_UNSUPPORTED_OPTIONS = ['file', 'backup'];
+
+    /** @var list<string> */
+    private const LIST_UNSUPPORTED_OPTIONS = ['backup'];
+
     /** @var array<string, string> */
     private array $configFiles = [
         'db' => '/admin/include/setup_db.php',
@@ -62,6 +68,10 @@ class ConfigCommand extends BaseCommand
     private function getConfig(InputInterface $input): int
     {
         if ($this->rejectUnsupportedArgument($input, 'get', 'value', 'a value argument', 'set', 'updating a configuration value')) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'get', self::GET_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 
@@ -152,6 +162,10 @@ class ConfigCommand extends BaseCommand
     private function listConfig(InputInterface $input): int
     {
         if ($this->rejectUnsupportedArgument($input, 'list', 'key', 'a configuration key argument', 'get', 'a specific configuration value')) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'list', self::LIST_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

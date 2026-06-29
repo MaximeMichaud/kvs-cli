@@ -195,6 +195,22 @@ class CategoryCommandTest extends TestCase
         $this->assertSame('1', trim($this->tester->getDisplay()));
     }
 
+    public function testCategoryListRejectsGroupAndParentTogether(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--group' => 'Genres',
+            '--parent' => '2',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString(
+            'Options --group and --parent cannot be used together',
+            $this->tester->getDisplay()
+        );
+    }
+
     public function testCategoryListFiltersByKvsAdminFieldFilter(): void
     {
         $cases = [

@@ -24,6 +24,28 @@ class QueueCommand extends BaseCommand
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
     private const LIST_ONLY_OPTIONS = ['status', 'type', 'error-code', 'video', 'album', 'server', 'limit'];
+    private const LIST_COMPUTED_FIELDS = [
+        'id',
+        'status',
+        'type',
+        'content_id',
+        'server',
+        'error',
+        'format_postfix',
+        'format_size',
+        'pc_complete',
+        'is_error',
+    ];
+    private const HISTORY_COMPUTED_FIELDS = [
+        'id',
+        'status',
+        'type',
+        'content_id',
+        'server',
+        'error',
+        'effective_duration_seconds',
+        'duration',
+    ];
 
     /**
      * Task type definitions - maps type_id to human-readable names
@@ -240,6 +262,7 @@ HELP
             /** @var list<array<string, mixed>> $tasks */
             $tasks = $stmt->fetchAll();
             $format = $this->getStringOption($input, 'format') ?? 'table';
+            $knownFields = $this->getQueueKnownFields($stmt, self::LIST_COMPUTED_FIELDS);
 
             if ($tasks === []) {
                 if ($format === 'table' && !$this->hasFieldSelection($input)) {
@@ -247,7 +270,8 @@ HELP
                 } else {
                     $formatter = new Formatter(
                         $input->getOptions(),
-                        ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error']
+                        ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error'],
+                        $knownFields
                     );
                     $formatter->display([], $this->io());
                 }
@@ -299,7 +323,8 @@ HELP
             } else {
                 $formatter = new Formatter(
                     $input->getOptions(),
-                    ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error']
+                    ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error'],
+                    $knownFields
                 );
                 $formatter->display($tasks, $this->io());
             }
@@ -930,6 +955,7 @@ HELP
             /** @var list<array<string, mixed>> $tasks */
             $tasks = $stmt->fetchAll();
             $format = $this->getStringOption($input, 'format') ?? 'table';
+            $knownFields = $this->getQueueKnownFields($stmt, self::HISTORY_COMPUTED_FIELDS);
 
             if ($tasks === []) {
                 if ($format === 'table' && !$this->hasFieldSelection($input)) {
@@ -937,7 +963,8 @@ HELP
                 } else {
                     $formatter = new Formatter(
                         $input->getOptions(),
-                        ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date']
+                        ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date'],
+                        $knownFields
                     );
                     $formatter->display([], $this->io());
                 }
@@ -983,7 +1010,8 @@ HELP
             } else {
                 $formatter = new Formatter(
                     $input->getOptions(),
-                    ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date']
+                    ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date'],
+                    $knownFields
                 );
                 $formatter->display($tasks, $this->io());
             }
@@ -993,6 +1021,18 @@ HELP
             $this->io()->error('Failed to fetch history: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<string> $computedFields
+     * @return list<string>
+     */
+    private function getQueueKnownFields(\PDOStatement $stmt, array $computedFields): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->getStatementColumnNames($stmt),
+            $computedFields
+        )));
     }
 
     /**

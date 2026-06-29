@@ -339,6 +339,20 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('The count format does not support --fields.', $this->tester->getDisplay());
     }
 
+    public function testQueueListEmptyResultRejectsUnknownFieldsSelection(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--video' => '999999999',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $this->tester->getDisplay());
+        $this->assertNotSame("[]\n", $this->tester->getDisplay());
+    }
+
     public function testQueueHistoryCountFormatRejectsFieldSelection(): void
     {
         $this->tester->execute([
@@ -349,6 +363,20 @@ class QueueCommandTest extends TestCase
 
         $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertStringContainsString('The count format does not support --fields.', $this->tester->getDisplay());
+    }
+
+    public function testQueueHistoryEmptyResultRejectsUnknownFieldsSelection(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--video' => '999999999',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $this->tester->getDisplay());
+        $this->assertNotSame("[]\n", $this->tester->getDisplay());
     }
 
     public function testQueueStats(): void

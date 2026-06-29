@@ -178,6 +178,11 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->getStringOption($input, 'group') !== null && $this->getStringOption($input, 'parent') !== null) {
+            $this->io()->error('Options --group and --parent cannot be used together');
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

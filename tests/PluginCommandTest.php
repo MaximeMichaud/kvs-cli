@@ -263,6 +263,20 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Name', $output);
     }
 
+    public function testListRejectsEmptyTypeFilter(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--type' => '',
+            '--format' => 'count',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('Invalid type ""', $output);
+    }
+
     public function testListWithTypeApi(): void
     {
         $exitCode = $this->tester->execute([
@@ -405,6 +419,20 @@ class PluginCommandTest extends TestCase
             'The --field option cannot be combined with --format=json.',
             $output
         );
+    }
+
+    public function testListRejectsFieldAndFieldsTogether(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--field' => 'name',
+            '--fields' => 'id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('The --field option cannot be combined with --fields.', $output);
     }
 
     public function testListWithFormatCount(): void

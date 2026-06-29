@@ -429,23 +429,27 @@ class CommentCommandTest extends TestCase
                 $this->assertStringContainsString('Invalid value for --user', $display, "$action --user=$value");
             }
 
-            $tester = new CommandTester($this->command);
-            $tester->execute([
-                'action' => $action,
-                '--format' => 'count',
-                '--object-type' => 'unknown',
-            ]);
-            $this->assertSame(1, $tester->getStatusCode(), "$action --object-type=unknown");
-            $this->assertStringContainsString('Invalid value for --object-type', $tester->getDisplay());
+            foreach (['unknown', '999'] as $value) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    'action' => $action,
+                    '--format' => 'count',
+                    '--object-type' => $value,
+                ]);
+                $this->assertSame(1, $tester->getStatusCode(), "$action --object-type=$value");
+                $this->assertStringContainsString('Invalid value for --object-type', $tester->getDisplay());
+            }
 
-            $tester = new CommandTester($this->command);
-            $tester->execute([
-                'action' => $action,
-                '--format' => 'count',
-                '--ip' => '999.999.999.999',
-            ]);
-            $this->assertSame(1, $tester->getStatusCode(), "$action --ip=999.999.999.999");
-            $this->assertStringContainsString('Invalid value for --ip', $tester->getDisplay());
+            foreach (['999.999.999.999', '999999999999'] as $value) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    'action' => $action,
+                    '--format' => 'count',
+                    '--ip' => $value,
+                ]);
+                $this->assertSame(1, $tester->getStatusCode(), "$action --ip=$value");
+                $this->assertStringContainsString('Invalid value for --ip', $tester->getDisplay());
+            }
         }
     }
 
@@ -470,6 +474,24 @@ class CommentCommandTest extends TestCase
         yield 'approved and pending' => ['options' => ['--approved' => true, '--pending' => true]];
         yield 'approved and not approved' => ['options' => ['--approved' => true, '--not-approved' => true]];
         yield 'pending and not approved' => ['options' => ['--pending' => true, '--not-approved' => true]];
+    }
+
+    public function testReadOnlyCommentActionsRejectAllOption(): void
+    {
+        foreach (['list', 'pending'] as $action) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => $action,
+                '--all' => true,
+                '--format' => 'count',
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $action);
+            $this->assertStringContainsString(
+                "The $action action does not support --all",
+                $tester->getDisplay()
+            );
+        }
     }
 
     public function testListCommentsExposesKvsAdminFields(): void

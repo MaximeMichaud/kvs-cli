@@ -355,6 +355,18 @@ class UserCommandTest extends TestCase
         $this->assertSame('127.0.0.1', $rows[0]['ip']);
     }
 
+    public function testUserListRejectsInvalidNumericIpFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--ip' => '999999999999',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --ip (use: IPv4 address)', $this->tester->getDisplay());
+    }
+
     public function testUserListFiltersByActivityLikeKvsAdmin(): void
     {
         $loginTester = new CommandTester($this->command);

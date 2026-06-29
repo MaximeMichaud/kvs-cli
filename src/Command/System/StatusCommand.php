@@ -1140,44 +1140,7 @@ HELP
             $security[] = ['✓', 'Debug mode', 'DISABLED'];
         }
 
-        // Check for recent database backups
-        $db = $this->getStatusDatabaseConnection();
-        if ($db !== null) {
-            try {
-                // Check if backup log table exists
-                $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "admin_system_log'");
-                if ($stmt !== false && $stmt->rowCount() > 0) {
-                    // Look for recent backup entries
-                    $stmt = $db->query("
-                        SELECT MAX(added_date) as last_backup
-                        FROM " . $this->table('admin_system_log') . "
-                        WHERE event_level = 2
-                        AND event_message LIKE '%backup%'
-                    ");
-                    if ($stmt !== false) {
-                        $lastBackup = $stmt->fetchColumn();
-
-                        if ($lastBackup !== false && $lastBackup !== null) {
-                            $backupTime = strtotime((string)$lastBackup);
-                            if ($backupTime !== false) {
-                                $hoursAgo = (int)floor((time() - $backupTime) / 3600);
-
-                                if ($hoursAgo < Constants::BACKUP_WARNING_HOURS) {
-                                    $security[] = ['✓', 'Database backups', "Last backup $hoursAgo hours ago"];
-                                } else {
-                                    $daysAgo = (int)floor($hoursAgo / 24);
-                                    $security[] = ['⚠', 'Database backups', "Last backup $daysAgo days ago"];
-                                }
-                            }
-                        } else {
-                            $security[] = ['⚠', 'Database backups', 'No recent backups found'];
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                // Backup check failed, not critical
-            }
-        }
+        $this->appendBackupSecurityStatus($security);
 
         $displayErrors = $this->getPhpRuntimeConfig()['display_errors'];
         if ($this->isPhpDisplayErrorsEnabled($displayErrors)) {
@@ -1187,6 +1150,132 @@ HELP
         }
 
         $this->renderTable(['Status', 'Item', 'Details'], $security);
+    }
+
+    /**
+     * @param list<array{string, string, string}> $security
+     */
+    private function appendBackupSecurityStatus(array &$security): void
+    {
+        $backupTime = $this->findLatestBackupFileTime();
+        if ($backupTime === null) {
+            $backupTime = $this->findLatestBackupLogTime();
+        }
+
+        if ($backupTime === null) {
+            $security[] = ['⚠', 'Database backups', 'No recent backups found'];
+            return;
+        }
+
+        $hoursAgo = max(0, (int) floor((time() - $backupTime) / 3600));
+        if ($hoursAgo < Constants::BACKUP_WARNING_HOURS) {
+            $security[] = ['✓', 'Database backups', "Last backup $hoursAgo hours ago"];
+            return;
+        }
+
+        $daysAgo = (int) floor($hoursAgo / 24);
+        $security[] = ['⚠', 'Database backups', "Last backup $daysAgo days ago"];
+    }
+
+    private function findLatestBackupLogTime(): ?int
+    {
+        $db = $this->getStatusDatabaseConnection();
+        if ($db === null) {
+            return null;
+        }
+
+        try {
+            $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+            if ($driver === 'sqlite') {
+                $stmt = $db->query(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '"
+                    . $this->config->getTablePrefix() . "admin_system_log'"
+                );
+            } else {
+                $stmt = $db->query("SHOW TABLES LIKE '" . $this->config->getTablePrefix() . "admin_system_log'");
+            }
+
+            if ($stmt === false || $stmt->fetchColumn() === false) {
+                return null;
+            }
+
+            $stmt = $db->query("
+                SELECT MAX(added_date) as last_backup
+                FROM " . $this->table('admin_system_log') . "
+                WHERE event_level = 2
+                AND event_message LIKE '%backup%'
+            ");
+            if ($stmt === false) {
+                return null;
+            }
+
+            $lastBackup = $stmt->fetchColumn();
+            if ($lastBackup === false || $lastBackup === null) {
+                return null;
+            }
+
+            $backupTime = strtotime((string) $lastBackup);
+            return $backupTime !== false ? $backupTime : null;
+        } catch (\Exception) {
+            return null;
+        }
+    }
+
+    private function findLatestBackupFileTime(): ?int
+    {
+        $latestTime = null;
+        foreach ($this->getBackupSearchDirectories() as $directory) {
+            $entries = scandir($directory);
+            if ($entries === false) {
+                continue;
+            }
+
+            foreach ($entries as $entry) {
+                if ($entry === '.' || $entry === '..') {
+                    continue;
+                }
+
+                if (!str_ends_with($entry, '.gz') && !str_ends_with($entry, '.zip')) {
+                    continue;
+                }
+
+                $path = $directory . '/' . $entry;
+                if (!is_file($path)) {
+                    continue;
+                }
+
+                $mtime = filemtime($path);
+                if ($mtime === false) {
+                    continue;
+                }
+
+                $latestTime = $latestTime === null ? $mtime : max($latestTime, $mtime);
+            }
+        }
+
+        return $latestTime;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getBackupSearchDirectories(): array
+    {
+        $directories = [
+            dirname($this->config->getKvsPath()) . '/backups',
+            $this->config->getAdminPath() . '/data/backup',
+        ];
+
+        $pluginConfig = $this->loadSerializedArray($this->config->getAdminPath() . '/data/plugins/backup/data.dat');
+        $pluginBackupFolder = $pluginConfig['backup_folder'] ?? null;
+        if (is_string($pluginBackupFolder) && $pluginBackupFolder !== '') {
+            $directories[] = $pluginBackupFolder;
+        }
+
+        return array_values(array_unique(array_filter(
+            $directories,
+            static fn(string $directory): bool => is_dir($directory)
+        )));
     }
 
     private function isMaintenanceModeEnabled(): bool

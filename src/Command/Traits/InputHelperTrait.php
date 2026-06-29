@@ -40,7 +40,7 @@ trait InputHelperTrait
     protected function getStringOption(InputInterface $input, string $name): ?string
     {
         $value = $input->getOption($name);
-        if ($value === null || $value === '' || $value === false) {
+        if ($value === null || $value === false) {
             return null;
         }
         if (is_array($value)) {

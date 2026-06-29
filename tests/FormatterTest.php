@@ -278,6 +278,59 @@ class FormatterTest extends TestCase
         $this->assertContains('other@example.com', $lines);
     }
 
+    public function testSingleFieldModeKeepsEmptyValues(): void
+    {
+        $items = [
+            ['id' => 1, 'description' => ''],
+            ['id' => 2, 'description' => null],
+            ['id' => 3, 'description' => 'Text'],
+        ];
+
+        $formatter = new Formatter(['format' => 'table', 'field' => 'description'], ['id', 'description']);
+        $formatter->display($items, $this->output);
+
+        $this->assertSame("\n\nText\n", $this->output->fetch());
+    }
+
+    public function testSingleFieldModeRejectsFieldsSelection(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'table', 'field' => 'email', 'fields' => 'id'],
+            ['id', 'email']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The --field option cannot be combined with --fields.');
+
+        $formatter->display([['id' => 1, 'email' => 'test@example.com']], $this->output);
+    }
+
+    public function testRejectsExplicitEmptySingleFieldSelection(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'table', 'field' => ''],
+            ['id', 'email']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The --field option cannot be empty.');
+
+        $formatter->display([['id' => 1, 'email' => 'test@example.com']], $this->output);
+    }
+
+    public function testRejectsExplicitEmptyFieldsSelection(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'json', 'fields' => ''],
+            ['id', 'email']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The --fields option cannot be empty.');
+
+        $formatter->display([], $this->output);
+    }
+
     public function testCustomFieldsList(): void
     {
         $items = [

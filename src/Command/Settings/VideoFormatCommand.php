@@ -23,6 +23,34 @@ class VideoFormatCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+    private const LIST_COMPUTED_FIELDS = [
+        'id',
+        'status',
+        'access',
+        'download',
+        'timeline',
+        'limit_total_duration',
+        'limit_offset_start',
+        'limit_offset_end',
+        'limit_speed_value',
+        'is_timeline_enabled',
+        'pc_complete',
+        'is_error',
+        'source_text',
+        'watermark_position_offset',
+        'watermark_position_scrolling',
+        'watermark2_position_offset',
+        'watermark2_position_scrolling',
+        'watermark_image',
+        'watermark_image_url',
+        'watermark2_image',
+        'watermark2_image_url',
+        'preroll_video',
+        'preroll_video_url',
+        'postroll_video',
+        'postroll_video_url',
+        'videos_count',
+    ];
 
     protected function configure(): void
     {
@@ -191,12 +219,13 @@ HELP
             $formats = $this->addVideoCounts($db, $formats);
             $deletingProgressByPostfix = $this->getDeletingFormatProgressByPostfix($db);
             $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
+            $knownFields = $this->getVideoFormatListKnownFields($stmt);
 
             if ($formats === []) {
                 if ($this->isTableFormat($input) && !$this->hasFieldSelection($input)) {
                     $this->io()->warning('No video formats found');
                 } else {
-                    $formatter = new Formatter($input->getOptions(), $defaultFields);
+                    $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
                     $formatter->display([], $this->io());
                 }
                 return self::SUCCESS;
@@ -239,7 +268,7 @@ HELP
                 return $format;
             }, $formats);
 
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($formats, $this->io());
 
             return self::SUCCESS;
@@ -247,6 +276,17 @@ HELP
             $this->io()->error('Failed to fetch video formats: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getVideoFormatListKnownFields(\PDOStatement $stmt): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->getStatementColumnNames($stmt),
+            self::LIST_COMPUTED_FIELDS
+        )));
     }
 
     /**

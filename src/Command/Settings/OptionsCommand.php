@@ -21,6 +21,7 @@ class OptionsCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+    private const LIST_FIELDS = ['variable', 'value', 'display_value', 'category'];
     private const LIST_ONLY_OPTIONS = ['prefix', 'category', 'search', 'with-value', 'enabled', 'disabled'];
     private const SET_ONLY_OPTIONS = ['yes'];
     private const SET_UNSUPPORTED_OPTIONS = ['fields', 'format', 'no-truncate'];
@@ -172,12 +173,17 @@ HELP
         // Filter by prefix
         $prefix = $this->getStringOption($input, 'prefix');
         if ($prefix !== null) {
-            $prefix = strtoupper($prefix);
+            $prefix = strtoupper(trim($prefix));
+            if ($prefix === '') {
+                $this->io()->error('Invalid value for --prefix (use: non-empty prefix)');
+                return self::FAILURE;
+            }
+
             if (!str_ends_with($prefix, '_')) {
                 $prefix .= '_';
             }
-            $query .= " AND variable LIKE :prefix";
-            $params['prefix'] = $prefix . '%';
+            $query .= " AND variable LIKE :prefix" . $this->likeEscapeSql();
+            $params['prefix'] = $this->escapeLikePattern($prefix) . '%';
         }
 
         // Filter by category
@@ -203,6 +209,12 @@ HELP
         // Filter by search term
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
+            $search = trim($search);
+            if ($search === '') {
+                $this->io()->error('Invalid value for --search (use: non-empty search term)');
+                return self::FAILURE;
+            }
+
             $query .= " AND variable LIKE :search" . $this->likeEscapeSql();
             $params['search'] = $this->containsLikePattern(strtoupper($search));
         }
@@ -233,12 +245,16 @@ HELP
             $defaultFields = $format === 'table'
                 ? ['variable', 'display_value', 'category']
                 : ['variable', 'value', 'category'];
+            $knownFields = array_values(array_unique(array_merge(
+                $this->getStatementColumnNames($stmt),
+                self::LIST_FIELDS
+            )));
 
             if ($options === []) {
                 if ($this->isTableFormat($input) && !$this->hasFieldSelection($input)) {
                     $this->io()->warning('No options found matching criteria');
                 } else {
-                    $formatter = new Formatter($input->getOptions(), $defaultFields);
+                    $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
                     $formatter->display([], $this->io());
                 }
                 return self::SUCCESS;
@@ -260,7 +276,7 @@ HELP
                 return $option;
             }, $options);
 
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($options, $this->io());
 
             return self::SUCCESS;

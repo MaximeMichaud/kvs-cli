@@ -305,6 +305,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->rejectUnsupportedOptions($input, 'list', ['all'])) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -562,7 +566,10 @@ HELP
         }
 
         if (preg_match('/^\d+$/', $objectType) === 1) {
-            return (int) $objectType;
+            $objectTypeId = (int) $objectType;
+            if (in_array($objectTypeId, array_values(self::COMMENT_OBJECT_FILTER_OPTIONS), true)) {
+                return $objectTypeId;
+            }
         }
 
         $this->io()->error(
@@ -574,6 +581,11 @@ HELP
     private function parseIpv4Option(string $ip): ?int
     {
         if (preg_match('/^\d+$/', $ip) === 1) {
+            if (!$this->isKvsIpv4IntegerInRange($ip)) {
+                $this->io()->error('Invalid value for --ip (use: IPv4 address)');
+                return null;
+            }
+
             return (int) $ip;
         }
 
@@ -855,6 +867,10 @@ HELP
 
         if ($this->getBoolOption($input, 'approved') || $this->getBoolOption($input, 'not-approved')) {
             $this->io()->error('The pending action does not support --approved or --not-approved.');
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'pending', ['all'])) {
             return self::FAILURE;
         }
 

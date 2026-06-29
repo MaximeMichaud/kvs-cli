@@ -155,6 +155,14 @@ class InputHelperTraitTest extends TestCase
         $this->assertNull($this->helper->testGetStringOption($input, 'format'));
     }
 
+    public function testGetStringOptionPreservesExplicitEmptyString(): void
+    {
+        $input = $this->createMock(InputInterface::class);
+        $input->method('getOption')->with('format')->willReturn('');
+
+        $this->assertSame('', $this->helper->testGetStringOption($input, 'format'));
+    }
+
     public function testGetStringOptionReturnsFirstFromArray(): void
     {
         $input = $this->createMock(InputInterface::class);
@@ -191,12 +199,12 @@ class InputHelperTraitTest extends TestCase
         $this->assertEquals('table', $this->helper->testGetStringOptionOrDefault($input, 'format', 'table'));
     }
 
-    public function testGetStringOptionOrDefaultReturnsDefaultForEmpty(): void
+    public function testGetStringOptionOrDefaultPreservesExplicitEmptyString(): void
     {
         $input = $this->createMock(InputInterface::class);
         $input->method('getOption')->with('format')->willReturn('');
 
-        $this->assertEquals('default', $this->helper->testGetStringOptionOrDefault($input, 'format', 'default'));
+        $this->assertSame('', $this->helper->testGetStringOptionOrDefault($input, 'format', 'default'));
     }
 
     // =========================================================================

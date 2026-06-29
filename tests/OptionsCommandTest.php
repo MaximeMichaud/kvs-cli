@@ -12,6 +12,7 @@ class OptionsCommandTest extends TestCase
 {
     private string $kvsPath;
     private PDO $db;
+    private OptionsCommand $command;
     private CommandTester $tester;
 
     protected function setUp(): void
@@ -23,11 +24,12 @@ class OptionsCommandTest extends TestCase
         $this->db->exec('CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT PRIMARY KEY, value TEXT)');
         $this->db->exec(
             "INSERT INTO " . TestHelper::table('options') .
-            " (variable, value) VALUES ('ENABLE_DVD_FIELD_1', '1'), ('SCREENSHOTS_SIZE', '320x180')"
+            " (variable, value) VALUES " .
+            "('ENABLE_DVD_FIELD_1', '1'), ('ENABLEXDUMMY', '1'), ('SCREENSHOTS_SIZE', '320x180')"
         );
 
         $config = TestHelper::createTestConfiguration($this->kvsPath);
-        $command = new class ($config, $this->db) extends OptionsCommand {
+        $this->command = new class ($config, $this->db) extends OptionsCommand {
             public function __construct(Configuration $config, private PDO $testDb)
             {
                 parent::__construct($config);
@@ -38,7 +40,7 @@ class OptionsCommandTest extends TestCase
                 return $this->testDb;
             }
         };
-        $this->tester = new CommandTester($command);
+        $this->tester = new CommandTester($this->command);
     }
 
     protected function tearDown(): void
@@ -113,6 +115,58 @@ class OptionsCommandTest extends TestCase
         $this->assertSame(0, $this->tester->getStatusCode(), $display);
         $this->assertStringContainsString('No results found.', $display);
         $this->assertStringNotContainsString('No options found matching criteria', $display);
+    }
+
+    public function testListEmptyResultRejectsUnknownFieldsSelection(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '__missing_option__',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $display);
+        $this->assertNotSame("[]\n", $display);
+    }
+
+    public function testListRejectsEmptyPrefixAndSearchFilters(): void
+    {
+        foreach (['prefix', 'search'] as $option) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--' . $option => '',
+                '--format' => 'count',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), "--$option: $display");
+            $this->assertStringContainsString("Invalid value for --$option", $display);
+        }
+    }
+
+    public function testListPrefixTreatsUnderscoreAsLiteralPrefixSeparator(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--prefix' => 'ENABLE',
+            '--fields' => 'variable',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $rows = json_decode($display, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame(['ENABLE_DVD_FIELD_1'], array_column($rows, 'variable'));
     }
 
     public function testListRejectsSetOnlyYesOption(): void

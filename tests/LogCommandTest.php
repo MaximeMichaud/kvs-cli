@@ -106,9 +106,34 @@ class LogCommandTest extends TestCase
         $this->assertStringNotContainsString('system.log', $output);
     }
 
+    public function testLogListRejectsTailShortcut(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '-t' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support --tail', $output);
+        $this->assertStringNotContainsString('system.log', $output);
+    }
+
     public function testDefaultLogListRejectsTailOptionWithoutType(): void
     {
         $this->tester->execute(['--tail' => '1']);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support --tail', $output);
+        $this->assertStringNotContainsString('system.log', $output);
+    }
+
+    public function testDefaultLogListRejectsTailShortcutWithoutType(): void
+    {
+        $this->tester->execute(['-t' => '1']);
 
         $output = $this->tester->getDisplay();
 

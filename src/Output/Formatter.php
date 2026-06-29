@@ -56,12 +56,15 @@ class Formatter
     public function __construct(array $options, array $defaultFields, ?array $knownFields = null)
     {
         $fieldsOption = $options['fields'] ?? null;
+        $fieldOption = $options['field'] ?? null;
         $this->args = [
             'format' => $options['format'] ?? 'table',
             'fields' => $fieldsOption,
-            'field'  => $options['field'] ?? null,
+            'field'  => $fieldOption,
             'no-truncate' => $options['no-truncate'] ?? false,
-            'fields-provided' => $fieldsOption !== null && $fieldsOption !== '',
+            'fields-provided' => $fieldsOption !== null && $fieldsOption !== false,
+            'fields-empty' => $fieldsOption === '',
+            'field-empty' => $fieldOption === '',
         ];
 
         // Parse fields
@@ -93,6 +96,14 @@ class Formatter
             throw new \InvalidArgumentException('Format must be a string');
         }
 
+        if ($this->args['field-empty'] === true) {
+            throw new \InvalidArgumentException('The --field option cannot be empty.');
+        }
+
+        if ($this->args['fields-empty'] === true) {
+            throw new \InvalidArgumentException('The --fields option cannot be empty.');
+        }
+
         if ($format === 'count' && $hasSingleField) {
             throw new \InvalidArgumentException('The count format does not support --field.');
         }
@@ -107,6 +118,10 @@ class Formatter
 
         if ($format === 'ids' && $this->args['fields-provided'] === true) {
             throw new \InvalidArgumentException('The ids format does not support --fields.');
+        }
+
+        if ($hasSingleField && $this->args['fields-provided'] === true) {
+            throw new \InvalidArgumentException('The --field option cannot be combined with --fields.');
         }
 
         if ($hasSingleField && $format !== 'table') {
@@ -174,13 +189,10 @@ class Formatter
 
         foreach ($items as $item) {
             $value = $this->getFieldValue($item, $field);
-            if ($value !== '') {
-                // Cast to string - database values are typically strings/ints/null
-                $stringValue = is_scalar($value) || $value === null ? (string)$value : '';
-                if ($stringValue !== '') {
-                    $output->writeln($stringValue);
-                }
-            }
+            // Cast to string - database values are typically strings/ints/null.
+            // Empty values are still real field values and must preserve row count.
+            $stringValue = is_scalar($value) || $value === null ? (string)$value : '';
+            $output->writeln($stringValue);
         }
     }
 

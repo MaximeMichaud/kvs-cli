@@ -17,6 +17,8 @@ abstract class BaseCommand extends Command
 {
     use InputHelperTrait;
 
+    protected const KVS_IPV4_MAX = 4294967295;
+
     protected Configuration $config;
     protected ?SymfonyStyle $io = null;
     private ?DockerDetector $docker = null;
@@ -554,7 +556,7 @@ abstract class BaseCommand extends Command
         return '(' . implode(' OR ', $conditions) . ')';
     }
 
-    private function escapeLikePattern(string $value): string
+    protected function escapeLikePattern(string $value): string
     {
         return str_replace(
             ['!', '%', '_'],
@@ -712,6 +714,11 @@ abstract class BaseCommand extends Command
     protected function parseKvsIpv4Option(string $ip, string $name = 'ip'): int|false
     {
         if (preg_match('/^\d+$/', $ip) === 1) {
+            if (!$this->isKvsIpv4IntegerInRange($ip)) {
+                $this->io()->error(sprintf('Invalid value for --%s (use: IPv4 address)', $name));
+                return false;
+            }
+
             return (int) $ip;
         }
 
@@ -727,6 +734,19 @@ abstract class BaseCommand extends Command
         }
 
         return (int) sprintf('%u', $ipLong);
+    }
+
+    protected function isKvsIpv4IntegerInRange(string $value): bool
+    {
+        $normalized = ltrim($value, '0');
+        if ($normalized === '') {
+            return true;
+        }
+
+        $max = (string) self::KVS_IPV4_MAX;
+
+        return strlen($normalized) < strlen($max)
+            || (strlen($normalized) === strlen($max) && strcmp($normalized, $max) <= 0);
     }
 
     protected function findReferenceIdByText(
@@ -899,6 +919,17 @@ abstract class BaseCommand extends Command
 
         if ($input->hasParameterOption('--' . $name)) {
             return true;
+        }
+
+        if ($this->getDefinition()->hasOption($name)) {
+            $shortcut = $this->getDefinition()->getOption($name)->getShortcut();
+            if ($shortcut !== null && $shortcut !== '') {
+                foreach (explode('|', $shortcut) as $shortcutName) {
+                    if ($shortcutName !== '' && $input->hasParameterOption('-' . $shortcutName)) {
+                        return true;
+                    }
+                }
+            }
         }
 
         $value = $input->getOption($name);

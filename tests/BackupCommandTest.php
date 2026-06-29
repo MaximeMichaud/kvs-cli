@@ -539,6 +539,18 @@ SH
         $this->assertArrayHasKey('created', $decoded[0]);
     }
 
+    public function testBackupListRejectsExplicitEmptyFormat(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '--format' => '',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format ""', $output);
+    }
+
     public function testBackupListSupportsCountFormat(): void
     {
         $customBackupsDir = $this->rootDir . '/custom-backups-count';

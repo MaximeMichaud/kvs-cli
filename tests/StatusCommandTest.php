@@ -243,6 +243,23 @@ class StatusCommandTest extends TestCase
         $this->assertStringContainsString('Debug mode ENABLED', $this->normalizeStatusOutput($display));
     }
 
+    public function testStatusSecurityReadsNativeKvsBackupFiles(): void
+    {
+        $backupDir = $this->tempDir . '/admin/data/backup';
+        mkdir($backupDir, 0755, true);
+        $backupFile = $backupDir . '/example-site-backup-auto-dwpsc-2026-06-29-123456.tar.gz';
+        file_put_contents($backupFile, 'test');
+        touch($backupFile, time() - 3600);
+
+        $this->tester->execute([]);
+
+        $display = $this->tester->getDisplay();
+        $normalizedDisplay = $this->normalizeStatusOutput($display);
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Database backups Last backup', $normalizedDisplay);
+        $this->assertStringNotContainsString('Database backups No recent backups found', $normalizedDisplay);
+    }
+
     public function testStatusSecurityReadsSetupDebugFlags(): void
     {
         file_put_contents(
