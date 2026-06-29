@@ -322,6 +322,37 @@ class LogCommandTest extends TestCase
         $this->assertSame($originalContent, file_get_contents($logFile));
     }
 
+    public function testLogClearRejectsTailOption(): void
+    {
+        $this->tester->execute([
+            'type' => 'system',
+            '--clear' => true,
+            '--tail' => '1',
+            '--no-interaction' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('clear action does not support --tail', $output);
+        $this->assertStringNotContainsString('This will clear the log file', $output);
+    }
+
+    public function testLogFollowRejectsTailOption(): void
+    {
+        $this->tester->execute([
+            'type' => 'system',
+            '--follow' => true,
+            '--tail' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('follow action does not support --tail', $output);
+        $this->assertStringNotContainsString('Following log', $output);
+    }
+
     public function testLogListAndClearCannotBeCombined(): void
     {
         $this->tester->execute([

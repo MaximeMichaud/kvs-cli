@@ -72,6 +72,56 @@ class CompletionCommandTest extends TestCase
         $this->assertStringContainsString('bash zsh fish', $output);
     }
 
+    public function testCompletionScriptsIncludeCurrentCommands(): void
+    {
+        $bash = new CommandTester(new CompletionCommand());
+        $bash->execute(['shell' => 'bash']);
+        $bashOutput = $bash->getDisplay();
+
+        $this->assertStringContainsString('cli:info', $bashOutput);
+        $this->assertStringContainsString('system:queue', $bashOutput);
+        $this->assertStringContainsString('settings:options', $bashOutput);
+        $this->assertStringContainsString('content:playlist', $bashOutput);
+        $this->assertStringContainsString('user:purge', $bashOutput);
+        $this->assertStringContainsString('migrate:scan', $bashOutput);
+        $this->assertStringContainsString('local video_actions="list show delete stats"', $bashOutput);
+        $this->assertStringContainsString('local queue_actions="list show stats history help-action"', $bashOutput);
+
+        $zsh = new CommandTester(new CompletionCommand());
+        $zsh->execute(['shell' => 'zsh']);
+        $zshOutput = $zsh->getDisplay();
+
+        $this->assertStringContainsString('system\\:queue:Manage background task queue', $zshOutput);
+        $this->assertStringContainsString('settings\\:options:Manage KVS system options', $zshOutput);
+        $this->assertStringContainsString('content\\:playlist:Manage playlists', $zshOutput);
+
+        $fish = new CommandTester(new CompletionCommand());
+        $fish->execute(['shell' => 'fish']);
+        $fishOutput = $fish->getDisplay();
+
+        $this->assertStringContainsString('-a "system:queue"', $fishOutput);
+        $this->assertStringContainsString('-a "settings:options"', $fishOutput);
+        $this->assertStringContainsString('-a "video:screenshots"', $fishOutput);
+        $this->assertStringContainsString('__fish_seen_subcommand_from content:video video" -a "list show delete stats"', $fishOutput);
+    }
+
+    public function testCompletionScriptsDoNotSuggestInvalidLegacyActions(): void
+    {
+        $bash = new CommandTester(new CompletionCommand());
+        $bash->execute(['shell' => 'bash']);
+        $bashOutput = $bash->getDisplay();
+
+        $this->assertStringNotContainsString('local cache_actions="clear status"', $bashOutput);
+        $this->assertStringNotContainsString('local debug_actions="on off status"', $bashOutput);
+
+        $fish = new CommandTester(new CompletionCommand());
+        $fish->execute(['shell' => 'fish']);
+        $fishOutput = $fish->getDisplay();
+
+        $this->assertStringNotContainsString('__fish_seen_subcommand_from system:cache" -a "clear status"', $fishOutput);
+        $this->assertStringNotContainsString('__fish_seen_subcommand_from maintenance dev:debug" -a "on off status"', $fishOutput);
+    }
+
     public function testRejectsUnsupportedShell(): void
     {
         $tester = new CommandTester(new CompletionCommand());

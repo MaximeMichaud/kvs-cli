@@ -65,10 +65,18 @@ class LogCommand extends BaseCommand
         }
 
         if ($this->getBoolOption($input, 'clear')) {
+            if ($this->rejectUnsupportedOptions($input, 'clear', ['tail'])) {
+                return self::FAILURE;
+            }
+
             return $this->clearLog($type, $input);
         }
 
         if ($this->getBoolOption($input, 'follow')) {
+            if ($this->rejectUnsupportedOptions($input, 'follow', ['tail'])) {
+                return self::FAILURE;
+            }
+
             return $this->followLog($type);
         }
 

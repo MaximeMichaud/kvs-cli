@@ -21,6 +21,11 @@ class ExportCommand extends BaseCommand
 {
     use SecureFileTrait;
 
+    private ?\PDO $tableLookupConnection = null;
+
+    /** @var array<string, bool> */
+    private array $tableLookupCache = [];
+
     protected function configure(): void
     {
         $this
@@ -49,9 +54,8 @@ EOT
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $dbConfig = $this->config->getDatabaseConfig();
-
-        if ($dbConfig === []) {
+        $dbConfig = $this->normalizeDatabaseConfig($this->config->getDatabaseConfig());
+        if ($dbConfig === null) {
             $this->io()->error('Database configuration not found');
             return self::FAILURE;
         }
@@ -108,6 +112,9 @@ EOT
             date('Y-m-d_H-i-s'),
             $fileExtension
         );
+        if (!$this->validateOutputFile($outputFile)) {
+            return self::FAILURE;
+        }
 
         $this->io()->info('Starting database export...');
 
@@ -136,10 +143,13 @@ EOT
             $command[] = '--no-data';
         }
 
-        $tables = $this->getStringOption($input, 'tables');
+        $tables = $this->parseTablesOption($this->getStringOption($input, 'tables'), $dbConfig);
+        if ($tables === false) {
+            return self::FAILURE;
+        }
         if ($tables !== null) {
             $command[] = $dbConfig['database'];
-            foreach (explode(',', $tables) as $table) {
+            foreach ($tables as $table) {
                 $command[] = $table;
             }
         } else {
@@ -186,6 +196,183 @@ EOT
         ));
 
         return self::SUCCESS;
+    }
+
+    private function validateOutputFile(string $outputFile): bool
+    {
+        if (trim($outputFile) === '') {
+            $this->io()->error('The --output option cannot be empty');
+            return false;
+        }
+
+        if (is_dir($outputFile)) {
+            $this->io()->error("Output path is a directory: $outputFile");
+            return false;
+        }
+
+        $outputDir = dirname($outputFile);
+        if (!is_dir($outputDir)) {
+            $this->io()->error("Output directory does not exist: $outputDir");
+            return false;
+        }
+
+        if (!is_writable($outputDir)) {
+            $this->io()->error("Output directory is not writable: $outputDir");
+            return false;
+        }
+
+        if (is_file($outputFile) && !is_writable($outputFile)) {
+            $this->io()->error("Output file is not writable: $outputFile");
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $dbConfig
+     * @return array{host: string, user: string, password: string, database: string}|null
+     */
+    private function normalizeDatabaseConfig(array $dbConfig): ?array
+    {
+        $host = $dbConfig['host'] ?? null;
+        $user = $dbConfig['user'] ?? null;
+        $password = $dbConfig['password'] ?? null;
+        $database = $dbConfig['database'] ?? null;
+
+        if (
+            !is_string($host) || $host === ''
+            || !is_string($user) || $user === ''
+            || !is_string($password)
+            || !is_string($database) || $database === ''
+        ) {
+            return null;
+        }
+
+        return [
+            'host' => $host,
+            'user' => $user,
+            'password' => $password,
+            'database' => $database,
+        ];
+    }
+
+    /**
+     * @param array{host: string, user: string, password: string, database: string} $dbConfig
+     * @return list<string>|false|null
+     */
+    private function parseTablesOption(?string $tables, array $dbConfig): array|false|null
+    {
+        if ($tables === null) {
+            return null;
+        }
+
+        if (trim($tables) === '') {
+            $this->io()->error('The --tables option cannot be empty');
+            return false;
+        }
+
+        $resolvedTables = [];
+        $knownTables = $this->getKnownKvsTableMap();
+        foreach (explode(',', $tables) as $rawTable) {
+            $table = trim($rawTable);
+            if ($table === '') {
+                $this->io()->error('The --tables option contains an empty table name');
+                return false;
+            }
+            $resolvedTables[] = $this->resolveTableName($table, $knownTables, $dbConfig);
+        }
+
+        return $resolvedTables;
+    }
+
+    /**
+     * @param array<string, string> $knownTables
+     * @param array{host: string, user: string, password: string, database: string} $dbConfig
+     */
+    private function resolveTableName(string $table, array $knownTables, array $dbConfig): string
+    {
+        if (isset($knownTables[$table])) {
+            return $knownTables[$table];
+        }
+
+        if ($this->tableExistsForExport($table, $dbConfig)) {
+            return $table;
+        }
+
+        $candidates = array_values(array_unique([
+            $this->config->getTablePrefix() . $table,
+            $this->config->getMultiTablePrefix() . $table,
+        ]));
+
+        foreach ($candidates as $candidate) {
+            if ($candidate !== $table && $this->tableExistsForExport($candidate, $dbConfig)) {
+                return $candidate;
+            }
+        }
+
+        return $table;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getKnownKvsTableMap(): array
+    {
+        $databaseTablesFile = $this->config->getAdminPath() . '/include/database_tables.php';
+        if (!is_file($databaseTablesFile)) {
+            return [];
+        }
+
+        $contents = file_get_contents($databaseTablesFile);
+        if ($contents === false) {
+            return [];
+        }
+
+        $map = [];
+        $pattern = '/\\$database_tables\\[\\]\\s*=\\s*"\\$config\\[(tables_prefix|tables_prefix_multi)\\]([a-z0-9_]+)"/';
+        if (preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER) === false) {
+            return [];
+        }
+
+        foreach ($matches as $match) {
+            $prefix = $match[1] === 'tables_prefix_multi'
+                ? $this->config->getMultiTablePrefix()
+                : $this->config->getTablePrefix();
+            $shortName = $match[2];
+            $map[$shortName] = $prefix . $shortName;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array{host: string, user: string, password: string, database: string} $dbConfig
+     */
+    protected function tableExistsForExport(string $table, array $dbConfig): bool
+    {
+        if (array_key_exists($table, $this->tableLookupCache)) {
+            return $this->tableLookupCache[$table];
+        }
+
+        try {
+            $connection = $this->tableLookupConnection ??= $this->getDatabaseConnection(true);
+            if ($connection === null) {
+                return $this->tableLookupCache[$table] = false;
+            }
+
+            $statement = $connection->prepare(
+                'select table_name from information_schema.tables where table_schema = :schema and table_name = :table limit 1'
+            );
+            $statement->execute([
+                'schema' => $dbConfig['database'],
+                'table' => $table,
+            ]);
+
+            return $this->tableLookupCache[$table] = $statement->fetchColumn() !== false;
+        } catch (\PDOException) {
+            return $this->tableLookupCache[$table] = false;
+        }
     }
 
     /**

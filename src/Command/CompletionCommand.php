@@ -144,28 +144,45 @@ _kvs_complete() {
     local cur prev words cword
     _init_completion -n : || return
 
-    local commands="help list self-update completion
-        system:status system:cache system:cron system:backup system:check
-        maintenance
-        video album user category tag comment model dvd
-        plugin config shell eval eval-file
-        db:export db:import
-        dev:debug dev:log
-        video:formats video:screenshots"
+    local commands="help list self-update completion cli:info
+        system:status status system:cache cache system:cron cron system:backup backup system:check check
+        system:benchmark benchmark bench system:queue queue system:server server system:conversion conversion
+        system:email email system:antispam antispam system:stats stats system:stats-settings stats-settings
+        maintenance maint
+        content:video video videos content:album album albums gallery content:user user users member members
+        user:purge users:purge user:cleanup content:category category categories cat content:tag tag tags
+        content:comment comment comments content:model model models performer performers content:dvd dvd dvds channel channels
+        content:playlist playlist playlists
+        plugin plugins plug config conf cfg shell console repl eval eval-php eval-file
+        db:export database:export db:dump db:import database:import db:restore
+        dev:debug debug dev:log log logs
+        video:formats formats video:screenshots screenshots
+        settings:options options option settings:video-format video-format vformat
+        migrate:scan scan migrate:package package migrate:import import migrate:to-docker to-docker"
 
-    local video_actions="list show"
-    local album_actions="list show"
-    local user_actions="list show"
-    local category_actions="list"
-    local tag_actions="list"
-    local comment_actions="list show stats"
-    local model_actions="list show"
-    local dvd_actions="list show"
+    local video_actions="list show delete stats"
+    local album_actions="list show delete"
+    local user_actions="list show create delete stats"
+    local category_actions="list tree show create delete update enable disable merge assign-group"
+    local tag_actions="list show create delete merge update enable disable stats"
+    local comment_actions="list pending show stats approve reject delete"
+    local model_actions="list show stats"
+    local dvd_actions="list show stats"
+    local playlist_actions="list show create add remove delete"
     local plugin_actions="list show path status"
-    local config_actions="list get"
-    local cache_actions="clear status"
+    local config_actions="list get set edit"
+    local queue_actions="list show stats history help-action"
+    local server_actions="list show enable disable stats group"
+    local conversion_actions="list show enable disable debug-on debug-off log config stats"
+    local email_actions="show test set log templates"
+    local antispam_actions="show set add remove blacklist"
+    local stats_settings_actions="show set"
+    local options_actions="list get set"
+    local video_format_actions="list show groups"
+    local formats_actions="list check available"
+    local screenshots_actions="list generate regenerate"
     local maintenance_actions="on off status"
-    local debug_actions="on off status"
+    local completion_actions="bash zsh fish"
 
     if [[ ${cword} -eq 1 ]]; then
         COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
@@ -173,44 +190,74 @@ _kvs_complete() {
     fi
 
     case "${words[1]}" in
-        video)
+        content:video|video|videos)
             COMPREPLY=($(compgen -W "${video_actions}" -- "${cur}"))
             ;;
-        album)
+        content:album|album|albums|gallery)
             COMPREPLY=($(compgen -W "${album_actions}" -- "${cur}"))
             ;;
-        user)
+        content:user|user|users|member|members)
             COMPREPLY=($(compgen -W "${user_actions}" -- "${cur}"))
             ;;
-        category)
+        content:category|category|categories|cat)
             COMPREPLY=($(compgen -W "${category_actions}" -- "${cur}"))
             ;;
-        tag)
+        content:tag|tag|tags)
             COMPREPLY=($(compgen -W "${tag_actions}" -- "${cur}"))
             ;;
-        comment)
+        content:comment|comment|comments)
             COMPREPLY=($(compgen -W "${comment_actions}" -- "${cur}"))
             ;;
-        model)
+        content:model|model|models|performer|performers)
             COMPREPLY=($(compgen -W "${model_actions}" -- "${cur}"))
             ;;
-        dvd)
+        content:dvd|dvd|dvds|channel|channels)
             COMPREPLY=($(compgen -W "${dvd_actions}" -- "${cur}"))
             ;;
-        plugin)
+        content:playlist|playlist|playlists)
+            COMPREPLY=($(compgen -W "${playlist_actions}" -- "${cur}"))
+            ;;
+        plugin|plugins|plug)
             COMPREPLY=($(compgen -W "${plugin_actions}" -- "${cur}"))
             ;;
-        config)
+        config|conf|cfg)
             COMPREPLY=($(compgen -W "${config_actions}" -- "${cur}"))
             ;;
-        system:cache)
-            COMPREPLY=($(compgen -W "${cache_actions}" -- "${cur}"))
+        system:queue|queue)
+            COMPREPLY=($(compgen -W "${queue_actions}" -- "${cur}"))
             ;;
-        maintenance)
+        system:server|server|servers)
+            COMPREPLY=($(compgen -W "${server_actions}" -- "${cur}"))
+            ;;
+        system:conversion|conversion)
+            COMPREPLY=($(compgen -W "${conversion_actions}" -- "${cur}"))
+            ;;
+        system:email|email)
+            COMPREPLY=($(compgen -W "${email_actions}" -- "${cur}"))
+            ;;
+        system:antispam|antispam)
+            COMPREPLY=($(compgen -W "${antispam_actions}" -- "${cur}"))
+            ;;
+        system:stats-settings|stats-settings)
+            COMPREPLY=($(compgen -W "${stats_settings_actions}" -- "${cur}"))
+            ;;
+        settings:options|options|option)
+            COMPREPLY=($(compgen -W "${options_actions}" -- "${cur}"))
+            ;;
+        settings:video-format|video-format|vformat)
+            COMPREPLY=($(compgen -W "${video_format_actions}" -- "${cur}"))
+            ;;
+        video:formats|formats)
+            COMPREPLY=($(compgen -W "${formats_actions}" -- "${cur}"))
+            ;;
+        video:screenshots|screenshots)
+            COMPREPLY=($(compgen -W "${screenshots_actions}" -- "${cur}"))
+            ;;
+        maintenance|maint)
             COMPREPLY=($(compgen -W "${maintenance_actions}" -- "${cur}"))
             ;;
-        dev:debug)
-            COMPREPLY=($(compgen -W "${debug_actions}" -- "${cur}"))
+        completion)
+            COMPREPLY=($(compgen -W "${completion_actions}" -- "${cur}"))
             ;;
         *)
             COMPREPLY=($(compgen -W "--help --path --format --fields --limit" -- "${cur}"))
@@ -237,20 +284,40 @@ _kvs() {
         'list:List commands'
         'self-update:Update KVS CLI to latest version'
         'completion:Dump shell completion script'
+        'cli\:info:Display CLI environment information'
         'system\:status:Show system status'
         'system\:cache:Manage cache'
         'system\:cron:Run cron tasks'
         'system\:backup:Create backup'
         'system\:check:Check system health'
+        'system\:benchmark:Run performance benchmarks'
+        'system\:queue:Manage background task queue'
+        'system\:server:Manage storage servers'
+        'system\:conversion:Manage conversion servers'
+        'system\:email:Manage email settings'
+        'system\:antispam:Manage anti-spam settings'
+        'system\:stats:Show site statistics'
+        'system\:stats-settings:Manage statistics settings'
         'maintenance:Manage maintenance mode'
+        'content\:video:Manage videos'
         'video:Manage videos'
+        'content\:album:Manage albums'
         'album:Manage albums'
+        'content\:user:Manage users'
         'user:Manage users'
+        'user\:purge:Purge users'
+        'content\:category:Manage categories'
         'category:Manage categories'
+        'content\:tag:Manage tags'
         'tag:Manage tags'
+        'content\:comment:Manage comments'
         'comment:Manage comments'
+        'content\:model:Manage models'
         'model:Manage models'
+        'content\:dvd:Manage DVDs'
         'dvd:Manage DVDs'
+        'content\:playlist:Manage playlists'
+        'playlist:Manage playlists'
         'plugin:Manage plugins'
         'config:View configuration'
         'shell:Interactive PHP shell'
@@ -262,6 +329,12 @@ _kvs() {
         'dev\:log:View logs'
         'video\:formats:Show video formats'
         'video\:screenshots:Manage screenshots'
+        'settings\:options:Manage KVS system options'
+        'settings\:video-format:Manage KVS video formats'
+        'migrate\:scan:Scan a KVS installation'
+        'migrate\:package:Create a migration package'
+        'migrate\:import:Import a migration package'
+        'migrate\:to-docker:Migrate to Docker'
     )
 
     _arguments -C \
@@ -276,26 +349,71 @@ _kvs() {
             ;;
         args)
             case $words[1] in
-                video|album|user|model|dvd)
-                    _arguments '1:action:(list show)'
+                content:video|video)
+                    _arguments '1:action:(list show delete stats)'
                     ;;
-                category|tag)
-                    _arguments '1:action:(list)'
+                content:album|album)
+                    _arguments '1:action:(list show delete)'
                     ;;
-                comment)
+                content:user|user)
+                    _arguments '1:action:(list show create delete stats)'
+                    ;;
+                content:model|model|content:dvd|dvd)
                     _arguments '1:action:(list show stats)'
+                    ;;
+                content:category|category)
+                    _arguments '1:action:(list tree show create delete update enable disable merge assign-group)'
+                    ;;
+                content:tag|tag)
+                    _arguments '1:action:(list show create delete merge update enable disable stats)'
+                    ;;
+                content:comment|comment)
+                    _arguments '1:action:(list pending show stats approve reject delete)'
+                    ;;
+                content:playlist|playlist)
+                    _arguments '1:action:(list show create add remove delete)'
                     ;;
                 plugin)
                     _arguments '1:action:(list show path status)'
                     ;;
                 config)
-                    _arguments '1:action:(list get)'
+                    _arguments '1:action:(list get set edit)'
                     ;;
-                system:cache)
-                    _arguments '1:action:(clear status)'
+                system:queue)
+                    _arguments '1:action:(list show stats history help-action)'
                     ;;
-                maintenance|dev:debug)
+                system:server)
+                    _arguments '1:action:(list show enable disable stats group)'
+                    ;;
+                system:conversion)
+                    _arguments '1:action:(list show enable disable debug-on debug-off log config stats)'
+                    ;;
+                system:email)
+                    _arguments '1:action:(show test set log templates)'
+                    ;;
+                system:antispam)
+                    _arguments '1:action:(show set add remove blacklist)'
+                    ;;
+                system:stats-settings)
+                    _arguments '1:action:(show set)'
+                    ;;
+                settings:options)
+                    _arguments '1:action:(list get set)'
+                    ;;
+                settings:video-format)
+                    _arguments '1:action:(list show groups)'
+                    ;;
+                video:formats)
+                    _arguments '1:action:(list check available)'
+                    ;;
+                video:screenshots)
+                    _arguments '1:action:(list generate regenerate)'
+                    ;;
+                maintenance)
                     _arguments '1:action:(on off status)'
+                    ;;
+                completion)
+                    _arguments '1:shell:(bash zsh fish)'
                     ;;
             esac
             ;;
@@ -320,20 +438,40 @@ complete -c kvs -n "__fish_use_subcommand" -a "help" -d "Display help"
 complete -c kvs -n "__fish_use_subcommand" -a "list" -d "List commands"
 complete -c kvs -n "__fish_use_subcommand" -a "self-update" -d "Update KVS CLI"
 complete -c kvs -n "__fish_use_subcommand" -a "completion" -d "Shell completion"
+complete -c kvs -n "__fish_use_subcommand" -a "cli:info" -d "CLI environment"
 complete -c kvs -n "__fish_use_subcommand" -a "system:status" -d "System status"
 complete -c kvs -n "__fish_use_subcommand" -a "system:cache" -d "Manage cache"
 complete -c kvs -n "__fish_use_subcommand" -a "system:cron" -d "Run cron"
 complete -c kvs -n "__fish_use_subcommand" -a "system:backup" -d "Create backup"
 complete -c kvs -n "__fish_use_subcommand" -a "system:check" -d "Check health"
+complete -c kvs -n "__fish_use_subcommand" -a "system:benchmark" -d "Run benchmarks"
+complete -c kvs -n "__fish_use_subcommand" -a "system:queue" -d "Task queue"
+complete -c kvs -n "__fish_use_subcommand" -a "system:server" -d "Storage servers"
+complete -c kvs -n "__fish_use_subcommand" -a "system:conversion" -d "Conversion servers"
+complete -c kvs -n "__fish_use_subcommand" -a "system:email" -d "Email settings"
+complete -c kvs -n "__fish_use_subcommand" -a "system:antispam" -d "Anti-spam settings"
+complete -c kvs -n "__fish_use_subcommand" -a "system:stats" -d "Site statistics"
+complete -c kvs -n "__fish_use_subcommand" -a "system:stats-settings" -d "Stats settings"
 complete -c kvs -n "__fish_use_subcommand" -a "maintenance" -d "Maintenance mode"
+complete -c kvs -n "__fish_use_subcommand" -a "content:video" -d "Manage videos"
 complete -c kvs -n "__fish_use_subcommand" -a "video" -d "Manage videos"
+complete -c kvs -n "__fish_use_subcommand" -a "content:album" -d "Manage albums"
 complete -c kvs -n "__fish_use_subcommand" -a "album" -d "Manage albums"
+complete -c kvs -n "__fish_use_subcommand" -a "content:user" -d "Manage users"
 complete -c kvs -n "__fish_use_subcommand" -a "user" -d "Manage users"
+complete -c kvs -n "__fish_use_subcommand" -a "user:purge" -d "Purge users"
+complete -c kvs -n "__fish_use_subcommand" -a "content:category" -d "Categories"
 complete -c kvs -n "__fish_use_subcommand" -a "category" -d "Categories"
+complete -c kvs -n "__fish_use_subcommand" -a "content:tag" -d "Manage tags"
 complete -c kvs -n "__fish_use_subcommand" -a "tag" -d "Manage tags"
+complete -c kvs -n "__fish_use_subcommand" -a "content:comment" -d "Manage comments"
 complete -c kvs -n "__fish_use_subcommand" -a "comment" -d "Manage comments"
+complete -c kvs -n "__fish_use_subcommand" -a "content:model" -d "Manage models"
 complete -c kvs -n "__fish_use_subcommand" -a "model" -d "Manage models"
+complete -c kvs -n "__fish_use_subcommand" -a "content:dvd" -d "Manage DVDs"
 complete -c kvs -n "__fish_use_subcommand" -a "dvd" -d "Manage DVDs"
+complete -c kvs -n "__fish_use_subcommand" -a "content:playlist" -d "Manage playlists"
+complete -c kvs -n "__fish_use_subcommand" -a "playlist" -d "Manage playlists"
 complete -c kvs -n "__fish_use_subcommand" -a "plugin" -d "Manage plugins"
 complete -c kvs -n "__fish_use_subcommand" -a "config" -d "Configuration"
 complete -c kvs -n "__fish_use_subcommand" -a "shell" -d "PHP shell"
@@ -343,15 +481,37 @@ complete -c kvs -n "__fish_use_subcommand" -a "db:export" -d "Export database"
 complete -c kvs -n "__fish_use_subcommand" -a "db:import" -d "Import database"
 complete -c kvs -n "__fish_use_subcommand" -a "dev:debug" -d "Debug mode"
 complete -c kvs -n "__fish_use_subcommand" -a "dev:log" -d "View logs"
+complete -c kvs -n "__fish_use_subcommand" -a "video:formats" -d "Video formats"
+complete -c kvs -n "__fish_use_subcommand" -a "video:screenshots" -d "Screenshots"
+complete -c kvs -n "__fish_use_subcommand" -a "settings:options" -d "System options"
+complete -c kvs -n "__fish_use_subcommand" -a "settings:video-format" -d "Video format settings"
+complete -c kvs -n "__fish_use_subcommand" -a "migrate:scan" -d "Scan migration"
+complete -c kvs -n "__fish_use_subcommand" -a "migrate:package" -d "Package migration"
+complete -c kvs -n "__fish_use_subcommand" -a "migrate:import" -d "Import migration"
+complete -c kvs -n "__fish_use_subcommand" -a "migrate:to-docker" -d "Migrate to Docker"
 
 # Subcommand actions
-complete -c kvs -n "__fish_seen_subcommand_from video album user model dvd" -a "list show"
-complete -c kvs -n "__fish_seen_subcommand_from category tag" -a "list"
-complete -c kvs -n "__fish_seen_subcommand_from comment" -a "list show stats"
+complete -c kvs -n "__fish_seen_subcommand_from content:video video" -a "list show delete stats"
+complete -c kvs -n "__fish_seen_subcommand_from content:album album" -a "list show delete"
+complete -c kvs -n "__fish_seen_subcommand_from content:user user" -a "list show create delete stats"
+complete -c kvs -n "__fish_seen_subcommand_from content:category category" -a "list tree show create delete update enable disable merge assign-group"
+complete -c kvs -n "__fish_seen_subcommand_from content:tag tag" -a "list show create delete merge update enable disable stats"
+complete -c kvs -n "__fish_seen_subcommand_from content:comment comment" -a "list pending show stats approve reject delete"
+complete -c kvs -n "__fish_seen_subcommand_from content:model model content:dvd dvd" -a "list show stats"
+complete -c kvs -n "__fish_seen_subcommand_from content:playlist playlist" -a "list show create add remove delete"
 complete -c kvs -n "__fish_seen_subcommand_from plugin" -a "list show path status"
-complete -c kvs -n "__fish_seen_subcommand_from config" -a "list get"
-complete -c kvs -n "__fish_seen_subcommand_from system:cache" -a "clear status"
-complete -c kvs -n "__fish_seen_subcommand_from maintenance dev:debug" -a "on off status"
+complete -c kvs -n "__fish_seen_subcommand_from config" -a "list get set edit"
+complete -c kvs -n "__fish_seen_subcommand_from system:queue" -a "list show stats history help-action"
+complete -c kvs -n "__fish_seen_subcommand_from system:server" -a "list show enable disable stats group"
+complete -c kvs -n "__fish_seen_subcommand_from system:conversion" -a "list show enable disable debug-on debug-off log config stats"
+complete -c kvs -n "__fish_seen_subcommand_from system:email" -a "show test set log templates"
+complete -c kvs -n "__fish_seen_subcommand_from system:antispam" -a "show set add remove blacklist"
+complete -c kvs -n "__fish_seen_subcommand_from system:stats-settings" -a "show set"
+complete -c kvs -n "__fish_seen_subcommand_from settings:options" -a "list get set"
+complete -c kvs -n "__fish_seen_subcommand_from settings:video-format" -a "list show groups"
+complete -c kvs -n "__fish_seen_subcommand_from video:formats" -a "list check available"
+complete -c kvs -n "__fish_seen_subcommand_from video:screenshots" -a "list generate regenerate"
+complete -c kvs -n "__fish_seen_subcommand_from maintenance" -a "on off status"
 complete -c kvs -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 
 # Global options

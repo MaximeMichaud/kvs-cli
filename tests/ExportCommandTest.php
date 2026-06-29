@@ -331,6 +331,144 @@ PHP)
         $this->assertNotEmpty($output);
     }
 
+    public function testExportRejectsInvalidOutputPathsBeforeDump(): void
+    {
+        [$toolsDir, $argsFile] = $this->createDumpCaptureTools('invalid-output');
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            foreach (['', $this->tempDir . '/exports'] as $outputPath) {
+                $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+                $tester->execute([
+                    '--output' => $outputPath,
+                    '--tables' => 'ktvs_videos',
+                ]);
+
+                $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            }
+
+            $this->assertFileDoesNotExist($argsFile);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testExportRejectsEmptyTablesBeforeDump(): void
+    {
+        [$toolsDir, $argsFile] = $this->createDumpCaptureTools('empty-tables');
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            foreach (['', 'ktvs_videos,'] as $tables) {
+                $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+                $tester->execute([
+                    '--output' => $this->tempDir . '/exports/empty_tables.sql',
+                    '--tables' => $tables,
+                ]);
+
+                $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+                $this->assertStringContainsString('--tables', $tester->getDisplay());
+            }
+
+            $this->assertFileDoesNotExist($argsFile);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testExportResolvesKvsShortTableNames(): void
+    {
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'tables_prefix' => 'ktvs_',
+            'tables_prefix_multi' => 'multi_',
+        ]);
+        $this->writeDatabaseTablesFile();
+
+        [$toolsDir, $argsFile] = $this->createDumpCaptureTools('short-tables');
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+            $tester->execute([
+                '--output' => $this->tempDir . '/exports/short_tables.sql',
+                '--tables' => 'videos, admin_processes',
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $args = file($argsFile, FILE_IGNORE_NEW_LINES);
+            $this->assertIsArray($args);
+            $this->assertContains('ktvs_videos', $args);
+            $this->assertContains('multi_admin_processes', $args);
+            $this->assertNotContains('videos', $args);
+            $this->assertNotContains('admin_processes', $args);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testExportResolvesShortTableNamesWhenDatabaseTablesFileIsEncoded(): void
+    {
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'tables_prefix' => 'ktvs_',
+            'tables_prefix_multi' => 'multi_',
+        ]);
+        file_put_contents(
+            $this->tempDir . '/admin/include/database_tables.php',
+            "<?php //00336\n// Decoding or modifying this file is prohibited.\n"
+        );
+
+        [$toolsDir, $argsFile] = $this->createDumpCaptureTools('encoded-tables');
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new class (new Configuration(['path' => $this->tempDir])) extends ExportCommand {
+                /**
+                 * @param array{host: string, user: string, password: string, database: string} $dbConfig
+                 */
+                protected function tableExistsForExport(string $table, array $dbConfig): bool
+                {
+                    return in_array($table, ['ktvs_videos', 'multi_admin_processes'], true);
+                }
+            };
+            $tester = new CommandTester($command);
+
+            $tester->execute([
+                '--output' => $this->tempDir . '/exports/encoded_short_tables.sql',
+                '--tables' => 'videos, admin_processes',
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $args = file($argsFile, FILE_IGNORE_NEW_LINES);
+            $this->assertIsArray($args);
+            $this->assertContains('ktvs_videos', $args);
+            $this->assertContains('multi_admin_processes', $args);
+            $this->assertNotContains('videos', $args);
+            $this->assertNotContains('admin_processes', $args);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testExportWithNoDataOption(): void
     {
         $outputFile = $this->tempDir . '/exports/schema_backup.sql';
@@ -343,5 +481,43 @@ PHP)
         // Command will fail without real DB, but we verify it processed the option
         $output = $this->tester->getDisplay();
         $this->assertNotEmpty($output);
+    }
+
+    /**
+     * @return array{string, string}
+     */
+    private function createDumpCaptureTools(string $suffix): array
+    {
+        $toolsDir = $this->tempDir . '/tools-' . $suffix;
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 8.0.35'\n");
+        chmod($mysql, 0755);
+
+        $argsFile = $this->tempDir . '/' . $suffix . '.args';
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents(
+            $mysqldump,
+            '#!/bin/sh' . "\n"
+            . 'for arg in "$@"; do echo "$arg"; done > ' . escapeshellarg($argsFile) . "\n"
+            . "echo 'SQL dump'\n"
+        );
+        chmod($mysqldump, 0755);
+
+        return [$toolsDir, $argsFile];
+    }
+
+    private function writeDatabaseTablesFile(): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/database_tables.php',
+            <<<'PHP'
+<?php
+$database_tables[]="$config[tables_prefix]videos";
+$database_tables[]="$config[tables_prefix]users";
+$database_tables[]="$config[tables_prefix_multi]admin_processes";
+PHP
+        );
     }
 }
