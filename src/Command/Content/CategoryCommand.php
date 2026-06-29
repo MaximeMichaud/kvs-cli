@@ -24,6 +24,20 @@ class CategoryCommand extends BaseCommand
     use RelationUsageTrait;
     use ToggleStatusTrait;
 
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'title',
+        'description',
+        'group',
+        'parent',
+        'status',
+        'search',
+        'unused',
+        'usage',
+        'field-filter',
+        'dry-run',
+    ];
+
     /** @var array<string, string> */
     private const CATEGORY_RELATION_TABLES = [
         'videos' => 'video_id',
@@ -427,6 +441,10 @@ HELP
     {
         if ($id === null || $id === '') {
             $this->io()->error('Category ID or title is required');
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

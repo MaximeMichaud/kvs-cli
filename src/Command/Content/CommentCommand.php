@@ -20,6 +20,28 @@ use function KVS\CLI\Utils\truncate;
 )]
 class CommentCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'video',
+        'album',
+        'content-source',
+        'model',
+        'dvd',
+        'post',
+        'playlist',
+        'object-type',
+        'object-id',
+        'user',
+        'ip',
+        'search',
+        'oldest',
+        'approved',
+        'pending',
+        'not-approved',
+        'all',
+        'yes',
+    ];
+
     /** @var array<string, int> */
     private const COMMENT_OBJECT_FILTER_OPTIONS = [
         'video' => Constants::OBJECT_TYPE_VIDEO,
@@ -543,6 +565,10 @@ HELP
 
         $commentId = $this->getRequiredPositiveId($id, 'Comment');
         if ($commentId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

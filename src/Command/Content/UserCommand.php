@@ -22,6 +22,22 @@ use function KVS\CLI\Utils\truncate;
 class UserCommand extends BaseCommand
 {
     /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'search',
+        'country',
+        'gender',
+        'ip',
+        'activity',
+        'field-filter',
+        'banned-status',
+        'removal-requested',
+        'trusted',
+        'untrusted',
+        'yes',
+    ];
+
+    /** @var list<string> */
     private const ACTIVITY_FILTERS = [
         'new_today',
         'new_yesterday',
@@ -897,6 +913,10 @@ HELP
     {
         if ($id === null || $id === '') {
             $this->io()->error('User ID or username is required');
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

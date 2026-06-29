@@ -759,6 +759,58 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * @param list<string> $optionNames
+     */
+    protected function rejectUnsupportedOptionsForAction(
+        InputInterface $input,
+        string $action,
+        array $optionNames
+    ): bool {
+        if ($this->getStringArgument($input, 'action') !== $action) {
+            return false;
+        }
+
+        foreach ($optionNames as $name) {
+            if (!$this->isOptionExplicitlySet($input, $name)) {
+                continue;
+            }
+
+            $this->io()->error(sprintf(
+                'The %s action does not support --%s. Remove --%s or use an action that supports it.',
+                $action,
+                $name,
+                $name
+            ));
+
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function isOptionExplicitlySet(InputInterface $input, string $name): bool
+    {
+        if (!$input->hasOption($name)) {
+            return false;
+        }
+
+        $value = $input->getOption($name);
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_array($value)) {
+            return $value !== [];
+        }
+
+        return true;
+    }
+
+    /**
      * Render a table with consistent box style
      *
      * @param list<string> $headers

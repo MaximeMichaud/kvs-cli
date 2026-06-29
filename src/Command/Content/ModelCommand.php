@@ -24,6 +24,18 @@ class ModelCommand extends BaseCommand
     use RelationUsageTrait;
 
     /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'search',
+        'group',
+        'model-group',
+        'tag',
+        'category',
+        'usage',
+        'field-filter',
+    ];
+
+    /** @var list<string> */
     private const MODEL_STRING_FIELD_FILTER_COLUMNS = [
         'description',
         'alias',
@@ -551,6 +563,10 @@ HELP
     {
         $modelId = $this->getRequiredPositiveId($id, 'Model');
         if ($modelId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

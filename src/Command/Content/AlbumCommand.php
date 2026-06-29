@@ -23,6 +23,26 @@ use function KVS\CLI\Utils\format_kvs_rating;
 class AlbumCommand extends BaseCommand
 {
     /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'user',
+        'category',
+        'tag',
+        'model',
+        'content-source',
+        'public',
+        'private',
+        'premium',
+        'access-level',
+        'review-needed',
+        'not-review-needed',
+        'locked',
+        'unlocked',
+        'field-filter',
+        'search',
+    ];
+
+    /** @var list<string> */
     private const ALBUM_STRING_FIELD_FILTER_COLUMNS = [
         'title',
         'description',
@@ -674,6 +694,10 @@ HELP
     {
         $albumId = $this->getRequiredPositiveId($id, 'Album');
         if ($albumId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 
