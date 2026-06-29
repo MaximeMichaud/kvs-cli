@@ -125,6 +125,7 @@ HELP
                         (SELECT COUNT(*) FROM {$this->table('comments')} c
                          WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id) as comments_amount";
         }
+        $relationSelect = $this->buildDvdRelationSelectSql($input);
         $includeGroupFields = $this->isDvdFieldRequested($input, 'dvd_group')
             || $this->isDvdFieldRequested($input, 'dvd_group_status_id');
         $groupSelect = $includeGroupFields ? ",
@@ -134,31 +135,14 @@ HELP
             ? "LEFT JOIN {$this->table('dvds_groups')} dg ON dg.dvd_group_id = d.dvd_group_id"
             : '';
 
-        $dvdFields = [
-            'dvd_id',
-            'title',
-            'status_id',
-            'release_year',
-            'dvd_viewed',
-            'subscribers_count',
-            'rating',
-            'rating_amount',
-        ];
-        foreach (['dir', 'description', 'synonyms', 'tokens_required', 'added_date', 'sort_id'] as $field) {
-            if ($this->isDvdFieldRequested($input, $field)) {
-                $dvdFields[] = $field;
-            }
-        }
-        if ($includeGroupFields) {
-            $dvdFields[] = 'dvd_group_id';
-        }
+        $dvdFields = $this->getDvdListFields($input, $includeGroupFields);
         $fieldList = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         $groupBy = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         if ($includeGroupFields) {
             $groupBy .= ', dg.title, dg.status_id';
         }
 
-        $query = "SELECT d.*$commentsSelect$groupSelect,
+        $query = "SELECT d.*$commentsSelect$groupSelect$relationSelect,
                         COUNT(v.dvd_id) as video_count,
                         COALESCE(SUM(v.duration), 0) as video_duration
                  FROM (
@@ -200,6 +184,7 @@ HELP
                     'dvd_id' => $dvd['dvd_id'] ?? 0,
                     'id' => $dvd['dvd_id'] ?? 0,
                     'title' => $dvd['title'] ?? '',
+                    'thumb' => $dvd['cover1_front'] ?? $dvd['cover2_front'] ?? '',
                     'status_id' => $statusId,
                     'status' => StatusFormatter::dvd($statusId, false),
                     'total_videos' => $dvd['video_count'] ?? 0,
@@ -213,6 +198,7 @@ HELP
                     'views' => $dvd['dvd_viewed'] ?? 0,
                     'dvd_group' => $dvd['dvd_group'] ?? '',
                     'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
+                    'user' => $dvd['user'] ?? '',
                     'comments_amount' => $dvd['comments_amount'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
                     'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
@@ -386,6 +372,95 @@ HELP
         }
 
         return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getDvdListFields(InputInterface $input, bool $includeGroupFields): array
+    {
+        $fields = [
+            'dvd_id',
+            'title',
+            'status_id',
+            'release_year',
+            'dvd_viewed',
+            'subscribers_count',
+            'rating',
+            'rating_amount',
+        ];
+
+        $optionalFields = [
+            'dir',
+            'description',
+            'synonyms',
+            'cover1_front',
+            'cover1_back',
+            'cover2_front',
+            'cover2_back',
+            'is_video_upload_allowed',
+            'tokens_required',
+            'avg_videos_rating',
+            'avg_videos_popularity',
+            'added_date',
+            'sort_id',
+        ];
+        foreach ($optionalFields as $field) {
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $fields[] = $field;
+            }
+        }
+
+        if ($this->isDvdFieldRequested($input, 'thumb')) {
+            $fields[] = 'cover1_front';
+        }
+        if ($this->isDvdFieldRequested($input, 'user')) {
+            $fields[] = 'user_id';
+        }
+        if ($includeGroupFields) {
+            $fields[] = 'dvd_group_id';
+        }
+
+        return array_values(array_unique($fields));
+    }
+
+    private function buildDvdRelationSelectSql(InputInterface $input): string
+    {
+        $selects = [];
+
+        if ($this->isDvdFieldRequested($input, 'user')) {
+            $selects[] = "(
+                SELECT u.username
+                FROM {$this->table('users')} u
+                WHERE u.user_id = d.user_id
+            ) as user";
+        }
+        if ($this->isDvdFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_dvds')} td ON td.tag_id = t.tag_id
+                WHERE td.dvd_id = d.dvd_id
+            ) as tags";
+        }
+        if ($this->isDvdFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_dvds')} cd ON cd.category_id = c.category_id
+                WHERE cd.dvd_id = d.dvd_id
+            ) as categories";
+        }
+        if ($this->isDvdFieldRequested($input, 'models')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(m.title)
+                FROM {$this->table('models')} m
+                INNER JOIN {$this->table('models_dvds')} md ON md.model_id = m.model_id
+                WHERE md.dvd_id = d.dvd_id
+            ) as models";
+        }
+
+        return $selects === [] ? '' : ",\n                        " . implode(",\n                        ", $selects);
     }
 
     private function formatDvdReleaseYear(mixed $releaseYear): int|string

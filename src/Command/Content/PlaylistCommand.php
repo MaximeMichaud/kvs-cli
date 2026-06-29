@@ -160,8 +160,9 @@ HELP
         $userStatusSelect = $this->isPlaylistFieldRequested($input, 'user_status_id')
             ? ', u.status_id as user_status_id'
             : '';
+        $relationSelect = $this->buildPlaylistRelationSelectSql($input);
 
-        $query = "SELECT p.*, u.username$userStatusSelect,
+        $query = "SELECT p.*, u.username$userStatusSelect$relationSelect,
                         (SELECT COUNT(*) FROM $favVideosTable f WHERE f.playlist_id = p.playlist_id) as video_count,
                         (
                             SELECT COUNT(*) FROM $commentsTable c
@@ -245,6 +246,30 @@ HELP
         }
 
         return in_array($field, array_map('trim', explode(',', $fieldsOption)), true);
+    }
+
+    private function buildPlaylistRelationSelectSql(InputInterface $input): string
+    {
+        $selects = [];
+
+        if ($this->isPlaylistFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_playlists')} tp ON tp.tag_id = t.tag_id
+                WHERE tp.playlist_id = p.playlist_id
+            ) as tags";
+        }
+        if ($this->isPlaylistFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_playlists')} cp ON cp.category_id = c.category_id
+                WHERE cp.playlist_id = p.playlist_id
+            ) as categories";
+        }
+
+        return $selects === [] ? '' : ",\n                        " . implode(",\n                        ", $selects);
     }
 
     /**

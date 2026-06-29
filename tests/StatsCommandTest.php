@@ -227,6 +227,15 @@ class StatsCommandTest extends TestCase
         $this->assertStringContainsString('Invalid period', $tester->getDisplay());
     }
 
+    public function testStatsRejectsInvalidTopBeforeSql(): void
+    {
+        $tester = new CommandTester($this->createStatsCommand($this->createSqliteConnection()));
+        $tester->execute(['--videos' => true, '--top' => '-1']);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --top', $tester->getDisplay());
+    }
+
     public function testStatsHelpDocumentsPeriodCreationDateSemantics(): void
     {
         $command = $this->createStatsCommand($this->createSqliteConnection());

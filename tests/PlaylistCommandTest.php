@@ -189,6 +189,23 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame('2026-05-26 11:00:00', $rows[0]['last_content_date']);
     }
 
+    public function testPlaylistListExposesKvsAdminRelationFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,tags,categories',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('training', $rows[0]['tags']);
+        $this->assertSame('Featured', $rows[0]['categories']);
+    }
+
     public function testPlaylistListCsvFormat(): void
     {
         ob_start();

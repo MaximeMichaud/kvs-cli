@@ -180,6 +180,7 @@ HELP
             'model_id' => $model['model_id'] ?? 0,
             'id' => $model['model_id'] ?? 0,
             'title' => $model['title'] ?? '',
+            'thumb' => $model['screenshot1'] ?? $model['screenshot2'] ?? '',
             'status_id' => $statusId,
             'status' => StatusFormatter::model($statusId, false),
             'video_count' => $model['video_count'] ?? 0,
@@ -357,6 +358,22 @@ HELP
                 FROM {$this->table('comments')} cm
                 WHERE cm.object_type_id = 4 AND cm.object_id = m.model_id
             ) as comments_amount";
+        }
+        if ($this->isModelFieldRequested($input, 'tags')) {
+            $extraSelects[] = "(
+                SELECT GROUP_CONCAT(t.tag)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_models')} tm ON tm.tag_id = t.tag_id
+                WHERE tm.model_id = m.model_id
+            ) as tags";
+        }
+        if ($this->isModelFieldRequested($input, 'categories')) {
+            $extraSelects[] = "(
+                SELECT GROUP_CONCAT(c.title)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_models')} cm_rel ON cm_rel.category_id = c.category_id
+                WHERE cm_rel.model_id = m.model_id
+            ) as categories";
         }
 
         return $extraSelects === [] ? '' : ",\n                 " . implode(",\n                 ", $extraSelects);

@@ -184,6 +184,27 @@ class ModelCommandTest extends TestCase
         $this->assertSame(6, (int) $rows[0]['subscribers_amount']);
     }
 
+    public function testListModelsExposesKvsAdminThumbAndRelationFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,thumb,screenshot1,screenshot2,tags,categories',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame('model-1.jpg', $rows[0]['thumb']);
+        $this->assertSame('model-1.jpg', $rows[0]['screenshot1']);
+        $this->assertSame('model-2.jpg', $rows[0]['screenshot2']);
+        $this->assertSame('featured,interview', $rows[0]['tags']);
+        $this->assertSame('Performers,Guests', $rows[0]['categories']);
+    }
+
     public function testListModelsExposesKvsAdminGroupField(): void
     {
         $this->tester->execute([
@@ -352,6 +373,7 @@ class ModelCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models') . ' (' .
             'model_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, model_viewed INTEGER, access_level_id INTEGER, ' .
+            'screenshot1 TEXT, screenshot2 TEXT, ' .
             'country TEXT, gender_id INTEGER, hair_id INTEGER, eye_color_id INTEGER, birth_date TEXT, age INTEGER, ' .
             'measurements TEXT, height TEXT, weight TEXT, rank INTEGER, rating INTEGER, rating_amount INTEGER, ' .
             'description TEXT, alias TEXT, gallery_url TEXT, added_date TEXT, sort_id INTEGER, total_videos INTEGER, total_albums INTEGER, ' .
@@ -379,22 +401,40 @@ class ModelCommandTest extends TestCase
             'object_type_id INTEGER, object_id INTEGER)'
         );
         $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
+            'tag_id INTEGER, tag TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags_models') . ' (' .
+            'tag_id INTEGER, model_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
+            'category_id INTEGER, title TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_models') . ' (' .
+            'category_id INTEGER, model_id INTEGER)'
+        );
+        $db->exec(
             'CREATE TABLE ' . TestHelper::table('list_countries') . ' (' .
             'country_code TEXT, language_code TEXT, title TEXT)'
         );
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
-            ' (model_id, title, dir, status_id, model_viewed, access_level_id, country, gender_id, hair_id, eye_color_id, ' .
+            ' (model_id, title, dir, status_id, model_viewed, access_level_id, screenshot1, screenshot2, ' .
+            'country, gender_id, hair_id, eye_color_id, ' .
             'birth_date, age, measurements, height, weight, rank, rating, rating_amount, description, alias, gallery_url, ' .
             'added_date, sort_id, total_videos, total_albums, total_dvds, ' .
             'total_dvd_groups, subscribers_count, city, state, death_date, model_group_id) VALUES ' .
-            "(30, 'Test Model', 'test-model', 1, 100, 2, 'CA', 1, 2, 3, '2000-01-01', 26, '34-24-34', '170 cm', " .
+            "(30, 'Test Model', 'test-model', 1, 100, 2, 'model-1.jpg', 'model-2.jpg', " .
+            "'CA', 1, 2, 3, '2000-01-01', 26, '34-24-34', '170 cm', " .
             "'55 kg', 7, 40, 10, 'Main model profile', 'Test Alias', 'https://example.test/model-gallery', " .
             "'2026-05-25 10:00:00', 11, 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3), " .
-            "(20, 'Disabled Model', 'disabled-model', 0, 8, 0, '', 0, 0, 0, '', 0, '', '', '', 0, 0, 0, '', '', '', " .
+            "(20, 'Disabled Model', 'disabled-model', 0, 8, 0, '', '', '', 0, 0, 0, '', 0, '', '', '', 0, 0, 0, '', '', '', " .
             "'2026-05-26 10:00:00', 12, 1, 1, 0, 0, 0, '', '', '0000-00-00', 4), " .
-            "(10, 'Other Performer', 'other-performer', 1, 25, 0, 'US', 0, 0, 0, '1999-02-03', 27, '', '', '', 0, 20, 5, '', '', '', " .
+            "(10, 'Other Performer', 'other-performer', 1, 25, 0, '', '', 'US', 0, 0, 0, '1999-02-03', 27, '', '', '', 0, 20, 5, '', '', '', " .
             "'2026-05-27 10:00:00', 13, 1, 0, 0, 0, 1, '', '', '0000-00-00', 0)"
         );
         $db->exec(
@@ -411,6 +451,16 @@ class ModelCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('comments') .
             ' VALUES (4, 30), (4, 30), (4, 20), (5, 30)'
         );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags') .
+            " VALUES (1, 'featured'), (2, 'interview')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('tags_models') . ' VALUES (1, 30), (2, 30)');
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories') .
+            " VALUES (1, 'Performers'), (2, 'Guests')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('categories_models') . ' VALUES (1, 30), (2, 30)');
         $db->exec(
             'INSERT INTO ' . TestHelper::table('list_countries') .
             " VALUES ('CA', 'en', 'Canada'), ('US', 'en', 'United States')"

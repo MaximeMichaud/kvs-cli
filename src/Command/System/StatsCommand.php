@@ -97,8 +97,10 @@ class StatsCommand extends BaseCommand
         $showModels = $input->getOption('models') === true;
         $showDvds = $input->getOption('dvds') === true;
 
-        $topOption = $input->getOption('top');
-        $top = is_numeric($topOption) ? (int) $topOption : 10;
+        $top = $this->getPositiveIntOptionOrDefault($input, 'top', 10);
+        if ($top === null) {
+            return self::FAILURE;
+        }
 
         /** @var string $periodOption */
         $periodOption = $input->getOption('period');

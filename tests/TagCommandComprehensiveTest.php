@@ -142,6 +142,23 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame('4K', $rows[0]['tag']);
     }
 
+    public function testListExposesKvsAdminRenameField(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '4K',
+            '--format' => 'json',
+            '--fields' => 'tag_id,tag,tag_rename',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4K', $rows[0]['tag']);
+        $this->assertSame('4K', $rows[0]['tag_rename']);
+    }
+
     public function testListWithStatusFilter(): void
     {
         $this->tester->execute([

@@ -203,6 +203,7 @@ HELP
                     'tag_id' => $tag['tag_id'] ?? 0,
                     'id' => $tag['tag_id'] ?? 0,
                     'tag' => $tag['tag'] ?? '',
+                    'tag_rename' => $tag['tag'] ?? '',
                     'video_count' => $counts['videos'],
                     'album_count' => $counts['albums'],
                     'total_usage' => array_sum($counts),

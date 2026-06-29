@@ -206,6 +206,7 @@ HELP
                 $category['total_usage'] = array_sum($counts);
                 $category['status'] = StatusFormatter::category($statusId, false);
                 $otherAmount = $this->getCategoryStoredOtherAmount($category);
+                $category['thumb'] = $category['screenshot1'] ?? $category['screenshot2'] ?? '';
                 $category['videos_amount'] = $counts['videos'];
                 $category['albums_amount'] = $counts['albums'];
                 $category['posts_amount'] = $counts['posts'];
