@@ -3,6 +3,7 @@
 namespace KVS\CLI\Command\Content;
 
 use KVS\CLI\Command\BaseCommand;
+use KVS\CLI\Command\Traits\RelationUsageTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
@@ -20,6 +21,54 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class ModelCommand extends BaseCommand
 {
+    use RelationUsageTrait;
+
+    /** @var list<string> */
+    private const MODEL_STRING_FIELD_FILTER_COLUMNS = [
+        'description',
+        'alias',
+        'screenshot1',
+        'screenshot2',
+        'country',
+        'city',
+        'state',
+        'height',
+        'weight',
+        'measurements',
+        'gallery_url',
+        'custom1',
+        'custom2',
+        'custom3',
+        'custom4',
+        'custom5',
+        'custom6',
+        'custom7',
+        'custom8',
+        'custom9',
+        'custom10',
+        'custom_file1',
+        'custom_file2',
+        'custom_file3',
+        'custom_file4',
+        'custom_file5',
+    ];
+
+    /** @var list<string> */
+    private const MODEL_ZERO_FIELD_FILTER_COLUMNS = [
+        'hair_id',
+        'eye_color_id',
+        'age',
+        'model_viewed',
+    ];
+
+    /** @var list<string> */
+    private const MODEL_SPECIAL_FIELD_FILTERS = [
+        'group',
+        'rating',
+        'tags',
+        'categories',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -28,6 +77,12 @@ class ModelCommand extends BaseCommand
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names, directories, descriptions, aliases, and gallery URLs')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Filter by model group ID or title')
+            ->addOption('model-group', null, InputOption::VALUE_REQUIRED, 'Filter by model group ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('usage', null, InputOption::VALUE_REQUIRED, 'KVS admin usage filter (e.g. used/videos)')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/description)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -79,6 +134,10 @@ HELP
 
     private function listModels(InputInterface $input): int
     {
+        if ($this->hasModelListOptionConflicts($input)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -116,6 +175,10 @@ HELP
                 . " OR m.alias LIKE :search" . $searchEscape
                 . " OR m.gallery_url LIKE :search" . $searchEscape . ")";
             $params['search'] = $this->containsLikePattern($search);
+        }
+
+        if (!$this->applyModelAdminFilters($db, $input, $whereClause, $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
@@ -175,6 +238,229 @@ HELP
             $this->io()->error('Failed to fetch models: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function hasModelListOptionConflicts(InputInterface $input): bool
+    {
+        if ($this->getStringOption($input, 'group') !== null && $this->getStringOption($input, 'model-group') !== null) {
+            $this->io()->error('Options --group and --model-group cannot be used together');
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyModelAdminFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        if (!$this->applyModelAdminRelationFilters($db, $input, $whereClause, $params)) {
+            return false;
+        }
+
+        $usage = $this->getStringOption($input, 'usage');
+        if ($usage !== null) {
+            $condition = $this->getModelUsageFilterCondition($usage);
+            if ($condition === null) {
+                $this->io()->error('Invalid model usage filter. Use: ' . implode(', ', $this->getAdminUsageFilterValues()));
+                return false;
+            }
+            $whereClause .= " AND {$condition}";
+        }
+
+        $fieldFilter = $this->getStringOption($input, 'field-filter');
+        if ($fieldFilter !== null) {
+            $condition = $this->getModelFieldFilterCondition($fieldFilter);
+            if ($condition === null) {
+                $this->io()->error('Invalid model field filter. Use: ' . implode(', ', $this->getModelFieldFilterValues()));
+                return false;
+            }
+            $whereClause .= " AND {$condition}";
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyModelAdminRelationFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $group = $this->resolveModelGroupIdOption($db, $input);
+        if ($group === false) {
+            return false;
+        }
+        if ($group !== null) {
+            $whereClause .= ' AND m.model_group_id = :model_group';
+            $params['model_group'] = $group;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_models')} tm_filter "
+                . 'WHERE tm_filter.model_id = m.model_id AND tm_filter.tag_id = :tag)';
+            $params['tag'] = $tag;
+        }
+
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_models')} cm_filter "
+                . 'WHERE cm_filter.model_id = m.model_id AND cm_filter.category_id = :category)';
+            $params['category'] = $category;
+        }
+
+        return true;
+    }
+
+    private function resolveModelGroupIdOption(\PDO $db, InputInterface $input): int|false|null
+    {
+        $group = $this->getStringOption($input, 'group') ?? $this->getStringOption($input, 'model-group');
+        if ($group === null) {
+            return null;
+        }
+
+        $group = trim($group);
+        if ($group === '') {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $group) === 1) {
+            return (int) $group;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $group) === 1) {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        $stmt = $db->prepare("SELECT model_group_id FROM {$this->table('models_groups')} WHERE title = :title LIMIT 1");
+        $stmt->execute(['title' => $group]);
+        $id = $stmt->fetchColumn();
+        if ($id === false) {
+            return -1;
+        }
+
+        return is_numeric($id) ? (int) $id : false;
+    }
+
+    private function getModelUsageFilterCondition(string $usage): ?string
+    {
+        $videosExpression = $this->getModelRelationCountExpression('models_videos', 'mv_usage');
+        $albumsExpression = $this->getModelRelationCountExpression('models_albums', 'ma_usage');
+        $postsExpression = $this->getModelRelationCountExpression('models_posts', 'mp_usage');
+        $otherExpression = '(COALESCE(m.total_dvds, 0) + COALESCE(m.total_dvd_groups, 0))';
+        $allExpression = "({$videosExpression} + {$albumsExpression} + {$postsExpression} + {$otherExpression})";
+
+        return $this->getAdminUsageFilterCondition(
+            $usage,
+            $videosExpression,
+            $albumsExpression,
+            $postsExpression,
+            $otherExpression,
+            $allExpression
+        );
+    }
+
+    private function getModelRelationCountExpression(string $table, string $alias): string
+    {
+        return "(SELECT COUNT(*) FROM {$this->table($table)} {$alias} WHERE {$alias}.model_id = m.model_id)";
+    }
+
+    /** @return list<string> */
+    private function getModelFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::MODEL_STRING_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::MODEL_ZERO_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::MODEL_SPECIAL_FIELD_FILTERS as $field) {
+                $values[] = "{$prefix}/{$field}";
+            }
+        }
+
+        return $values;
+    }
+
+    private function getModelFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $field] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true)) {
+            return null;
+        }
+
+        return $state === 'empty'
+            ? $this->getEmptyModelFieldFilterCondition($field)
+            : $this->getFilledModelFieldFilterCondition($field);
+    }
+
+    private function getEmptyModelFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::MODEL_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "m.{$field} = ''";
+        }
+
+        if (in_array($field, self::MODEL_ZERO_FIELD_FILTER_COLUMNS, true)) {
+            return "m.{$field} = 0";
+        }
+
+        return match ($field) {
+            'group' => 'm.model_group_id = 0',
+            'rating' => '(m.rating = 0 AND m.rating_amount = 1)',
+            'tags' => $this->getModelRelationExistsCondition('tags_models', 'tag_id', false),
+            'categories' => $this->getModelRelationExistsCondition('categories_models', 'category_id', false),
+            default => null,
+        };
+    }
+
+    private function getFilledModelFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::MODEL_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "m.{$field} != ''";
+        }
+
+        if (in_array($field, self::MODEL_ZERO_FIELD_FILTER_COLUMNS, true)) {
+            return "m.{$field} != 0";
+        }
+
+        return match ($field) {
+            'group' => 'm.model_group_id != 0',
+            'rating' => '(m.rating > 0 OR m.rating_amount > 1)',
+            'tags' => $this->getModelRelationExistsCondition('tags_models', 'tag_id', true),
+            'categories' => $this->getModelRelationExistsCondition('categories_models', 'category_id', true),
+            default => null,
+        };
+    }
+
+    private function getModelRelationExistsCondition(string $relationTable, string $idColumn, bool $exists): string
+    {
+        $table = $this->table($relationTable);
+        $operator = $exists ? 'EXISTS' : 'NOT EXISTS';
+        return "{$operator} (SELECT {$idColumn} FROM {$table} rel_filter WHERE rel_filter.model_id = m.model_id)";
     }
 
     /**

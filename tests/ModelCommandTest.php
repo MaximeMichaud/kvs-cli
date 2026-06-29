@@ -258,6 +258,143 @@ class ModelCommandTest extends TestCase
         $this->assertSame('Guests,Performers', $rows[0]['categories']);
     }
 
+    public function testListModelsFiltersByKvsAdminRelations(): void
+    {
+        $cases = [
+            ['--group' => 'Featured Models', 'expected' => [30]],
+            ['--model-group' => 'Archived Models', 'expected' => [20]],
+            ['--tag' => 'featured', 'expected' => [30]],
+            ['--category' => 'Performers', 'expected' => [30]],
+            ['--group' => 'Missing Group', 'expected' => []],
+            ['--tag' => 'missing', 'expected' => []],
+            ['--category' => 'Missing Category', 'expected' => []],
+        ];
+
+        foreach ($cases as $case) {
+            $expected = $case['expected'];
+            unset($case['expected']);
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case,
+                '--format' => 'json',
+                '--fields' => 'model_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expected, array_map(static fn (array $row): int => (int) $row['model_id'], $rows));
+        }
+    }
+
+    public function testListModelsRejectsConflictingGroupAliases(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--group' => 'Featured Models',
+            '--model-group' => 'Archived Models',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Options --group and --model-group cannot be used together', $this->tester->getDisplay());
+    }
+
+    public function testListModelsFiltersByKvsAdminUsage(): void
+    {
+        $cases = [
+            'used/videos' => [30, 20, 10],
+            'notused/videos' => [],
+            'used/albums' => [30, 20],
+            'notused/albums' => [10],
+            'used/posts' => [30, 20],
+            'notused/posts' => [10],
+            'used/other' => [30],
+            'notused/other' => [20, 10],
+            'used/all' => [30, 20, 10],
+            'notused/all' => [],
+        ];
+
+        foreach ($cases as $usage => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--usage' => $usage,
+                '--format' => 'json',
+                '--fields' => 'model_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['model_id'], $rows), $usage);
+        }
+    }
+
+    public function testListModelsFiltersByKvsAdminFieldFilter(): void
+    {
+        $cases = [
+            'filled/description' => [30],
+            'empty/description' => [20, 10],
+            'filled/alias' => [30],
+            'empty/alias' => [20, 10],
+            'filled/screenshot1' => [30],
+            'empty/screenshot1' => [20, 10],
+            'filled/screenshot2' => [30],
+            'empty/screenshot2' => [20, 10],
+            'filled/country' => [30, 10],
+            'empty/country' => [20],
+            'filled/city' => [30],
+            'empty/city' => [20, 10],
+            'filled/state' => [30],
+            'empty/state' => [20, 10],
+            'filled/height' => [30],
+            'empty/height' => [20, 10],
+            'filled/weight' => [30],
+            'empty/weight' => [20, 10],
+            'filled/measurements' => [30],
+            'empty/measurements' => [20, 10],
+            'filled/gallery_url' => [30],
+            'empty/gallery_url' => [20, 10],
+            'filled/custom1' => [30],
+            'empty/custom1' => [20, 10],
+            'filled/custom_file1' => [30],
+            'empty/custom_file1' => [20, 10],
+            'filled/group' => [30, 20],
+            'empty/group' => [10],
+            'filled/hair_id' => [30],
+            'empty/hair_id' => [20, 10],
+            'filled/eye_color_id' => [30],
+            'empty/eye_color_id' => [20, 10],
+            'filled/age' => [30, 10],
+            'empty/age' => [20],
+            'filled/model_viewed' => [30, 20, 10],
+            'empty/model_viewed' => [],
+            'filled/rating' => [30, 10],
+            'empty/rating' => [20],
+            'filled/tags' => [30],
+            'empty/tags' => [20, 10],
+            'filled/categories' => [30],
+            'empty/categories' => [20, 10],
+        ];
+
+        foreach ($cases as $filter => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--field-filter' => $filter,
+                '--format' => 'json',
+                '--fields' => 'model_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['model_id'], $rows), $filter);
+        }
+    }
+
     public function testListModelsExposesKvsAdminLocationAndDeathDateFields(): void
     {
         $this->tester->execute([
@@ -463,7 +600,9 @@ class ModelCommandTest extends TestCase
             'measurements TEXT, height TEXT, weight TEXT, rank INTEGER, rating INTEGER, rating_amount INTEGER, ' .
             'description TEXT, alias TEXT, gallery_url TEXT, added_date TEXT, sort_id INTEGER, total_videos INTEGER, total_albums INTEGER, ' .
             'total_dvds INTEGER, total_dvd_groups INTEGER, subscribers_count INTEGER, city TEXT, state TEXT, ' .
-            'death_date TEXT, model_group_id INTEGER)'
+            'death_date TEXT, model_group_id INTEGER, custom1 TEXT, custom2 TEXT, custom3 TEXT, custom4 TEXT, ' .
+            'custom5 TEXT, custom6 TEXT, custom7 TEXT, custom8 TEXT, custom9 TEXT, custom10 TEXT, ' .
+            'custom_file1 TEXT, custom_file2 TEXT, custom_file3 TEXT, custom_file4 TEXT, custom_file5 TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models_groups') . ' (' .
@@ -512,15 +651,20 @@ class ModelCommandTest extends TestCase
             'country, gender_id, hair_id, eye_color_id, ' .
             'birth_date, age, measurements, height, weight, rank, rating, rating_amount, description, alias, gallery_url, ' .
             'added_date, sort_id, total_videos, total_albums, total_dvds, ' .
-            'total_dvd_groups, subscribers_count, city, state, death_date, model_group_id) VALUES ' .
+            'total_dvd_groups, subscribers_count, city, state, death_date, model_group_id, custom1, custom2, custom3, ' .
+            'custom4, custom5, custom6, custom7, custom8, custom9, custom10, custom_file1, custom_file2, custom_file3, ' .
+            'custom_file4, custom_file5) VALUES ' .
             "(30, 'Test Model', 'test-model', 1, 100, 2, 'model-1.jpg', 'model-2.jpg', " .
             "'CA', 1, 2, 3, '2000-01-01', 26, '34-24-34', '170 cm', " .
             "'55 kg', 7, 40, 10, 'Main model profile', 'Test Alias', 'https://example.test/model-gallery', " .
-            "'2026-05-25 10:00:00', 11, 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3), " .
-            "(20, 'Disabled Model', 'disabled-model', 0, 8, 0, '', '', '', 0, 0, 0, '', 0, '', '', '', 0, 0, 0, '', '', '', " .
-            "'2026-05-26 10:00:00', 12, 1, 1, 0, 0, 0, '', '', '0000-00-00', 4), " .
+            "'2026-05-25 10:00:00', 11, 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3, " .
+            "'custom one', '', '', '', '', '', '', '', '', '', 'model.pdf', '', '', '', ''), " .
+            "(20, 'Disabled Model', 'disabled-model', 0, 8, 0, '', '', '', 0, 0, 0, '', 0, '', '', '', 0, 0, 1, '', '', '', " .
+            "'2026-05-26 10:00:00', 12, 1, 1, 0, 0, 0, '', '', '0000-00-00', 4, " .
+            "'', '', '', '', '', '', '', '', '', '', '', '', '', '', ''), " .
             "(10, 'Other Performer', 'other-performer', 1, 25, 0, '', '', 'US', 0, 0, 0, '1999-02-03', 27, '', '', '', 0, 20, 5, '', '', '', " .
-            "'2026-05-27 10:00:00', 13, 1, 0, 0, 0, 1, '', '', '0000-00-00', 0)"
+            "'2026-05-27 10:00:00', 13, 1, 0, 0, 0, 1, '', '', '0000-00-00', 0, " .
+            "'', '', '', '', '', '', '', '', '', '', '', '', '', '', '')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models_groups') .
