@@ -53,7 +53,9 @@ Manage KVS videos.
   rating          Rating (out of 5)
   filesize        File size
   resolution      Resolution type (SD/HD/FHD/4K+)
-  is_private      Access level (Public/Private/Premium)
+  is_private      Access type (Public/Private/Premium)
+  type            Access type alias (Public/Private/Premium)
+  access          Access level (From access type/All users/Only members/Only premium members)
   favourites      Favourites count
 
 <fg=yellow>EXAMPLES:</>
@@ -207,8 +209,13 @@ HELP
                 $video['status'] = StatusFormatter::video($statusId, false);
                 $privacyId = isset($video['is_private']) && is_numeric($video['is_private']) ? (int) $video['is_private'] : 0;
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
+                $accessLevelId = isset($video['access_level_id']) && is_numeric($video['access_level_id'])
+                    ? (int) $video['access_level_id']
+                    : 0;
                 $video['is_private'] = $privacy;
-                $video['access'] = $privacy;
+                $video['type'] = $privacy;
+                $video['access_level_id'] = $accessLevelId;
+                $video['access'] = StatusFormatter::contentAccessLevel($accessLevelId, false);
                 $resolutionType = isset($video['resolution_type']) && is_numeric($video['resolution_type'])
                     ? (int) $video['resolution_type']
                     : 0;
@@ -372,7 +379,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
             $stmt->execute(['id' => $videoId]);
-            /** @var array{title: string, status_id: int, resolution_type: int, is_private: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
+            /** @var array{title: string, status_id: int, resolution_type: int, is_private: int, access_level_id?: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
             $video = $stmt->fetch();
 
             if ($video === false) {
@@ -381,11 +388,13 @@ HELP
             }
 
             $postTimestamp = strtotime($video['post_date']);
+            $accessLevelId = $video['access_level_id'] ?? 0;
             $info = [
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
                 ['Resolution', $this->formatResolutionType($video['resolution_type'])],
-                ['Access', StatusFormatter::contentPrivacy($video['is_private'])],
+                ['Type', StatusFormatter::contentPrivacy($video['is_private'])],
+                ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
                 ['Duration', $this->formatDuration($video['duration'])],
                 ['File Size', format_bytes($video['file_size'])],
                 ['Dimensions', $video['file_dimensions']],

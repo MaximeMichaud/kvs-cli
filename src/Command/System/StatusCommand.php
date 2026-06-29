@@ -721,20 +721,16 @@ HELP
             $processing = $stmt->fetchColumn();
             $stats[] = ['Processing', number_format((int)$processing)];
 
-            // Failed tasks (last 24h)
-            $failedSince = $db->quote(date('Y-m-d H:i:s', time() - Constants::RECENT_HOURS * 3600));
-            if ($failedSince === false) {
-                throw new \Exception('Failed to quote failed task date');
-            }
-            $sql = "SELECT COUNT(*) FROM " . $this->table('background_tasks')
-                . " WHERE status_id = " . StatusFormatter::TASK_FAILED
-                . " AND added_date >= $failedSince";
-            $stmt = $db->query($sql);
+            // KVS keeps current failed tasks in background_tasks with status_id=2.
+            $stmt = $db->query(
+                "SELECT COUNT(*) FROM " . $this->table('background_tasks') .
+                " WHERE status_id = " . StatusFormatter::TASK_FAILED
+            );
             if ($stmt === false) {
                 throw new \Exception('Failed to query failed tasks');
             }
             $failed = $stmt->fetchColumn();
-            $stats[] = ['Failed (24h)', number_format((int)$failed)];
+            $stats[] = ['Failed', number_format((int)$failed)];
 
             // Average processing time (completed tasks)
             // KVS moves completed tasks into background_tasks_history.

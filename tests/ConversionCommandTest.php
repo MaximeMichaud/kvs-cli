@@ -407,12 +407,13 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('Conversion Statistics', $output);
         $this->assertMatchesRegularExpression('/Total Servers\W+4/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Inactive\W+1/', $output);
         $this->assertMatchesRegularExpression('/Initializing\W+1/', $output);
         $this->assertMatchesRegularExpression('/With Errors\W+1/', $output);
         $this->assertStringContainsString('11 concurrent tasks', $output);
         $this->assertMatchesRegularExpression('/Pending\W+1/', $output);
         $this->assertMatchesRegularExpression('/Processing\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Failed\W+1/', $output);
         $this->assertMatchesRegularExpression('/Completed \(history\)\W+3/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
@@ -432,7 +433,11 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame('overall', $rowsByMetric['Total Servers']['section'] ?? null);
         $this->assertSame(4, (int) ($rowsByMetric['Total Servers']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
         $this->assertSame('task_queue', $rowsByMetric['Pending']['section'] ?? null);
+        $this->assertSame('task_queue', $rowsByMetric['Failed']['section'] ?? null);
+        $this->assertSame(1, (int) ($rowsByMetric['Failed']['value'] ?? 0));
         $this->assertStringNotContainsString('Conversion Statistics', $this->tester->getDisplay());
     }
 

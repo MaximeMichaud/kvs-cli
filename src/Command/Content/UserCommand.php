@@ -367,7 +367,7 @@ HELP
             $displayName = $this->getStr($user['display_name'] ?? null);
             $countryCode = $this->getStr($user['country_id'] ?? null);
             $birthDate = $this->getStr($user['birth_date'] ?? null);
-            $ip = $this->getStr($user['ip'] ?? null);
+            $ip = array_key_exists('ip', $user) ? $this->formatKvsIp($user['ip']) : '';
 
             $info = [
                 ['User ID', (string) $userId],
@@ -696,7 +696,7 @@ HELP
                 'Total Users' => "SELECT COUNT(*) FROM {$this->table('users')}",
                 'Active Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_ACTIVE,
                 'Premium Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_PREMIUM,
-                'Disabled Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_DISABLED,
+                'Inactive Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_DISABLED,
                 'Users Today' => "SELECT COUNT(*) FROM {$this->table('users')} "
                     . "WHERE added_date >= '{$todayStart}' AND added_date < '{$tomorrowStart}'",
                 'Users This Month' => "SELECT COUNT(*) FROM {$this->table('users')} "

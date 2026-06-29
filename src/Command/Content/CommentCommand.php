@@ -404,9 +404,10 @@ HELP
                 return self::FAILURE;
             }
 
-            $approvalStatus = (bool)($comment['is_approved'] ?? 0)
-                ? '<fg=green>Approved</>'
-                : '<fg=yellow>Pending</>';
+            $approvalStatus = $this->formatCommentStatus(
+                $comment['is_approved'] ?? 0,
+                $comment['is_review_needed'] ?? 0
+            );
 
             // Safe type extraction
             $commentIdVal = $comment['comment_id'] ?? 0;
@@ -445,6 +446,22 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    private function formatCommentStatus(mixed $isApproved, mixed $isReviewNeeded, bool $withColor = true): string
+    {
+        $approved = is_numeric($isApproved) && (int) $isApproved === 1;
+        $reviewNeeded = is_numeric($isReviewNeeded) && (int) $isReviewNeeded === 1;
+
+        if ($reviewNeeded) {
+            return $withColor ? '<fg=yellow>Pending</>' : 'Pending';
+        }
+
+        if ($approved) {
+            return $withColor ? '<fg=green>Approved</>' : 'Approved';
+        }
+
+        return $withColor ? '<fg=red>Not approved</>' : 'Not approved';
     }
 
     private function showStats(InputInterface $input): int

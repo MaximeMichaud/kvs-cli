@@ -274,7 +274,7 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertStringContainsString('Dimensions', $output);
     }
 
-    public function testVideoShowDisplaysPremiumPrivacyLabel(): void
+    public function testVideoShowDisplaysPremiumPrivacyAsTypeLabel(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -297,7 +297,8 @@ class ContentOutputRegressionTest extends TestCase
         $output = $tester->getDisplay();
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertMatchesRegularExpression('/Access\W+Premium/', $output);
+        $this->assertMatchesRegularExpression('/Type\W+Premium/', $output);
+        $this->assertMatchesRegularExpression('/Access\W+From access type/', $output);
         $this->assertStringNotContainsString('Private    │ Yes', $output);
     }
 

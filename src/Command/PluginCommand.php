@@ -674,6 +674,32 @@ HELP
             return false;
         }
 
-        return false;
+        return $this->checkPluginDataEnabled($id, $body);
+    }
+
+    private function checkPluginDataEnabled(string $id, string $functionBody): bool
+    {
+        if (preg_match("/['\"]is_enabled['\"]/", $functionBody) !== 1) {
+            return false;
+        }
+
+        $dataFile = $this->config->getKvsPath() . '/admin/data/plugins/' . $id . '/data.dat';
+        if (!is_file($dataFile)) {
+            return false;
+        }
+
+        $rawData = file_get_contents($dataFile);
+        if (!is_string($rawData) || $rawData === '') {
+            return false;
+        }
+
+        $data = @unserialize($rawData, ['allowed_classes' => false]);
+        if (!is_array($data)) {
+            return false;
+        }
+
+        $isEnabled = $data['is_enabled'] ?? 0;
+
+        return is_numeric($isEnabled) && (int) $isEnabled === 1;
     }
 }

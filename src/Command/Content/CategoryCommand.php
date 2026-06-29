@@ -325,11 +325,10 @@ HELP
 
     private function showCategory(?string $id, InputInterface $input): int
     {
-        $categoryId = $this->getRequiredPositiveId($id, 'Category');
-        if ($categoryId === null) {
+        if ($id === null || $id === '') {
+            $this->io()->error('Category ID or title is required');
             return self::FAILURE;
         }
-        $categoryIdString = (string) $categoryId;
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -337,24 +336,27 @@ HELP
         }
 
         try {
+            $whereClause = ctype_digit($id) ? 'c.category_id = :identifier_id' : 'c.title = :identifier_title';
             $stmt = $db->prepare("
                 SELECT c.*, cg.title as category_group
                 FROM {$this->table('categories')} c
                 LEFT JOIN {$this->table('categories_groups')} cg ON c.category_group_id = cg.category_group_id
-                WHERE c.category_id = :id
+                WHERE {$whereClause}
             ");
-            $stmt->execute(['id' => $categoryId]);
+            $stmt->execute(ctype_digit($id) ? ['identifier_id' => (int) $id] : ['identifier_title' => $id]);
             /** @var array<string, mixed>|false $category */
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if ($category === false) {
-                $this->io()->error("Category not found: $categoryId");
+                $this->io()->error("Category not found: $id");
                 return self::FAILURE;
             }
 
             $titleValue = $category['title'] ?? '';
             $categoryTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
 
+            $categoryId = $category['category_id'] ?? 0;
+            $categoryIdString = is_scalar($categoryId) ? (string) $categoryId : '0';
             $usage = $this->getCategoryUsageCounts($db, $categoryIdString);
             $videoCount = $usage['videos'] ?? 0;
             $albumCount = $usage['albums'] ?? 0;
@@ -372,7 +374,6 @@ HELP
             $addedDate = $category['added_date'] ?? null;
             $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
 
-            $categoryId = $category['category_id'] ?? 0;
             $statusId = isset($category['status_id']) && is_numeric($category['status_id']) ? (int) $category['status_id'] : 0;
 
             $info = [

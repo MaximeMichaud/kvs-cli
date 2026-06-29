@@ -113,7 +113,7 @@ class ModelCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(20, (int) $rows[0]['model_id']);
         $this->assertSame('Disabled Model', $rows[0]['title']);
-        $this->assertSame('Disabled', $rows[0]['status']);
+        $this->assertSame('Inactive', $rows[0]['status']);
     }
 
     public function testHelpDocumentsInactiveStatusAlias(): void
@@ -381,7 +381,7 @@ class ModelCommandTest extends TestCase
         $this->assertStringContainsString('Model Statistics', $output);
         $this->assertMatchesRegularExpression('/Total Models\W+3/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Inactive\W+1/', $output);
         $this->assertMatchesRegularExpression('/Models with Videos\W+3/', $output);
         $this->assertMatchesRegularExpression('/Total Video Relations\W+4/', $output);
     }
@@ -400,6 +400,8 @@ class ModelCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame('overall', $rowsByMetric['Total Models']['section'] ?? null);
         $this->assertSame(3, (int) ($rowsByMetric['Total Models']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
         $this->assertStringNotContainsString('Model Statistics', $this->tester->getDisplay());
     }
 

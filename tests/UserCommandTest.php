@@ -148,6 +148,7 @@ class UserCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame('1', $rows[0]['user_id']);
         $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
         $this->assertSame(2, $rows[0]['videos_uploaded']);
         $this->assertSame(1, $rows[0]['albums_created']);
         $this->assertSame(3, $rows[0]['comments_posted']);
@@ -271,6 +272,8 @@ class UserCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame('overall', $rowsByMetric['Total Users']['section'] ?? null);
         $this->assertSame(3, (int) ($rowsByMetric['Total Users']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive Users']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled Users', $rowsByMetric);
         $this->assertStringNotContainsString('Most Recent Users', $this->tester->getDisplay());
     }
 

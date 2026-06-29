@@ -255,7 +255,7 @@ class FormatsCommandTest extends TestCase
         $statusesByTitle = array_column($rows, 'status', 'title');
 
         $this->assertSame(0, $this->tester->getStatusCode());
-        $this->assertSame('Conditional', $statusesByTitle['Conditional MP4'] ?? null);
+        $this->assertSame('Cond. required', $statusesByTitle['Conditional MP4'] ?? null);
     }
 
     public function testAvailableFormatsExposeKvsAdminFields(): void

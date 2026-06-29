@@ -60,7 +60,7 @@ Manage KVS storage servers and server groups.
   s3       Amazon S3 or compatible
 
 <fg=yellow>STREAMING TYPES:</>
-  0=Nginx, 1=Apache, 4=CDN, 5=Backup
+  0=Nginx (x-accel-redirect), 1=Direct URL (no protection), 4=CDN, 5=No public access (backup server)
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs server list</>
@@ -545,17 +545,17 @@ HELP
 
         $errors = [];
         if ($errorIteration > 1 && $this->getNumericField($server, 'error_id') === 1) {
-            $errors[] = 'Write error - Cannot write to storage';
+            $errors[] = 'Content path is not writable';
         }
 
         if ($errorStreamingIteration > 1) {
             $streamingErrors = [
-                2 => 'Control script unreachable',
-                3 => 'Control script key mismatch',
-                4 => 'Time synchronization error',
-                5 => 'Content availability error',
-                6 => 'CDN API error',
-                7 => 'HTTPS error',
+                2 => 'Control script is not responding',
+                3 => 'Control script has wrong secret key',
+                4 => 'Time is not synchronized',
+                5 => 'Content check found errors',
+                6 => 'CDN control script is missing',
+                7 => 'Server is not using HTTPS',
             ];
             $errorStreamingId = $this->getNumericField($server, 'error_streaming_id');
             if (isset($streamingErrors[$errorStreamingId])) {
@@ -652,7 +652,7 @@ HELP
             $metricRows = [
                 $this->metricRow('overall', 'Total Servers', $totalServers),
                 $this->metricRow('overall', 'Active', $activeServers),
-                $this->metricRow('overall', 'Disabled', $disabledServers),
+                $this->metricRow('overall', 'Inactive', $disabledServers),
                 $this->metricRow('overall', 'With Errors', $serversWithErrors),
                 $this->metricRow('overall', 'Total Space', $totalSpace, $this->formatBytes($totalSpace)),
                 $this->metricRow('overall', 'Used Space', $usedSpace, $this->formatBytes($usedSpace) . " ({$usedPercent}%)"),
@@ -663,7 +663,7 @@ HELP
             $overallInfo = [
                 ['Total Servers', (string) $totalServers],
                 ['Active', (string) $activeServers],
-                ['Disabled', (string) $disabledServers],
+                ['Inactive', (string) $disabledServers],
                 ['With Errors', $serversWithErrors > 0 ? "<fg=red>{$serversWithErrors}</>" : '0'],
                 ['Total Space', $this->formatBytes($totalSpace)],
                 ['Used Space', $this->formatBytes($usedSpace) . " ({$usedPercent}%)"],

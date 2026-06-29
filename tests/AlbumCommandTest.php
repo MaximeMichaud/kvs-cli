@@ -158,6 +158,25 @@ class AlbumCommandTest extends TestCase
         $this->assertSame('2026-05-26 09:00:00', $rows[0]['added_date']);
     }
 
+    public function testAlbumListSeparatesKvsAccessTypeAndAccessLevel(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,is_private,type,access_level_id,access',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame('Premium', $rows[0]['is_private']);
+        $this->assertSame('Premium', $rows[0]['type']);
+        $this->assertSame(2, (int) $rows[0]['access_level_id']);
+        $this->assertSame('Only members', $rows[0]['access']);
+    }
+
     public function testAlbumListFormats(): void
     {
         // Test JSON format
@@ -219,7 +238,7 @@ class AlbumCommandTest extends TestCase
 
         $cases = [
             'error' => [30, 'Error'],
-            'in_process' => [40, 'Processing'],
+            'in_process' => [40, 'In process'],
             'deleting' => [50, 'Deleting'],
             'deleted' => [60, 'Deleted'],
         ];
@@ -253,7 +272,8 @@ class AlbumCommandTest extends TestCase
         $this->assertStringContainsString('Album #10', $output);
         $this->assertStringContainsString('Title', $output);
         $this->assertStringContainsString('Active Album', $output);
-        $this->assertMatchesRegularExpression('/Access\W+Public/', $output);
+        $this->assertMatchesRegularExpression('/Type\W+Public/', $output);
+        $this->assertMatchesRegularExpression('/Access\W+From access type/', $output);
         $this->assertMatchesRegularExpression('/User\W+alice/', $output);
         $this->assertMatchesRegularExpression('/Images\W+7/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
@@ -273,6 +293,8 @@ class AlbumCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame('10', $rows[0]['album_id']);
         $this->assertSame('Active Album', $rows[0]['title']);
+        $this->assertSame('Public', $rows[0]['type']);
+        $this->assertSame('From access type', $rows[0]['access']);
         $this->assertSame('alice', $rows[0]['user']);
         $this->assertSame('7', $rows[0]['images']);
         $this->assertStringNotContainsString('Album #10', $output);

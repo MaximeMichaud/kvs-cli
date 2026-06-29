@@ -941,7 +941,7 @@ HELP
             $metricRows = [
                 $this->metricRow('overall', 'Total Servers', $totalServers),
                 $this->metricRow('overall', 'Active', $activeServers),
-                $this->metricRow('overall', 'Disabled', $disabledServers),
+                $this->metricRow('overall', 'Inactive', $disabledServers),
                 $this->metricRow('overall', 'Initializing', $initServers),
                 $this->metricRow('overall', 'With Errors', $serversWithErrors),
                 $this->metricRow('overall', 'Debug Enabled', $debugEnabled),
@@ -955,7 +955,7 @@ HELP
             $overallInfo = [
                 ['Total Servers', (string) $totalServers],
                 ['Active', (string) $activeServers],
-                ['Disabled', (string) $disabledServers],
+                ['Inactive', (string) $disabledServers],
                 ['Initializing', (string) $initServers],
                 ['With Errors', $serversWithErrors > 0 ? "<fg=red>{$serversWithErrors}</>" : '0'],
                 ['Debug Enabled', $debugEnabled > 0 ? "<fg=yellow>{$debugEnabled}</>" : '0'],
@@ -970,7 +970,8 @@ HELP
             $stmtTasks = $db->query("
                 SELECT
                     SUM(CASE WHEN status_id = 0 THEN 1 ELSE 0 END) as pending,
-                    SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as processing
+                    SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as processing,
+                    SUM(CASE WHEN status_id = 2 THEN 1 ELSE 0 END) as failed
                 FROM {$this->table('background_tasks')}
             ");
             $taskResult = $stmtTasks !== false ? $stmtTasks->fetch() : false;
@@ -984,15 +985,18 @@ HELP
 
             $pending = $this->getNumericField($taskStats, 'pending');
             $processing = $this->getNumericField($taskStats, 'processing');
+            $failed = $this->getNumericField($taskStats, 'failed');
             $completed = $this->getNumericField($historyStats, 'total');
 
             $taskInfo = [
                 ['Pending', (string) $pending],
                 ['Processing', (string) $processing],
+                ['Failed', (string) $failed],
                 ['Completed (history)', number_format($completed)],
             ];
             $metricRows[] = $this->metricRow('task_queue', 'Pending', $pending);
             $metricRows[] = $this->metricRow('task_queue', 'Processing', $processing);
+            $metricRows[] = $this->metricRow('task_queue', 'Failed', $failed);
             $metricRows[] = $this->metricRow('task_queue', 'Completed (history)', $completed, number_format($completed));
 
             if (!$this->isTableFormat($input)) {

@@ -386,6 +386,36 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Comment #30', $output);
     }
 
+    public function testShowCommentTreatsReviewNeededAsPendingEvenWhenApproved(): void
+    {
+        $this->insertComment($this->db, [
+            'comment_id' => 40,
+            'object_id' => 100,
+            'object_type_id' => 1,
+            'object_sub_id' => 0,
+            'user_id' => 1,
+            'anonymous_username' => '',
+            'is_approved' => 1,
+            'is_review_needed' => 1,
+            'comment' => 'Approved but still awaiting review',
+            'country_code' => 'CA',
+            'ip' => 0,
+            'rating' => 0,
+            'added_date' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '40',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('Pending', $rows[0]['status']);
+    }
+
     public function testShowCommentRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

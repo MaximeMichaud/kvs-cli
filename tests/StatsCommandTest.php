@@ -45,6 +45,7 @@ class StatsCommandTest extends TestCase
             'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'comments_count INTEGER, favourites_count INTEGER, duration INTEGER)'
         );
+        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
             "(1, 'Many Votes Lower Average', 'many', 1, 0, 100, 10, 80, 20, 0, 0, 60), " .
@@ -71,6 +72,36 @@ class StatsCommandTest extends TestCase
         $this->assertIsInt($betterAveragePosition);
         $this->assertIsInt($manyVotesPosition);
         $this->assertLessThan($manyVotesPosition, $betterAveragePosition);
+    }
+
+    public function testVideoStatsUseKvsAdminCommentRelationCounts(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, has_errors INTEGER, ' .
+            'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'comments_count INTEGER, favourites_count INTEGER, duration INTEGER, added_date TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(1, 'Stale Counter', 'stale', 1, 0, 100, 10, 45, 5, 0, 0, 60, '2026-01-01 00:00:00'), " .
+            "(2, 'Other Video', 'other', 1, 0, 50, 5, 45, 5, 99, 0, 60, '2026-01-01 00:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ktvs_comments VALUES ' .
+            '(1, 1, 1), (2, 1, 1), (3, 2, 2)'
+        );
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--videos' => true, '--top' => '1']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertMatchesRegularExpression('/Total Comments\W+2/', $output);
+        $this->assertStringNotContainsString('99', $output);
     }
 
     public function testAlbumStatsUseKvsRatingPercent(): void
@@ -217,6 +248,7 @@ class StatsCommandTest extends TestCase
             'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'comments_count INTEGER, favourites_count INTEGER, duration INTEGER, added_date TEXT)'
         );
+        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
 
         $today = date('Y-m-d H:i:s');
         $old = date('Y-m-d H:i:s', strtotime('-40 days'));

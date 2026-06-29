@@ -435,12 +435,12 @@ HELP
                 $metricRows[] = $this->metricRow('overall', 'Active', $value, number_format($value));
             }
 
-            // Disabled models
+            // Inactive models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_DISABLED);
             if ($stmt !== false) {
                 $value = (int) $stmt->fetchColumn();
-                $stats[] = ['Disabled', number_format($value)];
-                $metricRows[] = $this->metricRow('overall', 'Disabled', $value, number_format($value));
+                $stats[] = ['Inactive', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Inactive', $value, number_format($value));
             }
 
             // Models with videos

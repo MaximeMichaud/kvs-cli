@@ -116,10 +116,10 @@ class StatusFormatter
     public static function video(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::VIDEO_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::VIDEO_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::VIDEO_ACTIVE => ['text' => 'Active', 'color' => 'green'],
             self::VIDEO_ERROR => ['text' => 'Error', 'color' => 'red'],
-            self::VIDEO_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+            self::VIDEO_PROCESSING => ['text' => 'In process', 'color' => 'cyan'],
             self::VIDEO_DELETING => ['text' => 'Deleting', 'color' => 'red'],
             self::VIDEO_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
         ];
@@ -137,10 +137,10 @@ class StatusFormatter
     public static function album(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::ALBUM_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::ALBUM_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::ALBUM_ACTIVE => ['text' => 'Active', 'color' => 'green'],
             self::ALBUM_ERROR => ['text' => 'Error', 'color' => 'red'],
-            self::ALBUM_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
+            self::ALBUM_PROCESSING => ['text' => 'In process', 'color' => 'cyan'],
             self::ALBUM_DELETING => ['text' => 'Deleting', 'color' => 'red'],
             self::ALBUM_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
         ];
@@ -158,8 +158,8 @@ class StatusFormatter
     public static function user(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::USER_DISABLED => ['text' => 'Disabled', 'color' => 'red'],
-            self::USER_NOT_CONFIRMED => ['text' => 'Not Confirmed', 'color' => 'yellow'],
+            self::USER_DISABLED => ['text' => 'Inactive', 'color' => 'red'],
+            self::USER_NOT_CONFIRMED => ['text' => 'Not confirmed', 'color' => 'yellow'],
             self::USER_ACTIVE => ['text' => 'Active', 'color' => 'green'],
             self::USER_PREMIUM => ['text' => 'Premium', 'color' => 'cyan'],
             self::USER_ANONYMOUS => ['text' => 'Anonymous', 'color' => 'gray'],
@@ -214,7 +214,7 @@ class StatusFormatter
     public static function model(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::MODEL_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::MODEL_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::MODEL_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
@@ -231,7 +231,7 @@ class StatusFormatter
     public static function dvd(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::DVD_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::DVD_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::DVD_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
@@ -248,7 +248,7 @@ class StatusFormatter
     public static function playlist(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::PLAYLIST_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::PLAYLIST_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::PLAYLIST_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
@@ -274,6 +274,25 @@ class StatusFormatter
     }
 
     /**
+     * Get formatted KVS content access level label.
+     *
+     * @param int $accessLevelId Access level ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted access level label
+     */
+    public static function contentAccessLevel(int $accessLevelId, bool $withColor = true): string
+    {
+        $labels = [
+            0 => ['text' => 'From access type', 'color' => 'green'],
+            1 => ['text' => 'All users', 'color' => 'cyan'],
+            2 => ['text' => 'Only members', 'color' => 'yellow'],
+            3 => ['text' => 'Only premium members', 'color' => 'magenta'],
+        ];
+
+        return self::format($accessLevelId, $labels, $withColor);
+    }
+
+    /**
      * Get formatted status label for video formats
      *
      * @param int $statusId Status ID from database
@@ -283,12 +302,12 @@ class StatusFormatter
     public static function videoFormat(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::FORMAT_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::FORMAT_DISABLED => ['text' => 'Deactivated', 'color' => 'yellow'],
             self::FORMAT_REQUIRED => ['text' => 'Required', 'color' => 'green'],
             self::FORMAT_OPTIONAL => ['text' => 'Optional', 'color' => 'cyan'],
-            self::FORMAT_DELETING => ['text' => 'Deleting', 'color' => 'red'],
+            self::FORMAT_DELETING => ['text' => 'Removing files', 'color' => 'red'],
             self::FORMAT_ERROR => ['text' => 'Error', 'color' => 'red'],
-            self::FORMAT_CONDITIONAL => ['text' => 'Conditional', 'color' => 'magenta'],
+            self::FORMAT_CONDITIONAL => ['text' => 'Cond. required', 'color' => 'magenta'],
         ];
 
         return self::format($statusId, $labels, $withColor);
@@ -304,8 +323,8 @@ class StatusFormatter
     public static function formatAccessLevel(int $accessLevelId, bool $withColor = true): string
     {
         $labels = [
-            self::ACCESS_ANY => ['text' => 'Any', 'color' => 'green'],
-            self::ACCESS_MEMBER => ['text' => 'Member', 'color' => 'cyan'],
+            self::ACCESS_ANY => ['text' => 'Any users', 'color' => 'green'],
+            self::ACCESS_MEMBER => ['text' => 'Active / Premium', 'color' => 'cyan'],
             self::ACCESS_PREMIUM => ['text' => 'Premium', 'color' => 'magenta'],
         ];
 
@@ -322,9 +341,9 @@ class StatusFormatter
     public static function task(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::TASK_PENDING => ['text' => 'Pending', 'color' => 'yellow'],
-            self::TASK_PROCESSING => ['text' => 'Processing', 'color' => 'cyan'],
-            self::TASK_FAILED => ['text' => 'Failed', 'color' => 'red'],
+            self::TASK_PENDING => ['text' => 'Scheduled', 'color' => 'yellow'],
+            self::TASK_PROCESSING => ['text' => 'In process', 'color' => 'cyan'],
+            self::TASK_FAILED => ['text' => 'Error', 'color' => 'red'],
             self::TASK_COMPLETED => ['text' => 'Completed', 'color' => 'green'],
             self::TASK_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
         ];
@@ -342,7 +361,7 @@ class StatusFormatter
     public static function server(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::SERVER_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::SERVER_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::SERVER_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
@@ -359,10 +378,10 @@ class StatusFormatter
     public static function serverStreaming(int $typeId, bool $withColor = true): string
     {
         $labels = [
-            self::SERVER_STREAMING_NGINX => ['text' => 'Nginx', 'color' => 'cyan'],
-            self::SERVER_STREAMING_APACHE => ['text' => 'Apache', 'color' => 'cyan'],
+            self::SERVER_STREAMING_NGINX => ['text' => 'Nginx (x-accel-redirect)', 'color' => 'cyan'],
+            self::SERVER_STREAMING_APACHE => ['text' => 'Direct URL (no protection)', 'color' => 'cyan'],
             self::SERVER_STREAMING_CDN => ['text' => 'CDN', 'color' => 'magenta'],
-            self::SERVER_STREAMING_BACKUP => ['text' => 'Backup', 'color' => 'yellow'],
+            self::SERVER_STREAMING_BACKUP => ['text' => 'No public access (backup server)', 'color' => 'yellow'],
         ];
 
         return self::format($typeId, $labels, $withColor);
@@ -397,7 +416,7 @@ class StatusFormatter
     public static function conversion(int $statusId, bool $withColor = true): string
     {
         $labels = [
-            self::CONVERSION_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::CONVERSION_DISABLED => ['text' => 'Inactive', 'color' => 'yellow'],
             self::CONVERSION_ACTIVE => ['text' => 'Active', 'color' => 'green'],
             self::CONVERSION_INIT => ['text' => 'Initializing', 'color' => 'cyan'],
         ];

@@ -554,12 +554,12 @@ HELP
                 $metricRows[] = $this->metricRow('overall', 'Active', $value, number_format($value));
             }
 
-            // Disabled DVDs
+            // Inactive DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_DISABLED);
             if ($stmt !== false) {
                 $value = (int) $stmt->fetchColumn();
-                $stats[] = ['Disabled', number_format($value)];
-                $metricRows[] = $this->metricRow('overall', 'Disabled', $value, number_format($value));
+                $stats[] = ['Inactive', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Inactive', $value, number_format($value));
             }
 
             if (!$this->isTableFormat($input)) {

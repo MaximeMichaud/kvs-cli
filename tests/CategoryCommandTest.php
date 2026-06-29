@@ -223,7 +223,22 @@ class CategoryCommandTest extends TestCase
         $this->assertStringNotContainsString('Category: Action', $output);
     }
 
-    public function testCategoryShowRejectsNonIntegerIdBeforeQuery(): void
+    public function testCategoryShowSupportsExactTitle(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => 'Action',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['id']);
+        $this->assertSame('Action', $rows[0]['title']);
+    }
+
+    public function testCategoryShowReportsMissingTextIdentifier(): void
     {
         $this->tester->execute([
             'action' => 'show',
@@ -232,7 +247,7 @@ class CategoryCommandTest extends TestCase
         ]);
 
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Invalid Category ID', $this->tester->getDisplay());
+        $this->assertStringContainsString('Category not found: 10abc', $this->tester->getDisplay());
     }
 
     public function testCategoryUpdateRejectsNonIntegerIdBeforeQuery(): void

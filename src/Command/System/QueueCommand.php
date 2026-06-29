@@ -26,39 +26,39 @@ class QueueCommand extends BaseCommand
      * @var array<int, string>
      */
     private const TASK_TYPES = [
-        1 => 'New Video',
-        2 => 'Delete Video',
-        3 => 'Upload Video Format',
-        4 => 'Create Video Format',
-        5 => 'Delete Video Format File',
-        6 => 'Delete Video Format',
-        7 => 'Create Screenshot Format',
-        8 => 'Create Timeline Screenshots',
-        9 => 'Delete Screenshot Format',
-        10 => 'New Album',
-        11 => 'Delete Album',
-        12 => 'Create Album Format',
-        13 => 'Delete Album Format',
-        14 => 'Upload Album Images',
-        15 => 'Change Storage (Video)',
-        16 => 'Create Screenshots ZIP',
-        17 => 'Delete Screenshots ZIP',
-        18 => 'Create Images ZIP',
-        19 => 'Delete Images ZIP',
-        20 => 'Delete Timeline Screenshots',
-        22 => 'Album Images Manipulation',
-        23 => 'Change Storage (Album)',
-        24 => 'Create Overview Screenshots',
-        26 => 'Update Resolution Type',
-        27 => 'Sync Storage Server',
-        28 => 'Delete Overview Screenshots',
-        29 => 'Recreate Screenshot Formats',
-        30 => 'Recreate Album Formats',
-        31 => 'Recreate Player Preview',
-        50 => 'Videos Import',
-        51 => 'Albums Import',
-        52 => 'Videos Mass Edit',
-        53 => 'Albums Mass Edit',
+        1 => 'New video',
+        2 => 'Video deletion',
+        3 => 'Video file upload',
+        4 => 'Video files creation',
+        5 => 'Video files deletion',
+        6 => 'Video format deletion',
+        7 => 'Screenshot format creation',
+        8 => 'Timeline screenshots creation',
+        9 => 'Screenshot format deletion',
+        10 => 'New album',
+        11 => 'Album deletion',
+        12 => 'Album format creation',
+        13 => 'Album format deletion',
+        14 => 'Album images upload',
+        15 => 'Change video storage group',
+        16 => 'Screenshot format ZIP creation',
+        17 => 'Screenshot format ZIP deletion',
+        18 => 'Album format ZIP creation',
+        19 => 'Album format ZIP deletion',
+        20 => 'Timeline screenshots deletion',
+        22 => 'Album images manipulation',
+        23 => 'Change album storage group',
+        24 => 'Overview screenshots creation',
+        26 => 'Quality factor update',
+        27 => 'Sync storage server',
+        28 => 'Overview screenshots deletion',
+        29 => 'Screenshot formats re-creation',
+        30 => 'Album formats re-creation',
+        31 => 'Player preview re-creation',
+        50 => 'Videos import',
+        51 => 'Albums import',
+        52 => 'Videos mass edit',
+        53 => 'Albums mass edit',
     ];
 
     /**
@@ -66,15 +66,15 @@ class QueueCommand extends BaseCommand
      * @var array<int, string>
      */
     private const ERROR_CODES = [
-        1 => 'General Failure',
-        2 => 'Download Failed',
-        3 => 'Conversion Failed',
-        4 => 'Upload Failed',
-        5 => 'File System Error',
-        6 => 'Format Error',
-        7 => 'Manual Cancellation',
-        8 => 'Plugin Error',
-        9 => 'Server Error',
+        1 => '01 - Database consistency error',
+        2 => '02 - Conversion server connection error',
+        3 => '03 - Unexpected error',
+        4 => '04 - Storage server connection error',
+        5 => '05 - Filesystem error',
+        6 => '06 - Unexpected error',
+        7 => '07 - Conversion error',
+        8 => '08 - Screenshots error',
+        9 => '09 - Source file error',
     ];
 
     protected function configure(): void
@@ -101,18 +101,18 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   history  Show completed/deleted/failed tasks history
 
 <fg=yellow>STATUS VALUES:</>
-  pending     Tasks waiting to be processed (status_id=0)
-  processing  Tasks currently being processed (status_id=1)
-  failed      Tasks that failed with error (status_id=2)
+  pending     Scheduled tasks waiting to be processed (status_id=0)
+  processing  Tasks currently in process (status_id=1)
+  failed      Tasks finished with error (status_id=2)
 
 <fg=yellow>COMMON TASK TYPES:</>
-  1   New Video (full conversion)
-  2   Delete Video
-  4   Create Video Format
-  8   Create Timeline Screenshots
-  10  New Album
-  11  Delete Album
-  14  Upload Album Images
+  1   New video
+  2   Video deletion
+  4   Video files creation
+  8   Timeline screenshots creation
+  10  New album
+  11  Album deletion
+  14  Album images upload
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs queue list</>                         List all active tasks

@@ -103,6 +103,25 @@ class ServerCommandTest extends TestCase
         $this->assertSame('Local', $rows[0]['connection']);
     }
 
+    public function testServerListUsesKvsAdminStreamingLabels(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,streaming_type_id,streaming',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(1, (int) $rowsById[2]['streaming_type_id']);
+        $this->assertSame('Direct URL (no protection)', $rowsById[2]['streaming']);
+        $this->assertStringNotContainsString('Apache', $this->tester->getDisplay());
+    }
+
     public function testServerListWithConnectionFiltersForRemoteTypes(): void
     {
         $this->insertS3StorageServer();
@@ -317,6 +336,26 @@ class ServerCommandTest extends TestCase
         $this->assertStringNotContainsString('Server #1', $output);
     }
 
+    public function testServerShowUsesKvsAdminErrorLabels(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            ' SET error_streaming_id = 5, error_streaming_iteration = 2 WHERE server_id = 1'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Content check found errors', $output);
+        $this->assertStringNotContainsString('Content availability error', $output);
+    }
+
     public function testServerShowRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([
@@ -360,6 +399,7 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Server #3', $output);
         $this->assertStringContainsString('Album Error', $output);
+        $this->assertStringContainsString('Content path is not writable', $output);
         $this->assertStringContainsString('FTP', $output);
         $this->assertStringContainsString('FTP Host', $output);
         $this->assertStringContainsString('ftp.example.test:21', $output);
@@ -430,7 +470,7 @@ class ServerCommandTest extends TestCase
         $this->assertStringContainsString('Storage Statistics', $output);
         $this->assertMatchesRegularExpression('/Total Servers\W+3/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Inactive\W+1/', $output);
         $this->assertMatchesRegularExpression('/With Errors\W+1/', $output);
         $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
         $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
@@ -452,6 +492,8 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame('overall', $rowsByMetric['Total Servers']['section'] ?? null);
         $this->assertSame(3, (int) ($rowsByMetric['Total Servers']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
         $this->assertStringNotContainsString('Storage Statistics', $this->tester->getDisplay());
     }
 

@@ -238,8 +238,8 @@ HELP
 
     private function showTag(?string $id, InputInterface $input): int
     {
-        $tagIdInput = $this->getRequiredPositiveId($id, 'Tag');
-        if ($tagIdInput === null) {
+        if ($id === null || $id === '') {
+            $this->io()->error('Tag ID or name is required');
             return self::FAILURE;
         }
 
@@ -249,18 +249,19 @@ HELP
         }
 
         try {
+            $whereClause = ctype_digit($id) ? 't.tag_id = :identifier_id' : 't.tag = :identifier_name';
             $stmt = $db->prepare("
                 SELECT t.*,
                        {$this->getTagUsageSelectors()}
                 FROM {$this->table('tags')} t
-                WHERE t.tag_id = :id
+                WHERE {$whereClause}
             ");
-            $stmt->execute(['id' => $tagIdInput]);
+            $stmt->execute(ctype_digit($id) ? ['identifier_id' => (int) $id] : ['identifier_name' => $id]);
             /** @var array<string, mixed>|false $tag */
             $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if ($tag === false) {
-                $this->io()->error("Tag not found: $tagIdInput");
+                $this->io()->error("Tag not found: $id");
                 return self::FAILURE;
             }
 

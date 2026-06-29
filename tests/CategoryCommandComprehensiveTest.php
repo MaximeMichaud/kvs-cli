@@ -99,7 +99,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('Category ID is required', $output);
+        $this->assertStringContainsString('Category ID or title is required', $output);
     }
 
     public function testShowNonExistent(): void
@@ -399,7 +399,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('Invalid Category ID', $output);
+        $this->assertStringContainsString('Category not found: not_a_number', $output);
     }
 
     public function testCommandIntegrationWithHermeticDb(): void

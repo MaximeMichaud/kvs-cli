@@ -315,7 +315,22 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringNotContainsString('Tag: 4K', $output);
     }
 
-    public function testShowTagRejectsNonIntegerIdBeforeQuery(): void
+    public function testShowTagSupportsExactName(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '4K',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['id']);
+        $this->assertSame('4K', $rows[0]['name']);
+    }
+
+    public function testShowTagReportsMissingTextIdentifier(): void
     {
         $this->tester->execute([
             'action' => 'show',
@@ -324,7 +339,7 @@ class TagCommandComprehensiveTest extends TestCase
         ]);
 
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Invalid Tag ID', $this->tester->getDisplay());
+        $this->assertStringContainsString('Tag not found: 10abc', $this->tester->getDisplay());
     }
 
     public function testUpdateTagRejectsNonIntegerIdBeforeQuery(): void

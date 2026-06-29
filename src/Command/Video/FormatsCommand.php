@@ -430,7 +430,7 @@ HELP
                     $row['group_id'] = $groupId;
                     $row['raw_status_id'] = $statusId;
                     $row['status_id'] = $displayStatusId;
-                    $row['status'] = $this->formatStatusLabel($statusId, $isConditional);
+                    $row['status'] = StatusFormatter::videoFormat($displayStatusId, false);
                     $row['is_hotlink_protection_enabled'] = $hotlinkDisabled ? 0 : 1;
                     $row['size'] = $this->formatKvsVideoSize($row);
                     $row['limit_total_duration'] = $this->formatKvsDurationLimit($row);
@@ -458,23 +458,6 @@ HELP
         } catch (\Exception $e) {
             return [];
         }
-    }
-
-    private function formatStatusLabel(int $statusId, bool $isConditional): string
-    {
-        if ($statusId === StatusFormatter::FORMAT_OPTIONAL && $isConditional) {
-            return 'Conditional';
-        }
-
-        return match ($statusId) {
-            StatusFormatter::FORMAT_DISABLED => 'Disabled',
-            StatusFormatter::FORMAT_REQUIRED => 'Required',
-            StatusFormatter::FORMAT_OPTIONAL => 'Optional',
-            StatusFormatter::FORMAT_DELETING => 'Deleting',
-            StatusFormatter::FORMAT_ERROR => 'Error',
-            StatusFormatter::FORMAT_CONDITIONAL => 'Conditional',
-            default => 'Unknown',
-        };
     }
 
     /**

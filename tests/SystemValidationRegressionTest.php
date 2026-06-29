@@ -557,7 +557,7 @@ class SystemValidationRegressionTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame([2, 1], array_map(static fn (array $row): int => (int) $row['format_video_id'], $rows));
-        $this->assertSame('Conditional', $rows[0]['status']);
+        $this->assertSame('Cond. required', $rows[0]['status']);
     }
 
     public function testVideoFormatListFiltersConditionalStatusLikeKvsAdmin(): void
@@ -577,7 +577,7 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(2, (int) $rows[0]['format_video_id']);
-        $this->assertSame('Conditional', $rows[0]['status']);
+        $this->assertSame('Cond. required', $rows[0]['status']);
     }
 
     public function testVideoFormatShowUsesKvsDurationAndOffsetColumns(): void

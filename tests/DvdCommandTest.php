@@ -428,7 +428,7 @@ class DvdCommandTest extends TestCase
         $this->assertStringContainsString('DVD Statistics', $output);
         $this->assertMatchesRegularExpression('/Total DVDs\W+3/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Inactive\W+1/', $output);
     }
 
     public function testStatsSupportsJsonFormat(): void
@@ -445,6 +445,8 @@ class DvdCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame('overall', $rowsByMetric['Total DVDs']['section'] ?? null);
         $this->assertSame(3, (int) ($rowsByMetric['Total DVDs']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
         $this->assertStringNotContainsString('DVD Statistics', $this->tester->getDisplay());
     }
 

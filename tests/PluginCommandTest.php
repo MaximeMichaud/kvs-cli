@@ -435,6 +435,24 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('Plugin:', $output);
     }
 
+    public function testShowUsesDataFileForDynamicEnabledStatus(): void
+    {
+        $this->createDataBackedPluginFixture('dynamic_status', true);
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'dynamic_status',
+            '--format' => 'json',
+            '--fields' => 'id,status',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('dynamic_status', $rows[0]['id'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
+    }
+
     public function testShowWithoutId(): void
     {
         $exitCode = $this->tester->execute(['action' => 'show']);
@@ -969,6 +987,60 @@ XML
 <?php
 \$lang['plugins']['guarded_plugin']['title'] = 'Guarded plugin';
 \$lang['plugins']['guarded_plugin']['description'] = 'Should not be executed by CLI list.';
+
+PHP
+        );
+    }
+
+    private function createDataBackedPluginFixture(string $id, bool $enabled): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/' . $id;
+        $dataDir = $this->tempDir . '/admin/data/plugins/' . $id;
+        mkdir($pluginDir . '/langs', 0755, true);
+        mkdir($dataDir, 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.dat',
+            <<<XML
+<plugin>
+    <plugin_name>Dynamic Status</plugin_name>
+    <author>Test</author>
+    <version>1.0.0</version>
+    <kvs_version>6.0.0</kvs_version>
+    <plugin_types>manual,cron</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.php',
+            <<<PHP
+<?php
+function {$id}Show(): void
+{
+}
+
+function {$id}LoadConfig(): array
+{
+    return [];
+}
+
+function {$id}IsEnabled(): bool
+{
+    \$data = {$id}LoadConfig();
+    return intval(\$data['is_enabled']) == 1;
+}
+
+PHP
+        );
+        file_put_contents($pluginDir . '/' . $id . '.tpl', '');
+        file_put_contents($dataDir . '/data.dat', serialize(['is_enabled' => $enabled ? 1 : 0]));
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['{$id}']['title'] = 'Dynamic Status';
+\$lang['plugins']['{$id}']['description'] = 'Uses data.dat to determine enabled status.';
 
 PHP
         );

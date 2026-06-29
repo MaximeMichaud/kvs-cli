@@ -43,7 +43,9 @@ Manage KVS photo albums.
   title           Album title
   images          Number of images
   status          Album status (Active/Disabled)
-  is_private      Access level (Public/Private/Premium)
+  is_private      Access type (Public/Private/Premium)
+  type            Access type alias (Public/Private/Premium)
+  access          Access level (From access type/All users/Only members/Only premium members)
   user, username  Username
   date, post_date Posted date
   views           View count
@@ -187,6 +189,8 @@ HELP
                 $privacyIdVal = $album['is_private'] ?? 0;
                 $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
+                $accessLevelIdVal = $album['access_level_id'] ?? 0;
+                $accessLevelId = is_numeric($accessLevelIdVal) ? (int) $accessLevelIdVal : 0;
                 $albumIp = $album['ip'] ?? null;
 
                 return array_merge(
@@ -201,7 +205,9 @@ HELP
                         'status_id' => $statusId,
                         'status' => StatusFormatter::album($statusId, false),  // Alias
                         'is_private' => $privacy,
-                        'access' => $privacy,
+                        'type' => $privacy,
+                        'access_level_id' => $accessLevelId,
+                        'access' => StatusFormatter::contentAccessLevel($accessLevelId, false),
                         'username' => $album['username'] ?? '',
                         'post_date' => $album['post_date'] ?? '',
                         'album_viewed' => $album['album_viewed'] ?? 0,
@@ -357,6 +363,8 @@ HELP
             $postTimestamp = strtotime($postDate);
             $privacyIdVal = $album['is_private'] ?? 0;
             $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
+            $accessLevelIdVal = $album['access_level_id'] ?? 0;
+            $accessLevelId = is_numeric($accessLevelIdVal) ? (int) $accessLevelIdVal : 0;
             $viewedVal = $album['album_viewed'] ?? 0;
             $views = is_numeric($viewedVal) ? (int) $viewedVal : 0;
             $photosAmountVal = $album['photos_amount'] ?? 0;
@@ -368,7 +376,8 @@ HELP
             $info = [
                 ['Title', $title],
                 ['Status', StatusFormatter::album($statusId)],
-                ['Access', StatusFormatter::contentPrivacy($privacyId)],
+                ['Type', StatusFormatter::contentPrivacy($privacyId)],
+                ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
                 ['User', $username],
                 ['Images', $imageCountValue],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],

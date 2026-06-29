@@ -475,6 +475,7 @@ class StatsCommand extends BaseCommand
 
         $prefix = $this->config->getTablePrefix();
         $periodCondition = $this->getPeriodCondition($db, $period);
+        $commentsPeriodCondition = $this->getPeriodCondition($db, $period, 'vc.added_date');
 
         // Summary
         $stmt = $db->query("SELECT
@@ -488,7 +489,12 @@ class StatsCommand extends BaseCommand
             MAX(video_viewed) as max_views,
             SUM(rating_amount) as total_ratings,
             AVG(CASE WHEN rating_amount > 0 THEN rating / rating_amount ELSE NULL END) as avg_rating,
-            SUM(comments_count) as total_comments,
+            (
+                SELECT COUNT(*)
+                FROM {$prefix}comments c
+                INNER JOIN {$prefix}videos vc ON vc.video_id = c.object_id
+                WHERE c.object_type_id = 1{$commentsPeriodCondition}
+            ) as total_comments,
             SUM(favourites_count) as total_favourites,
             AVG(duration) as avg_duration,
             SUM(duration) as total_duration
