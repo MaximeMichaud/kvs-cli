@@ -476,10 +476,14 @@ class SystemValidationRegressionTest extends TestCase
                 'limit_total_duration',
                 'limit_offset_start',
                 'limit_offset_end',
+                'watermark_image',
+                'watermark2_image',
                 'access_level_id',
                 'is_download_enabled',
                 'download_order',
                 'is_hotlink_protection_enabled',
+                'preroll_video',
+                'postroll_video',
                 'limit_speed_value',
                 'is_timeline_enabled',
                 'videos_count',
@@ -499,10 +503,14 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame(20, (int) $rows[0]['limit_total_duration']);
         $this->assertSame(5, (int) $rows[0]['limit_offset_start']);
         $this->assertSame(10, (int) $rows[0]['limit_offset_end']);
+        $this->assertSame('1.png', $rows[0]['watermark_image']);
+        $this->assertSame('1.png', $rows[0]['watermark2_image']);
         $this->assertSame(0, (int) $rows[0]['access_level_id']);
         $this->assertSame(0, (int) $rows[0]['is_download_enabled']);
         $this->assertSame(7, (int) $rows[0]['download_order']);
         $this->assertSame(1, (int) $rows[0]['is_hotlink_protection_enabled']);
+        $this->assertSame('1.mp4', $rows[0]['preroll_video']);
+        $this->assertSame('1.mp4', $rows[0]['postroll_video']);
         $this->assertSame(2048, (int) $rows[0]['limit_speed_value']);
         $this->assertSame(1, (int) $rows[0]['is_timeline_enabled']);
         $this->assertSame(1, (int) $rows[0]['videos_count']);
@@ -706,6 +714,14 @@ class SystemValidationRegressionTest extends TestCase
             "(2, 1, 2, '||.mp4|', 1), " .
             "(3, 1, 1, '||_cond.mp4|', 2)"
         );
+        $otherDataPath = $this->tempDir . '/admin/data/other';
+        if (!is_dir($otherDataPath)) {
+            mkdir($otherDataPath, 0777, true);
+        }
+        file_put_contents($otherDataPath . '/watermark_video_1.png', 'test');
+        file_put_contents($otherDataPath . '/watermark2_video_1.png', 'test');
+        file_put_contents($otherDataPath . '/preroll_video_1.mp4', 'test');
+        file_put_contents($otherDataPath . '/postroll_video_1.mp4', 'test');
     }
 
     private function createQueueCommand(): QueueCommand

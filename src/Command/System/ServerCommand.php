@@ -200,6 +200,7 @@ HELP
 
             /** @var list<array<string, mixed>> $servers */
             $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $servers = $this->addStorageContentCounts($db, $servers);
 
             $transformed = array_map(function (array $server): array {
                 $statusId = isset($server['status_id']) && is_numeric($server['status_id'])
@@ -214,6 +215,8 @@ HELP
                     ? (int) $server['free_space'] : 0;
                 $load = isset($server['load']) && is_numeric($server['load'])
                     ? (float) $server['load'] : 0.0;
+                $contentCount = isset($server['content_count']) && is_numeric($server['content_count'])
+                    ? (int) $server['content_count'] : 0;
 
                 $errorIter = isset($server['error_iteration']) && is_numeric($server['error_iteration'])
                     ? (int) $server['error_iteration'] : 0;
@@ -237,6 +240,8 @@ HELP
                     'free_space' => $this->formatBytes($freeSpace),
                     'free_percent' => $totalSpace > 0 ? round(($freeSpace / $totalSpace) * 100, 1) . '%' : '0%',
                     'load' => number_format($load, 2),
+                    'content_count' => $contentCount,
+                    'total_content' => $this->formatStorageContentCount($contentCount, $server['content_type_id'] ?? null),
                     'has_error' => $hasError ? 'Yes' : 'No',
                     'urls' => $server['urls'] ?? '',
                 ];
@@ -251,6 +256,82 @@ HELP
             $this->io()->error('Failed to fetch servers: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $servers
+     * @return list<array<string, mixed>>
+     */
+    private function addStorageContentCounts(\PDO $db, array $servers): array
+    {
+        foreach ($servers as $index => $server) {
+            $servers[$index]['content_count'] = 0;
+        }
+
+        $groupsByType = [];
+        foreach ($servers as $server) {
+            $groupId = $server['group_id'] ?? null;
+            $contentTypeId = $server['content_type_id'] ?? null;
+            if (!is_numeric($groupId) || !is_numeric($contentTypeId)) {
+                continue;
+            }
+            $groupsByType[(int) $contentTypeId][] = (int) $groupId;
+        }
+
+        $counts = [];
+        foreach ([1 => 'videos', 2 => 'albums'] as $contentTypeId => $table) {
+            $groupIds = array_values(array_unique($groupsByType[$contentTypeId] ?? []));
+            if ($groupIds === []) {
+                continue;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($groupIds), '?'));
+            try {
+                $stmt = $db->prepare("
+                    SELECT server_group_id, COUNT(*) as content_count
+                    FROM {$this->table($table)}
+                    WHERE server_group_id IN ($placeholders)
+                    GROUP BY server_group_id
+                ");
+                foreach ($groupIds as $index => $groupId) {
+                    $stmt->bindValue($index + 1, $groupId, \PDO::PARAM_INT);
+                }
+                $stmt->execute();
+            } catch (\Throwable) {
+                continue;
+            }
+
+            while (($row = $stmt->fetch(\PDO::FETCH_ASSOC)) !== false) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $groupId = $row['server_group_id'] ?? null;
+                $count = $row['content_count'] ?? null;
+                if (!is_numeric($groupId) || !is_numeric($count)) {
+                    continue;
+                }
+                $counts[$contentTypeId][(int) $groupId] = (int) $count;
+            }
+        }
+
+        foreach ($servers as $index => $server) {
+            $groupId = $server['group_id'] ?? null;
+            $contentTypeId = $server['content_type_id'] ?? null;
+            if (!is_numeric($groupId) || !is_numeric($contentTypeId)) {
+                continue;
+            }
+            $servers[$index]['content_count'] = $counts[(int) $contentTypeId][(int) $groupId] ?? 0;
+        }
+
+        return $servers;
+    }
+
+    private function formatStorageContentCount(int $contentCount, mixed $contentTypeId): string
+    {
+        $typeId = is_numeric($contentTypeId) ? (int) $contentTypeId : 0;
+        $label = $typeId === 2 ? 'Albums' : 'Videos';
+
+        return "$contentCount $label";
     }
 
     private function showServer(?string $id): int

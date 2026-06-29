@@ -184,6 +184,12 @@ HELP
                 $user['id'] = $user['user_id'] ?? 0;
                 $user['status'] = StatusFormatter::user($statusId, false);
                 $user['gender'] = $this->formatGender($this->getInt($user['gender_id'] ?? null));
+                if (array_key_exists('ip', $user)) {
+                    $user['ip'] = $this->formatKvsIp($user['ip']);
+                }
+                $avatar = $user['avatar'] ?? '';
+                $avatar = is_scalar($avatar) ? (string) $avatar : '';
+                $user['thumb'] = $avatar;
 
                 return $user;
             }, $users);

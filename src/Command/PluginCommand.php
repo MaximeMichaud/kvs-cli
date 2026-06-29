@@ -16,6 +16,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 class PluginCommand extends BaseCommand
 {
+    private const HIDDEN_PLUGIN_IDS = ['push_notifications', 'awe_black_label'];
+
     protected function configure(): void
     {
         $this
@@ -362,6 +364,9 @@ HELP
             if (!is_dir($pluginPath)) {
                 continue;
             }
+            if (in_array($item, self::HIDDEN_PLUGIN_IDS, true)) {
+                continue;
+            }
 
             // Check if plugin has required files
             if (
@@ -444,6 +449,9 @@ HELP
         if (preg_match('|<version>(.*?)</version>|is', $content, $match) === 1) {
             $plugin['version'] = trim($match[1]);
         }
+        if (($plugin['version'] ?? '') === 'del') {
+            return null;
+        }
 
         if (preg_match('|<kvs_version>(.*?)</kvs_version>|is', $content, $match) === 1) {
             $plugin['kvs_version'] = trim($match[1]);
@@ -490,10 +498,7 @@ HELP
             $plugin['compatible'] = $this->checkVersionCompatibility($plugin['kvs_version']);
         }
 
-        // Check if plugin is enabled/configured (only if all checks pass)
-        if ($plugin['syntax_ok'] && $plugin['compatible']) {
-            $plugin['is_enabled'] = $this->checkPluginEnabled($id, $phpFile);
-        }
+        $plugin['is_enabled'] = $plugin['compatible'] ? $this->checkPluginEnabled($id, $phpFile) : false;
 
         return $plugin;
     }
@@ -518,55 +523,24 @@ HELP
 
     private function checkPluginEnabled(string $id, string $phpFile): bool
     {
-        /**
-         * KVS Plugin Status Logic:
-         * - If plugin has NO IsEnabled function → always enabled (default)
-         * - If plugin HAS IsEnabled function → call it to check if configured/enabled
-         *
-         * Note: IsEnabled checks if plugin is CONFIGURED (e.g., backup has auto-backup enabled),
-         * not just if it's installed. Plugins without IsEnabled are always operational.
-         */
-        try {
-            $kvsPath = $this->config->getKvsPath();
-
-            // Check if plugin has IsEnabled function
-            $phpContent = file_get_contents($phpFile);
-            if ($phpContent === false) {
-                // Can't read file, assume enabled (to avoid false negatives)
-                return true;
-            }
-            if (preg_match("/function\s+{$id}IsEnabled\s*\(/", $phpContent) !== 1) {
-                // No IsEnabled function = plugin is always enabled by default
-                return true;
-            }
-
-            // Plugin has IsEnabled function - need to call it
-            /** @var array<string, mixed> $config */
-            $config = [];
-
-            // Load KVS config (required by most plugins)
-            if (file_exists("$kvsPath/admin/include/setup.php")) {
-                require_once "$kvsPath/admin/include/setup.php";
-            }
-
-            // Load plugin file
-            if (!function_exists("{$id}Show")) {
-                require_once $phpFile;
-            }
-
-            // Call IsEnabled function
-            $funcName = "{$id}IsEnabled";
-            if (function_exists($funcName)) {
-                return (bool)$funcName();
-            }
-
-            // Couldn't call IsEnabled, assume not enabled
+        $phpContent = file_get_contents($phpFile);
+        if ($phpContent === false) {
             return false;
-        } catch (\Throwable $e) {
-            // If anything fails, assume enabled (to avoid false negatives)
-            // Better to show an "active" plugin that might not be configured
-            // than to hide a working plugin
+        }
+
+        $functionName = preg_quote($id . 'IsEnabled', '/');
+        if (preg_match("/function\s+{$functionName}\s*\([^)]*\)\s*(?::\s*[^\\s{]+)?\s*\{(?<body>.*?)\n\}/s", $phpContent, $match) !== 1) {
+            return false;
+        }
+
+        $body = $match['body'];
+        if (preg_match('/return\s+true\s*;/i', $body) === 1) {
             return true;
         }
+        if (preg_match('/return\s+false\s*;/i', $body) === 1) {
+            return false;
+        }
+
+        return false;
     }
 }

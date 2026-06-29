@@ -188,7 +188,7 @@ class VideoCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
-            '--fields' => 'video_id,title,content_source,dvd,admin_flag,server_group,format_video_group',
+            '--fields' => 'video_id,title,thumb,content_source,dvd,admin_flag,server_group,format_video_group,tags,categories,models,ip',
             '--format' => 'json',
             '--limit' => 1,
         ]);
@@ -198,11 +198,16 @@ class VideoCommandTest extends TestCase
 
         $this->assertSame(10, (int) $rows[0]['video_id']);
         $this->assertSame('Featured Clip', $rows[0]['title']);
+        $this->assertSame('3', $rows[0]['thumb']);
         $this->assertSame('Studio One', $rows[0]['content_source']);
         $this->assertSame('Series One', $rows[0]['dvd']);
         $this->assertSame('Needs Review', $rows[0]['admin_flag']);
         $this->assertSame('Primary Storage', $rows[0]['server_group']);
         $this->assertSame('HD Formats', $rows[0]['format_video_group']);
+        $this->assertSame('tag-one,tag-two', $rows[0]['tags']);
+        $this->assertSame('Action', $rows[0]['categories']);
+        $this->assertSame('Model One', $rows[0]['models']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
     }
 
     public function testVideoListExposesKvsAdminUserStatusAndAdminUserFields(): void
@@ -247,7 +252,7 @@ class VideoCommandTest extends TestCase
             'is_private INTEGER, duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, ' .
             'rating INTEGER, rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, r_ctr REAL, ' .
             'description TEXT, content_source_id INTEGER, dvd_id INTEGER, admin_flag_id INTEGER, ' .
-            'server_group_id INTEGER, format_video_group_id INTEGER)'
+            'server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT, status_id INTEGER)');
         $db->exec(
@@ -282,6 +287,8 @@ class VideoCommandTest extends TestCase
         $db->exec('CREATE TABLE ' . TestHelper::table('categories_videos') . ' (category_id INTEGER, video_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
         $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models_videos') . ' (model_id INTEGER, video_id INTEGER)');
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice', 1), (2, 'bob', 0)");
         $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'moderator', 0), (9, 'admin', 1)");
@@ -289,11 +296,11 @@ class VideoCommandTest extends TestCase
             "INSERT INTO " . TestHelper::table('videos') .
             " (video_id, user_id, admin_user_id, title, status_id, resolution_type, is_private, duration, file_size, " .
             "file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, r_ctr, description, " .
-            "content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id) VALUES " .
+            "content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id, screen_main, ip) VALUES " .
             "(10, 1, 8, 'Featured Clip', 1, 2, 0, 125, 1048576, '1920x1080', " .
-            "'2026-05-26 10:00:00', 40, 10, 123, 7, 0.125, 'Featured description', 3, 4, 5, 6, 7), " .
-            "(20, 2, 9, 'Disabled Clip', 0, 0, 2, 61, 524288, '640x360', '2026-05-25 10:00:00', 0, 0, 5, 0, 0.050, '', 0, 0, 0, 0, 0), " .
-            "(30, 1, 0, 'Older Active Clip', 1, 1, 1, 3600, 2097152, '1280x720', '2026-05-24 10:00:00', 15, 5, 20, 1, 0, '', 0, 0, 0, 0, 0)"
+            "'2026-05-26 10:00:00', 40, 10, 123, 7, 0.125, 'Featured description', 3, 4, 5, 6, 7, 3, 2130706433), " .
+            "(20, 2, 9, 'Disabled Clip', 0, 0, 2, 61, 524288, '640x360', '2026-05-25 10:00:00', 0, 0, 5, 0, 0.050, '', 0, 0, 0, 0, 0, 0, 0), " .
+            "(30, 1, 0, 'Older Active Clip', 1, 1, 1, 3600, 2097152, '1280x720', '2026-05-24 10:00:00', 15, 5, 20, 1, 0, '', 0, 0, 0, 0, 0, 0, 0)"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .
@@ -324,6 +331,8 @@ class VideoCommandTest extends TestCase
         $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 10), (2, 20)");
         $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one'), (2, 'tag-two')");
         $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 10), (2, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One')");
+        $db->exec("INSERT INTO " . TestHelper::table('models_videos') . " VALUES (1, 10)");
 
         return $db;
     }

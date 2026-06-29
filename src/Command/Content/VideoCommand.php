@@ -211,7 +211,12 @@ HELP
                 if (array_key_exists('r_ctr', $video) && is_numeric($video['r_ctr'])) {
                     $video['r_ctr'] = round((float) $video['r_ctr'] * 100, 4);
                 }
+                if (array_key_exists('ip', $video)) {
+                    $video['ip'] = $this->formatKvsIp($video['ip']);
+                }
 
+                $screenMain = $video['screen_main'] ?? null;
+                $video['thumb'] = is_numeric($screenMain) && (int) $screenMain > 0 ? (string) $screenMain : '';
                 $video['rating'] = format_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
                 return $video;
@@ -288,6 +293,30 @@ HELP
             $selects[] = 'fvg.title as format_video_group';
             $joins[] = "LEFT JOIN {$this->table('formats_videos_groups')} fvg "
                 . 'ON fvg.format_video_group_id = v.format_video_group_id';
+        }
+        if ($this->isFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_videos')} tv ON tv.tag_id = t.tag_id
+                WHERE tv.video_id = v.video_id
+            ) as tags";
+        }
+        if ($this->isFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_videos')} cv ON cv.category_id = c.category_id
+                WHERE cv.video_id = v.video_id
+            ) as categories";
+        }
+        if ($this->isFieldRequested($input, 'models')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(m.title)
+                FROM {$this->table('models')} m
+                INNER JOIN {$this->table('models_videos')} mv ON mv.model_id = m.model_id
+                WHERE mv.video_id = v.video_id
+            ) as models";
         }
 
         return [$selects, implode("\n                 ", $joins)];

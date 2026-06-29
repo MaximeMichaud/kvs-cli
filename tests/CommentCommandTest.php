@@ -155,7 +155,7 @@ class CommentCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
-            '--fields' => 'comment_id,comment_full,object,country,rating,is_approved',
+            '--fields' => 'comment_id,comment_full,object,ip,country,rating,is_approved',
             '--format' => 'json',
             '--limit' => 1,
         ]);
@@ -166,6 +166,7 @@ class CommentCommandTest extends TestCase
         $this->assertSame(30, (int) $rows[0]['comment_id']);
         $this->assertSame('Great test video', $rows[0]['comment_full']);
         $this->assertSame('Intro Video', $rows[0]['object']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
         $this->assertSame('Canada', $rows[0]['country']);
         $this->assertSame(5, (int) $rows[0]['rating']);
         $this->assertSame(1, (int) $rows[0]['is_approved']);
@@ -368,7 +369,7 @@ class CommentCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('comments') . ' (' .
             'comment_id INTEGER, object_id INTEGER, object_type_id INTEGER, object_sub_id INTEGER, ' .
             'user_id INTEGER, anonymous_username TEXT, is_approved INTEGER, is_review_needed INTEGER, ' .
-            'comment TEXT, country_code TEXT, rating INTEGER, added_date TEXT)'
+            'comment TEXT, ip INTEGER, country_code TEXT, rating INTEGER, added_date TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
@@ -445,6 +446,7 @@ class CommentCommandTest extends TestCase
             'is_review_needed' => 0,
             'comment' => 'Great test video',
             'country_code' => 'CA',
+            'ip' => 2130706433,
             'rating' => 5,
             'added_date' => date('Y-m-d H:i:s', time() - 3600),
         ]);
@@ -459,6 +461,7 @@ class CommentCommandTest extends TestCase
             'is_review_needed' => 1,
             'comment' => 'Needs review test phrase',
             'country_code' => 'US',
+            'ip' => 0,
             'rating' => 0,
             'added_date' => date('Y-m-d H:i:s', time() - 7200),
         ]);
@@ -473,6 +476,7 @@ class CommentCommandTest extends TestCase
             'is_review_needed' => 0,
             'comment' => 'Album feedback',
             'country_code' => '',
+            'ip' => 0,
             'rating' => 3,
             'added_date' => date('Y-m-d H:i:s', time() - 259200),
         ]);
@@ -486,9 +490,9 @@ class CommentCommandTest extends TestCase
         $stmt = $db->prepare(
             'INSERT INTO ' . TestHelper::table('comments') .
             ' (comment_id, object_id, object_type_id, object_sub_id, user_id, anonymous_username, ' .
-            'is_approved, is_review_needed, comment, country_code, rating, added_date) VALUES ' .
+            'is_approved, is_review_needed, comment, ip, country_code, rating, added_date) VALUES ' .
             '(:comment_id, :object_id, :object_type_id, :object_sub_id, :user_id, :anonymous_username, ' .
-            ':is_approved, :is_review_needed, :comment, :country_code, :rating, :added_date)'
+            ':is_approved, :is_review_needed, :comment, :ip, :country_code, :rating, :added_date)'
         );
         $stmt->execute($comment);
     }

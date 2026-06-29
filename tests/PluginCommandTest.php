@@ -52,6 +52,17 @@ class PluginCommandTest extends TestCase
             'Track internal statistics.',
             true
         );
+        $this->createGuardedPluginFixture();
+        $this->createPluginFixture(
+            'awe_black_label',
+            'AWE Red Label',
+            'Kernel Team',
+            'del',
+            '6.0.0',
+            'manual',
+            'AWE Red Label',
+            'Deleted internal plugin.'
+        );
 
         $this->config = new Configuration([
             'path' => $this->tempDir,
@@ -292,6 +303,38 @@ class PluginCommandTest extends TestCase
         $count = trim($output);
         $this->assertIsNumeric($count, 'Count format should output only a number');
         $this->assertGreaterThan(0, (int)$count, 'Should have at least 1 plugin');
+    }
+
+    public function testListDoesNotExecutePluginPhpFiles(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'id,status',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertContains('guarded_plugin', $ids);
+        $this->assertStringNotContainsString('Access denied', $output);
+    }
+
+    public function testListSkipsPluginsHiddenByKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'id',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertNotContains('awe_black_label', $ids);
     }
 
     // ========================================
@@ -765,10 +808,8 @@ class PluginCommandTest extends TestCase
 XML
         );
 
-        $enabledFunction = '';
-        if ($disabled) {
-            $enabledFunction = "\nfunction {$id}IsEnabled(): bool\n{\n    return false;\n}\n";
-        }
+        $enabledFunctionValue = $disabled ? 'false' : 'true';
+        $enabledFunction = "\nfunction {$id}IsEnabled(): bool\n{\n    return {$enabledFunctionValue};\n}\n";
 
         file_put_contents(
             $pluginDir . '/' . $id . '.php',
@@ -781,6 +822,40 @@ XML
 <?php
 \$lang['plugins']['{$id}']['title'] = '{$title}';
 \$lang['plugins']['{$id}']['description'] = '{$description}';
+
+PHP
+        );
+    }
+
+    private function createGuardedPluginFixture(): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/guarded_plugin';
+        mkdir($pluginDir . '/langs', 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/guarded_plugin.dat',
+            <<<XML
+<plugin>
+    <plugin_name>Guarded Plugin</plugin_name>
+    <author>Test</author>
+    <version>1.0.0</version>
+    <kvs_version>6.0.0</kvs_version>
+    <plugin_types>manual</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/guarded_plugin.php',
+            "<?php\nif (!defined('KVS_ADMIN')) {\n    exit('Access denied');\n}\nfunction guarded_pluginShow(): void\n{\n}\n"
+        );
+        file_put_contents($pluginDir . '/guarded_plugin.tpl', '');
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['guarded_plugin']['title'] = 'Guarded plugin';
+\$lang['plugins']['guarded_plugin']['description'] = 'Should not be executed by CLI list.';
 
 PHP
         );

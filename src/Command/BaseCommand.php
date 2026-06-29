@@ -515,6 +515,42 @@ abstract class BaseCommand extends Command
         $table->render();
     }
 
+    protected function formatKvsIp(mixed $value): string
+    {
+        if (!is_scalar($value) || $value === '') {
+            return '';
+        }
+
+        if (is_string($value) && (str_contains($value, '.') || str_contains($value, ':'))) {
+            return $value;
+        }
+
+        if (!is_numeric($value)) {
+            return (string) $value;
+        }
+
+        $ip = (int) $value;
+        if ($ip > 4294967295) {
+            $parts = [];
+            $parts[0] = intdiv($ip, 65536 * 65536 * 65536);
+            $parts[1] = intdiv($ip - $parts[0] * 65536 * 65536 * 65536, 65536 * 65536);
+            $parts[2] = intdiv($ip - $parts[0] * 65536 * 65536 * 65536 - $parts[1] * 65536 * 65536, 65536);
+            $parts[3] = $ip - $parts[0] * 65536 * 65536 * 65536 - $parts[1] * 65536 * 65536 - $parts[2] * 65536;
+            $parts = array_map('dechex', $parts);
+            $parts[1] = str_pad($parts[1], 4, '0', STR_PAD_LEFT);
+            $parts[2] = str_pad($parts[2], 4, '0', STR_PAD_LEFT);
+
+            return "0:0:0:0:{$parts[0]}:{$parts[1]}:{$parts[2]}:{$parts[3]}";
+        }
+
+        $first = intdiv($ip, 256 * 256 * 256);
+        $second = intdiv($ip - $first * 256 * 256 * 256, 256 * 256);
+        $third = intdiv($ip - $first * 256 * 256 * 256 - $second * 256 * 256, 256);
+        $fourth = $ip - $first * 256 * 256 * 256 - $second * 256 * 256 - $third * 256;
+
+        return "$first.$second.$third.$fourth";
+    }
+
     /**
      * @param list<string> $availableActions
      */

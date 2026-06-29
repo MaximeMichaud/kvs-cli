@@ -309,6 +309,7 @@ HELP
                     'object' => $comment['object_title'] ?? '',
                     'comment' => $comment['comment'] ?? '',
                     'comment_full' => $comment['comment'] ?? '',
+                    'ip' => array_key_exists('ip', $comment) ? $this->formatKvsIp($comment['ip']) : '',
                     'country' => $comment['country'] ?? '',
                     'rating' => $comment['rating'] ?? 0,
                     'is_approved' => $comment['is_approved'] ?? 0,

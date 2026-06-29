@@ -142,6 +142,7 @@ class ServerCommandTest extends TestCase
             '--format' => 'json',
             '--fields' => implode(',', [
                 'server_id',
+                'total_content',
                 'control_script_url',
                 'control_script_url_version',
                 'control_script_url_lock_ip',
@@ -168,6 +169,8 @@ class ServerCommandTest extends TestCase
         $rowsById = array_column($rows, null, 'server_id');
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('3 Videos', $rowsById[1]['total_content']);
+        $this->assertSame('2 Albums', $rowsById[3]['total_content']);
         $this->assertSame('https://control.example.test', $rowsById[1]['control_script_url']);
         $this->assertSame('1.0', $rowsById[1]['control_script_url_version']);
         $this->assertSame(1, (int) $rowsById[1]['control_script_url_lock_ip']);

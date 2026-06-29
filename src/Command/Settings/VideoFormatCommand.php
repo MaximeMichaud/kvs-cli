@@ -171,6 +171,7 @@ HELP
 
             // Transform data for display
             $formats = array_map(function (array $format): array {
+                $format = $this->addKvsFileBackedFields($format);
                 $format['id'] = $format['format_video_id'];
                 $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
@@ -249,6 +250,53 @@ HELP
         }
 
         return $formats;
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     * @return array<string, mixed>
+     */
+    private function addKvsFileBackedFields(array $format): array
+    {
+        $formatId = $this->getIntField($format, 'format_video_id');
+        $otherDataPath = $this->config->getKvsPath() . '/admin/data/other';
+
+        $format['watermark_image'] = '';
+        $format['watermark2_image'] = '';
+        $format['preroll_video'] = '';
+        $format['postroll_video'] = '';
+
+        if ($formatId <= 0) {
+            return $format;
+        }
+
+        if (is_file($otherDataPath . "/watermark_video_{$formatId}.png")) {
+            $format['watermark_image'] = "{$formatId}.png";
+            $format['watermark_image_url'] = "formats_videos.php?action=download_watermark&id={$formatId}";
+        } else {
+            $format['watermark_position_id'] = '';
+            $format['watermark_max_width'] = '';
+        }
+
+        if (is_file($otherDataPath . "/watermark2_video_{$formatId}.png")) {
+            $format['watermark2_image'] = "{$formatId}.png";
+            $format['watermark2_image_url'] = "formats_videos.php?action=download_watermark2&id={$formatId}";
+        } else {
+            $format['watermark2_position_id'] = '';
+            $format['watermark2_max_height'] = '';
+        }
+
+        if (is_file($otherDataPath . "/preroll_video_{$formatId}.mp4")) {
+            $format['preroll_video'] = "{$formatId}.mp4";
+            $format['preroll_video_url'] = "formats_videos.php?action=download_preroll&id={$formatId}";
+        }
+
+        if (is_file($otherDataPath . "/postroll_video_{$formatId}.mp4")) {
+            $format['postroll_video'] = "{$formatId}.mp4";
+            $format['postroll_video_url'] = "formats_videos.php?action=download_postroll&id={$formatId}";
+        }
+
+        return $format;
     }
 
     private function showFormat(InputInterface $input, ?string $id): int

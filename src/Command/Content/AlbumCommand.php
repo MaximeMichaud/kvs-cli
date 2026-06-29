@@ -175,6 +175,7 @@ HELP
                 $privacyIdVal = $album['is_private'] ?? 0;
                 $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
+                $albumIp = $album['ip'] ?? null;
 
                 return array_merge(
                     $album,
@@ -196,6 +197,8 @@ HELP
                         'comments_count' => $album['comments_count'] ?? 0,
                         'favourites_count' => $album['favourites_count'] ?? 0,
                         'purchases_count' => $album['purchases_count'] ?? 0,
+                        'ip' => array_key_exists('ip', $album) ? $this->formatKvsIp($albumIp) : '',
+                        'thumb' => '',
                         'rating' => $calculatedRating,
                     ],
                     $this->transformAlbumRelationFields($album)
@@ -245,6 +248,30 @@ HELP
             $selects[] = 'sg.title as server_group';
             $selects[] = 'sg.status_id as server_group_status_id';
             $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = a.server_group_id";
+        }
+        if ($this->isAlbumFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_albums')} ta ON ta.tag_id = t.tag_id
+                WHERE ta.album_id = a.album_id
+            ) as tags";
+        }
+        if ($this->isAlbumFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_albums')} ca ON ca.category_id = c.category_id
+                WHERE ca.album_id = a.album_id
+            ) as categories";
+        }
+        if ($this->isAlbumFieldRequested($input, 'models')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(m.title)
+                FROM {$this->table('models')} m
+                INNER JOIN {$this->table('models_albums')} ma ON ma.model_id = m.model_id
+                WHERE ma.album_id = a.album_id
+            ) as models";
         }
 
         return [
