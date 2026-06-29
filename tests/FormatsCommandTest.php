@@ -158,6 +158,43 @@ class FormatsCommandTest extends TestCase
         $this->assertSame('Conditional', $statusesByTitle['Conditional MP4'] ?? null);
     }
 
+    public function testAvailableFormatsExposeKvsAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'available',
+            '--fields' => implode(',', [
+                'format_video_id',
+                'title',
+                'postfix',
+                'status_id',
+                'format_video_group_id',
+                'access_level_id',
+                'is_download_enabled',
+                'is_timeline_enabled',
+                'is_hotlink_protection_enabled',
+                'videos_count',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'format_video_id');
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertSame('720p MP4', $rowsById[1]['title']);
+        $this->assertSame('_720p.mp4', $rowsById[1]['postfix']);
+        $this->assertSame(1, (int) $rowsById[1]['status_id']);
+        $this->assertSame(1, (int) $rowsById[1]['format_video_group_id']);
+        $this->assertSame(0, (int) $rowsById[1]['access_level_id']);
+        $this->assertSame(1, (int) $rowsById[1]['is_download_enabled']);
+        $this->assertSame(1, (int) $rowsById[1]['is_timeline_enabled']);
+        $this->assertSame(1, (int) $rowsById[1]['is_hotlink_protection_enabled']);
+        $this->assertSame(1, (int) $rowsById[1]['videos_count']);
+
+        $this->assertSame(0, (int) $rowsById[2]['is_hotlink_protection_enabled']);
+        $this->assertSame(0, (int) $rowsById[3]['videos_count']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListFormatsOutputFormats(string $format): void
     {
@@ -241,7 +278,7 @@ class FormatsCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
-            'video_id INTEGER, server_group_id INTEGER)'
+            'video_id INTEGER, server_group_id INTEGER, load_type_id INTEGER, status_id INTEGER, file_formats TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('admin_servers') . ' (' .
@@ -250,10 +287,17 @@ class FormatsCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('formats_videos') . ' (' .
             'format_video_id INTEGER, title TEXT, postfix TEXT, status_id INTEGER, is_conditional INTEGER, ' .
-            'format_video_group_id INTEGER, access_level_id INTEGER)'
+            'format_video_group_id INTEGER, access_level_id INTEGER, is_download_enabled INTEGER, ' .
+            'is_timeline_enabled INTEGER, is_hotlink_protection_disabled INTEGER)'
         );
 
-        $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (10, 1)');
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            ' (video_id, server_group_id, load_type_id, status_id, file_formats) VALUES ' .
+            "(10, 1, 1, 1, '||_720p.mp4|'), " .
+            "(11, 1, 1, 2, '||_720p.mp4|'), " .
+            "(12, 1, 1, 1, '||_1080p.mp4|')"
+        );
         $serverPath = $db->quote($this->storagePath);
         $db->exec(
             'INSERT INTO ' . TestHelper::table('admin_servers') .
@@ -262,9 +306,9 @@ class FormatsCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('formats_videos') .
             " VALUES " .
-            "(1, '720p MP4', '_720p.mp4', 1, 0, 1, 0), " .
-            "(2, '1080p MP4', '_1080p.mp4', 2, 0, 1, 2), " .
-            "(3, 'Conditional MP4', '_cond.mp4', 2, 1, 1, 0)"
+            "(1, '720p MP4', '_720p.mp4', 1, 0, 1, 0, 1, 1, 0), " .
+            "(2, '1080p MP4', '_1080p.mp4', 2, 0, 1, 2, 0, 0, 1), " .
+            "(3, 'Conditional MP4', '_cond.mp4', 2, 1, 1, 0, 0, 0, 0)"
         );
 
         return $db;

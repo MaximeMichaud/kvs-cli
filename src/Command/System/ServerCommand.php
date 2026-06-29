@@ -618,7 +618,7 @@ HELP
         }
 
         try {
-            $stmtGroups = $db->query("
+            $stmtGroups = $db->prepare("
                 SELECT g.*,
                     (SELECT COUNT(*) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as server_count,
                     (SELECT COUNT(*) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id AND status_id = 1) as active_count,
@@ -633,9 +633,16 @@ HELP
                     ) as total_content_count
                 FROM {$this->table('admin_servers_groups')} g
                 ORDER BY g.group_id ASC
+                LIMIT :limit
             ");
+            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 50);
+            if ($limit === null) {
+                return self::FAILURE;
+            }
+            $stmtGroups->bindValue('limit', $limit, \PDO::PARAM_INT);
+            $stmtGroups->execute();
             /** @var list<array<string, mixed>> $groups */
-            $groups = $stmtGroups !== false ? $stmtGroups->fetchAll(\PDO::FETCH_ASSOC) : [];
+            $groups = $stmtGroups->fetchAll(\PDO::FETCH_ASSOC);
 
             // Get content counts
             $videoGroups = [];

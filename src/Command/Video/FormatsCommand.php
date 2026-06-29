@@ -322,22 +322,7 @@ HELP
 
         try {
             $stmt = $db->query("
-                SELECT
-                    format_video_id as format_id,
-                    title,
-                    postfix,
-                    CASE
-                        WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " AND COALESCE(is_conditional, 0) = 1 THEN 'Conditional'
-                        WHEN status_id = " . StatusFormatter::FORMAT_DISABLED . " THEN 'Disabled'
-                        WHEN status_id = " . StatusFormatter::FORMAT_REQUIRED . " THEN 'Required'
-                        WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " THEN 'Optional'
-                        WHEN status_id = " . StatusFormatter::FORMAT_DELETING . " THEN 'Deleting'
-                        WHEN status_id = " . StatusFormatter::FORMAT_ERROR . " THEN 'Error'
-                        WHEN status_id = " . StatusFormatter::FORMAT_CONDITIONAL . " THEN 'Conditional'
-                        ELSE 'Unknown'
-                    END as status,
-                    format_video_group_id as group_id,
-                    access_level_id
+                SELECT *
                 FROM " . $this->table('formats_videos') . "
                 ORDER BY format_video_group_id ASC, title ASC
             ");
@@ -354,14 +339,100 @@ HELP
             foreach ($result as $row) {
                 if (is_array($row)) {
                     /** @var array<string, mixed> $row */
+                    $formatId = isset($row['format_video_id']) && is_numeric($row['format_video_id'])
+                        ? (int) $row['format_video_id'] : 0;
+                    $groupId = isset($row['format_video_group_id']) && is_numeric($row['format_video_group_id'])
+                        ? (int) $row['format_video_group_id'] : 0;
+                    $statusId = isset($row['status_id']) && is_numeric($row['status_id'])
+                        ? (int) $row['status_id'] : 0;
+                    $isConditional = isset($row['is_conditional'])
+                        && is_numeric($row['is_conditional'])
+                        && (int) $row['is_conditional'] === 1;
+                    $hotlinkDisabled = isset($row['is_hotlink_protection_disabled'])
+                        && is_numeric($row['is_hotlink_protection_disabled'])
+                        && (int) $row['is_hotlink_protection_disabled'] === 1;
+
+                    $row['format_id'] = $formatId;
+                    $row['group_id'] = $groupId;
+                    $row['status'] = $this->formatStatusLabel($statusId, $isConditional);
+                    $row['is_hotlink_protection_enabled'] = $hotlinkDisabled ? 0 : 1;
                     $formats[] = $row;
                 }
             }
 
-            return $formats;
+            return $this->addConfiguredFormatVideoCounts($db, $formats);
         } catch (\Exception $e) {
             return [];
         }
+    }
+
+    private function formatStatusLabel(int $statusId, bool $isConditional): string
+    {
+        if ($statusId === StatusFormatter::FORMAT_OPTIONAL && $isConditional) {
+            return 'Conditional';
+        }
+
+        return match ($statusId) {
+            StatusFormatter::FORMAT_DISABLED => 'Disabled',
+            StatusFormatter::FORMAT_REQUIRED => 'Required',
+            StatusFormatter::FORMAT_OPTIONAL => 'Optional',
+            StatusFormatter::FORMAT_DELETING => 'Deleting',
+            StatusFormatter::FORMAT_ERROR => 'Error',
+            StatusFormatter::FORMAT_CONDITIONAL => 'Conditional',
+            default => 'Unknown',
+        };
+    }
+
+    /**
+     * @param list<array<string, mixed>> $formats
+     * @return list<array<string, mixed>>
+     */
+    private function addConfiguredFormatVideoCounts(\PDO $db, array $formats): array
+    {
+        $postfixesByIndex = [];
+        foreach ($formats as $index => $format) {
+            $postfix = $format['postfix'] ?? '';
+            if (is_string($postfix) && $postfix !== '') {
+                $postfixesByIndex[$index] = $postfix;
+            }
+            $formats[$index]['videos_count'] = 0;
+        }
+
+        if ($postfixesByIndex === []) {
+            return $formats;
+        }
+
+        try {
+            $stmt = $db->query("
+                SELECT file_formats
+                FROM " . $this->table('videos') . "
+                WHERE load_type_id = 1 AND status_id IN (0, 1)
+            ");
+        } catch (\Throwable) {
+            return $formats;
+        }
+
+        if ($stmt === false) {
+            return $formats;
+        }
+
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $video) {
+            if (!is_array($video)) {
+                continue;
+            }
+            $fileFormats = $video['file_formats'] ?? '';
+            if (!is_string($fileFormats)) {
+                continue;
+            }
+
+            foreach ($postfixesByIndex as $index => $postfix) {
+                if (str_contains($fileFormats, "||{$postfix}|")) {
+                    $formats[$index]['videos_count']++;
+                }
+            }
+        }
+
+        return $formats;
     }
 
     /**

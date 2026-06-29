@@ -401,6 +401,37 @@ class ServerCommandTest extends TestCase
         $this->assertStringContainsString('1/2', $output);
     }
 
+    public function testServerGroupListHonorsLimit(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'group_id,title',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['group_id']);
+        $this->assertSame('Video Group', $rows[0]['title']);
+    }
+
+    public function testServerGroupListRejectsInvalidLimitBeforeSql(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--limit' => -1,
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --limit', $this->tester->getDisplay());
+    }
+
     public function testServerGroupListUsesKvsAdminMinimumCapacity(): void
     {
         $this->tester->execute([
