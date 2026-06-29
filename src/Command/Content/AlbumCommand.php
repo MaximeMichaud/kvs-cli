@@ -339,7 +339,7 @@ HELP
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= ' AND ' . $this->buildAdminSearchCondition(
+            $searchCondition = $this->buildAdminSearchCondition(
                 'a.album_id',
                 [
                     'a.title',
@@ -354,6 +354,18 @@ HELP
                 $search,
                 $params
             );
+            $websiteLinkCondition = $this->buildKvsWebsiteLinkSearchCondition(
+                'a.album_id',
+                'a.dir',
+                'WEBSITE_LINK_PATTERN_ALBUM',
+                $search,
+                $params,
+                'search_website_link'
+            );
+            if ($websiteLinkCondition !== null) {
+                $searchCondition = "({$searchCondition} OR {$websiteLinkCondition})";
+            }
+            $whereClause .= ' AND ' . $searchCondition;
         }
 
         $fieldFilter = $this->getStringOption($input, 'field-filter');

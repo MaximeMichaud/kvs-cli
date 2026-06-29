@@ -129,6 +129,10 @@ HELP
 
     private function listServers(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -333,6 +337,10 @@ HELP
 
     private function showServer(?string $id, InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
             return self::FAILURE;
@@ -983,6 +991,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

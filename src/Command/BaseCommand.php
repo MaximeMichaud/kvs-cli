@@ -896,6 +896,53 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * @param array<string, int|string> $params
+     */
+    protected function buildKvsWebsiteLinkSearchCondition(
+        string $idColumn,
+        string $dirColumn,
+        string $patternKey,
+        string $search,
+        array &$params,
+        string $paramPrefix
+    ): ?string {
+        if (filter_var($search, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+
+        $websiteUiParams = $this->loadKvsSystemSettingsFile('website_ui_params.dat');
+        $pattern = $websiteUiParams[$patternKey] ?? null;
+        if (!is_scalar($pattern) || (string) $pattern === '') {
+            return null;
+        }
+
+        $regex = preg_quote((string) $pattern, '|');
+        $regex = str_replace(
+            [preg_quote('%ID%', '|'), preg_quote('%DIR%', '|')],
+            ['(?P<kvs_id>[0-9]+)', '(?P<kvs_dir>.+?)'],
+            $regex
+        );
+
+        if (preg_match("|{$regex}|i", $search, $matches) !== 1) {
+            return null;
+        }
+
+        if (isset($matches['kvs_id']) && is_numeric($matches['kvs_id']) && (int) $matches['kvs_id'] > 0) {
+            $key = "{$paramPrefix}_id";
+            $params[$key] = (int) $matches['kvs_id'];
+            return "{$idColumn} = :{$key}";
+        }
+
+        if (isset($matches['kvs_dir']) && trim($matches['kvs_dir']) !== '') {
+            $key = "{$paramPrefix}_dir";
+            $params[$key] = trim($matches['kvs_dir']);
+            return "{$dirColumn} = :{$key}";
+        }
+
+        return null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function loadKvsSystemSettingsFile(string $filename): array

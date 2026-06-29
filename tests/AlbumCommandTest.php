@@ -283,6 +283,30 @@ class AlbumCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testAlbumListSearchesKvsWebsiteLinkLikeKvsAdmin(): void
+    {
+        file_put_contents(
+            $this->kvsPath . '/admin/data/system/website_ui_params.dat',
+            serialize([
+                'WEBSITE_LINK_PATTERN_ALBUM' => 'album/%ID%/%DIR%/',
+                'DISABLED_CONTENT_AVAILABILITY' => '0',
+            ])
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'https://example.test/album/20/disabled-album/',
+            '--fields' => 'album_id',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+    }
+
     public function testAlbumListSearchesDescriptionLikeKvsAdmin(): void
     {
         $this->tester->execute([

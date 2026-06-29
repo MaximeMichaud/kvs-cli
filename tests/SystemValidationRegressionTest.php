@@ -166,6 +166,43 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/Available actions: list, get,\s+set/', $tester->getDisplay());
     }
 
+    public function testOptionsRejectsUnsupportedIdsFormat(): void
+    {
+        foreach (['list', 'get'] as $action) {
+            $tester = new CommandTester($this->createOptionsCommand());
+            $tester->execute([
+                'action' => $action,
+                'name' => $action === 'get' ? 'PROJECT_NAME' : null,
+                '--format' => 'ids',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "$action: $display");
+            $this->assertStringContainsString('Invalid value for --format "ids"', $display);
+            $this->assertStringNotContainsString('no such table', strtolower($display));
+        }
+    }
+
+    public function testOptionsGetRejectsListOnlyFilters(): void
+    {
+        foreach (['prefix', 'category', 'search', 'with-value', 'enabled', 'disabled'] as $option) {
+            $tester = new CommandTester($this->createOptionsCommand());
+            $tester->execute([
+                'action' => 'get',
+                'name' => 'PROJECT_NAME',
+                '--' . $option => in_array($option, ['enabled', 'disabled'], true) ? true : 'value',
+                '--format' => 'count',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "--$option: $display");
+            $this->assertStringContainsString("The get action does not support --$option", $display);
+            $this->assertStringNotContainsString('no such table', strtolower($display));
+        }
+    }
+
     public function testOptionsSystemCategoryDoesNotMatchUserPrefix(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -432,6 +469,31 @@ class SystemValidationRegressionTest extends TestCase
         }
     }
 
+    public function testServerRejectsUnsupportedIdsFormatBeforeSql(): void
+    {
+        foreach (
+            [
+                ['action' => 'list'],
+                ['action' => 'show', 'id' => '1'],
+                ['action' => 'stats'],
+                ['action' => 'group'],
+                ['action' => 'group', 'id' => '1'],
+            ] as $arguments
+        ) {
+            $tester = new CommandTester($this->createServerCommand());
+            $tester->execute([
+                ...$arguments,
+                '--format' => 'ids',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), json_encode($arguments) . ': ' . $display);
+            $this->assertStringContainsString('Invalid value for --format "ids"', $display);
+            $this->assertStringNotContainsString('no such table', strtolower($display));
+        }
+    }
+
     public function testConversionRejectsInvalidStatus(): void
     {
         $tester = new CommandTester($this->createConversionCommand());
@@ -444,6 +506,52 @@ class SystemValidationRegressionTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode());
         $this->assertStringContainsString('Invalid value for --status', $tester->getDisplay());
+    }
+
+    public function testQueueRejectsUnsupportedIdsFormatBeforeSql(): void
+    {
+        foreach (
+            [
+                ['action' => 'list'],
+                ['action' => 'show', 'id' => '1'],
+                ['action' => 'stats'],
+                ['action' => 'history'],
+            ] as $arguments
+        ) {
+            $tester = new CommandTester($this->createQueueCommand());
+            $tester->execute([
+                ...$arguments,
+                '--format' => 'ids',
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), json_encode($arguments) . ': ' . $display);
+            $this->assertStringContainsString('Invalid value for --format "ids"', $display);
+            $this->assertStringNotContainsString('no such table', strtolower($display));
+        }
+    }
+
+    public function testConversionRejectsUnsupportedIdsFormatBeforeSql(): void
+    {
+        foreach (
+            [
+                ['action' => 'list'],
+                ['action' => 'show', 'id' => '1'],
+                ['action' => 'stats'],
+            ] as $arguments
+        ) {
+            $tester = new CommandTester($this->createConversionCommand());
+            $tester->execute([
+                ...$arguments,
+                '--format' => 'ids',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), json_encode($arguments) . ': ' . $display);
+            $this->assertStringContainsString('Invalid value for --format "ids"', $display);
+            $this->assertStringNotContainsString('no such table', strtolower($display));
+        }
     }
 
     public function testVideoFormatRejectsInvalidStatus(): void

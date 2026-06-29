@@ -24,6 +24,8 @@ class ServerCommand extends BaseCommand
     use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     protected function configure(): void
     {
         $this
@@ -106,6 +108,10 @@ HELP
 
     private function listServers(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -503,6 +509,10 @@ HELP
 
     private function showServer(?string $id, InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
             return self::FAILURE;
@@ -726,6 +736,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -882,6 +896,10 @@ HELP
 
     private function listGroups(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -1045,6 +1063,10 @@ HELP
 
     private function showGroup(string $id, InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $requestedGroupId = $this->getRequiredPositiveId($id, 'Server group');
         if ($requestedGroupId === null) {
             return self::FAILURE;

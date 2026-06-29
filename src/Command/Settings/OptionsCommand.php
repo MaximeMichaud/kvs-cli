@@ -20,6 +20,9 @@ class OptionsCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+    private const LIST_ONLY_OPTIONS = ['prefix', 'category', 'search', 'with-value', 'enabled', 'disabled'];
+
     /**
      * Serialized KVS settings files that duplicate selected ktvs_options values.
      *
@@ -139,6 +142,9 @@ HELP
         if ($this->hasConflictingBoolOptions($input, ['enabled', 'disabled'])) {
             return self::FAILURE;
         }
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -251,6 +257,13 @@ HELP
 
     private function getOption(InputInterface $input): int
     {
+        if ($this->rejectListOnlyOptions($input, 'get')) {
+            return self::FAILURE;
+        }
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $name = $this->getStringArgument($input, 'name');
         if ($name === null || $name === '') {
             $this->io()->error('Option name is required');
@@ -335,6 +348,26 @@ HELP
             $this->io()->error('Failed to fetch option: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function rejectListOnlyOptions(InputInterface $input, string $action): bool
+    {
+        foreach (self::LIST_ONLY_OPTIONS as $option) {
+            $value = $input->getOption($option);
+            if ($value === null || $value === false) {
+                continue;
+            }
+
+            $this->io()->error(sprintf(
+                'The %s action does not support --%s. Use list --%s to filter options.',
+                $action,
+                $option,
+                $option
+            ));
+            return true;
+        }
+
+        return false;
     }
 
     private function setOption(InputInterface $input): int

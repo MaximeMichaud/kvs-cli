@@ -403,7 +403,7 @@ HELP
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereSql .= ' AND ' . $this->buildAdminSearchCondition(
+            $searchCondition = $this->buildAdminSearchCondition(
                 'v.video_id',
                 [
                     'v.title',
@@ -421,6 +421,18 @@ HELP
                 $search,
                 $params
             );
+            $websiteLinkCondition = $this->buildKvsWebsiteLinkSearchCondition(
+                'v.video_id',
+                'v.dir',
+                'WEBSITE_LINK_PATTERN',
+                $search,
+                $params,
+                'search_website_link'
+            );
+            if ($websiteLinkCondition !== null) {
+                $searchCondition = "({$searchCondition} OR {$websiteLinkCondition})";
+            }
+            $whereSql .= ' AND ' . $searchCondition;
         }
 
         if (!$this->applyVideoAdminScalarFilters($input, $whereSql, $params)) {

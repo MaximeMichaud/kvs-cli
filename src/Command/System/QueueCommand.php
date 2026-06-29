@@ -21,6 +21,8 @@ use function KVS\CLI\Utils\pluralize;
 )]
 class QueueCommand extends BaseCommand
 {
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     /**
      * Task type definitions - maps type_id to human-readable names
      * @var array<int, string>
@@ -147,6 +149,10 @@ HELP
 
     private function listTasks(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -383,6 +389,10 @@ HELP
 
     private function showTask(?string $id, InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $taskId = $this->getRequiredPositiveId($id, 'Task');
         if ($taskId === null) {
             return self::FAILURE;
@@ -591,6 +601,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -804,6 +818,10 @@ HELP
 
     private function showHistory(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
