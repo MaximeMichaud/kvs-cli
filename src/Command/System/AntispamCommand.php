@@ -21,6 +21,52 @@ class AntispamCommand extends BaseCommand
 
     private const OUTPUT_FORMATS = ['table', 'json'];
     private const WRITE_UNSUPPORTED_OPTIONS = ['format'];
+    private const BLACKLIST_DELTA_UNSUPPORTED_OPTIONS = [
+        'format',
+        'words-ignore-feedbacks',
+        'blacklist-action',
+        'clear-words',
+        'clear-domains',
+        'clear-ips',
+        'duplicates-comments',
+        'duplicates-messages',
+        'videos-captcha',
+        'videos-disable',
+        'videos-delete',
+        'videos-error',
+        'videos-history',
+        'albums-captcha',
+        'albums-disable',
+        'albums-delete',
+        'albums-error',
+        'albums-history',
+        'posts-captcha',
+        'posts-disable',
+        'posts-delete',
+        'posts-error',
+        'posts-history',
+        'playlists-captcha',
+        'playlists-disable',
+        'playlists-delete',
+        'playlists-error',
+        'playlists-history',
+        'dvds-captcha',
+        'dvds-disable',
+        'dvds-delete',
+        'dvds-error',
+        'dvds-history',
+        'comments-captcha',
+        'comments-disable',
+        'comments-delete',
+        'comments-error',
+        'comments-history',
+        'messages-delete',
+        'messages-error',
+        'messages-history',
+        'feedbacks-delete',
+        'feedbacks-error',
+        'feedbacks-history',
+    ];
     private const MUTATION_OPTIONS = [
         'words',
         'words-ignore-feedbacks',
@@ -738,7 +784,7 @@ HELP
 
     private function addToBlacklist(InputInterface $input): int
     {
-        if ($this->rejectUnsupportedOptions($input, 'add', self::WRITE_UNSUPPORTED_OPTIONS)) {
+        if ($this->rejectUnsupportedOptions($input, 'add', self::BLACKLIST_DELTA_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 
@@ -805,7 +851,7 @@ HELP
 
     private function removeFromBlacklist(InputInterface $input): int
     {
-        if ($this->rejectUnsupportedOptions($input, 'remove', self::WRITE_UNSUPPORTED_OPTIONS)) {
+        if ($this->rejectUnsupportedOptions($input, 'remove', self::BLACKLIST_DELTA_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

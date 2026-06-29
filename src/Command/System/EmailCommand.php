@@ -592,6 +592,12 @@ HELP
             return self::FAILURE;
         }
 
+        $lineLimit = $this->getOptionalNonNegativeIntOption($input, 'lines');
+        if ($lineLimit === false) {
+            return self::FAILURE;
+        }
+        $limit = $lineLimit ?? 50;
+
         $logDirs = [
             $this->config->getAdminPath() . '/logs',
             $this->config->getAdminPath() . '/data/logs',
@@ -672,7 +678,6 @@ HELP
         }
 
         $lines = $this->splitLogLines($content);
-        $limit = max(0, $this->getIntOptionOrDefault($input, 'lines', 50));
         $totalLines = count($lines);
         $shownLines = $limit > 0 && $totalLines > $limit ? array_slice($lines, -$limit) : $lines;
 

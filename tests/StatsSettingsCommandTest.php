@@ -190,6 +190,74 @@ PHP
         $this->assertStringContainsString('The show action does not support --traffic', $display);
     }
 
+    public function testShowDisplaysPlayerReportingAsKvsEnum(): void
+    {
+        $this->writeStatsParams([
+            'player_stats_reporting' => 0,
+            'videos_stats_limit_countries_option' => '',
+            'videos_stats_limit_countries' => [],
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Player reporting', $display);
+        $this->assertStringContainsString('KVS', $display);
+        $this->assertStringNotContainsString('Player reporting       │ No', $display);
+    }
+
+    public function testSetAcceptsKvsPlayerReportingBothValue(): void
+    {
+        $this->tester->execute([
+            'action' => 'set',
+            '--player-reporting' => '2',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $params = $this->readStatsParams();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame(2, $params['player_stats_reporting'] ?? null);
+        $this->assertStringContainsString('Player reporting: KVS and Google Analytics', $display);
+    }
+
+    public function testSetRejectsInvalidPlayerReportingValue(): void
+    {
+        $this->tester->execute([
+            'action' => 'set',
+            '--player-reporting' => '3',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Invalid value for --player-reporting (use: 0, 1, or 2)', $display);
+    }
+
+    public function testSetRejectsFormatBeforeNoopSuccess(): void
+    {
+        foreach (['json', 'xml'] as $format) {
+            $tester = new CommandTester(
+                new StatsSettingsCommand(new Configuration(['path' => $this->kvsPath]))
+            );
+
+            $tester->execute([
+                'action' => 'set',
+                '--format' => $format,
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "format=$format: $display");
+            $this->assertStringContainsString('The set action does not support --format', $display);
+            $this->assertStringNotContainsString('No settings to update', $display);
+        }
+    }
+
     public function testExperimentalPromptRefusalFails(): void
     {
         $this->tester->setInputs(['no']);

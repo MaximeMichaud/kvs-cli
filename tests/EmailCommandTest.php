@@ -321,6 +321,24 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testEmailLogRejectsInvalidLinesBeforeLogLookup(): void
+    {
+        foreach (['abc', '-5', '1.5'] as $lines) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'log',
+                '--lines' => $lines,
+                '--format' => 'json',
+            ]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "lines=$lines: $output");
+            $this->assertStringContainsString('Invalid value for --lines (use: integer >= 0)', $output);
+            $this->assertStringNotContainsString('No email log files found', $output);
+        }
+    }
+
     public function testEmailTemplatesAction(): void
     {
         $this->tester->execute([

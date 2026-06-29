@@ -205,6 +205,73 @@ class AntispamCommandTest extends TestCase
         }
     }
 
+    public function testBlacklistDeltaActionsRejectSettingsOptionsBeforeNoopSuccess(): void
+    {
+        $unsupportedOptions = [
+            'words-ignore-feedbacks' => '1',
+            'blacklist-action' => 'delete',
+            'clear-words' => true,
+            'clear-domains' => true,
+            'clear-ips' => true,
+            'duplicates-comments' => '1',
+            'duplicates-messages' => '1',
+            'videos-captcha' => '5/60',
+            'videos-disable' => '5/60',
+            'videos-delete' => '5/60',
+            'videos-error' => '5/60',
+            'videos-history' => 'user',
+            'albums-captcha' => '5/60',
+            'albums-disable' => '5/60',
+            'albums-delete' => '5/60',
+            'albums-error' => '5/60',
+            'albums-history' => 'user',
+            'posts-captcha' => '5/60',
+            'posts-disable' => '5/60',
+            'posts-delete' => '5/60',
+            'posts-error' => '5/60',
+            'posts-history' => 'user',
+            'playlists-captcha' => '5/60',
+            'playlists-disable' => '5/60',
+            'playlists-delete' => '5/60',
+            'playlists-error' => '5/60',
+            'playlists-history' => 'user',
+            'dvds-captcha' => '5/60',
+            'dvds-disable' => '5/60',
+            'dvds-delete' => '5/60',
+            'dvds-error' => '5/60',
+            'dvds-history' => 'user',
+            'comments-captcha' => '5/60',
+            'comments-disable' => '5/60',
+            'comments-delete' => '5/60',
+            'comments-error' => '5/60',
+            'comments-history' => 'user',
+            'messages-delete' => '5/60',
+            'messages-error' => '5/60',
+            'messages-history' => 'user',
+            'feedbacks-delete' => '5/60',
+            'feedbacks-error' => '5/60',
+            'feedbacks-history' => 'user',
+        ];
+
+        foreach (['add', 'remove'] as $action) {
+            foreach ($unsupportedOptions as $option => $value) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    '--force' => true,
+                    'action' => $action,
+                    "--$option" => $value,
+                ]);
+
+                $output = $tester->getDisplay();
+
+                $this->assertSame(1, $tester->getStatusCode(), "$action --$option: $output");
+                $this->assertStringContainsString("The $action action does not support --$option", $output);
+                $this->assertStringNotContainsString('Nothing to add', $output);
+                $this->assertStringNotContainsString('Nothing removed', $output);
+            }
+        }
+    }
+
     public function testAntispamSetInvalidBlacklistAction(): void
     {
         $this->tester->execute([

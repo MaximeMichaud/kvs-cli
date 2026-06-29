@@ -21,6 +21,7 @@ class StatsSettingsCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'json'];
+    private const SET_UNSUPPORTED_OPTIONS = ['format'];
     private const SET_OPTIONS = [
         'traffic',
         'traffic-countries',
@@ -87,7 +88,7 @@ class StatsSettingsCommand extends BaseCommand
             ->addOption('player-devices', null, InputOption::VALUE_REQUIRED, 'Collect player devices (0|1)')
             ->addOption('player-embed-profiles', null, InputOption::VALUE_REQUIRED, 'Collect embed profiles (0|1)')
             ->addOption('player-keep', null, InputOption::VALUE_REQUIRED, 'Keep player stats (days, 0=forever)')
-            ->addOption('player-reporting', null, InputOption::VALUE_REQUIRED, 'Player stats reporting (0|1)')
+            ->addOption('player-reporting', null, InputOption::VALUE_REQUIRED, 'Player stats reporting (0=KVS|1=Google Analytics|2=both)')
             // Videos stats
             ->addOption('videos', null, InputOption::VALUE_REQUIRED, 'Collect videos stats (0|1)')
             ->addOption('videos-unique', null, InputOption::VALUE_REQUIRED, 'Collect unique video views (0|1)')
@@ -141,7 +142,7 @@ Manage KVS statistics collection settings.
   --player-devices        Collect device data (0|1)
   --player-embed-profiles Collect embed profile data (0|1)
   --player-keep           Retention period in days (0=forever)
-  --player-reporting      Enable player reporting (0|1)
+  --player-reporting      Player reporting target (0=KVS, 1=Google Analytics, 2=both)
 
 <fg=yellow>VIDEOS OPTIONS:</>
   --videos                Enable videos stats collection (0|1)
@@ -442,7 +443,7 @@ HELP
             ['Collect devices', $this->formatBool($this->getParamInt($params, 'collect_player_stats_devices'))],
             ['Collect embed profiles', $this->formatBool($this->getParamInt($params, 'collect_player_stats_embed_profiles'))],
             ['Retention period', $this->formatRetention($this->getParamInt($params, 'keep_player_stats_period'))],
-            ['Player reporting', $this->formatBool($this->getParamInt($params, 'player_stats_reporting'))],
+            ['Player reporting', $this->formatPlayerReporting($this->getParamInt($params, 'player_stats_reporting'))],
         ];
         $this->renderTable(['Setting', 'Value'], $playerData);
 
@@ -518,6 +519,10 @@ HELP
 
     private function setSettings(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'set', self::SET_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $rawParams = $this->loadRawStatsParams();
         $params = $this->loadStatsParams();
         $changes = [];
@@ -582,7 +587,6 @@ HELP
             'player-countries' => ['collect_player_stats_countries', 'Player countries'],
             'player-devices' => ['collect_player_stats_devices', 'Player devices'],
             'player-embed-profiles' => ['collect_player_stats_embed_profiles', 'Player embed profiles'],
-            'player-reporting' => ['player_stats_reporting', 'Player reporting'],
             'videos' => ['collect_videos_stats', 'Videos stats'],
             'videos-unique' => ['collect_videos_stats_unique', 'Videos unique'],
             'videos-embeds-unique' => ['collect_videos_embeds_unique', 'Videos embeds unique'],
@@ -611,6 +615,16 @@ HELP
             }
             $params[$paramKey] = (int) $value;
             $changes[] = "$label: " . $this->formatBool((int) $value);
+        }
+
+        $playerReporting = $this->getStringOption($input, 'player-reporting');
+        if ($playerReporting !== null) {
+            if (!$this->validatePlayerReporting($playerReporting)) {
+                $this->io()->error('Invalid value for --player-reporting (use: 0, 1, or 2)');
+                return self::FAILURE;
+            }
+            $params['player_stats_reporting'] = (int) $playerReporting;
+            $changes[] = 'Player reporting: ' . $this->formatPlayerReporting((int) $playerReporting);
         }
 
         return null;
@@ -802,6 +816,11 @@ HELP
         return in_array($value, ['0', '1'], true);
     }
 
+    private function validatePlayerReporting(string $value): bool
+    {
+        return in_array($value, ['0', '1', '2'], true);
+    }
+
     private function validateInt(string $value): bool
     {
         // Only accept non-negative integers (not floats like 1.5 or scientific notation like 1e3)
@@ -887,6 +906,16 @@ HELP
     private function formatBool(int $value): string
     {
         return $value === 1 ? '<fg=green>Yes</>' : '<fg=yellow>No</>';
+    }
+
+    private function formatPlayerReporting(int $value): string
+    {
+        return match ($value) {
+            0 => 'KVS',
+            1 => 'Google Analytics',
+            2 => 'KVS and Google Analytics',
+            default => "Unknown ($value)",
+        };
     }
 
     private function formatRetention(int $days): string
