@@ -38,6 +38,16 @@ class UserCommand extends BaseCommand
         'limit',
     ];
 
+    private const SENSITIVE_LIST_FIELDS = [
+        'pass',
+        'pass_bill',
+        'temp_pass',
+        'remember_me_key',
+        'remember_me_valid_for',
+        'last_session_id_hash',
+        'login_protection_restore_code',
+    ];
+
     /** @var list<string> */
     private const ACTIVITY_FILTERS = [
         'new_today',
@@ -362,6 +372,7 @@ HELP
                     'days_left_message',
                 ]
             );
+            $knownFields = array_values(array_diff($knownFields, self::SENSITIVE_LIST_FIELDS));
 
             /** @var list<array<string, mixed>> $users */
             $users = $stmt->fetchAll();
@@ -377,7 +388,7 @@ HELP
                 $avatar = is_scalar($avatar) ? (string) $avatar : '';
                 $user['thumb'] = $avatar;
 
-                return $this->hydrateUserListAppendFields($db, $user);
+                return $this->filterSensitiveUserFields($this->hydrateUserListAppendFields($db, $user));
             }, $users);
 
             // Determine default fields based on filters
@@ -397,6 +408,19 @@ HELP
             $this->io()->error('Failed to fetch users: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $user
+     * @return array<string, mixed>
+     */
+    private function filterSensitiveUserFields(array $user): array
+    {
+        foreach (self::SENSITIVE_LIST_FIELDS as $field) {
+            unset($user[$field]);
+        }
+
+        return $user;
     }
 
     private function parseIpv4Option(string $ip): ?string

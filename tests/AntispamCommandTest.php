@@ -142,6 +142,28 @@ class AntispamCommandTest extends TestCase
         }
     }
 
+    public function testReadActionsRejectMutationOptions(): void
+    {
+        $cases = [
+            ['show', '--words', 'spam', 'words'],
+            ['blacklist', '--clear-words', true, 'clear-words'],
+        ];
+
+        foreach ($cases as [$action, $option, $value, $optionName]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => $action,
+                $option => $value,
+                '--format' => 'json',
+            ]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $action . ': ' . $output);
+            $this->assertStringContainsString("The $action action does not support --$optionName", $output);
+        }
+    }
+
     public function testAntispamCommandMetadata(): void
     {
         $this->assertEquals('system:antispam', $this->command->getName());

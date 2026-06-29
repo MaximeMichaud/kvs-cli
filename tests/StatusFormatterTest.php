@@ -359,7 +359,7 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals('<fg=cyan>In process</>', StatusFormatter::task(1));
         $this->assertEquals('<fg=red>Error</>', StatusFormatter::task(2));
         $this->assertEquals('<fg=green>Completed</>', StatusFormatter::task(3));
-        $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::task(4));
+        $this->assertEquals('<fg=gray>Cancelled</>', StatusFormatter::task(4));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::task(999));
 
         // Without color
@@ -367,7 +367,7 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals('In process', StatusFormatter::task(1, false));
         $this->assertEquals('Error', StatusFormatter::task(2, false));
         $this->assertEquals('Completed', StatusFormatter::task(3, false));
-        $this->assertEquals('Deleted', StatusFormatter::task(4, false));
+        $this->assertEquals('Cancelled', StatusFormatter::task(4, false));
     }
 
     /**
@@ -397,6 +397,7 @@ class StatusFormatterTest extends TestCase
         $this->assertEquals(1, StatusFormatter::TASK_PROCESSING);
         $this->assertEquals(2, StatusFormatter::TASK_FAILED);
         $this->assertEquals(3, StatusFormatter::TASK_COMPLETED);
+        $this->assertEquals(4, StatusFormatter::TASK_CANCELLED);
         $this->assertEquals(4, StatusFormatter::TASK_DELETED);
 
         // Video format constants

@@ -162,6 +162,20 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('45', $rowsById[2]['ftp_timeout']);
     }
 
+    public function testConversionListRejectsRawCredentialFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,ftp_pass',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown field(s): ftp_pass', $this->tester->getDisplay());
+    }
+
     public function testConversionListExposesKvsAdminComputedFields(): void
     {
         $logsDir = $this->kvsPath . '/admin/logs';
@@ -601,7 +615,7 @@ class ConversionCommandTest extends TestCase
         $this->assertSame(1, $this->tester->getStatusCode(), $output);
         $this->assertSame('50', $rows[0]['server_id']);
         $this->assertSame('Missing Log Converter', $rows[0]['title']);
-        $this->assertSame($serverPath . '/cron_log.txt', $rows[0]['file']);
+        $this->assertSame($serverPath . '/log.txt', $rows[0]['file']);
         $this->assertFalse($rows[0]['exists']);
         $this->assertSame('Log file not found', $rows[0]['message']);
         $this->assertStringNotContainsString('[WARNING]', $output);
@@ -611,6 +625,7 @@ class ConversionCommandTest extends TestCase
     {
         $conversionPath = $this->kvsPath . '/admin/data/conversion';
         mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/log.txt', "INFO  Local conversion log\n");
         file_put_contents($conversionPath . '/cron_log.txt', "INFO  Local conversion cron\n");
         $this->insertLocalConversionServer(
             52,
@@ -627,7 +642,8 @@ class ConversionCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('Local conversion cron', $output);
+        $this->assertStringContainsString('Local conversion log', $output);
+        $this->assertStringNotContainsString('Local conversion cron', $output);
         $this->assertStringNotContainsString('/old/kvs/root', $output);
     }
 
@@ -797,6 +813,33 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testConversionShowRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--status' => 'disabled',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The show action does not support --status', $this->tester->getDisplay());
+    }
+
+    public function testConversionStatsRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'stats',
+            '--errors' => true,
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The stats action does not support --errors', $this->tester->getDisplay());
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -809,7 +852,7 @@ class ConversionCommandTest extends TestCase
             'server_id INTEGER, title TEXT, status_id INTEGER, task_types TEXT, is_allow_any_tasks INTEGER, ' .
             'max_tasks INTEGER, max_tasks_priority INTEGER, process_priority INTEGER, option_storage_servers INTEGER, ' .
             'option_pull_source_files INTEGER, is_debug_enabled INTEGER, connection_type_id INTEGER, path TEXT, ' .
-            'ftp_host TEXT, ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, ftp_timeout TEXT, total_space INTEGER, ' .
+            'ftp_host TEXT, ftp_port TEXT, ftp_user TEXT, ftp_pass TEXT, ftp_folder TEXT, ftp_timeout TEXT, total_space INTEGER, ' .
             'free_space INTEGER, `load` REAL, heartbeat_date TEXT, api_version TEXT, error_id INTEGER, ' .
             'error_iteration INTEGER, added_date TEXT)'
         );
@@ -826,19 +869,19 @@ class ConversionCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
             ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
             'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
-            'path, ftp_host, ftp_port, ftp_user, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_pass, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
             'api_version, error_id, error_iteration, added_date) VALUES ' .
             "(1, 'Main Converter', 1, 'a:1:{i:0;s:12:\"video_admins\";}', 0, 4, 1, 9, 1, 0, 0, 0, " .
-            "'/tmp/kvs-main-converter', '', '', '', '', '', 10737418240, 6442450944, 1.25, " .
+            "'/tmp/kvs-main-converter', '', '', '', '', '', '', 10737418240, 6442450944, 1.25, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-20 10:00:00'), " .
             "(2, 'Disabled Converter', 0, '', 1, 2, 0, 14, 0, 0, 0, 2, " .
-            "'', 'ftp.example.test', '21', 'ftp-user', '/incoming', '45', 5368709120, 1073741824, 0.10, " .
+            "'', 'ftp.example.test', '21', 'ftp-user', 'hidden-fixture-value', '/incoming', '45', 5368709120, 1073741824, 0.10, " .
             "'0000-00-00 00:00:00', '7.0.0', 0, 0, '2026-05-21 10:00:00'), " .
             "(3, 'Error Converter', 1, '', 1, 4, 0, 4, 1, 1, 1, 0, " .
-            "'/tmp/kvs-error-converter', '', '', '', '', '', 2147483648, 536870912, 3.50, " .
+            "'/tmp/kvs-error-converter', '', '', '', '', '', '', 2147483648, 536870912, 3.50, " .
             "'2026-05-26 10:00:00', '7.0.0', 4, 3, '2026-05-22 10:00:00'), " .
             "(4, 'Init Converter', 2, '', 1, 1, 0, 19, 0, 0, 0, 1, " .
-            "'/mnt/kvs-init-converter', '', '', '', '', '', 1073741824, 536870912, 0.00, " .
+            "'/mnt/kvs-init-converter', '', '', '', '', '', '', 1073741824, 536870912, 0.00, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-23 10:00:00')"
         );
         $db->exec(
@@ -859,10 +902,10 @@ class ConversionCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
             ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
             'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
-            'path, ftp_host, ftp_port, ftp_user, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_pass, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
             'api_version, error_id, error_iteration, added_date) VALUES ' .
             "(:server_id, :title, 1, '', 1, 1, 0, 14, 0, 0, 0, 0, " .
-            ":path, '', '', '', '', '', 1073741824, 536870912, 0.10, " .
+            ":path, '', '', '', '', '', '', 1073741824, 536870912, 0.10, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-24 10:00:00')"
         );
         $stmt->execute([

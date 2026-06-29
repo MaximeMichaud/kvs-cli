@@ -20,6 +20,54 @@ class AntispamCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'json'];
+    private const MUTATION_OPTIONS = [
+        'words',
+        'words-ignore-feedbacks',
+        'domains',
+        'ips',
+        'blacklist-action',
+        'clear-words',
+        'clear-domains',
+        'clear-ips',
+        'duplicates-comments',
+        'duplicates-messages',
+        'videos-captcha',
+        'videos-disable',
+        'videos-delete',
+        'videos-error',
+        'videos-history',
+        'albums-captcha',
+        'albums-disable',
+        'albums-delete',
+        'albums-error',
+        'albums-history',
+        'posts-captcha',
+        'posts-disable',
+        'posts-delete',
+        'posts-error',
+        'posts-history',
+        'playlists-captcha',
+        'playlists-disable',
+        'playlists-delete',
+        'playlists-error',
+        'playlists-history',
+        'dvds-captcha',
+        'dvds-disable',
+        'dvds-delete',
+        'dvds-error',
+        'dvds-history',
+        'comments-captcha',
+        'comments-disable',
+        'comments-delete',
+        'comments-error',
+        'comments-history',
+        'messages-delete',
+        'messages-error',
+        'messages-history',
+        'feedbacks-delete',
+        'feedbacks-error',
+        'feedbacks-history',
+    ];
 
     /** @var array<string, string> */
     private const SECTIONS = [
@@ -195,6 +243,10 @@ HELP
 
     private function showSettings(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'show', self::MUTATION_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -324,6 +376,10 @@ HELP
 
     private function showBlacklist(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'blacklist', self::MUTATION_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

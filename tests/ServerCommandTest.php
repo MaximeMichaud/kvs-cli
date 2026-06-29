@@ -208,6 +208,22 @@ class ServerCommandTest extends TestCase
         $this->assertSame(1, (int) $rowsById[3]['is_debug_enabled']);
     }
 
+    public function testServerListRejectsRawCredentialFields(): void
+    {
+        $this->insertS3StorageServer();
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => 'server_id,ftp_pass,s3_api_secret',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown field(s): ftp_pass, s3_api_secret', $this->tester->getDisplay());
+    }
+
     public function testServerListExposesKvsAdminComputedWarningFields(): void
     {
         $this->tester->execute([
@@ -736,6 +752,60 @@ class ServerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Server group not found: 999999', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testServerShowRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--status' => 'disabled',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The show action does not support --status', $this->tester->getDisplay());
+    }
+
+    public function testServerStatsRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'stats',
+            '--limit' => 1,
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The stats action does not support --limit', $this->tester->getDisplay());
+    }
+
+    public function testServerGroupListRejectsStorageFilters(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--status' => 'disabled',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The group action does not support --status', $this->tester->getDisplay());
+    }
+
+    public function testServerGroupShowRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--limit' => 1,
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The group action does not support --limit', $this->tester->getDisplay());
     }
 
     public function testServerCommandMetadata(): void

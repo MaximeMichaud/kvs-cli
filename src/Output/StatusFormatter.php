@@ -76,7 +76,8 @@ class StatusFormatter
     public const TASK_PROCESSING = 1;
     public const TASK_FAILED = 2;
     public const TASK_COMPLETED = 3;
-    public const TASK_DELETED = 4;
+    public const TASK_CANCELLED = 4;
+    public const TASK_DELETED = self::TASK_CANCELLED;
 
     // Server status constants
     public const SERVER_DISABLED = 0;
@@ -345,7 +346,7 @@ class StatusFormatter
             self::TASK_PROCESSING => ['text' => 'In process', 'color' => 'cyan'],
             self::TASK_FAILED => ['text' => 'Error', 'color' => 'red'],
             self::TASK_COMPLETED => ['text' => 'Completed', 'color' => 'green'],
-            self::TASK_DELETED => ['text' => 'Deleted', 'color' => 'gray'],
+            self::TASK_CANCELLED => ['text' => 'Cancelled', 'color' => 'gray'],
         ];
 
         return self::format($statusId, $labels, $withColor);

@@ -59,6 +59,19 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testEmailShowRejectsNonShowOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            '--to' => 'recipient@example.test',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The show action does not support --to', $this->tester->getDisplay());
+    }
+
     public function testEmailDefaultAction(): void
     {
         $this->tester->execute(['--force' => true]);
@@ -128,6 +141,19 @@ class EmailCommandTest extends TestCase
         $this->assertStringContainsString('show --format=json includes KVS admin last-test metadata:', $output);
         $this->assertStringContainsString('test_email, test_subject, test_body.', $output);
         $this->assertStringContainsString('kvs email set does not write these fields.', $output);
+    }
+
+    public function testEmailTemplatesRejectsNonTemplateOptions(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'templates',
+            '--smtp-host' => 'smtp.example.test',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The templates action does not support --smtp-host', $this->tester->getDisplay());
     }
 
     public function testEmailTestWithSmtpMailerReportsCliLimitation(): void

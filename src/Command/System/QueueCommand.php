@@ -23,6 +23,8 @@ class QueueCommand extends BaseCommand
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
+    private const LIST_ONLY_OPTIONS = ['status', 'type', 'error-code', 'video', 'album', 'server', 'limit'];
+
     /**
      * Task type definitions - maps type_id to human-readable names
      * @var array<int, string>
@@ -84,7 +86,12 @@ class QueueCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats|history)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Task ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (scheduled|pending|in-process|processing|error|failed)')
+            ->addOption(
+                'status',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Filter by status (scheduled|pending|in-process|processing|error|failed|completed|cancelled)'
+            )
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by task type ID')
             ->addOption('error-code', null, InputOption::VALUE_REQUIRED, 'Filter by KVS task error code')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
@@ -101,7 +108,7 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   list     List active tasks in queue (default)
   show     Show details for a specific task
   stats    Show queue statistics
-  history  Show completed/deleted/failed tasks history
+  history  Show completed/cancelled/failed tasks history
 
 <fg=yellow>STATUS VALUES:</>
   pending     Scheduled tasks waiting to be processed (status_id=0)
@@ -400,6 +407,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $taskId = $this->getRequiredPositiveId($id, 'Task');
         if ($taskId === null) {
             return self::FAILURE;
@@ -612,6 +623,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->rejectUnsupportedOptions($input, 'stats', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -786,7 +801,7 @@ HELP
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
+                SUM(CASE WHEN status_id = " . StatusFormatter::TASK_CANCELLED . " THEN 1 ELSE 0 END) as cancelled,
                 AVG(effective_duration) as avg_duration
             FROM {$this->table('background_tasks_history')}
             WHERE end_date >= :cutoff
@@ -805,10 +820,10 @@ HELP
         }
 
         $completed = is_numeric($history['completed'] ?? null) ? (int) $history['completed'] : 0;
-        $deleted = is_numeric($history['deleted'] ?? null) ? (int) $history['deleted'] : 0;
+        $cancelled = is_numeric($history['cancelled'] ?? null) ? (int) $history['cancelled'] : 0;
         $avgDuration = is_numeric($history['avg_duration'] ?? null) ? (int) $history['avg_duration'] : 0;
         $metricRows[] = $this->metricRow('last_24_hours', 'Completed', $completed, number_format($completed));
-        $metricRows[] = $this->metricRow('last_24_hours', 'Deleted', $deleted, number_format($deleted));
+        $metricRows[] = $this->metricRow('last_24_hours', 'Cancelled', $cancelled, number_format($cancelled));
         $metricRows[] = $this->metricRow(
             'last_24_hours',
             'Avg Duration',
@@ -818,7 +833,7 @@ HELP
 
         return [
             ['Completed', number_format($completed)],
-            ['Deleted', number_format($deleted)],
+            ['Cancelled', number_format($cancelled)],
             ['Avg Duration', $this->formatDuration($avgDuration)],
         ];
     }
@@ -846,14 +861,16 @@ HELP
                 'error' => StatusFormatter::TASK_FAILED,
                 'failed' => StatusFormatter::TASK_FAILED,
                 'completed' => StatusFormatter::TASK_COMPLETED,
+                'cancelled' => StatusFormatter::TASK_CANCELLED,
+                'canceled' => StatusFormatter::TASK_CANCELLED,
                 'deleted' => StatusFormatter::TASK_DELETED,
                 '2' => StatusFormatter::TASK_FAILED,
                 '3' => StatusFormatter::TASK_COMPLETED,
-                '4' => StatusFormatter::TASK_DELETED,
+                '4' => StatusFormatter::TASK_CANCELLED,
             ];
             $statusKey = strtolower($status);
             if (!array_key_exists($statusKey, $statusMap)) {
-                $this->io()->error('Invalid status "' . $status . '". Valid values: error, failed, completed, deleted');
+                $this->io()->error('Invalid status "' . $status . '". Valid values: error, failed, completed, cancelled');
                 return self::FAILURE;
             }
             $fromClause .= " AND bh.status_id = :status";
@@ -922,7 +939,7 @@ HELP
                     $statusColor = match ($statusId) {
                         StatusFormatter::TASK_COMPLETED => 'green',
                         StatusFormatter::TASK_FAILED => 'red',
-                        StatusFormatter::TASK_DELETED => 'gray',
+                        StatusFormatter::TASK_CANCELLED => 'gray',
                         default => 'yellow',
                     };
                     $endDateValue = $task['end_date'] ?? '';
@@ -973,6 +990,7 @@ HELP
         $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
         $serverId = is_numeric($task['server_id'] ?? null) ? (int) $task['server_id'] : 0;
         $serverName = $task['server_name'] ?? null;
+        $errorCode = is_numeric($task['error_code'] ?? null) ? (int) $task['error_code'] : 0;
 
         $task['id'] = $task['task_id'];
         $task['status_id'] = $statusId;
@@ -980,6 +998,8 @@ HELP
         $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
         $task['content_id'] = $videoId > 0 ? "Video #{$videoId}" : ($albumId > 0 ? "Album #{$albumId}" : '-');
         $task['server'] = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-');
+        $task['error_code'] = $errorCode;
+        $task['error'] = $errorCode > 0 ? (self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}") : '';
         $duration = $this->formatDuration($effectiveDuration);
         $task['effective_duration_seconds'] = $effectiveDuration;
         $task['effective_duration'] = $duration;
@@ -995,7 +1015,7 @@ HELP
             'list : List active tasks in queue',
             'show <id> : Show details for a specific task',
             'stats : Show queue statistics',
-            'history : Show completed/deleted/failed tasks history',
+            'history : Show completed/cancelled/failed tasks history',
         ]);
 
         $this->io()->section('Examples');

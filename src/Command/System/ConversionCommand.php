@@ -25,6 +25,45 @@ class ConversionCommand extends BaseCommand
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
+    private const LIST_ONLY_OPTIONS = ['status', 'errors', 'limit'];
+
+    private const LIST_FIELDS = [
+        'server_id',
+        'id',
+        'title',
+        'status_id',
+        'status',
+        'api_version',
+        'tasks_amount',
+        'finished_tasks_amount',
+        'tasks_pending',
+        'tasks_completed',
+        'load',
+        'total_space',
+        'free_space',
+        'free_space_percent',
+        'heartbeat_date',
+        'heartbeat',
+        'max_tasks',
+        'process_priority',
+        'priority',
+        'connection_type_id',
+        'task_types',
+        'path',
+        'ftp_host',
+        'ftp_port',
+        'ftp_user',
+        'ftp_timeout',
+        'is_debug_enabled',
+        'debug',
+        'added_date',
+        'error_text',
+        'has_debug_log',
+        'has_old_api',
+        'is_error',
+        'has_error',
+    ];
+
     private const TASK_TYPE_LABELS = [
         'video_admins' => 'New videos from admins',
         'video_feeds' => 'New videos from feeds',
@@ -236,12 +275,13 @@ HELP
                     'debug' => $isDebug === 1 ? 'On' : 'Off',
                 ];
             }, $servers);
+            $transformed = $this->filterOutputRows($transformed, self::LIST_FIELDS);
 
             $defaultFields = [
                 'server_id', 'title', 'status', 'priority', 'max_tasks',
                 'tasks_pending', 'free_space', 'load', 'heartbeat'
             ];
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, self::LIST_FIELDS);
             $formatter->display($transformed, $this->io());
 
             return self::SUCCESS;
@@ -317,6 +357,18 @@ HELP
         return (int) str_replace('.', '', $apiVersion) < (int) str_replace('.', '', $latestApiVersion);
     }
 
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @param list<string> $fields
+     * @return list<array<string, mixed>>
+     */
+    private function filterOutputRows(array $rows, array $fields): array
+    {
+        $allowed = array_fill_keys($fields, true);
+
+        return array_map(static fn (array $row): array => array_intersect_key($row, $allowed), $rows);
+    }
+
     private function getLatestConversionApiVersion(\PDO $db): string
     {
         try {
@@ -338,6 +390,10 @@ HELP
     private function showServer(?string $id, InputInterface $input): int
     {
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
 
@@ -905,14 +961,14 @@ HELP
     private function getConversionLogFile(string $path): string
     {
         $basePath = rtrim($path, '/');
-        foreach (['cron_log.txt', 'log.txt'] as $filename) {
+        foreach (['log.txt', 'cron_log.txt'] as $filename) {
             $candidate = $basePath . '/' . $filename;
             if (is_file($candidate)) {
                 return $candidate;
             }
         }
 
-        return $basePath . '/cron_log.txt';
+        return $basePath . '/log.txt';
     }
 
     private function enableServer(?string $id): int
@@ -992,6 +1048,10 @@ HELP
     private function showStats(InputInterface $input): int
     {
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'stats', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
 

@@ -280,6 +280,31 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertSame('1', trim($this->tester->getDisplay()));
     }
 
+    public function testListScreenshotsIgnoresZeroBasedGeneratedFiles(): void
+    {
+        $this->createScreenshotFixture('1234');
+        $generatedScreenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket('1234') . '/1234';
+
+        $image = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+            true
+        );
+        $this->assertIsString($image);
+        file_put_contents($generatedScreenshotsDir . '/320x180/0.jpg', $image);
+
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['index']);
+    }
+
     public function testUnknownActionFailsEvenWithVideoId(): void
     {
         $this->createScreenshotFixture('1234');

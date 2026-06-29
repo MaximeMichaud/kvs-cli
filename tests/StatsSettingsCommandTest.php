@@ -176,6 +176,20 @@ PHP
         $this->assertStringNotContainsString('Statistics Collection Settings', $display);
     }
 
+    public function testShowRejectsSetOptions(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            '--traffic' => '0',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('The show action does not support --traffic', $display);
+    }
+
     public function testExperimentalPromptRefusalFails(): void
     {
         $this->tester->setInputs(['no']);

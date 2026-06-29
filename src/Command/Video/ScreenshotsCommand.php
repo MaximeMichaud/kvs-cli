@@ -360,7 +360,8 @@ HELP
             return null;
         }
 
-        return (int) $filename;
+        $index = (int) $filename;
+        return $index > 0 ? $index : null;
     }
 
     /**

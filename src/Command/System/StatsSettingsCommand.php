@@ -21,6 +21,46 @@ class StatsSettingsCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'json'];
+    private const SET_OPTIONS = [
+        'traffic',
+        'traffic-countries',
+        'traffic-devices',
+        'traffic-embed-domains',
+        'traffic-keep',
+        'player',
+        'player-countries',
+        'player-devices',
+        'player-embed-profiles',
+        'player-keep',
+        'player-reporting',
+        'videos',
+        'videos-unique',
+        'videos-embeds-unique',
+        'videos-plays',
+        'videos-files',
+        'videos-keep',
+        'videos-countries-mode',
+        'videos-countries',
+        'albums',
+        'albums-unique',
+        'albums-images',
+        'albums-keep',
+        'albums-countries-mode',
+        'albums-countries',
+        'memberzone',
+        'memberzone-video-files',
+        'memberzone-album-images',
+        'memberzone-keep',
+        'search',
+        'search-keep',
+        'search-inactive',
+        'search-lowercase',
+        'search-max-length',
+        'search-stop-symbols',
+        'search-countries-mode',
+        'search-countries',
+        'performance',
+    ];
 
     /** @var list<string>|null */
     private ?array $knownCountryCodes = null;
@@ -363,6 +403,10 @@ HELP
 
     private function showSettings(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'show', self::SET_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
         if ($format === null) {
             return self::FAILURE;

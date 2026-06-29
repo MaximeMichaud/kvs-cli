@@ -20,6 +20,37 @@ class EmailCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'json'];
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'smtp-host',
+        'smtp-port',
+        'smtp-user',
+        'smtp-pass',
+        'smtp-security',
+        'smtp-timeout',
+        'from-email',
+        'from-name',
+        'mailer',
+        'debug',
+        'to',
+        'subject',
+        'body',
+        'lines',
+    ];
+    private const LOG_UNSUPPORTED_OPTIONS = [
+        'smtp-host',
+        'smtp-port',
+        'smtp-user',
+        'smtp-pass',
+        'smtp-security',
+        'smtp-timeout',
+        'from-email',
+        'from-name',
+        'mailer',
+        'debug',
+        'to',
+        'subject',
+        'body',
+    ];
 
     protected function configure(): void
     {
@@ -116,6 +147,10 @@ HELP
 
     private function showSettings(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -519,6 +554,10 @@ HELP
 
     private function showLog(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'log', self::LOG_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
         if ($format === null) {
             return self::FAILURE;
@@ -675,6 +714,10 @@ HELP
 
     private function showTemplates(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'templates', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $kvsPath = $this->config->getKvsPath();
         $blocksPath = $kvsPath . '/blocks';
         $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);

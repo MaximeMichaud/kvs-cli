@@ -26,6 +26,58 @@ class ServerCommand extends BaseCommand
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
+    private const LIST_ONLY_OPTIONS = ['type', 'status', 'connection', 'group', 'errors', 'limit'];
+
+    private const GROUP_LIST_UNSUPPORTED_OPTIONS = ['type', 'status', 'connection', 'group', 'errors'];
+
+    private const LIST_FIELDS = [
+        'server_id',
+        'id',
+        'title',
+        'status_id',
+        'status',
+        'content_type_id',
+        'total_content',
+        'content_count',
+        'urls',
+        'streaming_type_id',
+        'streaming',
+        'control_script_url',
+        'control_script_url_version',
+        'control_script_url_lock_ip',
+        'connection_type_id',
+        'connection',
+        'path',
+        'ftp_host',
+        'ftp_port',
+        'ftp_user',
+        'ftp_folder',
+        'ftp_timeout',
+        'ftp_force_ssl',
+        's3_region',
+        's3_endpoint',
+        's3_bucket',
+        's3_prefix',
+        'time_offset',
+        'total_space',
+        'free_space',
+        'free_percent',
+        'free_space_percent',
+        'load',
+        'lb_weight',
+        'lb_countries',
+        'is_debug_enabled',
+        'added_date',
+        'group_id',
+        'group_title',
+        'group_status_id',
+        'has_error',
+        'error_text',
+        'is_error',
+        'is_warning',
+        'is_free_space_warning',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -279,9 +331,10 @@ HELP
                     'urls' => $server['urls'] ?? '',
                 ];
             }, $servers);
+            $transformed = $this->filterOutputRows($transformed, self::LIST_FIELDS);
 
             $defaultFields = ['server_id', 'title', 'group_title', 'status', 'streaming', 'connection', 'free_space', 'load'];
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, self::LIST_FIELDS);
             $formatter->display($transformed, $this->io());
 
             return self::SUCCESS;
@@ -350,6 +403,18 @@ HELP
             'is_warning' => $isWarning,
             'is_free_space_warning' => $isFreeSpaceWarning,
         ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @param list<string> $fields
+     * @return list<array<string, mixed>>
+     */
+    private function filterOutputRows(array $rows, array $fields): array
+    {
+        $allowed = array_fill_keys($fields, true);
+
+        return array_map(static fn (array $row): array => array_intersect_key($row, $allowed), $rows);
     }
 
     /**
@@ -510,6 +575,10 @@ HELP
     private function showServer(?string $id, InputInterface $input): int
     {
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
 
@@ -740,6 +809,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->rejectUnsupportedOptions($input, 'stats', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -897,6 +970,10 @@ HELP
     private function listGroups(InputInterface $input): int
     {
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'group', self::GROUP_LIST_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 
@@ -1064,6 +1141,10 @@ HELP
     private function showGroup(string $id, InputInterface $input): int
     {
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'group', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
 

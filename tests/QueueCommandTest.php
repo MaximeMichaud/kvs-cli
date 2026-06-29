@@ -330,7 +330,7 @@ class QueueCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/In process\W+1/', $output);
         $this->assertMatchesRegularExpression('/Error\W+1/', $output);
         $this->assertMatchesRegularExpression('/Completed\W+1/', $output);
-        $this->assertMatchesRegularExpression('/Deleted\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Cancelled\W+1/', $output);
     }
 
     public function testQueueStatsSupportsJsonFormat(): void
@@ -561,7 +561,7 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('list : List active tasks in queue', $output);
         $this->assertStringContainsString('show <id> : Show details for a specific task', $output);
         $this->assertStringContainsString('stats : Show queue statistics', $output);
-        $this->assertStringContainsString('history : Show completed/deleted/failed tasks history', $output);
+        $this->assertStringContainsString('history : Show completed/cancelled/failed tasks history', $output);
     }
 
     public function testQueueRejectsUnknownAction(): void
@@ -659,15 +659,30 @@ class QueueCommandTest extends TestCase
 
         $this->tester->execute([
             'action' => 'history',
+            '--status' => 'cancelled',
+            '--format' => 'json',
+        ]);
+        $cancelledRows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $cancelledRows);
+        $this->assertSame(302, (int) $cancelledRows[0]['task_id']);
+        $this->assertSame('Cancelled', $cancelledRows[0]['status']);
+    }
+
+    public function testQueueHistoryKeepsDeletedStatusAliasForCompatibility(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
             '--status' => 'deleted',
             '--format' => 'json',
         ]);
-        $deletedRows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertCount(1, $deletedRows);
-        $this->assertSame(302, (int) $deletedRows[0]['task_id']);
-        $this->assertSame('Deleted', $deletedRows[0]['status']);
+        $this->assertCount(1, $rows);
+        $this->assertSame(302, (int) $rows[0]['task_id']);
+        $this->assertSame('Cancelled', $rows[0]['status']);
     }
 
     public function testQueueHistoryDisplaysFailedHistoryStatus(): void
@@ -714,7 +729,7 @@ class QueueCommandTest extends TestCase
             'action' => 'history',
             '--error-code' => '3',
             '--format' => 'json',
-            '--fields' => 'task_id,error_code,status',
+            '--fields' => 'task_id,error_code,error,status',
         ]);
 
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
@@ -723,6 +738,7 @@ class QueueCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(304, (int) $rows[0]['task_id']);
         $this->assertSame(3, (int) $rows[0]['error_code']);
+        $this->assertSame('03 - Unexpected error', $rows[0]['error']);
         $this->assertSame('Error', $rows[0]['status']);
     }
 
@@ -764,6 +780,31 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(301, (int) $rows[0]['task_id']);
+    }
+
+    public function testQueueShowRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--status' => 'processing',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The show action does not support --status', $this->tester->getDisplay());
+    }
+
+    public function testQueueStatsRejectsListOnlyOptions(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--limit' => 1,
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The stats action does not support --limit', $this->tester->getDisplay());
     }
 
     private function createDatabase(): PDO

@@ -735,10 +735,23 @@ HELP
         if ($db !== null) {
             $serverPaths = $this->getLocalVideoServerPaths($db, $videoId);
             if ($serverPaths['configured'] !== []) {
-                return $serverPaths['existing'] !== [] ? $serverPaths['existing'] : $serverPaths['configured'];
+                if ($serverPaths['existing'] !== []) {
+                    return $serverPaths['existing'];
+                }
+
+                $fallbackPaths = $this->getFallbackVideoStorageBasePaths();
+                return $fallbackPaths !== [] ? $fallbackPaths : $serverPaths['configured'];
             }
         }
 
+        return $this->getFallbackVideoStorageBasePaths();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getFallbackVideoStorageBasePaths(): array
+    {
         $videosPath = $this->config->getContentPath() . '/' . Constants::CONTENT_VIDEOS;
         if (is_dir($videosPath)) {
             return [$videosPath];

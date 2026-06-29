@@ -305,6 +305,20 @@ class UserCommandTest extends TestCase
         $this->assertSame('Synthetic account used for admin search.', $rows[0]['about_me']);
     }
 
+    public function testUserListRejectsRawPasswordHashField(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'user_id,username,pass,temp_pass,last_session_id_hash',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown field(s): pass, temp_pass', $this->tester->getDisplay());
+        $this->assertStringContainsString('last_session_id_hash', $this->tester->getDisplay());
+    }
+
     public function testUserListFiltersByIpLikeKvsAdmin(): void
     {
         $this->tester->execute([
@@ -560,7 +574,8 @@ class UserCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
             'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, ' .
-            'description TEXT, gender_id INTEGER, country_id INTEGER, city TEXT, birth_date TEXT, ip TEXT, ' .
+            'pass TEXT, temp_pass TEXT, last_session_id_hash TEXT, description TEXT, gender_id INTEGER, ' .
+            'country_id INTEGER, city TEXT, birth_date TEXT, ip TEXT, ' .
             'added_date TEXT, ' .
             'last_login_date TEXT, profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, ' .
             'tokens_available INTEGER, ' .
@@ -596,6 +611,9 @@ class UserCommandTest extends TestCase
             'display_name',
             'email',
             'status_id',
+            'pass',
+            'temp_pass',
+            'last_session_id_hash',
             'description',
             'gender_id',
             'country_id',
@@ -684,6 +702,9 @@ class UserCommandTest extends TestCase
                 'display_name' => 'Alice Example',
                 'email' => 'alice@example.com',
                 'status_id' => 2,
+                'pass' => '$2a$07$hiddenfixturehashhiddenfixturehashhiddenfixturehash12',
+                'temp_pass' => 'temporary-password-token',
+                'last_session_id_hash' => 'hidden-session-hash',
                 'description' => 'Alice profile',
                 'gender_id' => 2,
                 'country_id' => 1,
