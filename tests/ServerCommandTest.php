@@ -389,6 +389,24 @@ class ServerCommandTest extends TestCase
         $this->assertStringNotContainsString('Server #1', $output);
     }
 
+    public function testServerShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => 'server_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Server id', $output);
+        $this->assertStringContainsString('1', $output);
+        $this->assertStringNotContainsString('Server #1', $output);
+        $this->assertStringNotContainsString('Property', $output);
+    }
+
     public function testServerShowUsesKvsAdminErrorLabels(): void
     {
         $this->db->exec(
@@ -613,6 +631,24 @@ class ServerCommandTest extends TestCase
         $this->assertCount(2, $rows[0]['servers']);
         $this->assertSame(1, $rows[0]['servers'][0]['server_id']);
         $this->assertStringNotContainsString('Server Group #10', $output);
+    }
+
+    public function testServerGroupShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Video Group', $output);
+        $this->assertStringNotContainsString('Server Group #10', $output);
+        $this->assertStringNotContainsString('Servers in Group', $output);
     }
 
     public function testServerGroupShowRejectsNonIntegerIdBeforeQuery(): void

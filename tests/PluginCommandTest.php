@@ -450,6 +450,21 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('Plugin:', $output);
     }
 
+    public function testShowHonorsFieldSelectionInTableFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--field' => 'name',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $exitCode, $output);
+        $this->assertSame("Backup\n", $output);
+        $this->assertStringNotContainsString('Plugin: Backup', $output);
+    }
+
     public function testShowUsesDataFileForDynamicEnabledStatus(): void
     {
         $this->createDataBackedPluginFixture('dynamic_status', true);
@@ -544,6 +559,22 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('Plugin directory:', $output);
     }
 
+    public function testPathHonorsFieldSelectionInTableFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'path',
+            'id' => 'backup',
+            '--fields' => 'id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $exitCode, $output);
+        $this->assertStringContainsString('Id', $output);
+        $this->assertStringContainsString('backup', $output);
+        $this->assertStringNotContainsString('/admin/plugins/backup', $output);
+    }
+
     public function testPathRejectsListFilters(): void
     {
         foreach (['status' => 'active', 'type' => 'api'] as $option => $value) {
@@ -631,6 +662,22 @@ class PluginCommandTest extends TestCase
         $this->assertSame('overall', $rowsByMetric['Total Plugins']['section'] ?? null);
         $this->assertSame(4, (int) ($rowsByMetric['Total Plugins']['value'] ?? 0));
         $this->assertStringNotContainsString('Plugin Statistics', $this->tester->getDisplay());
+    }
+
+    public function testStatusHonorsFieldsSelectionInTableFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $exitCode, $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total Plugins', $output);
+        $this->assertStringNotContainsString('Plugin Statistics', $output);
+        $this->assertStringNotContainsString('Count', $output);
     }
 
     public function testStatusRejectsListFilters(): void

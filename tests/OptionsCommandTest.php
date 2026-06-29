@@ -81,6 +81,24 @@ class OptionsCommandTest extends TestCase
         $this->assertStringContainsString('Dimension (WxH)', $display);
     }
 
+    public function testGetOptionHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            '--fields' => 'variable',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Variable', $display);
+        $this->assertStringContainsString('ENABLE_DVD_FIELD_1', $display);
+        $this->assertStringNotContainsString('Option: ENABLE_DVD_FIELD_1', $display);
+        $this->assertStringNotContainsString('Category', $display);
+    }
+
     public function testListRejectsSetOnlyYesOption(): void
     {
         $this->tester->execute([

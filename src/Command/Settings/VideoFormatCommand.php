@@ -576,7 +576,7 @@ HELP
                 'ffmpeg_options' => $ffmpegOptions,
             ];
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayFormattedRows($input, [$formatRow], array_keys($formatRow));
             }
 

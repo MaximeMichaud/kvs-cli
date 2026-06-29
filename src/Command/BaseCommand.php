@@ -937,6 +937,22 @@ abstract class BaseCommand extends Command
         return $this->getStringOptionOrDefault($input, 'format', 'table') === 'table';
     }
 
+    protected function hasFieldSelection(InputInterface $input): bool
+    {
+        foreach (['field', 'fields'] as $name) {
+            if ($this->isOptionExplicitlySet($input, $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function shouldUseFormattedRows(InputInterface $input): bool
+    {
+        return !$this->isTableFormat($input) || $this->hasFieldSelection($input);
+    }
+
     /**
      * @param list<string> $allowedFormats
      */

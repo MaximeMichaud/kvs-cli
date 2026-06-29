@@ -128,6 +128,20 @@ SH
         $this->assertDirectoryDoesNotExist($outputDir);
     }
 
+    public function testBackupDefaultRejectsActionSpecificOptions(): void
+    {
+        foreach (['type' => 'db', 'output' => $this->rootDir . '/ignored-output', 'format' => 'json'] as $option => $value) {
+            $tester = new CommandTester($this->command);
+            $tester->execute(['--' . $option => $value]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString("default action does not support --{$option}", $output);
+            $this->assertStringNotContainsString('Available options', $output);
+        }
+    }
+
     public function testBackupCreateRejectsListOnlyFormatBeforeCreatingOutputDirectory(): void
     {
         $outputDir = $this->rootDir . '/create-format-output';

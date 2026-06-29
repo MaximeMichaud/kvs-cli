@@ -133,6 +133,27 @@ class DebugCommandTest extends TestCase
         // Will show config or error depending on DB setup
     }
 
+    public function testDebugRejectsConflictingActions(): void
+    {
+        $cases = [
+            ['--check' => true, '--test-db' => true],
+            ['--check' => true, '--info' => true],
+            ['--test-db' => true, '--info' => true],
+        ];
+
+        foreach ($cases as $arguments) {
+            $tester = new CommandTester($this->command);
+            $tester->execute($arguments);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString('cannot be used together', $output);
+            $this->assertStringNotContainsString('System Checks', $output);
+            $this->assertStringNotContainsString('Database Connection Test', $output);
+        }
+    }
+
     private function createRuntimeAwareDebugCommand(): DebugCommand
     {
         return new class ($this->config) extends DebugCommand {

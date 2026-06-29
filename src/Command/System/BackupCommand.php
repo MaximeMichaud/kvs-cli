@@ -74,6 +74,10 @@ HELP
             );
         }
 
+        if ($this->rejectUnsupportedOptions($input, 'default', ['type', 'output', 'format'])) {
+            return self::FAILURE;
+        }
+
         $this->io()->info('Available options:');
         $this->io()->listing([
             '--create : Create a new backup',

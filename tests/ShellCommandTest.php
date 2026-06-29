@@ -169,6 +169,52 @@ class ShellCommandTest extends TestCase
         }
     }
 
+    public function testShellRejectsMissingBootstrapFileBeforeStartingPsysh(): void
+    {
+        $previousAllowEval = getenv('KVS_ALLOW_EVAL');
+        putenv('KVS_ALLOW_EVAL=true');
+
+        try {
+            $this->tester->execute([
+                '--bootstrap' => $this->tempDir . '/missing-bootstrap.php',
+            ]);
+        } finally {
+            if ($previousAllowEval === false) {
+                putenv('KVS_ALLOW_EVAL');
+            } else {
+                putenv('KVS_ALLOW_EVAL=' . $previousAllowEval);
+            }
+        }
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Bootstrap file not found or not readable', $output);
+        $this->assertStringNotContainsString('KVS Interactive Shell', $output);
+    }
+
+    public function testShellRejectsMissingIncludeFileBeforeStartingPsysh(): void
+    {
+        $previousAllowEval = getenv('KVS_ALLOW_EVAL');
+        putenv('KVS_ALLOW_EVAL=true');
+
+        try {
+            $this->tester->execute([
+                '--includes' => [$this->tempDir . '/missing-include.php'],
+            ]);
+        } finally {
+            if ($previousAllowEval === false) {
+                putenv('KVS_ALLOW_EVAL');
+            } else {
+                putenv('KVS_ALLOW_EVAL=' . $previousAllowEval);
+            }
+        }
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Include file not found or not readable', $output);
+        $this->assertStringNotContainsString('KVS Interactive Shell', $output);
+    }
+
     public function testShellRequiresPsySH(): void
     {
         if (!class_exists('Psy\Shell')) {

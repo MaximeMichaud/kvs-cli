@@ -28,6 +28,10 @@ class DebugCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['check', 'test-db', 'info'])) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'check')) {
             return $this->runChecks();
         }

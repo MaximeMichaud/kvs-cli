@@ -139,6 +139,24 @@ class VideoFormatCommandTest extends TestCase
         }
     }
 
+    public function testShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Format 1', $output);
+        $this->assertStringNotContainsString('Video Format #1', $output);
+        $this->assertStringNotContainsString('Basic Info', $output);
+    }
+
     public function testGroupsRejectsIgnoredGroupIdArgument(): void
     {
         $this->tester->execute([

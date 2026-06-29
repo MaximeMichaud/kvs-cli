@@ -371,6 +371,24 @@ class ConversionCommandTest extends TestCase
         $this->assertStringNotContainsString('Conversion Server #1', $output);
     }
 
+    public function testConversionShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => 'server_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Server id', $output);
+        $this->assertStringContainsString('1', $output);
+        $this->assertStringNotContainsString('Conversion Server #1', $output);
+        $this->assertStringNotContainsString('Property', $output);
+    }
+
     public function testConversionShowRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

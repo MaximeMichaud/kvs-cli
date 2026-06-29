@@ -239,7 +239,7 @@ HELP
             $format = $this->getStringOption($input, 'format') ?? 'table';
 
             if ($tasks === []) {
-                if ($format === 'table') {
+                if ($format === 'table' && !$this->hasFieldSelection($input)) {
                     $this->io()->success('Queue is empty - no tasks found');
                 } else {
                     $formatter = new Formatter(
@@ -276,7 +276,7 @@ HELP
             }, $tasks);
 
             // Format and display
-            if ($format === 'table') {
+            if ($format === 'table' && !$this->hasFieldSelection($input)) {
                 $this->io()->title('Background Tasks Queue');
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];
@@ -435,7 +435,7 @@ HELP
             [$task, $isHistory] = $result;
             $info = $this->buildTaskInfo($task, $isHistory);
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $extra = [
                     'task_id' => (string) $taskId,
                     'is_history' => $isHistory,
@@ -662,7 +662,7 @@ HELP
             $errorRows = $this->getQueueErrorStatsRows($db, $metricRows);
             $historyRows = $this->getQueueRecentHistoryRows($db, $metricRows);
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }
@@ -926,7 +926,7 @@ HELP
             $format = $this->getStringOption($input, 'format') ?? 'table';
 
             if ($tasks === []) {
-                if ($format === 'table') {
+                if ($format === 'table' && !$this->hasFieldSelection($input)) {
                     $this->io()->info('No history found');
                 } else {
                     $formatter = new Formatter(
@@ -940,7 +940,7 @@ HELP
 
             $tasks = array_map(fn (array $task): array => $this->transformHistoryTask($task), $tasks);
 
-            if ($format === 'table') {
+            if ($format === 'table' && !$this->hasFieldSelection($input)) {
                 $this->io()->title('Task History');
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];

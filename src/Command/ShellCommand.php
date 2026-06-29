@@ -63,6 +63,10 @@ HELP
             return self::FAILURE;
         }
 
+        if (!$this->validateBootstrapAndIncludes($input)) {
+            return self::FAILURE;
+        }
+
         if (!class_exists('Psy\Shell')) {
             $this->io()->error('PsySH is not installed. Run: composer require psy/psysh');
             return self::FAILURE;
@@ -175,6 +179,24 @@ PHP;
         }
 
         return $code;
+    }
+
+    private function validateBootstrapAndIncludes(InputInterface $input): bool
+    {
+        $bootstrap = $this->getStringOption($input, 'bootstrap');
+        if ($bootstrap !== null && (!is_file($bootstrap) || !is_readable($bootstrap))) {
+            $this->io()->error("Bootstrap file not found or not readable: $bootstrap");
+            return false;
+        }
+
+        foreach ($this->getArrayOption($input, 'includes') as $include) {
+            if (!is_file($include) || !is_readable($include)) {
+                $this->io()->error("Include file not found or not readable: $include");
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

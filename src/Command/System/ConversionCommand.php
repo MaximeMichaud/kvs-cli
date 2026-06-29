@@ -433,7 +433,7 @@ HELP
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'server_id' => (string) $serverId,
                     'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
@@ -731,7 +731,7 @@ HELP
             $logFile = $this->getConversionLogFile($path);
 
             if (!file_exists($logFile)) {
-                if (!$this->isTableFormat($input)) {
+                if ($this->shouldUseFormattedRows($input)) {
                     $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $this->getStringField($server, 'title'),
@@ -752,7 +752,7 @@ HELP
 
             $content = file_get_contents($logFile);
             if ($content === false) {
-                if (!$this->isTableFormat($input)) {
+                if ($this->shouldUseFormattedRows($input)) {
                     $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $this->getStringField($server, 'title'),
@@ -771,7 +771,7 @@ HELP
                 return self::FAILURE;
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayConversionFileRows($input, [[
                     'server_id' => (string) $serverId,
                     'title' => $this->getStringField($server, 'title'),
@@ -851,7 +851,7 @@ HELP
             $configFile = rtrim($path, '/') . '/config.properties';
 
             if (!file_exists($configFile)) {
-                if (!$this->isTableFormat($input)) {
+                if ($this->shouldUseFormattedRows($input)) {
                     $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $title,
@@ -874,7 +874,7 @@ HELP
 
             $content = file_get_contents($configFile);
             if ($content === false) {
-                if (!$this->isTableFormat($input)) {
+                if ($this->shouldUseFormattedRows($input)) {
                     $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $title,
@@ -898,7 +898,7 @@ HELP
             $heartbeatFile = rtrim($path, '/') . '/heartbeat.dat';
             $libraries = $this->readConversionLibraries($heartbeatFile);
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayConversionFileRows($input, [[
                     'server_id' => (string) $serverId,
                     'title' => $title,
@@ -1172,7 +1172,7 @@ HELP
             $metricRows[] = $this->metricRow('task_queue', 'Failed', $failed);
             $metricRows[] = $this->metricRow('task_queue', 'Completed (history)', $completed, number_format($completed));
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }

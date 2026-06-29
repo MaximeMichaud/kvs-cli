@@ -306,7 +306,7 @@ HELP
         $pluginPath = $plugin['path'] ?? '';
         $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
 
-        if (!$this->isTableFormat($input)) {
+        if ($this->shouldUseFormattedRows($input)) {
             $formatter = new Formatter(
                 $input->getOptions(),
                 [
@@ -387,7 +387,7 @@ HELP
 
         $pluginPath = $plugin['path'] ?? '';
         $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
-        if (!$this->isTableFormat($input)) {
+        if ($this->shouldUseFormattedRows($input)) {
             $formatter = new Formatter($input->getOptions(), ['id', 'path']);
             $formatter->display([[
                 'id' => $id,
@@ -475,7 +475,7 @@ HELP
             $metricRows[] = $this->metricRow('by_type', $type, $count, (string) $count, ucfirst($type));
         }
 
-        if (!$this->isTableFormat($input)) {
+        if ($this->shouldUseFormattedRows($input)) {
             $this->displayMetricRows($input, $metricRows);
             return self::SUCCESS;
         }

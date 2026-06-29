@@ -145,6 +145,23 @@ class QueueCommandTest extends TestCase
         $this->assertSame('03 - Unexpected error', $rows[0]['error']);
     }
 
+    public function testQueueListHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--fields' => 'task_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Task id', $output);
+        $this->assertStringContainsString('30', $output);
+        $this->assertStringNotContainsString('Background Tasks Queue', $output);
+        $this->assertStringNotContainsString('Status', $output);
+    }
+
     public function testQueueListUsesKvsAdminErrorCodeLabels(): void
     {
         $this->insertTask($this->db, [
@@ -350,6 +367,22 @@ class QueueCommandTest extends TestCase
         $this->assertStringNotContainsString('Queue Statistics', $this->tester->getDisplay());
     }
 
+    public function testQueueStatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total', $output);
+        $this->assertStringNotContainsString('Queue Statistics', $output);
+        $this->assertStringNotContainsString('Queue Status', $output);
+    }
+
     public function testQueueHistory(): void
     {
         $this->tester->execute([
@@ -365,6 +398,23 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('Video files creation', $output);
         $this->assertStringContainsString('New album', $output);
         $this->assertStringNotContainsString('New video', $output);
+    }
+
+    public function testQueueHistoryHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--limit' => 1,
+            '--fields' => 'task_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Task id', $output);
+        $this->assertStringContainsString('303', $output);
+        $this->assertStringNotContainsString('Task History', $output);
+        $this->assertStringNotContainsString('Status', $output);
     }
 
     public function testQueueHistoryExposesKvsAdminObjectFields(): void
@@ -522,6 +572,23 @@ class QueueCommandTest extends TestCase
         $this->assertSame('Video files creation', $rows[0]['type']);
         $this->assertFalse($rows[0]['is_history']);
         $this->assertStringNotContainsString('Task #30', $output);
+    }
+
+    public function testQueueShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'task_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Task id', $output);
+        $this->assertStringContainsString('30', $output);
+        $this->assertStringNotContainsString('Task #30', $output);
+        $this->assertStringNotContainsString('Property', $output);
     }
 
     public function testQueueShowRejectsNonIntegerActiveTaskIdBeforeQuery(): void

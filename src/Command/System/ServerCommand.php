@@ -616,7 +616,7 @@ HELP
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, ['server_id' => (string) $serverId]);
             }
 
@@ -952,7 +952,7 @@ HELP
                 $metricRows[] = $this->metricRow('by_connection_type', $connection, $count, (string) $count, $connection);
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }
@@ -1249,7 +1249,7 @@ HELP
                 ];
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'group_id' => $groupId,
                     'servers' => $serverRecords,

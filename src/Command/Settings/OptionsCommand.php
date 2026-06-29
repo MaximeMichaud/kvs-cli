@@ -335,7 +335,7 @@ HELP
                 $optionRow['type'] = 'Dimension (WxH)';
             }
 
-            if ($format !== 'table') {
+            if ($format !== 'table' || $this->hasFieldSelection($input)) {
                 $formatter = new Formatter(
                     $input->getOptions(),
                     ['variable', 'value', 'category', 'status', 'type']
