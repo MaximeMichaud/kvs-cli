@@ -389,6 +389,30 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('Video ID is required (use --video=<id>)', $output);
     }
 
+    public function testPlaylistAddRejectsScientificNotationPlaylistId(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => '30e0',
+            '--video' => 999999,
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Playlist ID', $this->tester->getDisplay());
+    }
+
+    public function testPlaylistAddRejectsDecimalVideoId(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 30,
+            '--video' => '999999.5',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Video ID', $this->tester->getDisplay());
+    }
+
     public function testPlaylistAddPlaylistNotFound(): void
     {
         $this->tester->execute([
@@ -505,6 +529,30 @@ class PlaylistCommandTest extends TestCase
 
         $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('Video ID is required (use --video=<id>)', $output);
+    }
+
+    public function testPlaylistRemoveRejectsScientificNotationPlaylistId(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => '30e0',
+            '--video' => 999999,
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Playlist ID', $this->tester->getDisplay());
+    }
+
+    public function testPlaylistRemoveRejectsScientificNotationVideoId(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 30,
+            '--video' => '999999e0',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Video ID', $this->tester->getDisplay());
     }
 
     public function testPlaylistRemovePlaylistNotFound(): void

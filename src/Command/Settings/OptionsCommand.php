@@ -136,6 +136,10 @@ HELP
 
     private function listOptions(InputInterface $input): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['enabled', 'disabled'])) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

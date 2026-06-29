@@ -80,4 +80,18 @@ class OptionsCommandTest extends TestCase
         $this->assertStringContainsString('Option: SCREENSHOTS_SIZE', $display);
         $this->assertStringContainsString('Dimension (WxH)', $display);
     }
+
+    public function testListRejectsConflictingEnabledDisabledFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--enabled' => true,
+            '--disabled' => true,
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $this->tester->getDisplay());
+    }
 }

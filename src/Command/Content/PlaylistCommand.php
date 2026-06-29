@@ -92,11 +92,11 @@ HELP
             'create' => $this->createPlaylist($input),
             'add' => $this->addVideoToPlaylist(
                 $this->getStringArgument($input, 'id'),
-                $this->getIntOption($input, 'video')
+                $this->getStringOption($input, 'video')
             ),
             'remove' => $this->removeVideoFromPlaylist(
                 $this->getStringArgument($input, 'id'),
-                $this->getIntOption($input, 'video')
+                $this->getStringOption($input, 'video')
             ),
             'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id'), $input),
             default => $this->failUnknownAction('playlist', $action, ['list', 'show', 'create', 'add', 'remove', 'delete']),
@@ -513,9 +513,8 @@ HELP
         }
         $title = trim($title);
 
-        $userId = $this->getIntOption($input, 'user');
-        if ($userId === null || $userId <= 0) {
-            $this->io()->error('User ID is required (use --user=<id>)');
+        $userId = $this->parsePositivePlaylistIdOption($this->getStringOption($input, 'user'), 'User', 'User ID is required (use --user=<id>)');
+        if ($userId === null) {
             return self::FAILURE;
         }
 
@@ -713,17 +712,17 @@ HELP
         $stmt->execute(['id' => $ownerUserId]);
     }
 
-    private function addVideoToPlaylist(?string $id, ?int $videoId): int
+    private function addVideoToPlaylist(?string $id, ?string $videoIdInput): int
     {
-        if ($id === null || $id === '' || !is_numeric($id)) {
-            $this->io()->error('Playlist ID is required');
+        $playlistId = $this->parsePositivePlaylistIdOption($id, 'Playlist', 'Playlist ID is required');
+        if ($playlistId === null) {
             return self::FAILURE;
         }
-        if ($videoId === null || $videoId <= 0) {
-            $this->io()->error('Video ID is required (use --video=<id>)');
+
+        $videoId = $this->parsePositivePlaylistIdOption($videoIdInput, 'Video', 'Video ID is required (use --video=<id>)');
+        if ($videoId === null) {
             return self::FAILURE;
         }
-        $playlistId = (int) $id;
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -805,17 +804,17 @@ HELP
         }
     }
 
-    private function removeVideoFromPlaylist(?string $id, ?int $videoId): int
+    private function removeVideoFromPlaylist(?string $id, ?string $videoIdInput): int
     {
-        if ($id === null || $id === '' || !is_numeric($id)) {
-            $this->io()->error('Playlist ID is required');
+        $playlistId = $this->parsePositivePlaylistIdOption($id, 'Playlist', 'Playlist ID is required');
+        if ($playlistId === null) {
             return self::FAILURE;
         }
-        if ($videoId === null || $videoId <= 0) {
-            $this->io()->error('Video ID is required (use --video=<id>)');
+
+        $videoId = $this->parsePositivePlaylistIdOption($videoIdInput, 'Video', 'Video ID is required (use --video=<id>)');
+        if ($videoId === null) {
             return self::FAILURE;
         }
-        $playlistId = (int) $id;
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -883,6 +882,21 @@ HELP
             $this->io()->error('Failed to remove video from playlist: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function parsePositivePlaylistIdOption(?string $value, string $label, string $missingMessage): ?int
+    {
+        if ($value === null || $value === '') {
+            $this->io()->error($missingMessage);
+            return null;
+        }
+
+        if (preg_match('/^[1-9]\d*$/', $value) !== 1) {
+            $this->io()->error(sprintf('Invalid %s ID (use: integer >= 1)', $label));
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function deletePlaylist(?string $id, InputInterface $input): int
