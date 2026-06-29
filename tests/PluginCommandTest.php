@@ -480,6 +480,22 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('Plugin: Backup', $output);
     }
 
+    public function testShowRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testShowUsesDataFileForDynamicEnabledStatus(): void
     {
         $this->createDataBackedPluginFixture('dynamic_status', true);
@@ -590,6 +606,22 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('/admin/plugins/backup', $output);
     }
 
+    public function testPathRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'path',
+            'id' => 'backup',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testPathRejectsListFilters(): void
     {
         foreach (['status' => 'active', 'type' => 'api'] as $option => $value) {
@@ -693,6 +725,34 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Total Plugins', $output);
         $this->assertStringNotContainsString('Plugin Statistics', $output);
         $this->assertStringNotContainsString('Count', $output);
+    }
+
+    public function testStatusRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
+    public function testStatusRejectsIdsFormatWithoutEmptySuccess(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            '--format' => 'ids',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('The ids format requires result rows with an ID field.', $output);
     }
 
     public function testStatusRejectsListFilters(): void

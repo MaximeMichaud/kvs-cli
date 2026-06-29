@@ -211,6 +211,9 @@ HELP
             $whereClause = implode(' AND ', $conditions);
 
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->rejectFieldSelectionForCountFormat($input)) {
+                    return self::FAILURE;
+                }
                 if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
                     return self::FAILURE;
                 }

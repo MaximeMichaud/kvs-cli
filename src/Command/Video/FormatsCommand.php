@@ -4,7 +4,6 @@ namespace KVS\CLI\Command\Video;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
-use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
@@ -22,6 +21,7 @@ class FormatsCommand extends BaseCommand
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml'];
     private const FILE_LIST_FIELDS = ['format', 'postfix', 'file', 'size', 'dimensions', 'path'];
+    private const CHECK_FIELDS = ['format', 'postfix', 'status', 'file', 'size', 'dimensions', 'path'];
 
     protected function configure(): void
     {
@@ -298,11 +298,16 @@ HELP
         }
 
         if ($this->shouldUseFormattedRows($input)) {
-            $formatter = new Formatter(
-                $input->getOptions(),
-                ['format', 'postfix', 'status', 'file', 'size', 'dimensions']
+            $status = $this->displayFormattedRows(
+                $input,
+                $formatRows,
+                ['format', 'postfix', 'status', 'file', 'size', 'dimensions'],
+                self::CHECK_FIELDS
             );
-            $formatter->display($formatRows, $this->io());
+            if ($status !== self::SUCCESS) {
+                return $status;
+            }
+
             return $missingRequired === [] ? self::SUCCESS : self::FAILURE;
         }
 

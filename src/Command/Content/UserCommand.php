@@ -334,6 +334,9 @@ HELP
 
         try {
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->rejectFieldSelectionForCountFormat($input)) {
+                    return self::FAILURE;
+                }
                 if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
                     return self::FAILURE;
                 }

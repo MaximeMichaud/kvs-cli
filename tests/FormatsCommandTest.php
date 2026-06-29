@@ -246,6 +246,22 @@ class FormatsCommandTest extends TestCase
         $this->assertStringNotContainsString('Missing Formats', $output);
     }
 
+    public function testCheckFormatsRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '10',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testCheckFormatsJsonSucceedsWhenOnlyOptionalFormatsAreMissing(): void
     {
         $this->tester->execute([

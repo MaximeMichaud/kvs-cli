@@ -207,6 +207,9 @@ HELP
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->rejectFieldSelectionForCountFormat($input, ['fields'])) {
+                return self::FAILURE;
+            }
             if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
                 return self::FAILURE;
             }
@@ -894,6 +897,9 @@ HELP
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->rejectFieldSelectionForCountFormat($input, ['fields'])) {
+                return self::FAILURE;
+            }
             if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
                 return self::FAILURE;
             }

@@ -2,7 +2,6 @@
 
 namespace KVS\CLI\Command;
 
-use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -19,6 +18,23 @@ class PluginCommand extends BaseCommand
     private const HIDDEN_PLUGIN_IDS = ['push_notifications', 'awe_black_label'];
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count', 'ids'];
     private const LIST_FILTER_OPTIONS = ['status', 'type'];
+    private const SHOW_FIELDS = [
+        'id',
+        'name',
+        'title',
+        'author',
+        'version',
+        'kvs_version',
+        'types',
+        'files_ok',
+        'syntax_ok',
+        'compatible',
+        'status',
+        'description',
+        'path',
+    ];
+    private const PATH_FIELDS = ['id', 'path'];
+    private const METRIC_FIELDS = ['section', 'metric', 'value', 'display_value', 'label'];
     private const LIST_FIELDS = [
         'id',
         'name',
@@ -322,26 +338,12 @@ HELP
         $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
 
         if ($this->shouldUseFormattedRows($input)) {
-            $formatter = new Formatter(
-                $input->getOptions(),
-                [
-                    'id',
-                    'name',
-                    'title',
-                    'author',
-                    'version',
-                    'kvs_version',
-                    'types',
-                    'files_ok',
-                    'syntax_ok',
-                    'compatible',
-                    'status',
-                    'description',
-                    'path',
-                ]
+            return $this->displayFormattedRows(
+                $input,
+                [$this->formatPluginForList($plugin)],
+                self::SHOW_FIELDS,
+                self::LIST_FIELDS
             );
-            $formatter->display([$this->formatPluginForList($plugin)], $this->io());
-            return self::SUCCESS;
         }
 
         $this->io()->section("Plugin: {$nameStr}");
@@ -403,12 +405,15 @@ HELP
         $pluginPath = $plugin['path'] ?? '';
         $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
         if ($this->shouldUseFormattedRows($input)) {
-            $formatter = new Formatter($input->getOptions(), ['id', 'path']);
-            $formatter->display([[
-                'id' => $id,
-                'path' => $pluginPathStr,
-            ]], $this->io());
-            return self::SUCCESS;
+            return $this->displayFormattedRows(
+                $input,
+                [[
+                    'id' => $id,
+                    'path' => $pluginPathStr,
+                ]],
+                self::PATH_FIELDS,
+                self::PATH_FIELDS
+            );
         }
 
         $this->io()->writeln($pluginPathStr);
@@ -491,8 +496,7 @@ HELP
         }
 
         if ($this->shouldUseFormattedRows($input)) {
-            $this->displayMetricRows($input, $metricRows);
-            return self::SUCCESS;
+            return $this->displayFormattedRows($input, $metricRows, self::METRIC_FIELDS, self::METRIC_FIELDS);
         }
 
         $this->io()->section('Plugin Statistics');

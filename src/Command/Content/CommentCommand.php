@@ -352,6 +352,9 @@ HELP
             }
 
             if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+                if ($this->rejectFieldSelectionForCountFormat($input)) {
+                    return self::FAILURE;
+                }
                 $countSql = "
                     SELECT COUNT(*)
                     FROM {$this->table('comments')} c

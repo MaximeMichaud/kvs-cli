@@ -246,6 +246,12 @@ class Formatter
             }
         }
 
+        if ($items !== [] && $ids === []) {
+            throw new \InvalidArgumentException(
+                'The ids format requires result rows with an ID field.'
+            );
+        }
+
         $output->writeln(implode(' ', array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $ids)));
     }
 

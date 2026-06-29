@@ -211,6 +211,26 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertStringNotContainsString('Available actions', $output);
     }
 
+    public function testVideoStatsRejectsIdsFormatWithoutEmptySuccess(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, status_id INTEGER, video_viewed INTEGER, duration INTEGER, ' .
+            'rating REAL, rating_amount INTEGER, file_size INTEGER)'
+        );
+        $db->exec("INSERT INTO ktvs_videos VALUES (20, 'Daily news', 1, 15, 120, 20, 5, 5050)");
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'stats',
+            '--format' => 'ids',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('The ids format requires result rows with an', $tester->getDisplay());
+    }
+
     public function testVideoListAndStatsClampRatingToScale(): void
     {
         $db = $this->createSqliteConnection();
@@ -594,6 +614,46 @@ class ContentOutputRegressionTest extends TestCase
                 $tester->getDisplay()
             );
         }
+    }
+
+    public function testContentCountFormatRejectsFieldSelection(): void
+    {
+        $cases = [
+            'video' => $this->createVideoCommand($this->createSqliteConnection()),
+            'album' => $this->createAlbumCommand($this->createSqliteConnection()),
+            'playlist' => $this->createPlaylistCommand($this->createSqliteConnection()),
+            'user' => $this->createUserCommand($this->createSqliteConnection()),
+            'comment' => $this->createCommentCommand($this->createSqliteConnection()),
+            'model' => $this->createModelCommand($this->createSqliteConnection()),
+            'tag' => $this->createTagCommand($this->createSqliteConnection()),
+            'category' => $this->createCategoryCommand($this->createSqliteConnection()),
+            'dvd' => $this->createDvdCommand($this->createSqliteConnection()),
+        ];
+
+        foreach ($cases as $name => $command) {
+            $tester = new CommandTester($command);
+            $tester->execute([
+                'action' => 'list',
+                '--format' => 'count',
+                '--fields' => '__not_a_field__',
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $name);
+            $this->assertStringContainsString('The count format does not support --fields.', $tester->getDisplay(), $name);
+        }
+    }
+
+    public function testContentCountFormatRejectsSingleFieldSelection(): void
+    {
+        $tester = new CommandTester($this->createVideoCommand($this->createSqliteConnection()));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--field' => 'video_id',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('The count format does not support --field.', $tester->getDisplay());
     }
 
     public function testContentListsValidateSingleFieldWhenResultSetIsEmpty(): void

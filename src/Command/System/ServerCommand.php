@@ -260,6 +260,9 @@ HELP
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->rejectFieldSelectionForCountFormat($input, ['fields'])) {
+                return self::FAILURE;
+            }
             if ($this->getPositiveIntOptionOrDefault($input, 'limit', 50) === null) {
                 return self::FAILURE;
             }

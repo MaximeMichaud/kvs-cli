@@ -993,6 +993,40 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * @param list<string> $optionNames
+     */
+    protected function rejectFieldSelectionForCountFormat(
+        InputInterface $input,
+        array $optionNames = ['fields', 'field']
+    ): bool {
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') !== 'count') {
+            return false;
+        }
+
+        $provided = [];
+        foreach ($optionNames as $optionName) {
+            try {
+                if ($this->getStringOption($input, $optionName) !== null) {
+                    $provided[] = "--{$optionName}";
+                }
+            } catch (\InvalidArgumentException) {
+                continue;
+            }
+        }
+
+        if ($provided === []) {
+            return false;
+        }
+
+        $this->io()->error(sprintf(
+            'The count format does not support %s.',
+            implode(' or ', $provided)
+        ));
+
+        return true;
+    }
+
+    /**
      * @return list<string>
      */
     protected function getStatementColumnNames(\PDOStatement $stmt): array

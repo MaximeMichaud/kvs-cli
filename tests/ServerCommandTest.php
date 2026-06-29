@@ -377,6 +377,20 @@ class ServerCommandTest extends TestCase
         $this->assertSame(0, $testerCount->getStatusCode());
     }
 
+    public function testServerListCountRejectsFieldSelection(): void
+    {
+        $testerCount = new CommandTester($this->command);
+        $testerCount->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--format' => 'count',
+            '--fields' => 'server_id',
+        ]);
+
+        $this->assertSame(1, $testerCount->getStatusCode(), $testerCount->getDisplay());
+        $this->assertStringContainsString('The count format does not support --fields.', $testerCount->getDisplay());
+    }
+
     public function testServerShow(): void
     {
         $this->tester->execute([

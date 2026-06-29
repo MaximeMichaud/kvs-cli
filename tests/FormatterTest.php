@@ -182,6 +182,20 @@ class FormatterTest extends TestCase
         $this->assertEquals('1 2 3', $output);
     }
 
+    public function testIdsFormatRejectsRowsWithoutIdFields(): void
+    {
+        $items = [
+            ['metric' => 'Total Videos', 'value' => 10],
+        ];
+
+        $formatter = new Formatter(['format' => 'ids'], ['metric', 'value']);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The ids format requires result rows with an ID field.');
+
+        $formatter->display($items, $this->output);
+    }
+
     public function testSingleFieldMode(): void
     {
         $items = [

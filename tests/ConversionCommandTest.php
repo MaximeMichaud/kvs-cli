@@ -692,6 +692,28 @@ class ConversionCommandTest extends TestCase
         $this->assertStringNotContainsString('/old/kvs/root', $output);
     }
 
+    public function testConversionLogRejectsUnknownFieldsWithFailureStatus(): void
+    {
+        $conversionPath = $this->kvsPath . '/conversion-server-log-fields';
+        mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/log.txt', "INFO  Local conversion log\n");
+        $this->insertLocalConversionServer(54, 'Log Fields Converter', $conversionPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '54',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testConversionDebugOnMissingId(): void
     {
         $this->tester->execute([
@@ -806,6 +828,29 @@ class ConversionCommandTest extends TestCase
         $this->assertSame($conversionPath . '/config.properties', $rows[0]['file']);
         $this->assertSame("max.tasks=4\n", $rows[0]['content']);
         $this->assertTrue($rows[0]['heartbeat_exists']);
+    }
+
+    public function testConversionConfigRejectsUnknownFieldsWithFailureStatus(): void
+    {
+        $conversionPath = $this->kvsPath . '/conversion-server-config-fields';
+        mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/config.properties', "max.tasks=4\n");
+        file_put_contents($conversionPath . '/heartbeat.dat', serialize(['libraries' => []]));
+        $this->insertLocalConversionServer(55, 'Config Fields Converter', $conversionPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '55',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
     }
 
     public function testConversionLogMissingId(): void

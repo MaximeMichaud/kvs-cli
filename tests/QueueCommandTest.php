@@ -327,6 +327,30 @@ class QueueCommandTest extends TestCase
         $this->assertSame("1\n", $this->tester->getDisplay());
     }
 
+    public function testQueueListCountFormatRejectsFieldSelection(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--fields' => 'task_id',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('The count format does not support --fields.', $this->tester->getDisplay());
+    }
+
+    public function testQueueHistoryCountFormatRejectsFieldSelection(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--format' => 'count',
+            '--fields' => 'task_id',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('The count format does not support --fields.', $this->tester->getDisplay());
+    }
+
     public function testQueueStats(): void
     {
         $this->tester->execute([

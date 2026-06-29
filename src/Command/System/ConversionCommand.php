@@ -744,7 +744,7 @@ HELP
 
             if (!file_exists($logFile)) {
                 if ($this->shouldUseFormattedRows($input)) {
-                    $this->displayConversionFileRows($input, [[
+                    $status = $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $this->getStringField($server, 'title'),
                         'file' => $logFile,
@@ -755,7 +755,7 @@ HELP
                         'content' => null,
                         'message' => 'Log file not found',
                     ]]);
-                    return self::FAILURE;
+                    return $status === self::SUCCESS ? self::FAILURE : $status;
                 }
 
                 $this->io()->warning("Log file not found: $logFile");
@@ -765,7 +765,7 @@ HELP
             $content = file_get_contents($logFile);
             if ($content === false) {
                 if ($this->shouldUseFormattedRows($input)) {
-                    $this->displayConversionFileRows($input, [[
+                    $status = $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $this->getStringField($server, 'title'),
                         'file' => $logFile,
@@ -776,7 +776,7 @@ HELP
                         'content' => null,
                         'message' => 'Cannot read log file',
                     ]]);
-                    return self::FAILURE;
+                    return $status === self::SUCCESS ? self::FAILURE : $status;
                 }
 
                 $this->io()->error("Cannot read log file: $logFile");
@@ -784,7 +784,7 @@ HELP
             }
 
             if ($this->shouldUseFormattedRows($input)) {
-                $this->displayConversionFileRows($input, [[
+                return $this->displayConversionFileRows($input, [[
                     'server_id' => (string) $serverId,
                     'title' => $this->getStringField($server, 'title'),
                     'file' => $logFile,
@@ -795,7 +795,6 @@ HELP
                     'content' => $content,
                     'message' => trim($content) === '' ? 'Log file is empty' : '',
                 ]]);
-                return self::SUCCESS;
             }
 
             $title = $this->getStringField($server, 'title');
@@ -868,7 +867,7 @@ HELP
 
             if (!file_exists($configFile)) {
                 if ($this->shouldUseFormattedRows($input)) {
-                    $this->displayConversionFileRows($input, [[
+                    $status = $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $title,
                         'file' => $configFile,
@@ -881,7 +880,7 @@ HELP
                         'libraries' => [],
                         'message' => 'Config file not found',
                     ]]);
-                    return self::FAILURE;
+                    return $status === self::SUCCESS ? self::FAILURE : $status;
                 }
 
                 $this->io()->warning("Config file not found: $configFile");
@@ -891,7 +890,7 @@ HELP
             $content = file_get_contents($configFile);
             if ($content === false) {
                 if ($this->shouldUseFormattedRows($input)) {
-                    $this->displayConversionFileRows($input, [[
+                    $status = $this->displayConversionFileRows($input, [[
                         'server_id' => (string) $serverId,
                         'title' => $title,
                         'file' => $configFile,
@@ -904,7 +903,7 @@ HELP
                         'libraries' => [],
                         'message' => 'Cannot read config file',
                     ]]);
-                    return self::FAILURE;
+                    return $status === self::SUCCESS ? self::FAILURE : $status;
                 }
 
                 $this->io()->error("Cannot read config file: $configFile");
@@ -915,7 +914,7 @@ HELP
             $libraries = $this->readConversionLibraries($heartbeatFile);
 
             if ($this->shouldUseFormattedRows($input)) {
-                $this->displayConversionFileRows($input, [[
+                return $this->displayConversionFileRows($input, [[
                     'server_id' => (string) $serverId,
                     'title' => $title,
                     'file' => $configFile,
@@ -928,7 +927,6 @@ HELP
                     'libraries' => $libraries,
                     'message' => '',
                 ]]);
-                return self::SUCCESS;
             }
 
             $this->io()->section("Configuration - $title");
@@ -1225,9 +1223,9 @@ HELP
     /**
      * @param list<array<string, mixed>> $rows
      */
-    private function displayConversionFileRows(InputInterface $input, array $rows): void
+    private function displayConversionFileRows(InputInterface $input, array $rows): int
     {
-        $this->displayFormattedRows($input, $rows, array_keys($rows[0] ?? []));
+        return $this->displayFormattedRows($input, $rows, array_keys($rows[0] ?? []));
     }
 
     private function countLines(string $content): int
