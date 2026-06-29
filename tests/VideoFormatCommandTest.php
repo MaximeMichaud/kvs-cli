@@ -107,6 +107,22 @@ class VideoFormatCommandTest extends TestCase
         }
     }
 
+    public function testListRejectsIgnoredFormatIdArgument(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            'id' => '999',
+            '--format' => 'count',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support a format ID', $output);
+        $this->assertNotSame("4\n", $output);
+    }
+
     public function testShowRejectsListOnlyFilters(): void
     {
         foreach (['status' => 'required', 'group' => '1', 'search' => 'mp4'] as $option => $value) {
@@ -121,6 +137,22 @@ class VideoFormatCommandTest extends TestCase
             $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
             $this->assertStringContainsString("show action does not support --{$option}", $tester->getDisplay());
         }
+    }
+
+    public function testGroupsRejectsIgnoredGroupIdArgument(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'groups',
+            'id' => '999',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('groups action does not support a group ID', $output);
+        $this->assertStringNotContainsString('Main', $output);
     }
 
     private function createDatabase(): PDO

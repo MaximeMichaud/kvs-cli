@@ -95,6 +95,22 @@ class OptionsCommandTest extends TestCase
         $this->assertStringContainsString('list action does not support --yes', $display);
     }
 
+    public function testListRejectsIgnoredNameArgument(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('list action does not support option name or value arguments', $display);
+        $this->assertNotSame("2\n", $display);
+    }
+
     public function testGetRejectsSetOnlyYesOption(): void
     {
         $this->tester->execute([
@@ -108,6 +124,23 @@ class OptionsCommandTest extends TestCase
 
         $this->assertSame(1, $this->tester->getStatusCode(), $display);
         $this->assertStringContainsString('get action does not support --yes', $display);
+        $this->assertStringNotContainsString('ENABLE_DVD_FIELD_1', $display);
+    }
+
+    public function testGetRejectsIgnoredValueArgument(): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            'value' => 'ignored-value',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('get action does not support a value argument', $display);
         $this->assertStringNotContainsString('ENABLE_DVD_FIELD_1', $display);
     }
 

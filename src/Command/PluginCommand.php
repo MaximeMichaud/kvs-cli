@@ -91,6 +91,11 @@ HELP
 
     private function listPlugins(InputInterface $input): int
     {
+        if ($this->getStringArgument($input, 'id') !== null) {
+            $this->io()->error('The list action does not support a plugin ID. Use show or path for a specific plugin.');
+            return self::FAILURE;
+        }
+
         $allPlugins = $this->getAllPlugins();
         $plugins = $allPlugins;
 
@@ -397,6 +402,11 @@ HELP
 
     private function showStatus(InputInterface $input): int
     {
+        if ($this->getStringArgument($input, 'id') !== null) {
+            $this->io()->error('The status action does not support a plugin ID.');
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptions($input, 'status', self::LIST_FILTER_OPTIONS)) {
             return self::FAILURE;
         }

@@ -140,6 +140,16 @@ HELP
 
     private function listOptions(InputInterface $input): int
     {
+        if (
+            $this->getStringArgument($input, 'name') !== null
+            || $this->getStringArgument($input, 'value') !== null
+        ) {
+            $this->io()->error(
+                'The list action does not support option name or value arguments. Use get or set.'
+            );
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptions($input, 'list', self::SET_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
@@ -261,6 +271,11 @@ HELP
 
     private function getOption(InputInterface $input): int
     {
+        if ($this->getStringArgument($input, 'value') !== null) {
+            $this->io()->error('The get action does not support a value argument. Use set to change option values.');
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptions($input, 'get', self::SET_ONLY_OPTIONS)) {
             return self::FAILURE;
         }

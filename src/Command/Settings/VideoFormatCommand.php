@@ -95,6 +95,13 @@ HELP
 
     private function listFormats(InputInterface $input): int
     {
+        if ($this->getStringArgument($input, 'id') !== null) {
+            $this->io()->error(
+                'The list action does not support a format ID. Use show for a specific format.'
+            );
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
@@ -646,6 +653,11 @@ HELP
 
     private function listGroups(InputInterface $input): int
     {
+        if ($this->getStringArgument($input, 'id') !== null) {
+            $this->io()->error('The groups action does not support a group ID.');
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }

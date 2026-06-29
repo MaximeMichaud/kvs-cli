@@ -381,6 +381,21 @@ class PluginCommandTest extends TestCase
         $this->assertNotContains('awe_black_label', $ids);
     }
 
+    public function testListRejectsIgnoredPluginIdArgument(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            'id' => 'backup',
+            '--format' => 'json',
+            '--fields' => 'id,status',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode, $output);
+        $this->assertStringContainsString('list action does not support a plugin ID', $output);
+        $this->assertStringNotContainsString('"id": "backup"', $output);
+    }
+
     // ========================================
     // SHOW COMMAND TESTS (3 tests)
     // ========================================
@@ -631,6 +646,21 @@ class PluginCommandTest extends TestCase
             $this->assertStringContainsString("status action does not support --$option", $output);
             $this->assertStringNotContainsString('Total Plugins', $output);
         }
+    }
+
+    public function testStatusRejectsIgnoredPluginIdArgument(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            'id' => 'backup',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode, $output);
+        $this->assertStringContainsString('status action does not support a plugin ID', $output);
+        $this->assertStringNotContainsString('Total Plugins', $output);
     }
 
     public function testTypeFilterIsValidatedBeforeStatusFilterCanEmptyResults(): void
