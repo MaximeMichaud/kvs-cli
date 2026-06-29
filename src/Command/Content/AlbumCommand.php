@@ -22,6 +22,40 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class AlbumCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const ALBUM_STRING_FIELD_FILTER_COLUMNS = [
+        'title',
+        'description',
+        'gallery_url',
+        'custom1',
+        'custom2',
+        'custom3',
+    ];
+
+    /** @var list<string> */
+    private const ALBUM_NUMERIC_FIELD_FILTER_COLUMNS = [
+        'af_custom1',
+        'af_custom2',
+        'af_custom3',
+    ];
+
+    /** @var list<string> */
+    private const ALBUM_SPECIAL_FIELD_FILTERS = [
+        'content_source',
+        'admin',
+        'admin_flag',
+        'tokens_required',
+        'album_viewed',
+        'album_viewed_unique',
+        'comments',
+        'favourites',
+        'purchases',
+        'rating',
+        'tags',
+        'categories',
+        'models',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -34,6 +68,15 @@ class AlbumCommand extends BaseCommand
             ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
             ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
             ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID or title')
+            ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public albums')
+            ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private albums')
+            ->addOption('premium', null, InputOption::VALUE_NONE, 'Show only premium albums')
+            ->addOption('access-level', null, InputOption::VALUE_REQUIRED, 'Filter by access level (0-3)')
+            ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only albums that need review')
+            ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only albums that do not need review')
+            ->addOption('locked', null, InputOption::VALUE_NONE, 'Show only locked albums')
+            ->addOption('unlocked', null, InputOption::VALUE_NONE, 'Show only unlocked albums')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/tags)')
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles, directories, and descriptions')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
@@ -91,6 +134,14 @@ HELP
 
     private function listAlbums(InputInterface $input): int
     {
+        if (
+            $this->hasConflictingBoolOptions($input, ['public', 'private', 'premium'])
+            || $this->hasConflictingBoolOptions($input, ['review-needed', 'not-review-needed'])
+            || $this->hasConflictingBoolOptions($input, ['locked', 'unlocked'])
+        ) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -257,6 +308,35 @@ HELP
             $params['user'] = $user;
         }
 
+        if ($this->getBoolOption($input, 'public')) {
+            $whereClause .= ' AND a.is_private = 0';
+        } elseif ($this->getBoolOption($input, 'private')) {
+            $whereClause .= ' AND a.is_private = 1';
+        } elseif ($this->getBoolOption($input, 'premium')) {
+            $whereClause .= ' AND a.is_private = 2';
+        }
+
+        $accessLevel = $this->parseAlbumAccessLevelOption($input);
+        if ($accessLevel === false) {
+            return false;
+        }
+        if ($accessLevel !== null) {
+            $whereClause .= ' AND a.access_level_id = :access_level';
+            $params['access_level'] = $accessLevel;
+        }
+
+        if ($this->getBoolOption($input, 'review-needed')) {
+            $whereClause .= ' AND a.is_review_needed = 1';
+        } elseif ($this->getBoolOption($input, 'not-review-needed')) {
+            $whereClause .= ' AND a.is_review_needed = 0';
+        }
+
+        if ($this->getBoolOption($input, 'locked')) {
+            $whereClause .= ' AND a.is_locked = 1';
+        } elseif ($this->getBoolOption($input, 'unlocked')) {
+            $whereClause .= ' AND a.is_locked = 0';
+        }
+
         if (!$this->applyAlbumRelationFilters($db, $input, $whereClause, $params)) {
             return false;
         }
@@ -270,7 +350,155 @@ HELP
             $params['search'] = $this->containsLikePattern($search);
         }
 
+        $fieldFilter = $this->getStringOption($input, 'field-filter');
+        if ($fieldFilter !== null) {
+            $condition = $this->getAlbumFieldFilterCondition($fieldFilter);
+            if ($condition === null) {
+                $this->io()->error('Invalid album field filter. Use: ' . implode(', ', $this->getAlbumFieldFilterValues()));
+                return false;
+            }
+            $whereClause .= " AND {$condition}";
+        }
+
         return true;
+    }
+
+    private function parseAlbumAccessLevelOption(InputInterface $input): int|false|null
+    {
+        $accessLevel = $this->getStringOption($input, 'access-level');
+        if ($accessLevel === null) {
+            return null;
+        }
+
+        $values = [
+            '0' => 0,
+            'from-access-type' => 0,
+            'inherit' => 0,
+            '1' => 1,
+            'all' => 1,
+            'all-users' => 1,
+            '2' => 2,
+            'members' => 2,
+            'only-members' => 2,
+            '3' => 3,
+            'premium' => 3,
+            'only-premium' => 3,
+            'only-premium-members' => 3,
+        ];
+
+        $normalized = strtolower(str_replace('_', '-', $accessLevel));
+        if (!array_key_exists($normalized, $values)) {
+            $this->io()->error(
+                'Invalid album access level. Use: 0, 1, 2, 3, inherit, all, members, or premium'
+            );
+            return false;
+        }
+
+        return $values[$normalized];
+    }
+
+    /** @return list<string> */
+    private function getAlbumFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::ALBUM_STRING_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::ALBUM_NUMERIC_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::ALBUM_SPECIAL_FIELD_FILTERS as $field) {
+                $values[] = "{$prefix}/{$field}";
+            }
+        }
+
+        return $values;
+    }
+
+    private function getAlbumFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $field] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true)) {
+            return null;
+        }
+
+        return $state === 'empty'
+            ? $this->getEmptyAlbumFieldFilterCondition($field)
+            : $this->getFilledAlbumFieldFilterCondition($field);
+    }
+
+    private function getEmptyAlbumFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::ALBUM_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "a.{$field} = ''";
+        }
+        if (in_array($field, self::ALBUM_NUMERIC_FIELD_FILTER_COLUMNS, true)) {
+            return "a.{$field} = 0";
+        }
+
+        return match ($field) {
+            'content_source' => 'a.content_source_id = 0',
+            'admin' => 'a.admin_user_id = 0',
+            'admin_flag' => 'a.admin_flag_id = 0',
+            'tokens_required' => 'a.tokens_required = 0',
+            'album_viewed' => 'a.album_viewed = 0',
+            'album_viewed_unique' => 'a.album_viewed_unique = 0',
+            'comments' => $this->getAlbumCommentsCountExpression() . ' = 0',
+            'favourites' => 'a.favourites_count = 0',
+            'purchases' => 'a.purchases_count = 0',
+            'rating' => '(a.rating = 0 AND a.rating_amount = 1)',
+            'tags' => $this->getAlbumRelationExistsCondition('tags_albums', 'tag_id', false),
+            'categories' => $this->getAlbumRelationExistsCondition('categories_albums', 'category_id', false),
+            'models' => $this->getAlbumRelationExistsCondition('models_albums', 'model_id', false),
+            default => null,
+        };
+    }
+
+    private function getFilledAlbumFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::ALBUM_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "a.{$field} != ''";
+        }
+        if (in_array($field, self::ALBUM_NUMERIC_FIELD_FILTER_COLUMNS, true)) {
+            return "a.{$field} != 0";
+        }
+
+        return match ($field) {
+            'content_source' => 'a.content_source_id > 0',
+            'admin' => 'a.admin_user_id > 0',
+            'admin_flag' => 'a.admin_flag_id > 0',
+            'tokens_required' => 'a.tokens_required > 0',
+            'album_viewed' => 'a.album_viewed > 0',
+            'album_viewed_unique' => 'a.album_viewed_unique > 0',
+            'comments' => $this->getAlbumCommentsCountExpression() . ' > 0',
+            'favourites' => 'a.favourites_count > 0',
+            'purchases' => 'a.purchases_count > 0',
+            'rating' => '(a.rating > 0 OR a.rating_amount > 1)',
+            'tags' => $this->getAlbumRelationExistsCondition('tags_albums', 'tag_id', true),
+            'categories' => $this->getAlbumRelationExistsCondition('categories_albums', 'category_id', true),
+            'models' => $this->getAlbumRelationExistsCondition('models_albums', 'model_id', true),
+            default => null,
+        };
+    }
+
+    private function getAlbumCommentsCountExpression(): string
+    {
+        $commentsTable = $this->table('comments');
+        return "(SELECT COUNT(*) FROM {$commentsTable} c_filter "
+            . 'WHERE c_filter.object_id = a.album_id AND c_filter.object_type_id = 2)';
+    }
+
+    private function getAlbumRelationExistsCondition(string $relationTable, string $idColumn, bool $exists): string
+    {
+        $table = $this->table($relationTable);
+        $operator = $exists ? 'EXISTS' : 'NOT EXISTS';
+        return "{$operator} (SELECT {$idColumn} FROM {$table} rel_filter WHERE rel_filter.album_id = a.album_id)";
     }
 
     /**
