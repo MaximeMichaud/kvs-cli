@@ -185,6 +185,43 @@ class PlaylistCommandTest extends TestCase
         }
     }
 
+    public function testPlaylistListFiltersByKvsAdminFlagVotes(): void
+    {
+        $cases = [
+            ['options' => ['--flag' => '7'], 'expected' => [30, 20]],
+            ['options' => ['--flag' => '7', '--flag-votes' => '2'], 'expected' => [30]],
+            ['options' => ['--flag' => '8'], 'expected' => [10]],
+            ['options' => ['--flag' => '999'], 'expected' => []],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--format' => 'json',
+                '--fields' => 'playlist_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        }
+    }
+
+    public function testPlaylistListRejectsFlagVotesWithoutFlag(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--flag-votes' => '2',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Option --flag-votes requires --flag', $this->tester->getDisplay());
+    }
+
     public function testPlaylistListPublicFilter(): void
     {
         $this->tester->execute([
@@ -821,6 +858,10 @@ class PlaylistCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('tags_playlists') . ' (' .
             'id INTEGER, tag_id INTEGER, playlist_id INTEGER)'
         );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('flags_playlists') . ' (' .
+            'playlist_id INTEGER, flag_id INTEGER, votes INTEGER)'
+        );
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('users') .
@@ -870,6 +911,10 @@ class PlaylistCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_playlists') .
             ' (id, tag_id, playlist_id) VALUES (1, 2, 30), (2, 1, 30)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('flags_playlists') .
+            ' (playlist_id, flag_id, votes) VALUES (30, 7, 3), (20, 7, 1), (10, 8, 5)'
         );
 
         return $db;

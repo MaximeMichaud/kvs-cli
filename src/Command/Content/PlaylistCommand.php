@@ -35,6 +35,8 @@ class PlaylistCommand extends BaseCommand
             ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
             ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
             ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/videos)')
+            ->addOption('flag', null, InputOption::VALUE_REQUIRED, 'Filter by flag ID')
+            ->addOption('flag-votes', null, InputOption::VALUE_REQUIRED, 'Minimum flag votes for --flag', '1')
             ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only playlists that need review')
             ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only playlists that do not need review')
             ->addOption('locked', null, InputOption::VALUE_NONE, 'Show only locked playlists')
@@ -161,7 +163,7 @@ HELP
         try {
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
             if ($limit === null) {
@@ -293,7 +295,47 @@ HELP
             $fromClause .= " AND {$condition}";
         }
 
+        if (!$this->applyPlaylistFlagFilter($input, $fromClause, $params)) {
+            return false;
+        }
+
         return $this->applyPlaylistRelationFilters($db, $input, $fromClause, $params);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyPlaylistFlagFilter(InputInterface $input, string &$fromClause, array &$params): bool
+    {
+        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        if ($flag === false) {
+            return false;
+        }
+
+        $votesOption = $this->getStringOption($input, 'flag-votes');
+        if ($flag === null) {
+            if ($votesOption !== null && $votesOption !== '1') {
+                $this->io()->error('Option --flag-votes requires --flag');
+                return false;
+            }
+            return true;
+        }
+
+        $flagVotes = $this->getPositiveIntOptionOrDefault($input, 'flag-votes', 1);
+        if ($flagVotes === null) {
+            return false;
+        }
+
+        $flagsTable = $this->table('flags_playlists');
+        $fromClause .= " AND (
+            SELECT SUM(fp_filter.votes)
+            FROM {$flagsTable} fp_filter
+            WHERE fp_filter.playlist_id = p.playlist_id AND fp_filter.flag_id = :flag
+        ) >= :flag_votes";
+        $params['flag'] = $flag;
+        $params['flag_votes'] = $flagVotes;
+
+        return true;
     }
 
     /** @return list<string> */
@@ -417,7 +459,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT COUNT(*) $fromClause");
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->execute();
 
