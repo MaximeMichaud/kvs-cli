@@ -160,6 +160,10 @@ HELP
 
     private function listServers(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a server ID argument', 'show', 'a specific server')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
@@ -805,6 +809,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a server ID argument', 'show', 'a specific server')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }

@@ -61,6 +61,10 @@ class ConfigCommand extends BaseCommand
 
     private function getConfig(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'get', 'value', 'a value argument', 'set', 'updating a configuration value')) {
+            return self::FAILURE;
+        }
+
         $key = $this->getStringArgument($input, 'key');
         if ($key === null || $key === '') {
             $this->io()->error('Configuration key is required for get action');
@@ -147,6 +151,10 @@ class ConfigCommand extends BaseCommand
 
     private function listConfig(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'key', 'a configuration key argument', 'get', 'a specific configuration value')) {
+            return self::FAILURE;
+        }
+
         $file = $this->getStringOptionOrDefault($input, 'file', 'all');
         if (!$this->isValidConfigFile($file)) {
             $this->io()->error("Unknown config file: $file");

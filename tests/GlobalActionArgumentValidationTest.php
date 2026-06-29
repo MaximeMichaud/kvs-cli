@@ -11,7 +11,10 @@ use KVS\CLI\Command\Content\PlaylistCommand;
 use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\VideoCommand;
+use KVS\CLI\Command\ConfigCommand;
+use KVS\CLI\Command\System\ConversionCommand;
 use KVS\CLI\Command\System\QueueCommand;
+use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -157,6 +160,41 @@ class GlobalActionArgumentValidationTest extends TestCase
             ['action' => 'stats', 'id' => '1'],
             'The stats action does not support a task ID argument',
         ];
+        yield 'server list id' => [
+            'server',
+            ['--force' => true, 'action' => 'list', 'id' => '1', '--format' => 'count'],
+            'The list action does not support a server ID argument',
+        ];
+        yield 'server stats id' => [
+            'server',
+            ['--force' => true, 'action' => 'stats', 'id' => '1'],
+            'The stats action does not support a server ID argument',
+        ];
+        yield 'conversion list id' => [
+            'conversion',
+            ['--force' => true, 'action' => 'list', 'id' => '1', '--format' => 'count'],
+            'The list action does not support a conversion server ID argument',
+        ];
+        yield 'conversion stats id' => [
+            'conversion',
+            ['--force' => true, 'action' => 'stats', 'id' => '1'],
+            'The stats action does not support a conversion server ID argument',
+        ];
+        yield 'config list key' => [
+            'config',
+            ['action' => 'list', 'key' => 'db.host', '--json' => true],
+            'The list action does not support a configuration key argument',
+        ];
+        yield 'config list key and value' => [
+            'config',
+            ['action' => 'list', 'key' => 'db.host', 'value' => 'unexpected-value', '--json' => true],
+            'The list action does not support a configuration key argument',
+        ];
+        yield 'config get value' => [
+            'config',
+            ['action' => 'get', 'key' => 'db.host', 'value' => 'unexpected-value'],
+            'The get action does not support a value argument',
+        ];
     }
 
     private function createCommand(string $commandName): Command
@@ -165,10 +203,13 @@ class GlobalActionArgumentValidationTest extends TestCase
             'album' => new AlbumCommand($this->config),
             'category' => new CategoryCommand($this->config),
             'comment' => new CommentCommand($this->config),
+            'config' => new ConfigCommand($this->config),
+            'conversion' => new ConversionCommand($this->config),
             'dvd' => new DvdCommand($this->config),
             'model' => new ModelCommand($this->config),
             'playlist' => new PlaylistCommand($this->config),
             'queue' => new QueueCommand($this->config),
+            'server' => new ServerCommand($this->config),
             'tag' => new TagCommand($this->config),
             'user' => new UserCommand($this->config),
             'video' => new VideoCommand($this->config),

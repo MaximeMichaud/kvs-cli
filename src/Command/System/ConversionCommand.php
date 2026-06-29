@@ -168,6 +168,10 @@ HELP
 
     private function listServers(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a conversion server ID argument', 'show', 'a specific conversion server')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
@@ -1047,6 +1051,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a conversion server ID argument', 'show', 'a specific conversion server')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
