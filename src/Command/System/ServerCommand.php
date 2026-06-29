@@ -217,12 +217,19 @@ HELP
                     ? (float) $server['load'] : 0.0;
                 $contentCount = isset($server['content_count']) && is_numeric($server['content_count'])
                     ? (int) $server['content_count'] : 0;
+                $isRemote = isset($server['is_remote']) && is_numeric($server['is_remote'])
+                    ? (int) $server['is_remote'] : null;
 
                 $errorIter = isset($server['error_iteration']) && is_numeric($server['error_iteration'])
                     ? (int) $server['error_iteration'] : 0;
                 $errorStreamIter = isset($server['error_streaming_iteration']) && is_numeric($server['error_streaming_iteration'])
                     ? (int) $server['error_streaming_iteration'] : 0;
                 $hasError = $errorIter > 1 || $errorStreamIter > 1;
+                if ($isRemote !== null && $isRemote !== 1) {
+                    $server['control_script_url'] = '';
+                    $server['control_script_url_version'] = 'N/A';
+                    $server['control_script_url_lock_ip'] = 0;
+                }
 
                 return [
                     ...$server,

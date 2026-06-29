@@ -164,7 +164,7 @@ HELP
             $query = "SELECT u.*" . ($counterSelects !== [] ? ', ' . implode(', ', $counterSelects) : '') . "
                  {$fromClause}
                  {$whereClause}
-                 ORDER BY u.added_date DESC LIMIT :limit";
+                 ORDER BY u.user_id DESC LIMIT :limit";
 
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {

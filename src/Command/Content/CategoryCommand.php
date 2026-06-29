@@ -183,7 +183,7 @@ HELP
                 {$groupJoin}
                 {$usageJoins}
                 $whereClause
-                ORDER BY c.title
+                ORDER BY c.category_id DESC
                 LIMIT :limit
             ";
 

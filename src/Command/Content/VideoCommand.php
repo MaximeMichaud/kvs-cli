@@ -166,7 +166,7 @@ HELP
                  $fromSql
                  $relationJoinSql
                  $whereSql
-                 ORDER BY v.post_date DESC LIMIT :limit";
+                 ORDER BY v.video_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);

@@ -45,7 +45,7 @@ class VideoCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Video id', $output);
-        $this->assertStringContainsString('Featured Clip', $output);
+        $this->assertStringContainsString('Older Active Clip', $output);
         $this->assertStringContainsString('Disabled Clip', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
@@ -63,14 +63,15 @@ class VideoCommandTest extends TestCase
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertCount(2, $rows);
-        $this->assertSame([10, 30], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
-        $this->assertSame('Featured Clip', $rows[0]['title']);
-        $this->assertSame('Active', $rows[0]['status']);
-        $this->assertSame(123, (int) $rows[0]['views']);
-        $this->assertSame('alice', $rows[0]['username']);
-        $this->assertSame('2:05', $rows[0]['duration']);
-        $this->assertSame('1.00 MB', $rows[0]['filesize']);
-        $this->assertSame('4.0/5 (10 votes)', $rows[0]['rating']);
+        $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $rowsById = array_column($rows, null, 'video_id');
+        $this->assertSame('Featured Clip', $rowsById[10]['title']);
+        $this->assertSame('Active', $rowsById[10]['status']);
+        $this->assertSame(123, (int) $rowsById[10]['views']);
+        $this->assertSame('alice', $rowsById[10]['username']);
+        $this->assertSame('2:05', $rowsById[10]['duration']);
+        $this->assertSame('1.00 MB', $rowsById[10]['filesize']);
+        $this->assertSame('4.0/5 (10 votes)', $rowsById[10]['rating']);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -88,8 +89,8 @@ class VideoCommandTest extends TestCase
         $this->assertJson($output);
         $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         $this->assertCount(1, $jsonRows);
-        $this->assertSame(10, (int) $jsonRows[0]['video_id']);
-        $this->assertSame('Featured Clip', $jsonRows[0]['title']);
+        $this->assertSame(30, (int) $jsonRows[0]['video_id']);
+        $this->assertSame('Older Active Clip', $jsonRows[0]['title']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format
@@ -103,7 +104,7 @@ class VideoCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('video_id', $csvOutput);
-        $this->assertStringContainsString('Featured Clip', $csvOutput);
+        $this->assertStringContainsString('Older Active Clip', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format
@@ -170,6 +171,7 @@ class VideoCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
+            '--search' => 'Featured Clip',
             '--fields' => 'video_id,title,r_ctr,comments_count',
             '--format' => 'json',
             '--limit' => 1,
@@ -188,6 +190,7 @@ class VideoCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
+            '--search' => 'Featured Clip',
             '--fields' => 'video_id,title,thumb,content_source,dvd,admin_flag,server_group,format_video_group,tags,categories,models,ip',
             '--format' => 'json',
             '--limit' => 1,
@@ -214,6 +217,7 @@ class VideoCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
+            '--search' => 'Featured Clip',
             '--fields' => 'video_id,title,user,user_status_id,admin_user,admin_user_is_superadmin',
             '--format' => 'json',
             '--limit' => 1,

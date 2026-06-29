@@ -216,7 +216,7 @@ HELP
                   CASE WHEN bt.video_id > 0 THEN bt.video_id WHEN bt.album_id > 0 THEN bt.album_id END as object,
                   CASE WHEN bt.video_id > 0 THEN 1 WHEN bt.album_id > 0 THEN 2 END as object_type_id
                   $fromClause";
-        $query .= " ORDER BY bt.priority DESC, bt.added_date ASC LIMIT :limit";
+        $query .= " ORDER BY bt.task_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -707,7 +707,7 @@ HELP
                   CASE WHEN bh.video_id > 0 THEN bh.video_id WHEN bh.album_id > 0 THEN bh.album_id END as object,
                   CASE WHEN bh.video_id > 0 THEN 1 WHEN bh.album_id > 0 THEN 2 END as object_type_id
                   $fromClause";
-        $query .= " ORDER BY bh.end_date DESC LIMIT :limit";
+        $query .= " ORDER BY bh.task_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -809,7 +809,10 @@ HELP
         $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
         $task['content_id'] = $videoId > 0 ? "Video #{$videoId}" : ($albumId > 0 ? "Album #{$albumId}" : '-');
         $task['server'] = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-');
-        $task['duration'] = $this->formatDuration($effectiveDuration);
+        $duration = $this->formatDuration($effectiveDuration);
+        $task['effective_duration_seconds'] = $effectiveDuration;
+        $task['effective_duration'] = $duration;
+        $task['duration'] = $duration;
 
         return $task;
     }
@@ -875,7 +878,7 @@ HELP
     private function formatDuration(int $seconds): string
     {
         if ($seconds <= 0) {
-            return '0s';
+            return '0:00';
         }
 
         $hours = (int)floor($seconds / 3600);
@@ -883,12 +886,10 @@ HELP
         $secs = $seconds % 60;
 
         if ($hours > 0) {
-            return sprintf('%dh %dm %ds', $hours, $minutes, $secs);
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
         }
-        if ($minutes > 0) {
-            return sprintf('%dm %ds', $minutes, $secs);
-        }
-        return sprintf('%ds', $secs);
+
+        return sprintf('%d:%02d', $minutes, $secs);
     }
 
     private function formatTaskCount(int $count): string

@@ -45,7 +45,7 @@ class CategoryCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Category id', $output);
-        $this->assertStringContainsString('Action', $output);
+        $this->assertStringContainsString('Unused Category', $output);
         $this->assertStringContainsString('Drama', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
@@ -63,12 +63,12 @@ class CategoryCommandTest extends TestCase
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertCount(2, $rows);
-        $this->assertSame(['Action', 'Unused Category'], array_column($rows, 'title'));
-        $this->assertSame('Active', $rows[0]['status']);
-        $this->assertSame(2, (int) $rows[0]['video_count']);
-        $this->assertSame(1, (int) $rows[0]['album_count']);
-        $this->assertSame(5, (int) $rows[0]['total_usage']);
-        $this->assertSame(0, (int) $rows[1]['total_usage']);
+        $this->assertSame(['Unused Category', 'Action'], array_column($rows, 'title'));
+        $this->assertSame('Active', $rows[1]['status']);
+        $this->assertSame(2, (int) $rows[1]['video_count']);
+        $this->assertSame(1, (int) $rows[1]['album_count']);
+        $this->assertSame(5, (int) $rows[1]['total_usage']);
+        $this->assertSame(0, (int) $rows[0]['total_usage']);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -146,8 +146,8 @@ class CategoryCommandTest extends TestCase
         $this->assertJson($output);
         $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         $this->assertCount(1, $jsonRows);
-        $this->assertSame(10, (int) $jsonRows[0]['category_id']);
-        $this->assertSame('Action', $jsonRows[0]['title']);
+        $this->assertSame(30, (int) $jsonRows[0]['category_id']);
+        $this->assertSame('Unused Category', $jsonRows[0]['title']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format
@@ -161,7 +161,7 @@ class CategoryCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('category_id', $csvOutput);
-        $this->assertStringContainsString('Action', $csvOutput);
+        $this->assertStringContainsString('Unused Category', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format

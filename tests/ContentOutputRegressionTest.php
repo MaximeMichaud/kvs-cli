@@ -885,6 +885,30 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Active', $rows[0]['status']);
     }
 
+    public function testTagListUsesKvsAdminDefaultOrdering(): void
+    {
+        $db = $this->createSqliteConnection();
+        $this->createTagTables($db);
+        $db->exec(
+            "INSERT INTO ktvs_tags VALUES " .
+            "(39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00'), " .
+            "(62, 'audio', 'audio', 1, '2024-01-01 00:00:00')"
+        );
+
+        $tester = new CommandTester($this->createTagCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'tag_id,tag',
+            '--format' => 'json',
+            '--limit' => '2',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame([62, 39], array_map(static fn (array $row): int => (int) $row['tag_id'], $rows));
+    }
+
     public function testTagStatsCountsTagsUsedOutsideVideosAndAlbums(): void
     {
         $db = $this->createSqliteConnection();

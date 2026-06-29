@@ -150,7 +150,7 @@ HELP
                  {$fromClause}
                  {$relationJoinSql}
                  {$whereClause}
-                 ORDER BY a.post_date DESC LIMIT :limit";
+                 ORDER BY a.album_id DESC LIMIT :limit";
 
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {

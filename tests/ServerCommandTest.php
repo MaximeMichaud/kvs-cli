@@ -171,9 +171,9 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame('3 Videos', $rowsById[1]['total_content']);
         $this->assertSame('2 Albums', $rowsById[3]['total_content']);
-        $this->assertSame('https://control.example.test', $rowsById[1]['control_script_url']);
-        $this->assertSame('1.0', $rowsById[1]['control_script_url_version']);
-        $this->assertSame(1, (int) $rowsById[1]['control_script_url_lock_ip']);
+        $this->assertSame('', $rowsById[1]['control_script_url']);
+        $this->assertSame('N/A', $rowsById[1]['control_script_url_version']);
+        $this->assertSame(0, (int) $rowsById[1]['control_script_url_lock_ip']);
         $this->assertSame('/data/videos', $rowsById[1]['path']);
         $this->assertSame('0.25', (string) $rowsById[1]['time_offset']);
         $this->assertSame('1.5', (string) $rowsById[1]['lb_weight']);
@@ -610,7 +610,7 @@ class ServerCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('admin_servers') . ' (' .
             'server_id INTEGER, group_id INTEGER, content_type_id INTEGER, title TEXT, status_id INTEGER, ' .
-            'connection_type_id INTEGER, streaming_type_id INTEGER, total_space INTEGER, free_space INTEGER, ' .
+            'connection_type_id INTEGER, streaming_type_id INTEGER, is_remote INTEGER, total_space INTEGER, free_space INTEGER, ' .
             '`load` REAL, error_iteration INTEGER, error_streaming_iteration INTEGER, error_id INTEGER, ' .
             'error_streaming_id INTEGER, is_debug_enabled INTEGER, urls TEXT, path TEXT, ftp_host TEXT, ' .
             'ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, ftp_timeout TEXT, ftp_force_ssl INTEGER, ' .
@@ -629,19 +629,20 @@ class ServerCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('admin_servers') .
             ' (server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, ' .
+            'is_remote, ' .
             'total_space, free_space, `load`, error_iteration, error_streaming_iteration, error_id, ' .
             'error_streaming_id, is_debug_enabled, urls, path, ftp_host, ftp_port, ftp_user, ftp_folder, ' .
             'ftp_timeout, ftp_force_ssl, s3_region, s3_bucket, s3_endpoint, s3_prefix, control_script_url, ' .
             'control_script_url_version, control_script_url_lock_ip, time_offset, lb_weight, lb_countries, ' .
             'added_date) VALUES ' .
-            "(1, 10, 1, 'Video Local', 1, 0, 0, 10737418240, 6442450944, 0.50, 0, 0, 0, 0, 0, " .
+            "(1, 10, 1, 'Video Local', 1, 0, 0, 0, 10737418240, 6442450944, 0.50, 0, 0, 0, 0, 0, " .
             "'https://cdn1.example.test', '/data/videos', '', '', '', '', '', 0, '', '', '', '', " .
             "'https://control.example.test', '1.0', 1, 0.25, 1.5, 'CA,US', " .
             "'2026-05-20 10:00:00'), " .
-            "(2, 10, 1, 'Video Disabled', 0, 1, 1, 5368709120, 2147483648, 1.00, 0, 0, 0, 0, 0, " .
+            "(2, 10, 1, 'Video Disabled', 0, 1, 1, 1, 5368709120, 2147483648, 1.00, 0, 0, 0, 0, 0, " .
             "'https://cdn2.example.test', '/mnt/videos', '', '', '', '', '', 0, '', '', '', '', " .
             "'', '', 0, 0, 1.0, 'CA', '2026-05-21 10:00:00'), " .
-            "(3, 20, 2, 'Album Error', 1, 2, 4, 2147483648, 536870912, 2.00, 3, 0, 1, 0, 1, " .
+            "(3, 20, 2, 'Album Error', 1, 2, 4, 0, 2147483648, 536870912, 2.00, 3, 0, 1, 0, 1, " .
             "'https://albums.example.test', '', 'ftp.example.test', '21', 'ftp-user', '/albums', " .
             "'30', 1, '', '', '', '', '', '', 0, 0, 2.5, 'US', '2026-05-22 10:00:00')"
         );
@@ -656,12 +657,13 @@ class ServerCommandTest extends TestCase
         $this->db->exec(
             'INSERT INTO ' . TestHelper::table('admin_servers') .
             ' (server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, ' .
+            'is_remote, ' .
             'total_space, free_space, `load`, error_iteration, error_streaming_iteration, error_id, ' .
             'error_streaming_id, is_debug_enabled, urls, path, ftp_host, ftp_port, ftp_user, ftp_folder, ' .
             'ftp_timeout, ftp_force_ssl, s3_region, s3_bucket, s3_endpoint, s3_prefix, s3_api_key, ' .
             's3_api_secret, control_script_url, control_script_url_version, control_script_url_lock_ip, ' .
             'time_offset, lb_weight, lb_countries, added_date) VALUES ' .
-            "(4, 20, 2, 'Album S3', 1, 3, 4, 3221225472, 1073741824, 0.25, 0, 0, 0, 0, 0, " .
+            "(4, 20, 2, 'Album S3', 1, 3, 4, 0, 3221225472, 1073741824, 0.25, 0, 0, 0, 0, 0, " .
             "'https://s3-cdn.example.test', '', '', '', '', '', '', 0, 'ca-central-1', 'album-bucket', " .
             "'https://s3.example.test', 'albums', 'hidden-fixture-value-a', 'hidden-fixture-value-b', '', '', " .
             "0, 0, 1.0, 'CA', " .

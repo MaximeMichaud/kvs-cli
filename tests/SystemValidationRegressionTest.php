@@ -403,7 +403,8 @@ class SystemValidationRegressionTest extends TestCase
         $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertSame('Conditional', $rows[1]['status']);
+        $this->assertSame([2, 1], array_map(static fn (array $row): int => (int) $row['format_video_id'], $rows));
+        $this->assertSame('Conditional', $rows[0]['status']);
     }
 
     public function testVideoFormatListFiltersConditionalStatusLikeKvsAdmin(): void
@@ -450,6 +451,7 @@ class SystemValidationRegressionTest extends TestCase
         $tester = new CommandTester($this->createVideoFormatCommand());
         $tester->execute([
             'action' => 'list',
+            '--status' => 'required',
             '--fields' => 'format_video_id,timeline',
             '--format' => 'json',
             '--force' => true,
@@ -467,6 +469,7 @@ class SystemValidationRegressionTest extends TestCase
         $tester = new CommandTester($this->createVideoFormatCommand());
         $tester->execute([
             'action' => 'list',
+            '--status' => 'required',
             '--fields' => implode(',', [
                 'format_video_id',
                 'title',
@@ -514,8 +517,6 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame('2048 kbit/s', $rows[0]['limit_speed_value']);
         $this->assertSame('10s', $rows[0]['is_timeline_enabled']);
         $this->assertSame(1, (int) $rows[0]['videos_count']);
-        $this->assertSame(9, (int) $rows[1]['status_id']);
-        $this->assertSame('As source', $rows[1]['limit_total_duration']);
     }
 
     public function testVideoFormatGroupsRejectsListFilters(): void

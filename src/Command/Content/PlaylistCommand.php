@@ -169,7 +169,7 @@ HELP
                             WHERE c.object_type_id = 13 AND c.object_id = p.playlist_id
                         ) as comments_amount
                  $fromClause
-                 ORDER BY p.added_date DESC LIMIT :limit";
+                 ORDER BY p.playlist_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);

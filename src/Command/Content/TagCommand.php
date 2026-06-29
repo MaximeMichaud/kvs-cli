@@ -179,7 +179,7 @@ HELP
                 WHERE $whereClause
             ";
 
-            $sql .= " ORDER BY t.tag LIMIT :limit";
+            $sql .= " ORDER BY t.tag_id DESC LIMIT :limit";
             $params['limit'] = $limit;
 
             $stmt = $db->prepare($sql);

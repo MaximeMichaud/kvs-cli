@@ -23,6 +23,18 @@ class ConversionCommand extends BaseCommand
     use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
+    private const TASK_TYPE_LABELS = [
+        'video_admins' => 'New videos from admins',
+        'video_feeds' => 'New videos from feeds',
+        'video_grabbers' => 'New videos from grabbers',
+        'video_users' => 'New videos from users',
+        'video_update' => 'Updating video files',
+        'album_admins' => 'New albums from admins',
+        'album_grabbers' => 'New albums from grabbers',
+        'album_users' => 'New albums from users',
+        'album_update' => 'Updating album files',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -156,7 +168,7 @@ HELP
             $query .= " AND s.status_id != 0 AND s.error_iteration > 1";
         }
 
-        $query .= " ORDER BY s.server_id ASC LIMIT :limit";
+        $query .= " ORDER BY s.server_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -185,6 +197,7 @@ HELP
                 $isMaxTasksPriority = $this->getNumericField($server, 'max_tasks_priority') === 1;
                 $tasksAmount = $this->getNumericField($server, 'tasks_amount');
                 $finishedTasksAmount = $this->getNumericField($server, 'finished_tasks_amount');
+                $taskTypes = $this->formatTaskTypesForList($this->getStringField($server, 'task_types'));
 
                 return [
                     ...$server,
@@ -197,6 +210,7 @@ HELP
                     'max_tasks' => $isMaxTasksPriority ? "{$maxTasks} (prioritize)" : $maxTasks,
                     'tasks_amount' => $tasksAmount,
                     'finished_tasks_amount' => $finishedTasksAmount,
+                    'task_types' => $taskTypes,
                     'tasks_pending' => $tasksAmount,
                     'tasks_completed' => $finishedTasksAmount,
                     'free_space' => $this->formatBytes($freeSpace),
@@ -398,18 +412,6 @@ HELP
         $taskTypesStr = $this->getStringField($server, 'task_types');
         $isAllowAny = $this->getNumericField($server, 'is_allow_any_tasks') === 1;
 
-        $taskTypeLabels = [
-            'video_admins' => 'New videos from admins',
-            'video_feeds' => 'New videos from feeds',
-            'video_grabbers' => 'New videos from grabbers',
-            'video_users' => 'New videos from users',
-            'video_update' => 'Updating video files',
-            'album_admins' => 'New albums from admins',
-            'album_grabbers' => 'New albums from grabbers',
-            'album_users' => 'New albums from users',
-            'album_update' => 'Updating album files',
-        ];
-
         $enabledTypes = $this->parseTaskTypes($taskTypesStr);
 
         $this->io()->newLine();
@@ -418,7 +420,7 @@ HELP
         if ($enabledTypes === []) {
             $this->io()->text('<fg=yellow>No specific task types assigned (processes all types)</>');
         } else {
-            foreach ($taskTypeLabels as $type => $label) {
+            foreach (self::TASK_TYPE_LABELS as $type => $label) {
                 $enabled = in_array($type, $enabledTypes, true);
                 $icon = $enabled ? '<fg=green>✓</>' : '<fg=gray>-</>';
                 $text = $enabled ? $label : "<fg=gray>$label</>";
@@ -430,6 +432,34 @@ HELP
             $this->io()->newLine();
             $this->io()->text('<fg=cyan>✓ Process any available task when free</>');
         }
+    }
+
+    private function formatTaskTypesForList(string $taskTypes): string
+    {
+        $enabledTypes = $this->parseTaskTypes($taskTypes);
+        $allTypes = array_keys(self::TASK_TYPE_LABELS);
+
+        if ($enabledTypes === [] || count($enabledTypes) === count($allTypes)) {
+            return 'All';
+        }
+
+        if (count($enabledTypes) < count($allTypes) / 2) {
+            $values = [];
+            foreach ($enabledTypes as $type) {
+                $values[] = '+' . (self::TASK_TYPE_LABELS[$type] ?? $type);
+            }
+
+            return implode(', ', $values);
+        }
+
+        $values = [];
+        foreach ($allTypes as $type) {
+            if (!in_array($type, $enabledTypes, true)) {
+                $values[] = '-' . self::TASK_TYPE_LABELS[$type];
+            }
+        }
+
+        return implode(', ', $values);
     }
 
     /**

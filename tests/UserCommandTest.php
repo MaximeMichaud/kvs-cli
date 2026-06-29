@@ -46,7 +46,7 @@ class UserCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('User id', $output);
         $this->assertStringContainsString('Username', $output);
-        $this->assertStringContainsString('alice', $output);
+        $this->assertStringContainsString('premium', $output);
         $this->assertStringContainsString('remove_me', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
@@ -84,8 +84,8 @@ class UserCommandTest extends TestCase
         $this->assertJson($output);
         $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         $this->assertCount(1, $jsonRows);
-        $this->assertSame(1, (int) $jsonRows[0]['user_id']);
-        $this->assertSame('alice', $jsonRows[0]['username']);
+        $this->assertSame(3, (int) $jsonRows[0]['user_id']);
+        $this->assertSame('premium', $jsonRows[0]['username']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format - CSV writes to php://output so we capture it with ob_start
@@ -99,7 +99,7 @@ class UserCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('user_id', $csvOutput);
-        $this->assertStringContainsString('alice', $csvOutput);
+        $this->assertStringContainsString('premium', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format
@@ -157,6 +157,7 @@ class UserCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
+            '--search' => 'alice',
             '--fields' => 'user_id,username,videos_count,albums_count,posts_count,dvds_count,' .
                 'playlists_count,comments_count,favourite_category',
             '--format' => 'json',
@@ -181,6 +182,7 @@ class UserCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
+            '--search' => 'alice',
             '--fields' => 'user_id,thumb,ip',
             '--format' => 'json',
             '--limit' => 1,

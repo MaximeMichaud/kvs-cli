@@ -218,15 +218,16 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Task History', $output);
         $this->assertStringContainsString('Showing 2 tasks', $output);
-        $this->assertStringContainsString('New Video', $output);
+        $this->assertStringContainsString('Create Video Format', $output);
         $this->assertStringContainsString('New Album', $output);
-        $this->assertStringNotContainsString('Create Video Format', $output);
+        $this->assertStringNotContainsString('New Video', $output);
     }
 
     public function testQueueHistoryExposesKvsAdminObjectFields(): void
     {
         $this->tester->execute([
             'action' => 'history',
+            '--server' => '1',
             '--limit' => 1,
             '--format' => 'json',
             '--fields' => implode(',', [
@@ -242,6 +243,8 @@ class QueueCommandTest extends TestCase
                 'start_date',
                 'end_date',
                 'effective_duration',
+                'duration',
+                'effective_duration_seconds',
             ]),
         ]);
 
@@ -258,7 +261,9 @@ class QueueCommandTest extends TestCase
         $this->assertSame(100, (int) $rows[0]['object']);
         $this->assertSame(100, (int) $rows[0]['object_id']);
         $this->assertSame(1, (int) $rows[0]['object_type_id']);
-        $this->assertSame(3661, (int) $rows[0]['effective_duration']);
+        $this->assertSame('1:01:01', $rows[0]['effective_duration']);
+        $this->assertSame('1:01:01', $rows[0]['duration']);
+        $this->assertSame(3661, (int) $rows[0]['effective_duration_seconds']);
     }
 
     public function testQueueHistoryCountFormatIgnoresLimitButAppliesFilters(): void
@@ -434,7 +439,7 @@ class QueueCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(2, $completedRows);
-        $this->assertSame([301, 303], array_map(static fn (array $row): int => (int) $row['task_id'], $completedRows));
+        $this->assertSame([303, 301], array_map(static fn (array $row): int => (int) $row['task_id'], $completedRows));
         $this->assertSame(['Completed', 'Completed'], array_column($completedRows, 'status'));
 
         $this->tester->execute([

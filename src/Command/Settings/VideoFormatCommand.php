@@ -154,7 +154,7 @@ HELP
             $params['group_id'] = $groupId;
         }
 
-        $query .= " ORDER BY f.format_video_group_id ASC, f.format_video_id ASC";
+        $query .= " ORDER BY f.format_video_id DESC";
 
         try {
             $stmt = $db->prepare($query);

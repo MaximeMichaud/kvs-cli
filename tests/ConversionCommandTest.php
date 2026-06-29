@@ -62,7 +62,7 @@ class ConversionCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(2, $rows);
-        $this->assertSame([1, 3], array_map(static fn (array $row): int => (int) $row['server_id'], $rows));
+        $this->assertSame([3, 1], array_map(static fn (array $row): int => (int) $row['server_id'], $rows));
         $this->assertSame(['Active', 'Active'], array_column($rows, 'status'));
     }
 
@@ -150,10 +150,11 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('4 (prioritize)', $rowsById[1]['max_tasks']);
         $this->assertSame(9, (int) $rowsById[1]['process_priority']);
         $this->assertSame(0, (int) $rowsById[1]['connection_type_id']);
-        $this->assertSame('a:1:{i:0;s:12:"video_admins";}', $rowsById[1]['task_types']);
+        $this->assertSame('+New videos from admins', $rowsById[1]['task_types']);
         $this->assertSame('/tmp/kvs-main-converter', $rowsById[1]['path']);
         $this->assertSame(0, (int) $rowsById[1]['is_debug_enabled']);
         $this->assertSame('2026-05-20 10:00:00', $rowsById[1]['added_date']);
+        $this->assertSame('All', $rowsById[2]['task_types']);
 
         $this->assertSame('ftp.example.test', $rowsById[2]['ftp_host']);
         $this->assertSame('21', $rowsById[2]['ftp_port']);
@@ -229,9 +230,9 @@ class ConversionCommandTest extends TestCase
 
         $this->assertJson($output);
         $this->assertCount(1, $rows);
-        $this->assertSame(1, (int) $rows[0]['server_id']);
-        $this->assertSame('Main Converter', $rows[0]['title']);
-        $this->assertSame(2, (int) $rows[0]['tasks_pending']);
+        $this->assertSame(4, (int) $rows[0]['server_id']);
+        $this->assertSame('Init Converter', $rows[0]['title']);
+        $this->assertSame(0, (int) $rows[0]['tasks_pending']);
         $this->assertEquals(0, $testerJson->getStatusCode());
     }
 

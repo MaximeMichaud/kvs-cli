@@ -237,8 +237,7 @@ HELP
             }
 
             $whereClause = implode(' AND ', $conditions);
-            // Default: most recent first (DESC), unless --oldest is specified
-            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
+            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.comment_id DESC';
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_COMMENT_LIMIT);
             if ($limit === null) {
                 return self::FAILURE;
@@ -573,7 +572,7 @@ HELP
             }
 
             $whereClause = implode(' AND ', $conditions);
-            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
+            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.comment_id DESC';
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_COMMENT_LIMIT);
             if ($limit === null) {
                 return self::FAILURE;

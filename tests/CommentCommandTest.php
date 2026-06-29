@@ -118,6 +118,26 @@ class CommentCommandTest extends TestCase
         $this->assertSame([10, 20, 30], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
     }
 
+    public function testListCommentsUsesKvsAdminDefaultOrdering(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('comments') .
+            " SET added_date = '2099-01-01 00:00:00' WHERE comment_id = 10"
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'comment_id',
+            '--limit' => 3,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame([30, 20, 10], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+    }
+
     public function testListCommentsFilterByVideo(): void
     {
         $this->tester->execute([
