@@ -175,6 +175,18 @@ class UserCommandTest extends TestCase
         $this->assertStringNotContainsString('User: alice', $output);
     }
 
+    public function testUserShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testUserShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

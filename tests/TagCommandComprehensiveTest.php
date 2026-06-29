@@ -421,6 +421,18 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringNotContainsString('Tag: 4K', $output);
     }
 
+    public function testShowTagRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testShowTagHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

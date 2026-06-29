@@ -337,6 +337,9 @@ HELP
         if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'show')) {
+            return self::FAILURE;
+        }
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {

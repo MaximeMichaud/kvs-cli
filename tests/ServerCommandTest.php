@@ -430,6 +430,19 @@ class ServerCommandTest extends TestCase
         $this->assertStringNotContainsString('Server #1', $output);
     }
 
+    public function testServerShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testServerShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([
@@ -672,6 +685,19 @@ class ServerCommandTest extends TestCase
         $this->assertCount(2, $rows[0]['servers']);
         $this->assertSame(1, $rows[0]['servers'][0]['server_id']);
         $this->assertStringNotContainsString('Server Group #10', $output);
+    }
+
+    public function testServerGroupShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('group action does not support --format=count', $this->tester->getDisplay());
     }
 
     public function testServerGroupShowHonorsFieldsSelectionInTableFormat(): void

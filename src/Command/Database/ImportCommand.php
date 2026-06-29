@@ -48,8 +48,28 @@ EOT
     {
         $file = $this->getStringArgument($input, 'file');
 
-        if ($file === null || !file_exists($file)) {
-            $this->io()->error("File not found: " . ($file ?? 'null'));
+        if ($file === null || trim($file) === '') {
+            $this->io()->error('Import file path cannot be empty');
+            return self::FAILURE;
+        }
+
+        if (!file_exists($file)) {
+            $this->io()->error("File not found: $file");
+            return self::FAILURE;
+        }
+
+        if (is_dir($file)) {
+            $this->io()->error("Import path is a directory: $file");
+            return self::FAILURE;
+        }
+
+        if (!is_file($file)) {
+            $this->io()->error("Import path is not a regular file: $file");
+            return self::FAILURE;
+        }
+
+        if (!is_readable($file)) {
+            $this->io()->error("Import file is not readable: $file");
             return self::FAILURE;
         }
 

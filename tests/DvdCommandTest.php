@@ -528,6 +528,18 @@ class DvdCommandTest extends TestCase
         $this->assertStringNotContainsString('DVD: Test Series', $output);
     }
 
+    public function testShowDvdRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testShowDvdHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

@@ -526,6 +526,9 @@ HELP
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'show')) {
+            return self::FAILURE;
+        }
 
         if ($this->getStringOption($input, 'status') !== null) {
             $this->io()->error('The show action does not support --status. Use list --status to filter video formats.');

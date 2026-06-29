@@ -824,6 +824,18 @@ class AlbumCommandTest extends TestCase
         $this->assertStringNotContainsString('Album #10', $output);
     }
 
+    public function testAlbumShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testAlbumShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

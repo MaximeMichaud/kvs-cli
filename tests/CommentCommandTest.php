@@ -695,6 +695,18 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Comment #30', $output);
     }
 
+    public function testShowCommentRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testShowCommentHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

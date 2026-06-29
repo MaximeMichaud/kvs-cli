@@ -232,6 +232,21 @@ class OptionsCommandTest extends TestCase
         $this->assertStringNotContainsString('ENABLE_DVD_FIELD_1', $display);
     }
 
+    public function testGetRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('get action does not support --format=count', $display);
+    }
+
     public function testSetRejectsListOnlyFiltersBeforeUpdatingOption(): void
     {
         $this->tester->execute([

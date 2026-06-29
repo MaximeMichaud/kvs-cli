@@ -626,6 +626,18 @@ class QueueCommandTest extends TestCase
         $this->assertStringNotContainsString('Task #30', $output);
     }
 
+    public function testQueueShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testQueueShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

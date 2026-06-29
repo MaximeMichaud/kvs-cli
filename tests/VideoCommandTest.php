@@ -803,6 +803,18 @@ class VideoCommandTest extends TestCase
         $this->assertStringNotContainsString('Video #10', $output);
     }
 
+    public function testVideoShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testVideoShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

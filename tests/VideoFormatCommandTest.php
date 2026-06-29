@@ -172,6 +172,19 @@ class VideoFormatCommandTest extends TestCase
         }
     }
 
+    public function testShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

@@ -41,6 +41,51 @@ class DatabaseImportCommandTest extends TestCase
         $this->assertStringNotContainsString('Database imported successfully', $tester->getDisplay());
     }
 
+    public function testImportRejectsDirectoryBeforeConfirmation(): void
+    {
+        $command = new ImportCommand(new Configuration([
+            'path' => $this->tempDir,
+            'disable_db_env_overrides' => true,
+        ]));
+        $tester = new CommandTester($command);
+
+        $tester->execute(['file' => $this->tempDir], ['interactive' => false]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Import path is a directory', $display);
+        $this->assertStringNotContainsString('overwrite existing data', $display);
+    }
+
+    public function testImportRejectsUnreadableFileBeforeConfirmation(): void
+    {
+        $unreadableFile = $this->tempDir . '/unreadable.sql';
+        file_put_contents($unreadableFile, "SELECT 1;\n");
+        chmod($unreadableFile, 0000);
+
+        if (is_readable($unreadableFile)) {
+            chmod($unreadableFile, 0600);
+            $this->markTestSkipped('Current user can still read chmod 0000 files.');
+        }
+
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+
+            $tester->execute(['file' => $unreadableFile], ['interactive' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Import file is not readable', $display);
+            $this->assertStringNotContainsString('overwrite existing data', $display);
+        } finally {
+            chmod($unreadableFile, 0600);
+        }
+    }
+
     public function testFileArgumentDocumentsAllSupportedExtensions(): void
     {
         $command = new ImportCommand(new Configuration([

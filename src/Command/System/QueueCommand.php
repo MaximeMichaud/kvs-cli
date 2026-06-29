@@ -442,6 +442,9 @@ HELP
         if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'show')) {
+            return self::FAILURE;
+        }
 
         $taskId = $this->getRequiredPositiveId($id, 'Task');
         if ($taskId === null) {

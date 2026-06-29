@@ -301,6 +301,9 @@ HELP
         if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_FILTER_OPTIONS)) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'show')) {
+            return self::FAILURE;
+        }
 
         if ($id === null || $id === "") {
             $this->io()->error('Plugin ID is required');
@@ -387,6 +390,9 @@ HELP
     private function showPluginPath(?string $id, InputInterface $input): int
     {
         if ($this->rejectUnsupportedOptions($input, 'path', self::LIST_FILTER_OPTIONS)) {
+            return self::FAILURE;
+        }
+        if ($this->rejectCountFormatForSingularAction($input, 'path')) {
             return self::FAILURE;
         }
 

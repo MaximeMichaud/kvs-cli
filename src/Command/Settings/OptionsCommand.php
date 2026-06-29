@@ -302,6 +302,9 @@ HELP
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'get')) {
+            return self::FAILURE;
+        }
 
         $name = $this->getStringArgument($input, 'name');
         if ($name === null || $name === '') {

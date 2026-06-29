@@ -1057,6 +1057,21 @@ abstract class BaseCommand extends Command
         return true;
     }
 
+    protected function rejectCountFormatForSingularAction(InputInterface $input, string $action): bool
+    {
+        if (!$input->hasOption('format')) {
+            return false;
+        }
+
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') !== 'count') {
+            return false;
+        }
+
+        $this->io()->error(sprintf('The %s action does not support --format=count.', $action));
+
+        return true;
+    }
+
     /**
      * @return list<string>
      */

@@ -379,6 +379,18 @@ class CategoryCommandTest extends TestCase
         $this->assertStringNotContainsString('Category: Action', $output);
     }
 
+    public function testCategoryShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testCategoryShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

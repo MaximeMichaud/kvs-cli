@@ -408,6 +408,9 @@ HELP
         if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'show')) {
+            return self::FAILURE;
+        }
 
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
@@ -701,6 +704,9 @@ HELP
         if ($this->rejectUnsupportedOptions($input, 'log', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'log')) {
+            return self::FAILURE;
+        }
 
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
@@ -819,6 +825,9 @@ HELP
     private function showConfig(?string $id, InputInterface $input): int
     {
         if ($this->rejectUnsupportedOptions($input, 'config', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+        if ($this->rejectCountFormatForSingularAction($input, 'config')) {
             return self::FAILURE;
         }
 

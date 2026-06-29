@@ -599,6 +599,9 @@ HELP
         if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_ONLY_OPTIONS)) {
             return self::FAILURE;
         }
+        if ($this->rejectCountFormatForSingularAction($input, 'show')) {
+            return self::FAILURE;
+        }
 
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
@@ -1167,6 +1170,9 @@ HELP
         }
 
         if ($this->rejectUnsupportedOptions($input, 'group', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+        if ($this->rejectCountFormatForSingularAction($input, 'group')) {
             return self::FAILURE;
         }
 

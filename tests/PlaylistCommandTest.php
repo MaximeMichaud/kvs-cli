@@ -488,6 +488,18 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringNotContainsString('Playlist #30', $output);
     }
 
+    public function testPlaylistShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testPlaylistShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([

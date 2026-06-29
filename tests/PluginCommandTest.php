@@ -552,6 +552,18 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('Plugin:', $output);
     }
 
+    public function testShowExistingPluginRejectsCountFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testShowHonorsFieldSelectionInTableFormat(): void
     {
         $exitCode = $this->tester->execute([
@@ -675,6 +687,18 @@ class PluginCommandTest extends TestCase
         $this->assertSame('backup', $rows[0]['id'] ?? null);
         $this->assertStringContainsString('/admin/plugins/backup', $rows[0]['path'] ?? '');
         $this->assertStringNotContainsString('Plugin directory:', $output);
+    }
+
+    public function testPathForExistingPluginRejectsCountFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'path',
+            'id' => 'backup',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('path action does not support --format=count', $this->tester->getDisplay());
     }
 
     public function testPathHonorsFieldSelectionInTableFormat(): void

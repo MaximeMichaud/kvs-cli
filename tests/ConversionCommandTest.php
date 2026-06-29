@@ -398,6 +398,19 @@ class ConversionCommandTest extends TestCase
         $this->assertStringNotContainsString('Conversion Server #1', $output);
     }
 
+    public function testConversionShowRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('show action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testConversionShowHonorsFieldsSelectionInTableFormat(): void
     {
         $this->tester->execute([
@@ -642,6 +655,19 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
     }
 
+    public function testConversionLogRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '1',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('log action does not support --format=count', $this->tester->getDisplay());
+    }
+
     public function testConversionLogJsonReportsMissingFileAsStructuredPayload(): void
     {
         $serverPath = $this->kvsPath . '/conversion-server-missing-log';
@@ -776,6 +802,19 @@ class ConversionCommandTest extends TestCase
 
         $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
+    }
+
+    public function testConversionConfigRejectsCountFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '1',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('config action does not support --format=count', $this->tester->getDisplay());
     }
 
     public function testConversionConfigJsonReportsMissingFileAsStructuredPayload(): void
