@@ -108,6 +108,21 @@ class PackageCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testPackageCommandRejectsNonIntegerCompressionBeforeLoadingTargetPath(): void
+    {
+        $this->tester->execute([
+            'path' => '/nonexistent/path',
+            '-c' => '1abc',
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertStringContainsString('Compression level must be an integer between 1 and 19', $output);
+        $this->assertStringNotContainsString('does not contain a valid KVS installation', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testPackageHelpDoesNotAdvertiseChecksums(): void
     {
         $help = $this->command->getHelp();

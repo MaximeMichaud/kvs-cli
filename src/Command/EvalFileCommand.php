@@ -96,6 +96,11 @@ HELP
             }
         }
 
+        if (!is_file($file)) {
+            $this->io()->error("File is not a regular file: $file");
+            return self::FAILURE;
+        }
+
         if (!is_readable($file)) {
             $this->io()->error("File is not readable: $file");
             return self::FAILURE;

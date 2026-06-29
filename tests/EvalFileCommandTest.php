@@ -155,6 +155,15 @@ class EvalFileCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testEvalFileRejectsDirectory(): void
+    {
+        $this->tester->execute(['file' => $this->tempDir]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('not a regular file', $output);
+        $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
     public function testEvalFileCommandMetadata(): void
     {
         $this->assertEquals('eval-file', $this->command->getName());

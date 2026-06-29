@@ -66,7 +66,14 @@ EOT
 
         $targetPath = $this->getStringArgument($input, 'path');
         $noContent = $this->getBoolOption($input, 'no-content');
-        $compressionLevel = (int) ($this->getStringOption($input, 'compression') ?? '3');
+        $compressionValue = trim($this->getStringOption($input, 'compression') ?? '3');
+
+        if (preg_match('/^\d+$/', $compressionValue) !== 1) {
+            $this->io()->error('Compression level must be an integer between 1 and 19');
+            return self::FAILURE;
+        }
+
+        $compressionLevel = (int) $compressionValue;
 
         if ($compressionLevel < 1 || $compressionLevel > 19) {
             $this->io()->error('Compression level must be between 1 and 19');
