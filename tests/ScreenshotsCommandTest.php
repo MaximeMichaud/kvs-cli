@@ -50,7 +50,8 @@ class ScreenshotsCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Screenshots directory not found', $output);
-        $this->assertStringContainsString('999999999', $output);
+        $compactOutput = preg_replace('/\s+/', '', $output) ?? '';
+        $this->assertStringContainsString('999999999', $compactOutput);
     }
 
     public function testListScreenshotsMissingDirectoryJsonReturnsEmptyList(): void

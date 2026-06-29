@@ -47,7 +47,7 @@ class TagCommandComprehensiveTest extends TestCase
     {
         $definition = $this->command->getDefinition();
 
-        foreach (['search', 'status', 'unused', 'limit', 'name'] as $option) {
+        foreach (['search', 'status', 'unused', 'usage', 'field-filter', 'limit', 'name'] as $option) {
             $this->assertTrue($definition->hasOption($option));
         }
 
@@ -173,6 +173,62 @@ class TagCommandComprehensiveTest extends TestCase
 
         $this->assertEquals(0, $slugTester->getStatusCode());
         $this->assertSame('1', trim($slugTester->getDisplay()));
+    }
+
+    public function testListFiltersByKvsAdminFieldFilter(): void
+    {
+        $cases = [
+            'filled/synonyms' => [10],
+            'empty/synonyms' => [40, 30, 20],
+            'filled/custom1' => [10],
+            'empty/custom1' => [40, 30, 20],
+        ];
+
+        foreach ($cases as $filter => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--field-filter' => $filter,
+                '--format' => 'json',
+                '--fields' => 'tag_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['tag_id'], $rows), $filter);
+        }
+    }
+
+    public function testListFiltersByKvsAdminUsageBuckets(): void
+    {
+        $cases = [
+            'used/videos' => [40, 10],
+            'notused/videos' => [30, 20],
+            'used/albums' => [10],
+            'notused/albums' => [40, 30, 20],
+            'used/posts' => [30],
+            'notused/posts' => [40, 20, 10],
+            'used/other' => [10],
+            'notused/other' => [40, 30, 20],
+            'used/all' => [40, 30, 10],
+            'notused/all' => [20],
+        ];
+
+        foreach ($cases as $usage => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--usage' => $usage,
+                '--format' => 'json',
+                '--fields' => 'tag_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['tag_id'], $rows), $usage);
+        }
     }
 
     public function testListExposesKvsAdminRenameField(): void
@@ -678,7 +734,8 @@ class TagCommandComprehensiveTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
-            'tag_id INTEGER, tag TEXT, tag_dir TEXT, synonyms TEXT, status_id INTEGER, ' .
+            'tag_id INTEGER, tag TEXT, tag_dir TEXT, synonyms TEXT, custom1 TEXT, custom2 TEXT, ' .
+            'custom3 TEXT, custom4 TEXT, custom5 TEXT, status_id INTEGER, ' .
             'added_date TEXT, last_content_date TEXT, total_content_sources INTEGER, total_playlists INTEGER, ' .
             'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER, ' .
             'avg_videos_rating REAL, avg_videos_popularity INTEGER, avg_albums_rating REAL, avg_albums_popularity INTEGER, ' .
@@ -694,14 +751,19 @@ class TagCommandComprehensiveTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
-            ' (tag_id, tag, tag_dir, synonyms, status_id, added_date, last_content_date, ' .
+            ' (tag_id, tag, tag_dir, synonyms, custom1, custom2, custom3, custom4, custom5, status_id, ' .
+            'added_date, last_content_date, ' .
             'total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups, ' .
             'avg_videos_rating, avg_videos_popularity, avg_albums_rating, avg_albums_popularity, ' .
             'avg_posts_rating, avg_posts_popularity) VALUES ' .
-            "(10, '4K', '4k', 'uhd, ultra hd', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0, 4.5, 1200, 4.25, 900, 3.75, 300), " .
-            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
-            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
-            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
+            "(10, '4K', '4k', 'uhd, ultra hd', 'featured', '', '', '', '', 1, " .
+            "'2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0, 4.5, 1200, 4.25, 900, 3.75, 300), " .
+            "(20, 'unused', 'unused', '', '', '', '', '', '', 1, " .
+            "'2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "(30, 'archived', 'archived', '', '', '', '', '', '', 0, " .
+            "'2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "(40, 'tagged', 'tagged', '', '', '', '', '', '', 1, " .
+            "'2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_videos') .

@@ -129,6 +129,62 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame('Archive,Featured', $rows[0]['categories']);
     }
 
+    public function testPlaylistListFiltersByKvsAdminFieldFilter(): void
+    {
+        $cases = [
+            'empty/description' => [10],
+            'filled/description' => [30, 20],
+            'empty/rating' => [10],
+            'filled/rating' => [30, 20],
+            'empty/tags' => [20, 10],
+            'filled/tags' => [30],
+            'empty/categories' => [20, 10],
+            'filled/categories' => [30],
+            'empty/videos' => [10],
+            'filled/videos' => [30, 20],
+        ];
+
+        foreach ($cases as $filter => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--field-filter' => $filter,
+                '--format' => 'json',
+                '--fields' => 'playlist_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows), $filter);
+        }
+    }
+
+    public function testPlaylistListFiltersByKvsAdminReviewAndLockedFlags(): void
+    {
+        $cases = [
+            '--review-needed' => [20],
+            '--not-review-needed' => [30, 10],
+            '--locked' => [20],
+            '--unlocked' => [30, 10],
+        ];
+
+        foreach ($cases as $option => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                $option => true,
+                '--format' => 'json',
+                '--fields' => 'playlist_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows), $option);
+        }
+    }
+
     public function testPlaylistListPublicFilter(): void
     {
         $this->tester->execute([
@@ -732,9 +788,9 @@ class PlaylistCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('playlists') . ' (' .
             'playlist_id INTEGER, user_id INTEGER, title TEXT, description TEXT, dir TEXT, ' .
-            'status_id INTEGER, is_private INTEGER, is_locked INTEGER, rating INTEGER, rating_amount INTEGER, ' .
-            'playlist_viewed INTEGER, comments_count INTEGER, subscribers_count INTEGER, added_date TEXT, ' .
-            'last_content_date TEXT, total_videos INTEGER)'
+            'status_id INTEGER, is_private INTEGER, is_locked INTEGER, is_review_needed INTEGER, ' .
+            'rating INTEGER, rating_amount INTEGER, playlist_viewed INTEGER, comments_count INTEGER, ' .
+            'subscribers_count INTEGER, added_date TEXT, last_content_date TEXT, total_videos INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('fav_videos') . ' (' .
@@ -773,13 +829,13 @@ class PlaylistCommandTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('playlists') .
             ' (playlist_id, user_id, title, description, dir, status_id, is_private, is_locked, ' .
-            'rating, rating_amount, playlist_viewed, comments_count, subscribers_count, added_date, ' .
-            'last_content_date, total_videos) VALUES ' .
-            "(30, 1, 'Test Playlist', 'A test playlist', 'test-playlist', 1, 0, 0, " .
+            'is_review_needed, rating, rating_amount, playlist_viewed, comments_count, subscribers_count, ' .
+            'added_date, last_content_date, total_videos) VALUES ' .
+            "(30, 1, 'Test Playlist', 'A test playlist', 'test-playlist', 1, 0, 0, 0, " .
             "40, 10, 100, 2, 3, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 2), " .
-            "(20, 1, 'Private Playlist', 'Private collection', 'private-playlist', 1, 1, 0, " .
+            "(20, 1, 'Private Playlist', 'Private collection', 'private-playlist', 1, 1, 1, 1, " .
             "10, 5, 20, 0, 1, '2026-05-25 10:00:00', '2026-05-25 11:00:00', 1), " .
-            "(10, 2, 'Disabled Playlist', 'Disabled collection', 'disabled-playlist', 0, 0, 0, " .
+            "(10, 2, 'Disabled Playlist', '', 'disabled-playlist', 0, 0, 0, 0, " .
             "0, 1, 5, 0, 0, '2026-05-24 10:00:00', '2026-05-24 11:00:00', 0)"
         );
         $db->exec(

@@ -36,6 +36,16 @@ class TagCommand extends BaseCommand
         'dvds_groups' => 'dvd_group_id',
     ];
 
+    /** @var list<string> */
+    private const TAG_FIELD_FILTER_COLUMNS = [
+        'synonyms',
+        'custom1',
+        'custom2',
+        'custom3',
+        'custom4',
+        'custom5',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -74,6 +84,8 @@ HELP
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in tag names, directories, and synonyms')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused tags')
+            ->addOption('usage', null, InputOption::VALUE_REQUIRED, 'KVS admin usage filter (e.g. used/videos)')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/synonyms)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -142,10 +154,35 @@ HELP
                 $params['search'] = $this->containsLikePattern($search);
             }
 
+            $fieldFilter = $this->getStringOption($input, 'field-filter');
+            if ($fieldFilter !== null) {
+                $condition = $this->getTagFieldFilterCondition($fieldFilter);
+                if ($condition === null) {
+                    $this->io()->error('Invalid tag field filter. Use: ' . implode(', ', $this->getTagFieldFilterValues()));
+                    return self::FAILURE;
+                }
+                $conditions[] = $condition;
+            }
+
             $usageSelectors = $this->getTagUsageAggregateSelectors();
             $usageJoins = $this->getTagUsageAggregateJoins();
             $totalUsageCondition = $this->getTagTotalUsageJoinCondition();
             $unusedOnly = $this->getBoolOption($input, 'unused');
+            $usage = $this->getStringOption($input, 'usage');
+
+            if ($unusedOnly && $usage !== null) {
+                $this->io()->error('Options --unused and --usage cannot be used together');
+                return self::FAILURE;
+            }
+
+            if ($usage !== null) {
+                $usageCondition = $this->getTagUsageFilterCondition($usage);
+                if ($usageCondition === null) {
+                    $this->io()->error('Invalid tag usage filter. Use: ' . implode(', ', $this->getAdminUsageFilterValues()));
+                    return self::FAILURE;
+                }
+                $conditions[] = $usageCondition;
+            }
 
             if ($unusedOnly) {
                 $conditions[] = "{$totalUsageCondition} = 0";
@@ -157,7 +194,7 @@ HELP
                 if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
                     return self::FAILURE;
                 }
-                $countJoins = $unusedOnly ? $usageJoins : '';
+                $countJoins = ($unusedOnly || $usage !== null) ? $usageJoins : '';
                 $stmt = $db->prepare("
                     SELECT COUNT(*)
                     FROM {$this->table('tags')} t
@@ -484,13 +521,35 @@ HELP
 
     private function getTagTotalUsageJoinCondition(): string
     {
-        return implode(' + ', array_map(
-            fn(string $suffix): string => sprintf(
-                'COALESCE(%s.usage_count, 0)',
-                $this->getTagUsageAggregateAlias($suffix)
-            ),
-            array_keys(self::TAG_RELATION_TABLES)
-        ));
+        return implode(' + ', [
+            $this->getTagUsageJoinExpression('videos'),
+            $this->getTagUsageJoinExpression('albums'),
+            $this->getTagUsageJoinExpression('posts'),
+            $this->getTagStoredOtherAmountExpression(),
+        ]);
+    }
+
+    private function getTagUsageFilterCondition(string $usage): ?string
+    {
+        return $this->getAdminUsageFilterCondition(
+            $usage,
+            $this->getTagUsageJoinExpression('videos'),
+            $this->getTagUsageJoinExpression('albums'),
+            $this->getTagUsageJoinExpression('posts'),
+            $this->getTagStoredOtherAmountExpression(),
+            $this->getTagTotalUsageJoinCondition()
+        );
+    }
+
+    private function getTagUsageJoinExpression(string $suffix): string
+    {
+        return sprintf('COALESCE(%s.usage_count, 0)', $this->getTagUsageAggregateAlias($suffix));
+    }
+
+    private function getTagStoredOtherAmountExpression(): string
+    {
+        return '(COALESCE(t.total_content_sources, 0) + COALESCE(t.total_playlists, 0) + '
+            . 'COALESCE(t.total_models, 0) + COALESCE(t.total_dvds, 0) + COALESCE(t.total_dvd_groups, 0))';
     }
 
     private function getTagUsageAggregateAlias(string $suffix): string
@@ -527,6 +586,34 @@ HELP
         }
 
         return $total;
+    }
+
+    /** @return list<string> */
+    private function getTagFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::TAG_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+        }
+
+        return $values;
+    }
+
+    private function getTagFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $column] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true) || !in_array($column, self::TAG_FIELD_FILTER_COLUMNS, true)) {
+            return null;
+        }
+
+        return $state === 'empty' ? "t.{$column} = ''" : "t.{$column} != ''";
     }
 
     private function mergeTags(?string $sourceId, ?string $targetId, InputInterface $input): int

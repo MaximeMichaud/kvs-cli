@@ -50,18 +50,17 @@ class RelationUsageFilterTest extends TestCase
         $this->assertSame('Codex Canada', $rows[0]['title']);
     }
 
-    public function testCategoryListUnusedChecksAllRelationTables(): void
+    public function testCategoryListUnusedUsesKvsAdminUsageTotals(): void
     {
         $db = $this->createDatabase();
         $this->createCategoryTables($db);
         $db->exec(
-            "INSERT INTO ktvs_categories (category_id, title, category_group_id, status_id) VALUES " .
-            "(1, 'Unused', 0, 1), " .
-            "(2, 'Video used', 0, 1), " .
-            "(3, 'Model used', 0, 1)"
+            "INSERT INTO ktvs_categories (category_id, title, category_group_id, status_id, total_models) VALUES " .
+            "(1, 'Unused', 0, 1, 0), " .
+            "(2, 'Video used', 0, 1, 0), " .
+            "(3, 'Model used', 0, 1, 1)"
         );
         $db->exec('INSERT INTO ktvs_categories_videos (category_id) VALUES (2)');
-        $db->exec('INSERT INTO ktvs_categories_models (category_id) VALUES (3)');
 
         $tester = new CommandTester($this->createCategoryCommand($db));
         $tester->execute([
@@ -79,7 +78,7 @@ class RelationUsageFilterTest extends TestCase
         $this->assertSame(0, (int) $rows[0]['total_usage']);
     }
 
-    public function testTagListUnusedIsSqliteCompatibleAndChecksAllRelationTables(): void
+    public function testTagListUnusedIsSqliteCompatibleAndUsesKvsAdminUsageTotals(): void
     {
         $db = $this->createDatabase();
         $this->createTagTables($db);
@@ -119,7 +118,8 @@ class RelationUsageFilterTest extends TestCase
         $db->exec(
             'CREATE TABLE ktvs_categories ' .
             '(category_id INTEGER, title TEXT, dir TEXT, description TEXT, synonyms TEXT, ' .
-            'category_group_id INTEGER, status_id INTEGER)'
+            'category_group_id INTEGER, status_id INTEGER, total_content_sources INTEGER, ' .
+            'total_playlists INTEGER, total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
         );
         foreach ($this->relationSuffixes() as $suffix) {
             $db->exec("CREATE TABLE ktvs_categories_{$suffix} (category_id INTEGER)");
@@ -128,7 +128,11 @@ class RelationUsageFilterTest extends TestCase
 
     private function createTagTables(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, ' .
+            'total_content_sources INTEGER, total_playlists INTEGER, total_models INTEGER, ' .
+            'total_dvds INTEGER, total_dvd_groups INTEGER)'
+        );
         foreach ($this->relationSuffixes() as $suffix) {
             $db->exec("CREATE TABLE ktvs_tags_{$suffix} (tag_id INTEGER)");
         }

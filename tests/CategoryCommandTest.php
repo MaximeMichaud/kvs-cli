@@ -163,6 +163,64 @@ class CategoryCommandTest extends TestCase
         $this->assertSame('1', trim($this->tester->getDisplay()));
     }
 
+    public function testCategoryListFiltersByKvsAdminFieldFilter(): void
+    {
+        $cases = [
+            'filled/description' => [10],
+            'empty/description' => [30, 20],
+            'filled/screenshot1' => [10],
+            'empty/screenshot1' => [30, 20],
+            'filled/group' => [10],
+            'empty/group' => [30, 20],
+        ];
+
+        foreach ($cases as $filter => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--field-filter' => $filter,
+                '--format' => 'json',
+                '--fields' => 'category_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['category_id'], $rows), $filter);
+        }
+    }
+
+    public function testCategoryListFiltersByKvsAdminUsageBuckets(): void
+    {
+        $cases = [
+            'used/videos' => [20, 10],
+            'notused/videos' => [30],
+            'used/albums' => [10],
+            'notused/albums' => [30, 20],
+            'used/posts' => [10],
+            'notused/posts' => [30, 20],
+            'used/other' => [10],
+            'notused/other' => [30, 20],
+            'used/all' => [20, 10],
+            'notused/all' => [30],
+        ];
+
+        foreach ($cases as $usage => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--usage' => $usage,
+                '--format' => 'json',
+                '--fields' => 'category_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['category_id'], $rows), $usage);
+        }
+    }
+
     public function testCategoryListExposesKvsAdminThumbField(): void
     {
         $this->tester->execute([

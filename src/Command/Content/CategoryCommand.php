@@ -36,6 +36,29 @@ class CategoryCommand extends BaseCommand
         'models' => 'model_id',
     ];
 
+    /** @var list<string> */
+    private const CATEGORY_FIELD_FILTER_COLUMNS = [
+        'description',
+        'synonyms',
+        'screenshot1',
+        'screenshot2',
+        'custom1',
+        'custom2',
+        'custom3',
+        'custom4',
+        'custom5',
+        'custom6',
+        'custom7',
+        'custom8',
+        'custom9',
+        'custom10',
+        'custom_file1',
+        'custom_file2',
+        'custom_file3',
+        'custom_file4',
+        'custom_file5',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -85,6 +108,8 @@ HELP
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in category titles, directories, descriptions, and synonyms')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused categories')
+            ->addOption('usage', null, InputOption::VALUE_REQUIRED, 'KVS admin usage filter (e.g. used/videos)')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/description)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -160,8 +185,38 @@ HELP
                 $params['group'] = $groupId;
             }
 
+            $fieldFilter = $this->getStringOption($input, 'field-filter');
+            if ($fieldFilter !== null) {
+                $condition = $this->getCategoryFieldFilterCondition($fieldFilter);
+                if ($condition === null) {
+                    $this->io()->error(
+                        'Invalid category field filter. Use: ' . implode(', ', $this->getCategoryFieldFilterValues())
+                    );
+                    return self::FAILURE;
+                }
+                $conditions[] = $condition;
+            }
+
             $usageJoins = $this->getCategoryUsageJoins();
             $unusedOnly = $this->getBoolOption($input, 'unused');
+            $usage = $this->getStringOption($input, 'usage');
+
+            if ($unusedOnly && $usage !== null) {
+                $this->io()->error('Options --unused and --usage cannot be used together');
+                return self::FAILURE;
+            }
+
+            if ($usage !== null) {
+                $usageCondition = $this->getCategoryUsageFilterCondition($usage);
+                if ($usageCondition === null) {
+                    $this->io()->error(
+                        'Invalid category usage filter. Use: ' . implode(', ', $this->getAdminUsageFilterValues())
+                    );
+                    return self::FAILURE;
+                }
+                $conditions[] = $usageCondition;
+            }
+
             if ($unusedOnly) {
                 $conditions[] = $this->getCategoryTotalUsageCondition() . ' = 0';
             }
@@ -171,7 +226,7 @@ HELP
                 if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
                     return self::FAILURE;
                 }
-                return $this->countCategories($db, $whereClause, $params, $unusedOnly ? $usageJoins : '');
+                return $this->countCategories($db, $whereClause, $params, ($unusedOnly || $usage !== null) ? $usageJoins : '');
             }
 
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT);
@@ -660,15 +715,35 @@ HELP
 
     private function getCategoryTotalUsageCondition(): string
     {
-        $expressions = [];
-        foreach (array_keys(self::CATEGORY_RELATION_TABLES) as $suffix) {
-            $expressions[] = sprintf(
-                'COALESCE(%s.usage_count, 0)',
-                $this->getCategoryUsageJoinAlias($suffix)
-            );
-        }
+        return implode(' + ', [
+            $this->getCategoryUsageJoinExpression('videos'),
+            $this->getCategoryUsageJoinExpression('albums'),
+            $this->getCategoryUsageJoinExpression('posts'),
+            $this->getCategoryStoredOtherAmountExpression(),
+        ]);
+    }
 
-        return implode(' + ', $expressions);
+    private function getCategoryUsageFilterCondition(string $usage): ?string
+    {
+        return $this->getAdminUsageFilterCondition(
+            $usage,
+            $this->getCategoryUsageJoinExpression('videos'),
+            $this->getCategoryUsageJoinExpression('albums'),
+            $this->getCategoryUsageJoinExpression('posts'),
+            $this->getCategoryStoredOtherAmountExpression(),
+            $this->getCategoryTotalUsageCondition()
+        );
+    }
+
+    private function getCategoryUsageJoinExpression(string $suffix): string
+    {
+        return sprintf('COALESCE(%s.usage_count, 0)', $this->getCategoryUsageJoinAlias($suffix));
+    }
+
+    private function getCategoryStoredOtherAmountExpression(): string
+    {
+        return '(COALESCE(c.total_content_sources, 0) + COALESCE(c.total_playlists, 0) + '
+            . 'COALESCE(c.total_models, 0) + COALESCE(c.total_dvds, 0) + COALESCE(c.total_dvd_groups, 0))';
     }
 
     private function getCategoryUsageJoinAlias(string $suffix): string
@@ -691,6 +766,43 @@ HELP
     private function extractCategoryUsageCounts(array $category): array
     {
         return $this->extractRelationUsageCounts($category, self::CATEGORY_RELATION_TABLES);
+    }
+
+    /** @return list<string> */
+    private function getCategoryFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::CATEGORY_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            $values[] = "{$prefix}/group";
+        }
+
+        return $values;
+    }
+
+    private function getCategoryFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $field] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true)) {
+            return null;
+        }
+
+        if ($field === 'group') {
+            return $state === 'empty' ? 'c.category_group_id = 0' : 'c.category_group_id != 0';
+        }
+
+        if (!in_array($field, self::CATEGORY_FIELD_FILTER_COLUMNS, true)) {
+            return null;
+        }
+
+        return $state === 'empty' ? "c.{$field} = ''" : "c.{$field} != ''";
     }
 
     /**

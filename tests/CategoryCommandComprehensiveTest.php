@@ -52,6 +52,8 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertTrue($definition->hasOption('description'));
         $this->assertTrue($definition->hasOption('parent'));
         $this->assertTrue($definition->hasOption('status'));
+        $this->assertTrue($definition->hasOption('usage'));
+        $this->assertTrue($definition->hasOption('field-filter'));
     }
 
     public function testHelpDocumentation(): void
@@ -443,7 +445,7 @@ class CategoryCommandComprehensiveTest extends TestCase
     {
         $definition = $this->command->getDefinition();
 
-        foreach (['title', 'description', 'parent', 'status'] as $option) {
+        foreach (['title', 'description', 'parent', 'status', 'usage', 'field-filter'] as $option) {
             $this->assertTrue($definition->hasOption($option));
         }
     }

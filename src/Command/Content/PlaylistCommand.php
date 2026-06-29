@@ -34,6 +34,11 @@ class PlaylistCommand extends BaseCommand
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles, directories, and descriptions')
             ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
             ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/videos)')
+            ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only playlists that need review')
+            ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only playlists that do not need review')
+            ->addOption('locked', null, InputOption::VALUE_NONE, 'Show only locked playlists')
+            ->addOption('unlocked', null, InputOption::VALUE_NONE, 'Show only unlocked playlists')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Playlist title for create action')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Playlist description for create action')
             ->addOption('dir', null, InputOption::VALUE_REQUIRED, 'Playlist directory slug for create action')
@@ -107,7 +112,11 @@ HELP
 
     private function listPlaylists(InputInterface $input): int
     {
-        if ($this->hasConflictingBoolOptions($input, ['public', 'private'])) {
+        if (
+            $this->hasConflictingBoolOptions($input, ['public', 'private'])
+            || $this->hasConflictingBoolOptions($input, ['review-needed', 'not-review-needed'])
+            || $this->hasConflictingBoolOptions($input, ['locked', 'unlocked'])
+        ) {
             return self::FAILURE;
         }
 
@@ -251,6 +260,18 @@ HELP
             $fromClause .= " AND p.is_private = 1";
         }
 
+        if ($this->getBoolOption($input, 'review-needed')) {
+            $fromClause .= " AND p.is_review_needed = 1";
+        } elseif ($this->getBoolOption($input, 'not-review-needed')) {
+            $fromClause .= " AND p.is_review_needed = 0";
+        }
+
+        if ($this->getBoolOption($input, 'locked')) {
+            $fromClause .= " AND p.is_locked = 1";
+        } elseif ($this->getBoolOption($input, 'unlocked')) {
+            $fromClause .= " AND p.is_locked = 0";
+        }
+
         $search = $input->getOption('search');
         if (is_string($search) && $search !== '') {
             $searchEscape = $this->likeEscapeSql();
@@ -260,7 +281,61 @@ HELP
             $params['search'] = $this->containsLikePattern($search);
         }
 
+        $fieldFilter = $this->getStringOption($input, 'field-filter');
+        if ($fieldFilter !== null) {
+            $condition = $this->getPlaylistFieldFilterCondition($fieldFilter);
+            if ($condition === null) {
+                $this->io()->error(
+                    'Invalid playlist field filter. Use: ' . implode(', ', $this->getPlaylistFieldFilterValues())
+                );
+                return false;
+            }
+            $fromClause .= " AND {$condition}";
+        }
+
         return $this->applyPlaylistRelationFilters($db, $input, $fromClause, $params);
+    }
+
+    /** @return list<string> */
+    private function getPlaylistFieldFilterValues(): array
+    {
+        return [
+            'empty/description',
+            'empty/playlist_viewed',
+            'empty/rating',
+            'empty/tags',
+            'empty/categories',
+            'empty/videos',
+            'filled/description',
+            'filled/playlist_viewed',
+            'filled/rating',
+            'filled/tags',
+            'filled/categories',
+            'filled/videos',
+        ];
+    }
+
+    private function getPlaylistFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $tagsTable = $this->table('tags_playlists');
+        $categoriesTable = $this->table('categories_playlists');
+        $favVideosTable = $this->table('fav_videos');
+
+        return match ($fieldFilter) {
+            'empty/description' => "p.description = ''",
+            'empty/playlist_viewed' => 'p.playlist_viewed = 0',
+            'empty/rating' => '(p.rating = 0 AND p.rating_amount = 1)',
+            'empty/tags' => "NOT EXISTS (SELECT 1 FROM {$tagsTable} tp_empty WHERE tp_empty.playlist_id = p.playlist_id)",
+            'empty/categories' => "NOT EXISTS (SELECT 1 FROM {$categoriesTable} cp_empty WHERE cp_empty.playlist_id = p.playlist_id)",
+            'empty/videos' => "NOT EXISTS (SELECT 1 FROM {$favVideosTable} fv_empty WHERE fv_empty.playlist_id = p.playlist_id)",
+            'filled/description' => "p.description != ''",
+            'filled/playlist_viewed' => 'p.playlist_viewed != 0',
+            'filled/rating' => '(p.rating > 0 OR p.rating_amount > 1)',
+            'filled/tags' => "EXISTS (SELECT 1 FROM {$tagsTable} tp_filled WHERE tp_filled.playlist_id = p.playlist_id)",
+            'filled/categories' => "EXISTS (SELECT 1 FROM {$categoriesTable} cp_filled WHERE cp_filled.playlist_id = p.playlist_id)",
+            'filled/videos' => "EXISTS (SELECT 1 FROM {$favVideosTable} fv_filled WHERE fv_filled.playlist_id = p.playlist_id)",
+            default => null,
+        };
     }
 
     /**

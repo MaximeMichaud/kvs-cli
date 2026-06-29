@@ -7,6 +7,47 @@ namespace KVS\CLI\Command\Traits;
  */
 trait RelationUsageTrait
 {
+    /** @return list<string> */
+    protected function getAdminUsageFilterValues(): array
+    {
+        return [
+            'used/videos',
+            'used/albums',
+            'used/posts',
+            'used/other',
+            'used/all',
+            'notused/videos',
+            'notused/albums',
+            'notused/posts',
+            'notused/other',
+            'notused/all',
+        ];
+    }
+
+    protected function getAdminUsageFilterCondition(
+        string $usage,
+        string $videosExpression,
+        string $albumsExpression,
+        string $postsExpression,
+        string $otherExpression,
+        string $allExpression
+    ): ?string {
+        $filters = [
+            'used/videos' => "{$videosExpression} > 0",
+            'used/albums' => "{$albumsExpression} > 0",
+            'used/posts' => "{$postsExpression} > 0",
+            'used/other' => "{$otherExpression} > 0",
+            'used/all' => "{$allExpression} > 0",
+            'notused/videos' => "{$videosExpression} = 0",
+            'notused/albums' => "{$albumsExpression} = 0",
+            'notused/posts' => "{$postsExpression} = 0",
+            'notused/other' => "{$otherExpression} = 0",
+            'notused/all' => "{$allExpression} = 0",
+        ];
+
+        return $filters[$usage] ?? null;
+    }
+
     /**
      * @param array<string, string> $relationTables
      */
