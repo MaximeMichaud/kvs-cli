@@ -111,8 +111,7 @@ HELP
             return self::FAILURE;
         }
 
-        $query = "SELECT s.*, g.title as group_title
-                 FROM {$this->table('admin_servers')} s
+        $fromSql = "FROM {$this->table('admin_servers')} s
                  LEFT JOIN {$this->table('admin_servers_groups')} g ON s.group_id = g.group_id
                  WHERE 1=1";
 
@@ -133,7 +132,7 @@ HELP
                 $this->io()->error('Invalid value for --type (use: video or album)');
                 return self::FAILURE;
             }
-            $query .= " AND s.content_type_id = :type";
+            $fromSql .= " AND s.content_type_id = :type";
             $params['type'] = $typeMap[$typeKey];
         }
 
@@ -151,7 +150,7 @@ HELP
                 $this->io()->error('Invalid value for --status (use: active or disabled)');
                 return self::FAILURE;
             }
-            $query .= " AND s.status_id = :status";
+            $fromSql .= " AND s.status_id = :status";
             $params['status'] = $statusMap[$statusKey];
         }
 
@@ -168,7 +167,7 @@ HELP
                 $this->io()->error('Invalid value for --connection (use: local, mount, ftp, or s3)');
                 return self::FAILURE;
             }
-            $query .= " AND s.connection_type_id = :connection";
+            $fromSql .= " AND s.connection_type_id = :connection";
             $params['connection'] = $connectionMap[$connectionKey];
         }
 
@@ -178,16 +177,26 @@ HELP
             return self::FAILURE;
         }
         if ($groupId !== null) {
-            $query .= " AND s.group_id = :group_id";
+            $fromSql .= " AND s.group_id = :group_id";
             $params['group_id'] = $groupId;
         }
 
         // Errors filter
         if ($input->getOption('errors')) {
-            $query .= " AND (s.error_iteration > 1 OR s.error_streaming_iteration > 1)";
+            $fromSql .= " AND (s.error_iteration > 1 OR s.error_streaming_iteration > 1)";
         }
 
-        $query .= " ORDER BY s.group_id ASC, s.server_id ASC LIMIT :limit";
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', 50) === null) {
+                return self::FAILURE;
+            }
+
+            return $this->countRows($db, "SELECT COUNT(*) $fromSql", $params, 'servers');
+        }
+
+        $query = "SELECT s.*, g.title as group_title
+                 $fromSql
+                 ORDER BY s.group_id ASC, s.server_id ASC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -264,6 +273,28 @@ HELP
             return self::SUCCESS;
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch servers: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, int> $params
+     */
+    private function countRows(\PDO $db, string $query, array $params, string $label): int
+    {
+        try {
+            $stmt = $db->prepare($query);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+
+            $total = $stmt->fetchColumn();
+            $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error("Failed to count $label: " . $e->getMessage());
             return self::FAILURE;
         }
     }
@@ -730,6 +761,20 @@ HELP
             return self::FAILURE;
         }
 
+        $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 50);
+        if ($limit === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            return $this->countRows(
+                $db,
+                "SELECT COUNT(*) FROM {$this->table('admin_servers_groups')}",
+                [],
+                'server groups'
+            );
+        }
+
         try {
             $stmtGroups = $db->prepare("
                 SELECT g.*,
@@ -748,10 +793,6 @@ HELP
                 ORDER BY g.group_id ASC
                 LIMIT :limit
             ");
-            $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 50);
-            if ($limit === null) {
-                return self::FAILURE;
-            }
             $stmtGroups->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmtGroups->execute();
             /** @var list<array<string, mixed>> $groups */

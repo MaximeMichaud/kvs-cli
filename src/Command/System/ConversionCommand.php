@@ -558,7 +558,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $path = $this->getStringField($server, 'path');
+            $path = $this->resolveConversionServerPath($this->getStringField($server, 'path'));
             $connType = $this->getNumericField($server, 'connection_type_id');
 
             // Only local and mount servers have readable logs
@@ -567,7 +567,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $logFile = rtrim($path, '/') . '/log.txt';
+            $logFile = $this->getConversionLogFile($path);
 
             if (!file_exists($logFile)) {
                 if (!$this->isTableFormat($input)) {
@@ -675,7 +675,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $path = $this->getStringField($server, 'path');
+            $path = $this->resolveConversionServerPath($this->getStringField($server, 'path'));
             $connType = $this->getNumericField($server, 'connection_type_id');
 
             // Only local and mount servers have readable config
@@ -781,6 +781,37 @@ HELP
             $this->io()->error('Failed to read config: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function resolveConversionServerPath(string $path): string
+    {
+        $path = rtrim($path, '/');
+        if ($path !== '' && is_dir($path)) {
+            return $path;
+        }
+
+        $normalized = str_replace('\\', '/', $path);
+        if (str_ends_with($normalized, '/admin/data/conversion')) {
+            $candidate = $this->config->getAdminPath() . '/data/conversion';
+            if (is_dir($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $path;
+    }
+
+    private function getConversionLogFile(string $path): string
+    {
+        $basePath = rtrim($path, '/');
+        foreach (['cron_log.txt', 'log.txt'] as $filename) {
+            $candidate = $basePath . '/' . $filename;
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $basePath . '/cron_log.txt';
     }
 
     private function enableServer(?string $id): int

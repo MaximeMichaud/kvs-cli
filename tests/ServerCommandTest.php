@@ -264,6 +264,20 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $testerCount->getStatusCode());
     }
 
+    public function testServerListCountIgnoresDisplayLimit(): void
+    {
+        $testerCount = new CommandTester($this->command);
+        $testerCount->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertSame('3', trim($testerCount->getDisplay()));
+        $this->assertSame(0, $testerCount->getStatusCode());
+    }
+
     public function testServerShow(): void
     {
         $this->tester->execute([
@@ -471,6 +485,19 @@ class ServerCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(10, (int) $rows[0]['group_id']);
         $this->assertSame('Video Group', $rows[0]['title']);
+    }
+
+    public function testServerGroupCountIgnoresDisplayLimit(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--limit' => 1,
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertSame('2', trim($this->tester->getDisplay()));
     }
 
     public function testServerGroupShowSupportsJsonFormat(): void

@@ -35,6 +35,10 @@ class LogCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['list', 'clear', 'follow'])) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'list')) {
             return $this->listLogs();
         }
@@ -285,13 +289,16 @@ class LogCommand extends BaseCommand
     private function getLogFiles(): array
     {
         $logDirs = [
-            $this->config->getAdminPath() . '/logs',
-            $this->config->getAdminPath() . '/data/logs',
+            ['prefix' => '', 'dir' => $this->config->getAdminPath() . '/logs'],
+            ['prefix' => '', 'dir' => $this->config->getAdminPath() . '/data/logs'],
+            ['prefix' => 'conversion', 'dir' => $this->config->getAdminPath() . '/data/conversion'],
         ];
 
         $files = [];
 
-        foreach ($logDirs as $dir) {
+        foreach ($logDirs as $logDir) {
+            $prefix = $logDir['prefix'];
+            $dir = $logDir['dir'];
             $root = realpath($dir);
             if ($root === false || !is_dir($root)) {
                 continue;
@@ -313,6 +320,7 @@ class LogCommand extends BaseCommand
                 if ($relativePath === null) {
                     continue;
                 }
+                $displayPath = $prefix === '' ? $relativePath : $prefix . '/' . $relativePath;
 
                 $fileSize = filesize($path);
                 $fileMtime = filemtime($path);
@@ -321,8 +329,8 @@ class LogCommand extends BaseCommand
                 }
 
                 $files[] = [
-                    'type' => preg_replace('/\.(?:log|txt)\z/i', '', $relativePath) ?? $relativePath,
-                    'file' => $relativePath,
+                    'type' => preg_replace('/\.(?:log|txt)\z/i', '', $displayPath) ?? $displayPath,
+                    'file' => $displayPath,
                     'path' => $path,
                     'size' => $fileSize,
                     'mtime' => $fileMtime,

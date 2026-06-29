@@ -547,10 +547,34 @@ class ConversionCommandTest extends TestCase
         $this->assertSame(1, $this->tester->getStatusCode(), $output);
         $this->assertSame('50', $rows[0]['server_id']);
         $this->assertSame('Missing Log Converter', $rows[0]['title']);
-        $this->assertSame($serverPath . '/log.txt', $rows[0]['file']);
+        $this->assertSame($serverPath . '/cron_log.txt', $rows[0]['file']);
         $this->assertFalse($rows[0]['exists']);
         $this->assertSame('Log file not found', $rows[0]['message']);
         $this->assertStringNotContainsString('[WARNING]', $output);
+    }
+
+    public function testConversionLogFallsBackToCurrentInstallConversionPath(): void
+    {
+        $conversionPath = $this->kvsPath . '/admin/data/conversion';
+        mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/cron_log.txt', "INFO  Local conversion cron\n");
+        $this->insertLocalConversionServer(
+            52,
+            'Moved Local Converter',
+            '/old/kvs/root/admin/data/conversion'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '52',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Local conversion cron', $output);
+        $this->assertStringNotContainsString('/old/kvs/root', $output);
     }
 
     public function testConversionDebugOnMissingId(): void
@@ -639,6 +663,34 @@ class ConversionCommandTest extends TestCase
         $this->assertFalse($rows[0]['exists']);
         $this->assertSame('Config file not found', $rows[0]['message']);
         $this->assertStringNotContainsString('[WARNING]', $output);
+    }
+
+    public function testConversionConfigFallsBackToCurrentInstallConversionPath(): void
+    {
+        $conversionPath = $this->kvsPath . '/admin/data/conversion';
+        mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/config.properties', "max.tasks=4\n");
+        file_put_contents($conversionPath . '/heartbeat.dat', serialize(['libraries' => []]));
+        $this->insertLocalConversionServer(
+            53,
+            'Moved Config Converter',
+            '/old/kvs/root/admin/data/conversion'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '53',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame($conversionPath . '/config.properties', $rows[0]['file']);
+        $this->assertSame("max.tasks=4\n", $rows[0]['content']);
+        $this->assertTrue($rows[0]['heartbeat_exists']);
     }
 
     public function testConversionLogMissingId(): void

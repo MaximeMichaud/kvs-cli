@@ -24,11 +24,13 @@ class CacheCommandTest extends TestCase
         mkdir($this->tempDir . '/admin/data/engine', 0755, true);
         mkdir($this->tempDir . '/admin/smarty/cache', 0755, true);
         mkdir($this->tempDir . '/admin/smarty/template-c', 0755, true);
+        mkdir($this->tempDir . '/admin/smarty/template-c-site', 0755, true);
         mkdir($this->tempDir . '/tmp', 0755, true);
 
         // Create some cache files
         file_put_contents($this->tempDir . '/admin/data/engine/cache_test.dat', 'cache data');
         file_put_contents($this->tempDir . '/admin/smarty/cache/test.cache', 'smarty cache');
+        file_put_contents($this->tempDir . '/admin/smarty/template-c-site/site.tpl.php', 'site template cache');
         file_put_contents($this->tempDir . '/tmp/test.tmp', 'temp file');
 
         file_put_contents($this->tempDir . '/admin/include/setup_db.php', '<?php');
@@ -66,6 +68,7 @@ class CacheCommandTest extends TestCase
         // Cache files should be deleted
         $this->assertFileDoesNotExist($this->tempDir . '/admin/data/engine/cache_test.dat');
         $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/cache/test.cache');
+        $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/template-c-site/site.tpl.php');
     }
 
     public function testCacheClearFileType(): void
@@ -83,6 +86,7 @@ class CacheCommandTest extends TestCase
         // File cache should be cleared
         $this->assertFileDoesNotExist($this->tempDir . '/admin/data/engine/cache_test.dat');
         $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/cache/test.cache');
+        $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/template-c-site/site.tpl.php');
     }
 
     public function testCacheClearInvalidTypeFailsWithoutDeletingFiles(): void
@@ -142,7 +146,22 @@ class CacheCommandTest extends TestCase
 
         $this->assertStringContainsString('Engine cache', $output);
         $this->assertStringContainsString('Smarty cache', $output);
+        $this->assertStringContainsString('Site template cache', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testCacheStatsAndClearCannotBeCombined(): void
+    {
+        $this->tester->execute([
+            '--stats' => true,
+            '--clear' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $output);
+        $this->assertFileExists($this->tempDir . '/admin/data/engine/cache_test.dat');
     }
 
     public function testCacheNoAction(): void

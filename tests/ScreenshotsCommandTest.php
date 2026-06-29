@@ -94,9 +94,10 @@ class ScreenshotsCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('preview.png', $output);
-        $this->assertStringContainsString('320x180/001.jpg', $output);
+        $this->assertStringContainsString('1.jpg', $output);
+        $this->assertStringContainsString('1', $output);
         $this->assertStringNotContainsString('source-only.jpg', $output);
+        $this->assertStringNotContainsString('preview.png', $output);
         $this->assertStringContainsString('1x1', $output);
     }
 
@@ -158,17 +159,18 @@ class ScreenshotsCommandTest extends TestCase
 
         if ($format === 'json') {
             $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertCount(2, $rows);
-            $this->assertSame(['320x180/001.jpg', 'preview.png'], array_column($rows, 'filename'));
+            $this->assertCount(1, $rows);
+            $this->assertSame(['1.jpg'], array_column($rows, 'filename'));
+            $this->assertSame(1, (int) $rows[0]['index']);
             return;
         }
 
         if ($format === 'count') {
-            $this->assertSame('2', trim($output));
+            $this->assertSame('1', trim($output));
             return;
         }
 
-        $this->assertStringContainsString('preview.png', $output);
+        $this->assertStringContainsString('1.jpg', $output);
     }
 
     public static function provideOutputFormats(): array
@@ -189,7 +191,34 @@ class ScreenshotsCommandTest extends TestCase
         ]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('preview.png', $this->tester->getDisplay());
+        $this->assertStringContainsString('1.jpg', $this->tester->getDisplay());
+    }
+
+    public function testListScreenshotsIgnoresDerivedPreviewsAndTimelinesInCount(): void
+    {
+        $this->createScreenshotFixture('1234');
+        $generatedScreenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket('1234') . '/1234';
+        mkdir($generatedScreenshotsDir . '/timelines/default/320x180', 0755, true);
+
+        $image = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+            true
+        );
+        $this->assertIsString($image);
+        file_put_contents($generatedScreenshotsDir . '/preview.jpg', $image);
+        file_put_contents($generatedScreenshotsDir . '/preview_720p.mp4.jpg', $image);
+        for ($i = 1; $i <= 5; $i++) {
+            file_put_contents($generatedScreenshotsDir . "/timelines/default/320x180/$i.jpg", $image);
+        }
+
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertSame('1', trim($this->tester->getDisplay()));
     }
 
     public function testUnknownActionFailsEvenWithVideoId(): void

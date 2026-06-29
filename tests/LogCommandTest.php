@@ -102,6 +102,18 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogListIncludesConversionServerLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/data/conversion', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/conversion/cron_log.txt', "[2024-01-01] INFO: Conversion cron\n");
+
+        $this->tester->execute(['--list' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertMatchesRegularExpression('/│\s*conversion\/cron_log\s*│\s*conversion\/cron_log\.txt\s*│/', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
     public function testLogViewSpecificType(): void
     {
         $this->tester->execute(['type' => 'system']);
@@ -145,6 +157,19 @@ class LogCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Backup done', $output);
         $this->assertStringContainsString('plugins/backup.txt', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewReadsConversionServerLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/data/conversion', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/conversion/cron_log.txt', "[2024-01-01] INFO: Conversion cron\n");
+
+        $this->tester->execute(['type' => 'conversion/cron_log']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Conversion cron', $output);
+        $this->assertStringContainsString('conversion/cron_log.txt', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
@@ -231,6 +256,21 @@ class LogCommandTest extends TestCase
         $this->assertSame(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('confirmation was not provided', $output);
         $this->assertSame($originalContent, file_get_contents($logFile));
+    }
+
+    public function testLogListAndClearCannotBeCombined(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '--clear' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $output);
+        $this->assertStringNotContainsString('system.log', $output);
     }
 
     public function testFollowReadsReplacementLogFromBeginning(): void

@@ -154,6 +154,20 @@ SH
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testCronListAndStatusCannotBeCombined(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '--status' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $output);
+        $this->assertStringNotContainsString('cron.php', $output);
+    }
+
     public function testCronInvalidTask(): void
     {
         $this->tester->execute(['task' => 'nonexistent']);
