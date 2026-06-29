@@ -24,6 +24,41 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class VideoCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const VIDEO_STRING_FIELD_FILTER_COLUMNS = [
+        'title',
+        'description',
+        'gallery_url',
+        'custom1',
+        'custom2',
+        'custom3',
+    ];
+
+    /** @var list<string> */
+    private const VIDEO_ZERO_FIELD_FILTER_COLUMNS = [
+        'af_custom1',
+        'af_custom2',
+        'af_custom3',
+        'tokens_required',
+        'video_viewed',
+        'video_viewed_unique',
+    ];
+
+    /** @var list<string> */
+    private const VIDEO_SPECIAL_FIELD_FILTERS = [
+        'content_source',
+        'dvd',
+        'admin',
+        'admin_flag',
+        'comments',
+        'favourites',
+        'purchases',
+        'rating',
+        'tags',
+        'categories',
+        'models',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -37,9 +72,27 @@ class VideoCommand extends BaseCommand
             ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
             ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
             ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID or title')
+            ->addOption('content-source-group', null, InputOption::VALUE_REQUIRED, 'Filter by content source group ID or title')
             ->addOption('dvd', null, InputOption::VALUE_REQUIRED, 'Filter by DVD ID or title')
+            ->addOption('dvd-group', null, InputOption::VALUE_REQUIRED, 'Filter by DVD group ID or title')
+            ->addOption('model-group', null, InputOption::VALUE_REQUIRED, 'Filter by model group ID or title')
             ->addOption('playlist', null, InputOption::VALUE_REQUIRED, 'Filter by playlist ID or title')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
+            ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public videos')
+            ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private videos')
+            ->addOption('premium', null, InputOption::VALUE_NONE, 'Show only premium videos')
+            ->addOption('access-level', null, InputOption::VALUE_REQUIRED, 'Filter by access level ID (0-3)')
+            ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only videos that need review')
+            ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only videos that do not need review')
+            ->addOption('locked', null, InputOption::VALUE_NONE, 'Show only locked videos')
+            ->addOption('unlocked', null, InputOption::VALUE_NONE, 'Show only unlocked videos')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/tags)')
+            ->addOption('flag', null, InputOption::VALUE_REQUIRED, 'Filter by admin or user flag ID')
+            ->addOption('flag-votes', null, InputOption::VALUE_REQUIRED, 'Minimum user flag votes for --flag', '1')
+            ->addOption('post-date-from', null, InputOption::VALUE_REQUIRED, 'Filter by minimum post date (YYYY-MM-DD)')
+            ->addOption('post-date-to', null, InputOption::VALUE_REQUIRED, 'Filter by maximum post date (YYYY-MM-DD)')
+            ->addOption('duration-from', null, InputOption::VALUE_REQUIRED, 'Filter by minimum duration in seconds')
+            ->addOption('duration-to', null, InputOption::VALUE_REQUIRED, 'Filter by maximum duration in seconds')
             ->addOption('stats', null, InputOption::VALUE_NONE, 'Show video statistics')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
@@ -104,6 +157,10 @@ HELP
 
     private function listVideos(InputInterface $input): int
     {
+        if ($this->hasVideoListOptionConflicts($input)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -145,7 +202,7 @@ HELP
         try {
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
             if ($limit === null) {
@@ -357,6 +414,10 @@ HELP
             $params['search'] = $this->containsLikePattern($search);
         }
 
+        if (!$this->applyVideoAdminScalarFilters($input, $whereSql, $params)) {
+            return false;
+        }
+
         if (!$this->applyVideoRelationFilters($db, $input, $whereSql, $params)) {
             return false;
         }
@@ -369,6 +430,171 @@ HELP
             $whereSql .= " AND v.user_id = :user";
             $params['user'] = $user;
         }
+
+        return true;
+    }
+
+    private function hasVideoListOptionConflicts(InputInterface $input): bool
+    {
+        return $this->hasConflictingBoolOptions($input, ['public', 'private', 'premium'])
+            || $this->hasConflictingBoolOptions($input, ['review-needed', 'not-review-needed'])
+            || $this->hasConflictingBoolOptions($input, ['locked', 'unlocked']);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoAdminScalarFilters(InputInterface $input, string &$whereSql, array &$params): bool
+    {
+        if ($this->getBoolOption($input, 'public')) {
+            $whereSql .= ' AND v.is_private = 0';
+        } elseif ($this->getBoolOption($input, 'private')) {
+            $whereSql .= ' AND v.is_private = 1';
+        } elseif ($this->getBoolOption($input, 'premium')) {
+            $whereSql .= ' AND v.is_private = 2';
+        }
+
+        $accessLevel = $this->getOptionalNonNegativeIntOption($input, 'access-level');
+        if ($accessLevel === false) {
+            return false;
+        }
+        if ($accessLevel !== null) {
+            if ($accessLevel > 3) {
+                $this->io()->error('Invalid value for --access-level (use: 0, 1, 2 or 3)');
+                return false;
+            }
+            $whereSql .= ' AND v.access_level_id = :access_level';
+            $params['access_level'] = $accessLevel;
+        }
+
+        if ($this->getBoolOption($input, 'review-needed')) {
+            $whereSql .= ' AND v.is_review_needed = 1';
+        } elseif ($this->getBoolOption($input, 'not-review-needed')) {
+            $whereSql .= ' AND v.is_review_needed = 0';
+        }
+
+        if ($this->getBoolOption($input, 'locked')) {
+            $whereSql .= ' AND v.is_locked = 1';
+        } elseif ($this->getBoolOption($input, 'unlocked')) {
+            $whereSql .= ' AND v.is_locked = 0';
+        }
+
+        if (!$this->applyVideoDateDurationFilters($input, $whereSql, $params)) {
+            return false;
+        }
+
+        if (!$this->applyVideoFlagFilter($input, $whereSql, $params)) {
+            return false;
+        }
+
+        $fieldFilter = $this->getStringOption($input, 'field-filter');
+        if ($fieldFilter !== null) {
+            $condition = $this->getVideoFieldFilterCondition($fieldFilter);
+            if ($condition === null) {
+                $this->io()->error('Invalid video field filter. Use: ' . implode(', ', $this->getVideoFieldFilterValues()));
+                return false;
+            }
+            $whereSql .= " AND {$condition}";
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoDateDurationFilters(InputInterface $input, string &$whereSql, array &$params): bool
+    {
+        $postDateFrom = $this->getDateOption($input, 'post-date-from');
+        if ($postDateFrom === false) {
+            return false;
+        }
+        if ($postDateFrom !== null) {
+            $whereSql .= ' AND v.post_date >= :post_date_from';
+            $params['post_date_from'] = $postDateFrom;
+        }
+
+        $postDateTo = $this->getDateOption($input, 'post-date-to');
+        if ($postDateTo === false) {
+            return false;
+        }
+        if ($postDateTo !== null) {
+            $whereSql .= ' AND v.post_date <= :post_date_to';
+            $params['post_date_to'] = $postDateTo . ' 23:59:59';
+        }
+
+        $durationFrom = $this->getOptionalPositiveIntOption($input, 'duration-from');
+        if ($durationFrom === false) {
+            return false;
+        }
+        if ($durationFrom !== null) {
+            $whereSql .= ' AND v.duration >= :duration_from';
+            $params['duration_from'] = $durationFrom;
+        }
+
+        $durationTo = $this->getOptionalPositiveIntOption($input, 'duration-to');
+        if ($durationTo === false) {
+            return false;
+        }
+        if ($durationTo !== null) {
+            $whereSql .= ' AND v.duration <= :duration_to';
+            $params['duration_to'] = $durationTo;
+        }
+
+        return true;
+    }
+
+    private function getDateOption(InputInterface $input, string $name): string|false|null
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: YYYY-MM-DD)', $name));
+            return false;
+        }
+
+        return date('Y-m-d', $timestamp);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoFlagFilter(InputInterface $input, string &$whereSql, array &$params): bool
+    {
+        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        if ($flag === false) {
+            return false;
+        }
+
+        $votesOption = $this->getStringOption($input, 'flag-votes');
+        if ($flag === null) {
+            if ($votesOption !== null && $votesOption !== '1') {
+                $this->io()->error('Option --flag-votes requires --flag');
+                return false;
+            }
+            return true;
+        }
+
+        $flagVotes = $this->getPositiveIntOptionOrDefault($input, 'flag-votes', 1);
+        if ($flagVotes === null) {
+            return false;
+        }
+
+        $flagsTable = $this->table('flags_videos');
+        $whereSql .= " AND (
+            v.admin_flag_id = :flag
+            OR (
+                SELECT SUM(fv_filter.votes)
+                FROM {$flagsTable} fv_filter
+                WHERE fv_filter.video_id = v.video_id AND fv_filter.flag_id = :flag
+            ) >= :flag_votes
+        )";
+        $params['flag'] = $flag;
+        $params['flag_votes'] = $flagVotes;
 
         return true;
     }
@@ -392,7 +618,14 @@ HELP
             $params['category'] = $category;
         }
 
-        $categoryGroup = $this->resolveCategoryGroupIdOption($db, $input);
+        $categoryGroup = $this->resolveVideoReferenceIdOption(
+            $db,
+            $input,
+            'category-group',
+            'categories_groups',
+            'category_group_id',
+            'title'
+        );
         if ($categoryGroup === false) {
             return false;
         }
@@ -424,6 +657,25 @@ HELP
             $params['model'] = $model;
         }
 
+        $modelGroup = $this->resolveVideoReferenceIdOption(
+            $db,
+            $input,
+            'model-group',
+            'models_groups',
+            'model_group_id',
+            'title'
+        );
+        if ($modelGroup === false) {
+            return false;
+        }
+        if ($modelGroup !== null) {
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('models_videos')} mvg "
+                . 'WHERE mvg.video_id = v.video_id AND mvg.model_id IN ('
+                . "SELECT mg.model_id FROM {$this->table('models')} mg "
+                . 'WHERE mg.model_group_id = :model_group))';
+            $params['model_group'] = $modelGroup;
+        }
+
         $contentSource = $this->resolveContentSourceIdOption($db, $input);
         if ($contentSource === false) {
             return false;
@@ -433,6 +685,24 @@ HELP
             $params['content_source'] = $contentSource;
         }
 
+        $contentSourceGroup = $this->resolveVideoReferenceIdOption(
+            $db,
+            $input,
+            'content-source-group',
+            'content_sources_groups',
+            'content_source_group_id',
+            'title'
+        );
+        if ($contentSourceGroup === false) {
+            return false;
+        }
+        if ($contentSourceGroup !== null) {
+            $whereSql .= ' AND v.content_source_id IN ('
+                . "SELECT csg.content_source_id FROM {$this->table('content_sources')} csg "
+                . 'WHERE csg.content_source_group_id = :content_source_group)';
+            $params['content_source_group'] = $contentSourceGroup;
+        }
+
         $dvd = $this->resolveDvdIdOption($db, $input);
         if ($dvd === false) {
             return false;
@@ -440,6 +710,24 @@ HELP
         if ($dvd !== null) {
             $whereSql .= " AND v.dvd_id = :dvd";
             $params['dvd'] = $dvd;
+        }
+
+        $dvdGroup = $this->resolveVideoReferenceIdOption(
+            $db,
+            $input,
+            'dvd-group',
+            'dvds_groups',
+            'dvd_group_id',
+            'title'
+        );
+        if ($dvdGroup === false) {
+            return false;
+        }
+        if ($dvdGroup !== null) {
+            $whereSql .= ' AND v.dvd_id IN ('
+                . "SELECT dg.dvd_id FROM {$this->table('dvds')} dg "
+                . 'WHERE dg.dvd_group_id = :dvd_group)';
+            $params['dvd_group'] = $dvdGroup;
         }
 
         $playlist = $this->resolvePlaylistIdOption($db, $input);
@@ -455,6 +743,139 @@ HELP
         return true;
     }
 
+    private function resolveVideoReferenceIdOption(
+        \PDO $db,
+        InputInterface $input,
+        string $name,
+        string $table,
+        string $idColumn,
+        string $titleColumn
+    ): int|false|null {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0 or title)', $name));
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $value) === 1) {
+            return (int) $value;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $value) === 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0 or title)', $name));
+            return false;
+        }
+
+        return $this->findReferenceIdByText($db, $table, $idColumn, $titleColumn, $value) ?? -1;
+    }
+
+    /** @return list<string> */
+    private function getVideoFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::VIDEO_STRING_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::VIDEO_ZERO_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::VIDEO_SPECIAL_FIELD_FILTERS as $field) {
+                $values[] = "{$prefix}/{$field}";
+            }
+        }
+
+        return $values;
+    }
+
+    private function getVideoFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $field] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true)) {
+            return null;
+        }
+
+        return $state === 'empty'
+            ? $this->getEmptyVideoFieldFilterCondition($field)
+            : $this->getFilledVideoFieldFilterCondition($field);
+    }
+
+    private function getEmptyVideoFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::VIDEO_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "v.{$field} = ''";
+        }
+
+        if (in_array($field, self::VIDEO_ZERO_FIELD_FILTER_COLUMNS, true)) {
+            return "v.{$field} = 0";
+        }
+
+        return match ($field) {
+            'content_source' => 'v.content_source_id = 0',
+            'dvd' => 'v.dvd_id = 0',
+            'admin' => 'v.admin_user_id = 0',
+            'admin_flag' => 'v.admin_flag_id = 0',
+            'comments' => $this->getVideoCommentsCountCondition(false),
+            'favourites' => 'v.favourites_count = 0',
+            'purchases' => 'v.purchases_count = 0',
+            'rating' => '(v.rating = 0 AND v.rating_amount = 1)',
+            'tags' => $this->getVideoRelationExistsCondition('tags_videos', 'tag_id', false),
+            'categories' => $this->getVideoRelationExistsCondition('categories_videos', 'category_id', false),
+            'models' => $this->getVideoRelationExistsCondition('models_videos', 'model_id', false),
+            default => null,
+        };
+    }
+
+    private function getFilledVideoFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::VIDEO_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "v.{$field} != ''";
+        }
+
+        if (in_array($field, self::VIDEO_ZERO_FIELD_FILTER_COLUMNS, true)) {
+            return "v.{$field} != 0";
+        }
+
+        return match ($field) {
+            'content_source' => 'v.content_source_id > 0',
+            'dvd' => 'v.dvd_id > 0',
+            'admin' => 'v.admin_user_id > 0',
+            'admin_flag' => 'v.admin_flag_id > 0',
+            'comments' => $this->getVideoCommentsCountCondition(true),
+            'favourites' => 'v.favourites_count > 0',
+            'purchases' => 'v.purchases_count > 0',
+            'rating' => '(v.rating > 0 OR v.rating_amount > 1)',
+            'tags' => $this->getVideoRelationExistsCondition('tags_videos', 'tag_id', true),
+            'categories' => $this->getVideoRelationExistsCondition('categories_videos', 'category_id', true),
+            'models' => $this->getVideoRelationExistsCondition('models_videos', 'model_id', true),
+            default => null,
+        };
+    }
+
+    private function getVideoCommentsCountCondition(bool $filled): string
+    {
+        $operator = $filled ? '>' : '=';
+        return "(SELECT COUNT(*) FROM {$this->table('comments')} cf "
+            . "WHERE cf.object_id = v.video_id AND cf.object_type_id = 1) {$operator} 0";
+    }
+
+    private function getVideoRelationExistsCondition(string $relationTable, string $idColumn, bool $exists): string
+    {
+        $operator = $exists ? 'EXISTS' : 'NOT EXISTS';
+        return "{$operator} (SELECT {$idColumn} FROM {$this->table($relationTable)} rel_filter "
+            . 'WHERE rel_filter.video_id = v.video_id)';
+    }
+
     /**
      * @param array<string, mixed> $params
      */
@@ -463,7 +884,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT COUNT(*) $fromSql");
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->execute();
 
