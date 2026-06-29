@@ -160,6 +160,39 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringNotContainsString('1.jpg', $output);
     }
 
+    #[DataProvider('provideGenerateOutputOnlyOptions')]
+    public function testGenerateActionsRejectListOnlyOutputOptions(
+        string $action,
+        string $optionName,
+        mixed $optionValue
+    ): void {
+        $parameters = [
+            'action' => $action,
+            'video_id' => '999999999',
+            '--' . $optionName => $optionValue,
+        ];
+
+        $this->tester->execute($parameters);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString("The $action action does not support --$optionName", $output);
+        $this->assertStringNotContainsString('No video file found', $output);
+    }
+
+    public static function provideGenerateOutputOnlyOptions(): array
+    {
+        return [
+            'generate fields' => ['generate', 'fields', 'filename'],
+            'generate format' => ['generate', 'format', 'json'],
+            'generate no truncate' => ['generate', 'no-truncate', true],
+            'regenerate fields' => ['regenerate', 'fields', 'filename'],
+            'regenerate format' => ['regenerate', 'format', 'json'],
+            'regenerate no truncate' => ['regenerate', 'no-truncate', true],
+        ];
+    }
+
     public function testListScreenshotsWithExistingVideo(): void
     {
         $this->createScreenshotFixture('1234');

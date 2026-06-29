@@ -210,6 +210,26 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('missing', strtolower($output));
     }
 
+    public function testCheckFormatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '10',
+            '--fields' => 'format,status',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Format', $output);
+        $this->assertStringContainsString('Status', $output);
+        $this->assertStringContainsString('720p MP4', $output);
+        $this->assertStringContainsString('available', strtolower($output));
+        $this->assertStringNotContainsString('Format Status for Video', $output);
+        $this->assertStringNotContainsString('Available Formats', $output);
+        $this->assertStringNotContainsString('Missing Formats', $output);
+    }
+
     public function testCheckFormatsJsonSucceedsWhenOnlyOptionalFormatsAreMissing(): void
     {
         $this->tester->execute([
@@ -260,6 +280,22 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('Required', $output);
         $this->assertStringContainsString('Access', $output);
         $this->assertStringContainsString('Premium', $output);
+    }
+
+    public function testAvailableFormatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'available',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('720p MP4', $output);
+        $this->assertStringNotContainsString('Available Format Configurations', $output);
+        $this->assertStringNotContainsString('These formats are configured', $output);
     }
 
     public function testAvailableFormatsRejectsInvalidFormat(): void

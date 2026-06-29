@@ -199,6 +199,31 @@ class OptionsCommandTest extends TestCase
         $this->assertSame('1', $value);
     }
 
+    public function testSetRejectsOutputOptionsBeforeLookingUpOption(): void
+    {
+        $cases = [
+            ['--format', 'json', 'format'],
+            ['--fields', 'variable', 'fields'],
+            ['--no-truncate', true, 'no-truncate'],
+        ];
+
+        foreach ($cases as [$option, $value, $optionName]) {
+            $this->tester->execute([
+                'action' => 'set',
+                'name' => 'KVS_CLI_DOES_NOT_EXIST',
+                'value' => '1',
+                $option => $value,
+                '--force' => true,
+            ]);
+
+            $display = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $optionName . ': ' . $display);
+            $this->assertStringContainsString("set action does not support --$optionName", $display);
+            $this->assertStringNotContainsString('Option not found', $display);
+        }
+    }
+
     public function testListRejectsConflictingEnabledDisabledFilters(): void
     {
         $this->tester->execute([

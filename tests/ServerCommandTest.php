@@ -103,6 +103,33 @@ class ServerCommandTest extends TestCase
         $this->assertSame('Local', $rows[0]['connection']);
     }
 
+    public function testMutationsRejectListAndOutputOptionsBeforeLookup(): void
+    {
+        $cases = [
+            ['enable', '--format', 'json', 'format'],
+            ['disable', '--fields', 'title', 'fields'],
+            ['enable', '--type', 'video', 'type'],
+            ['disable', '--no-truncate', true, 'no-truncate'],
+            ['enable', '--connection', 'local', 'connection'],
+        ];
+
+        foreach ($cases as [$action, $option, $value, $optionName]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => $action,
+                'id' => '999999',
+                $option => $value,
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $optionName . ': ' . $output);
+            $this->assertStringContainsString("The $action action does not support --$optionName", $output);
+            $this->assertStringNotContainsString('Server not found', $output);
+        }
+    }
+
     public function testServerListUsesKvsAdminStreamingLabels(): void
     {
         $this->tester->execute([

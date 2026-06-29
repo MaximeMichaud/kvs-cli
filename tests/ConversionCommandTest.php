@@ -86,6 +86,33 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('Yes', $rows[0]['has_error']);
     }
 
+    public function testMutationsRejectListAndOutputOptionsBeforeLookup(): void
+    {
+        $cases = [
+            ['enable', '--format', 'json', 'format'],
+            ['disable', '--fields', 'title', 'fields'],
+            ['debug-on', '--format', 'json', 'format'],
+            ['debug-off', '--no-truncate', true, 'no-truncate'],
+            ['debug-on', '--status', 'active', 'status'],
+        ];
+
+        foreach ($cases as [$action, $option, $value, $optionName]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => $action,
+                'id' => '999999',
+                $option => $value,
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $optionName . ': ' . $output);
+            $this->assertStringContainsString("The $action action does not support --$optionName", $output);
+            $this->assertStringNotContainsString('Conversion server not found', $output);
+        }
+    }
+
     public function testConversionListMarksPrioritizedMaxTasksLikeKvsAdmin(): void
     {
         $this->tester->execute([

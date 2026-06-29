@@ -27,6 +27,17 @@ class ServerCommand extends BaseCommand
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
     private const LIST_ONLY_OPTIONS = ['type', 'status', 'connection', 'group', 'errors', 'limit'];
+    private const MUTATION_UNSUPPORTED_OPTIONS = [
+        'type',
+        'status',
+        'connection',
+        'group',
+        'errors',
+        'limit',
+        'format',
+        'fields',
+        'no-truncate',
+    ];
 
     private const GROUP_LIST_UNSUPPORTED_OPTIONS = ['type', 'status', 'connection', 'group', 'errors'];
 
@@ -146,8 +157,8 @@ HELP
         return match ($action) {
             'list' => $this->listServers($input),
             'show' => $this->showServer($id, $input),
-            'enable', 'activate' => $this->enableServer($id),
-            'disable', 'deactivate' => $this->disableServer($id),
+            'enable', 'activate' => $this->enableServer($id, $input),
+            'disable', 'deactivate' => $this->disableServer($id, $input),
             'stats' => $this->showStats($input),
             'group' => $id !== null ? $this->showGroup($id, $input) : $this->listGroups($input),
             default => $this->failUnknownAction(
@@ -1276,8 +1287,13 @@ HELP
         }
     }
 
-    private function enableServer(?string $id): int
+    private function enableServer(?string $id, InputInterface $input): int
     {
+        $action = $this->getStringArgument($input, 'action') ?? 'enable';
+        if ($this->rejectUnsupportedOptions($input, $action, self::MUTATION_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         return $this->toggleEntityStatus(
             'Server',
             $this->table('admin_servers'),
@@ -1289,8 +1305,13 @@ HELP
         );
     }
 
-    private function disableServer(?string $id): int
+    private function disableServer(?string $id, InputInterface $input): int
     {
+        $action = $this->getStringArgument($input, 'action') ?? 'disable';
+        if ($this->rejectUnsupportedOptions($input, $action, self::MUTATION_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         return $this->toggleEntityStatus(
             'Server',
             $this->table('admin_servers'),

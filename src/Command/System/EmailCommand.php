@@ -36,6 +36,27 @@ class EmailCommand extends BaseCommand
         'body',
         'lines',
     ];
+    private const TEST_UNSUPPORTED_OPTIONS = [
+        'smtp-host',
+        'smtp-port',
+        'smtp-user',
+        'smtp-pass',
+        'smtp-security',
+        'smtp-timeout',
+        'from-email',
+        'from-name',
+        'mailer',
+        'debug',
+        'format',
+        'lines',
+    ];
+    private const SET_UNSUPPORTED_OPTIONS = [
+        'to',
+        'subject',
+        'body',
+        'format',
+        'lines',
+    ];
     private const LOG_UNSUPPORTED_OPTIONS = [
         'smtp-host',
         'smtp-port',
@@ -247,6 +268,10 @@ HELP
 
     private function testEmail(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'test', self::TEST_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -360,6 +385,10 @@ HELP
 
     private function setSettings(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'set', self::SET_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

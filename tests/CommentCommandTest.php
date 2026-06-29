@@ -840,6 +840,23 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Great test video', $output);
     }
 
+    public function testPendingActionHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'pending',
+            '--limit' => 1,
+            '--fields' => 'comment_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Comment id', $output);
+        $this->assertStringContainsString('20', $output);
+        $this->assertStringNotContainsString('Pending Comments', $output);
+        $this->assertStringNotContainsString('Use kvs comment approve ID', $output);
+    }
+
     public function testPendingActionJsonFormatIsNotDecoratedAndExposesContentAlias(): void
     {
         $this->tester->execute([

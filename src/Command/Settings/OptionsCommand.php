@@ -23,6 +23,7 @@ class OptionsCommand extends BaseCommand
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
     private const LIST_ONLY_OPTIONS = ['prefix', 'category', 'search', 'with-value', 'enabled', 'disabled'];
     private const SET_ONLY_OPTIONS = ['yes'];
+    private const SET_UNSUPPORTED_OPTIONS = ['fields', 'format', 'no-truncate'];
 
     /**
      * Serialized KVS settings files that duplicate selected ktvs_options values.
@@ -394,6 +395,10 @@ HELP
 
     private function setOption(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'set', self::SET_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectListOnlyOptions($input, 'set')) {
             return self::FAILURE;
         }

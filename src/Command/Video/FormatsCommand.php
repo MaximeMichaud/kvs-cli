@@ -225,7 +225,7 @@ HELP
             return self::FAILURE;
         }
 
-        if ($outputFormat === 'table') {
+        if ($outputFormat === 'table' && !$this->hasFieldSelection($input)) {
             $this->io()->title("Format Status for Video $videoId");
         }
 
@@ -233,7 +233,7 @@ HELP
         $configuredFormats = $this->getFormatsFromDatabase();
 
         if ($configuredFormats === []) {
-            if ($outputFormat !== 'table') {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayFormattedRows($input, [], ['format', 'postfix', 'status', 'file', 'size', 'dimensions']);
                 return self::FAILURE;
             }
@@ -302,7 +302,7 @@ HELP
             }
         }
 
-        if ($outputFormat !== 'table') {
+        if ($this->shouldUseFormattedRows($input)) {
             $formatter = new Formatter(
                 $input->getOptions(),
                 ['format', 'postfix', 'status', 'file', 'size', 'dimensions']
@@ -344,7 +344,7 @@ HELP
             return self::FAILURE;
         }
 
-        if ($format === 'table') {
+        if ($format === 'table' && !$this->hasFieldSelection($input)) {
             $this->io()->title('Available Format Configurations');
         }
 
@@ -352,7 +352,7 @@ HELP
         $formats = $this->getFormatsFromDatabase();
 
         if ($formats === []) {
-            if ($format !== 'table') {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayFormattedRows($input, [], ['format_id', 'title', 'postfix', 'status', 'group_id', 'access']);
                 return self::FAILURE;
             }
@@ -379,7 +379,7 @@ HELP
         /** @var list<array<string, mixed>> $formats */
         $formatter->display($formats, $this->io());
 
-        if ($format === 'table') {
+        if ($format === 'table' && !$this->hasFieldSelection($input)) {
             $this->io()->newLine();
             $this->io()->note('These formats are configured in KVS (table: ' . $this->table('formats_videos') . ')');
         }

@@ -19,6 +19,7 @@ use function KVS\CLI\Utils\format_bytes;
 class ScreenshotsCommand extends BaseCommand
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+    private const GENERATE_UNSUPPORTED_OPTIONS = ['fields', 'format', 'no-truncate'];
 
     protected function configure(): void
     {
@@ -390,6 +391,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->rejectUnsupportedOptions($input, 'generate', self::GENERATE_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $videoId = $this->normalizeVideoId($videoId);
         if ($videoId === null) {
             return self::FAILURE;
@@ -413,6 +418,10 @@ HELP
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'regenerate', self::GENERATE_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

@@ -26,6 +26,14 @@ class ConversionCommand extends BaseCommand
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
     private const LIST_ONLY_OPTIONS = ['status', 'errors', 'limit'];
+    private const MUTATION_UNSUPPORTED_OPTIONS = [
+        'status',
+        'errors',
+        'limit',
+        'format',
+        'fields',
+        'no-truncate',
+    ];
 
     private const LIST_FIELDS = [
         'server_id',
@@ -151,10 +159,10 @@ HELP
         return match ($action) {
             'list' => $this->listServers($input),
             'show' => $this->showServer($id, $input),
-            'enable', 'activate' => $this->enableServer($id),
-            'disable', 'deactivate' => $this->disableServer($id),
-            'debug-on' => $this->toggleDebug($id, true),
-            'debug-off' => $this->toggleDebug($id, false),
+            'enable', 'activate' => $this->enableServer($id, $input),
+            'disable', 'deactivate' => $this->disableServer($id, $input),
+            'debug-on' => $this->toggleDebug($id, true, $input),
+            'debug-off' => $this->toggleDebug($id, false, $input),
             'log' => $this->showLog($id, $input),
             'config' => $this->showConfig($id, $input),
             'stats' => $this->showStats($input),
@@ -690,6 +698,10 @@ HELP
      */
     private function showLog(?string $id, InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'log', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
             return self::FAILURE;
@@ -807,6 +819,10 @@ HELP
      */
     private function showConfig(?string $id, InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'config', self::LIST_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
             return self::FAILURE;
@@ -975,8 +991,13 @@ HELP
         return $basePath . '/log.txt';
     }
 
-    private function enableServer(?string $id): int
+    private function enableServer(?string $id, InputInterface $input): int
     {
+        $action = $this->getStringArgument($input, 'action') ?? 'enable';
+        if ($this->rejectUnsupportedOptions($input, $action, self::MUTATION_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         return $this->toggleEntityStatus(
             'Conversion server',
             $this->table('admin_conversion_servers'),
@@ -988,8 +1009,13 @@ HELP
         );
     }
 
-    private function disableServer(?string $id): int
+    private function disableServer(?string $id, InputInterface $input): int
     {
+        $action = $this->getStringArgument($input, 'action') ?? 'disable';
+        if ($this->rejectUnsupportedOptions($input, $action, self::MUTATION_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         return $this->toggleEntityStatus(
             'Conversion server',
             $this->table('admin_conversion_servers'),
@@ -1001,8 +1027,13 @@ HELP
         );
     }
 
-    private function toggleDebug(?string $id, bool $enable): int
+    private function toggleDebug(?string $id, bool $enable, InputInterface $input): int
     {
+        $action = $this->getStringArgument($input, 'action') ?? ($enable ? 'debug-on' : 'debug-off');
+        if ($this->rejectUnsupportedOptions($input, $action, self::MUTATION_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $serverId = $this->getRequiredPositiveId($id, 'Server');
         if ($serverId === null) {
             return self::FAILURE;

@@ -20,6 +20,7 @@ class AntispamCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'json'];
+    private const WRITE_UNSUPPORTED_OPTIONS = ['format'];
     private const MUTATION_OPTIONS = [
         'words',
         'words-ignore-feedbacks',
@@ -467,6 +468,10 @@ HELP
 
     private function setSettings(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'set', self::WRITE_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -733,6 +738,10 @@ HELP
 
     private function addToBlacklist(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'add', self::WRITE_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -796,6 +805,10 @@ HELP
 
     private function removeFromBlacklist(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'remove', self::WRITE_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

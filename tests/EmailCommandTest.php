@@ -126,6 +126,31 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testEmailTestRejectsNonTestOptionsBeforeRecipientValidation(): void
+    {
+        $cases = [
+            ['--format', 'json', 'format'],
+            ['--lines', '1', 'lines'],
+            ['--smtp-host', 'smtp.example.test', 'smtp-host'],
+        ];
+
+        foreach ($cases as [$option, $value, $optionName]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'test',
+                '--to' => 'invalid-email',
+                $option => $value,
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $optionName . ': ' . $output);
+            $this->assertStringContainsString("test action does not support --$optionName", $output);
+            $this->assertStringNotContainsString('Invalid email address format', $output);
+        }
+    }
+
     public function testEmailHelpDocumentsSmtpTestLimitation(): void
     {
         $output = $this->command->getHelp();
@@ -181,6 +206,30 @@ class EmailCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('no settings', strtolower($output));
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testEmailSetRejectsNonSetOptionsBeforeNoopSuccess(): void
+    {
+        $cases = [
+            ['--format', 'json', 'format'],
+            ['--lines', '1', 'lines'],
+            ['--to', 'test@example.com', 'to'],
+        ];
+
+        foreach ($cases as [$option, $value, $optionName]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'set',
+                $option => $value,
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $optionName . ': ' . $output);
+            $this->assertStringContainsString("set action does not support --$optionName", $output);
+            $this->assertStringNotContainsString('No settings to update', $output);
+        }
     }
 
     public function testEmailSetInvalidMailer(): void

@@ -185,6 +185,26 @@ class AntispamCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testMutationActionsRejectFormatBeforeNoopSuccess(): void
+    {
+        foreach (['set', 'add', 'remove'] as $action) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => $action,
+                '--format' => 'json',
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $action . ': ' . $output);
+            $this->assertStringContainsString("The $action action does not support --format", $output);
+            $this->assertStringNotContainsString('No settings to update', $output);
+            $this->assertStringNotContainsString('Nothing to add', $output);
+            $this->assertStringNotContainsString('Nothing removed', $output);
+        }
+    }
+
     public function testAntispamSetInvalidBlacklistAction(): void
     {
         $this->tester->execute([

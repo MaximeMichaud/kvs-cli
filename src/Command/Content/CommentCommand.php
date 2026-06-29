@@ -893,8 +893,7 @@ HELP
             }
 
             $format = $this->getStringOptionOrDefault($input, 'format', 'table');
-            $hasSingleField = $this->getStringOption($input, 'field') !== null;
-            $decorateOutput = $format === 'table' && !$hasSingleField;
+            $decorateOutput = $format === 'table' && !$this->hasFieldSelection($input);
 
             if ($format === 'count') {
                 $stmt = $db->prepare(
