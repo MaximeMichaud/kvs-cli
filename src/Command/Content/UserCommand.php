@@ -238,20 +238,35 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $searchEscape = $this->likeEscapeSql();
-            $whereClause .= " AND (u.username LIKE :search" . $searchEscape
-                . " OR u.display_name LIKE :search" . $searchEscape
-                . " OR u.email LIKE :search" . $searchEscape
-                . " OR u.city LIKE :search" . $searchEscape
-                . " OR u.website LIKE :search" . $searchEscape
-                . " OR u.education LIKE :search" . $searchEscape
-                . " OR u.occupation LIKE :search" . $searchEscape
-                . " OR u.about_me LIKE :search" . $searchEscape
-                . " OR u.interests LIKE :search" . $searchEscape
-                . " OR u.favourite_movies LIKE :search" . $searchEscape
-                . " OR u.favourite_music LIKE :search" . $searchEscape
-                . " OR u.favourite_books LIKE :search" . $searchEscape . ")";
-            $params['search'] = $this->containsLikePattern($search);
+            $whereClause .= ' AND ' . $this->buildAdminSearchCondition(
+                'u.user_id',
+                [
+                    'u.username',
+                    'u.display_name',
+                    'u.email',
+                    'u.city',
+                    'u.website',
+                    'u.education',
+                    'u.occupation',
+                    'u.about_me',
+                    'u.interests',
+                    'u.favourite_movies',
+                    'u.favourite_music',
+                    'u.favourite_books',
+                    'u.custom1',
+                    'u.custom2',
+                    'u.custom3',
+                    'u.custom4',
+                    'u.custom5',
+                    'u.custom6',
+                    'u.custom7',
+                    'u.custom8',
+                    'u.custom9',
+                    'u.custom10',
+                ],
+                $search,
+                $params
+            );
         }
 
         $ip = $this->getStringOption($input, 'ip');

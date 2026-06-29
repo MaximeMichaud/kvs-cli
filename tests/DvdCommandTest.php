@@ -393,6 +393,23 @@ class DvdCommandTest extends TestCase
         $this->assertSame('Long running series', $rows[0]['description']);
     }
 
+    public function testListDvdsSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '30',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
+        $this->assertSame('Test Series', $rows[0]['title']);
+    }
+
     public function testListDvdsFiltersByUserLikeKvsAdmin(): void
     {
         $this->tester->execute([

@@ -107,6 +107,22 @@ class VideoFormatCommandTest extends TestCase
         }
     }
 
+    public function testShowRejectsListOnlyFilters(): void
+    {
+        foreach (['status' => 'required', 'group' => '1', 'search' => 'mp4'] as $option => $value) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'show',
+                'id' => '1',
+                '--' . $option => $value,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString("show action does not support --{$option}", $tester->getDisplay());
+        }
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');

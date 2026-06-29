@@ -338,6 +338,49 @@ class CommentCommandTest extends TestCase
         $this->assertSame('1', trim($this->tester->getDisplay()));
     }
 
+    public function testListCommentsSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '30',
+            '--format' => 'json',
+            '--fields' => 'comment_id,comment',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+        $this->assertSame('Great test video', $rows[0]['comment']);
+    }
+
+    public function testPendingCommentsSearchesUsernameLikeKvsAdminListFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'pending',
+            '--search' => 'bob',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('1', trim($this->tester->getDisplay()));
+    }
+
+    public function testPendingCommentsRejectsApprovalStatusFilters(): void
+    {
+        foreach (['approved', 'not-approved'] as $option) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'pending',
+                '--' . $option => true,
+                '--format' => 'count',
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString('does not support --approved or --not-approved', $tester->getDisplay());
+        }
+    }
+
     public function testListCommentsAllowsZeroUserSentinel(): void
     {
         $this->tester->execute([

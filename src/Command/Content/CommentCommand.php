@@ -295,11 +295,16 @@ HELP
             $search = $this->getStringOption($input, 'search');
             $countJoinSql = '';
             if ($search !== null) {
-                $searchEscape = $this->likeEscapeSql();
-                $conditions[] = '(c.comment LIKE :search' . $searchEscape
-                    . ' OR c.anonymous_username LIKE :search' . $searchEscape
-                    . ' OR u.username LIKE :search' . $searchEscape . ')';
-                $params['search'] = $this->containsLikePattern($search);
+                $conditions[] = $this->buildAdminSearchCondition(
+                    'c.comment_id',
+                    [
+                        'c.comment',
+                        'c.anonymous_username',
+                        'u.username',
+                    ],
+                    $search,
+                    $params
+                );
                 $countJoinSql = "LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id";
             }
 
@@ -774,6 +779,11 @@ HELP
 
     private function listPendingComments(InputInterface $input): int
     {
+        if ($this->getBoolOption($input, 'approved') || $this->getBoolOption($input, 'not-approved')) {
+            $this->io()->error('The pending action does not support --approved or --not-approved.');
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -789,9 +799,19 @@ HELP
 
             // Search filter
             $search = $this->getStringOption($input, 'search');
+            $countJoinSql = '';
             if ($search !== null) {
-                $conditions[] = 'c.comment LIKE :search' . $this->likeEscapeSql();
-                $params['search'] = $this->containsLikePattern($search);
+                $conditions[] = $this->buildAdminSearchCondition(
+                    'c.comment_id',
+                    [
+                        'c.comment',
+                        'c.anonymous_username',
+                        'u.username',
+                    ],
+                    $search,
+                    $params
+                );
+                $countJoinSql = "LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id";
             }
 
             $whereClause = implode(' AND ', $conditions);
@@ -806,7 +826,9 @@ HELP
             $decorateOutput = $format === 'table' && !$hasSingleField;
 
             if ($format === 'count') {
-                $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} c WHERE $whereClause");
+                $stmt = $db->prepare(
+                    "SELECT COUNT(*) FROM {$this->table('comments')} c $countJoinSql WHERE $whereClause"
+                );
                 foreach ($params as $key => $value) {
                     $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
                 }

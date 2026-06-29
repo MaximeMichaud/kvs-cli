@@ -470,6 +470,35 @@ class VideoCommandTest extends TestCase
         $this->assertSame('Featured description', $rows[0]['description']);
     }
 
+    public function testVideoListSearchesIdAndAdminFieldsLikeKvsAdmin(): void
+    {
+        foreach (['10', 'custom one', '<iframe src="featured"></iframe>'] as $search) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--search' => $search,
+                '--format' => 'json',
+                '--fields' => 'video_id',
+                '--limit' => 5,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        }
+    }
+
+    public function testVideoDefaultsToListAction(): void
+    {
+        $this->tester->execute([
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('3', trim($this->tester->getDisplay()));
+    }
+
     public function testVideoListFormats(): void
     {
         // Test JSON format
@@ -823,9 +852,10 @@ class VideoCommandTest extends TestCase
             'dir TEXT, is_private INTEGER, is_review_needed INTEGER, is_locked INTEGER, access_level_id INTEGER, duration INTEGER, ' .
             'file_size INTEGER, file_dimensions TEXT, post_date TEXT, rating INTEGER, rating_amount INTEGER, video_viewed INTEGER, ' .
             'video_viewed_unique INTEGER, comments_count INTEGER, favourites_count INTEGER, purchases_count INTEGER, r_ctr REAL, ' .
-            'description TEXT, gallery_url TEXT, custom1 TEXT, custom2 TEXT, custom3 TEXT, af_custom1 INTEGER, ' .
-            'af_custom2 INTEGER, af_custom3 INTEGER, tokens_required INTEGER, content_source_id INTEGER, dvd_id INTEGER, ' .
-            'admin_flag_id INTEGER, server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER)'
+            'description TEXT, gallery_url TEXT, website_link TEXT, file_url TEXT, embed TEXT, pseudo_url TEXT, ' .
+            'delete_reason TEXT, custom1 TEXT, custom2 TEXT, custom3 TEXT, af_custom1 INTEGER, af_custom2 INTEGER, ' .
+            'af_custom3 INTEGER, tokens_required INTEGER, content_source_id INTEGER, dvd_id INTEGER, admin_flag_id INTEGER, ' .
+            'server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT, status_id INTEGER)');
         $db->exec(
@@ -896,15 +926,19 @@ class VideoCommandTest extends TestCase
             " (video_id, user_id, admin_user_id, title, status_id, resolution_type, dir, is_private, access_level_id, duration, file_size, " .
             "is_review_needed, is_locked, file_dimensions, post_date, rating, rating_amount, video_viewed, video_viewed_unique, " .
             "comments_count, favourites_count, purchases_count, r_ctr, description, gallery_url, custom1, custom2, custom3, " .
-            "af_custom1, af_custom2, af_custom3, tokens_required, content_source_id, dvd_id, admin_flag_id, server_group_id, " .
+            "website_link, file_url, embed, pseudo_url, delete_reason, af_custom1, af_custom2, af_custom3, " .
+            "tokens_required, content_source_id, dvd_id, admin_flag_id, server_group_id, " .
             "format_video_group_id, screen_main, ip) VALUES " .
             "(10, 1, 8, 'Featured Clip', 1, 2, 'featured-clip', 0, 0, 125, 1048576, 0, 0, '1920x1080', " .
             "'2026-05-26 10:00:00', 40, 10, 123, 12, 2, 7, 1, 0.125, 'Featured description', " .
-            "'https://example.test/gallery', 'custom one', '', '', 1, 0, 0, 5, 3, 4, 5, 6, 7, 3, 2130706433), " .
+            "'https://example.test/gallery', 'custom one', '', '', '', '', '<iframe src=\"featured\"></iframe>', '', '', " .
+            "1, 0, 0, 5, 3, 4, 5, 6, 7, 3, 2130706433), " .
             "(20, 2, 9, 'Disabled Clip', 0, 0, 'disabled-clip', 2, 2, 61, 524288, 1, 1, '640x360', " .
-            "'2026-05-25 10:00:00', 0, 1, 5, 0, 1, 0, 0, 0.050, '', '', '', '', '', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "'2026-05-25 10:00:00', 0, 1, 5, 0, 1, 0, 0, 0.050, '', '', '', '', '', '', '', '', '', '', " .
+            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
             "(30, 1, 0, 'Older Active Clip', 1, 1, 'older-active-clip', 1, 0, 3600, 2097152, 0, 0, '1280x720', " .
-            "'2026-05-24 10:00:00', 15, 5, 20, 0, 0, 1, 0, 0, '', '', '', '', '', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
+            "'2026-05-24 10:00:00', 15, 5, 20, 0, 0, 1, 0, 0, '', '', '', '', '', '', '', '', '', '', " .
+            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .

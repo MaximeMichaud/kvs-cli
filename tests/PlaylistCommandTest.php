@@ -288,6 +288,33 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame('private-playlist', $rows[0]['dir']);
     }
 
+    public function testPlaylistListSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '30',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+    }
+
+    public function testPlaylistDefaultsToListAction(): void
+    {
+        $this->tester->execute([
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('3', trim($this->tester->getDisplay()));
+    }
+
     public function testPlaylistListJsonFormat(): void
     {
         $this->tester->execute([
@@ -807,8 +834,9 @@ class PlaylistCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Available actions:', $output);
-        $this->assertStringContainsString('list : List playlists', $output);
+        $this->assertStringContainsString('Test Playlist', $output);
+        $this->assertStringContainsString('Total: 3 results', $output);
+        $this->assertStringNotContainsString('Available actions:', $output);
     }
 
     private function createDatabase(): PDO

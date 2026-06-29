@@ -154,6 +154,23 @@ class ModelCommandTest extends TestCase
         $this->assertSame('Main model profile', $rows[0]['description']);
     }
 
+    public function testListModelsSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '30',
+            '--format' => 'json',
+            '--fields' => 'model_id,title',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['model_id'], $rows));
+        $this->assertSame('Test Model', $rows[0]['title']);
+    }
+
     public function testListModelsUsesKvsAdminRelationContentCounts(): void
     {
         $this->db->exec(

@@ -168,12 +168,17 @@ HELP
 
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $searchEscape = $this->likeEscapeSql();
-                $conditions[] = '(c.title LIKE :search' . $searchEscape
-                    . ' OR c.dir LIKE :search' . $searchEscape
-                    . ' OR c.description LIKE :search' . $searchEscape
-                    . ' OR c.synonyms LIKE :search' . $searchEscape . ')';
-                $params['search'] = $this->containsLikePattern($search);
+                $conditions[] = $this->buildAdminSearchCondition(
+                    'c.category_id',
+                    [
+                        'c.title',
+                        'c.dir',
+                        'c.description',
+                        'c.synonyms',
+                    ],
+                    $search,
+                    $params
+                );
             }
 
             $groupId = $this->resolveCategoryGroupFilter($db, $input);

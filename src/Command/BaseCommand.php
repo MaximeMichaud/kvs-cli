@@ -513,6 +513,47 @@ abstract class BaseCommand extends Command
         return " ESCAPE '!'";
     }
 
+    /**
+     * @param list<string> $likeColumns
+     * @param array<string, int|string> $params
+     */
+    protected function buildAdminSearchCondition(
+        string $idColumn,
+        array $likeColumns,
+        string $search,
+        array &$params,
+        string $paramPrefix = 'search'
+    ): string {
+        $conditions = [];
+        $trimmedSearch = trim($search);
+
+        if (preg_match('/^([\ ]*[0-9]+[\ ]*,[\ ]*)+[0-9]+[\ ]*$/', $trimmedSearch) === 1) {
+            $ids = array_values(array_unique(array_map('intval', array_map('trim', explode(',', $trimmedSearch)))));
+            $idParams = [];
+            foreach ($ids as $index => $id) {
+                $key = "{$paramPrefix}_id_{$index}";
+                $params[$key] = $id;
+                $idParams[] = ":{$key}";
+            }
+            $conditions[] = "{$idColumn} IN (" . implode(', ', $idParams) . ')';
+        } elseif (preg_match('/^\d+$/', $trimmedSearch) === 1) {
+            $key = "{$paramPrefix}_id";
+            $params[$key] = (int) $trimmedSearch;
+            $conditions[] = "{$idColumn} = :{$key}";
+        }
+
+        if ($likeColumns !== []) {
+            $key = "{$paramPrefix}_like";
+            $params[$key] = $this->containsLikePattern($search);
+            $likeEscape = $this->likeEscapeSql();
+            foreach ($likeColumns as $column) {
+                $conditions[] = "{$column} LIKE :{$key}{$likeEscape}";
+            }
+        }
+
+        return '(' . implode(' OR ', $conditions) . ')';
+    }
+
     private function escapeLikePattern(string $value): string
     {
         return str_replace(

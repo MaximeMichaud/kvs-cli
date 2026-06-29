@@ -118,11 +118,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
-
-        if ($action === null || $action === '') {
-            return $this->showHelp();
-        }
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'list' => $this->listAlbums($input),
@@ -343,11 +339,21 @@ HELP
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $searchEscape = $this->likeEscapeSql();
-            $whereClause .= " AND (a.title LIKE :search" . $searchEscape
-                . " OR a.dir LIKE :search" . $searchEscape
-                . " OR a.description LIKE :search" . $searchEscape . ")";
-            $params['search'] = $this->containsLikePattern($search);
+            $whereClause .= ' AND ' . $this->buildAdminSearchCondition(
+                'a.album_id',
+                [
+                    'a.title',
+                    'a.dir',
+                    'a.description',
+                    'a.gallery_url',
+                    'a.delete_reason',
+                    'a.custom1',
+                    'a.custom2',
+                    'a.custom3',
+                ],
+                $search,
+                $params
+            );
         }
 
         $fieldFilter = $this->getStringOption($input, 'field-filter');
@@ -802,17 +808,5 @@ HELP
                 throw new \RuntimeException("KVS refused to delete album #$albumId");
             }
         }, ['functions_servers.php', 'functions_admin.php']);
-    }
-
-    private function showHelp(): int
-    {
-        $this->io()->info('Available actions:');
-        $this->io()->listing([
-            'list : List albums',
-            'show <id> : Show album details',
-            'delete <id> : Delete an album',
-        ]);
-
-        return self::SUCCESS;
     }
 }

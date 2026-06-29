@@ -175,6 +175,23 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame('1', trim($slugTester->getDisplay()));
     }
 
+    public function testListSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '10',
+            '--format' => 'json',
+            '--fields' => 'tag_id,tag',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['tag_id'], $rows));
+        $this->assertSame('4K', $rows[0]['tag']);
+    }
+
     public function testListFiltersByKvsAdminFieldFilter(): void
     {
         $cases = [

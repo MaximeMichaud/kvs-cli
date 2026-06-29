@@ -300,6 +300,33 @@ class AlbumCommandTest extends TestCase
         $this->assertSame('Active album description', $rows[0]['description']);
     }
 
+    public function testAlbumListSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '20',
+            '--format' => 'json',
+            '--fields' => 'album_id,title',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        $this->assertSame('Disabled Album', $rows[0]['title']);
+    }
+
+    public function testAlbumDefaultsToListAction(): void
+    {
+        $this->tester->execute([
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('3', trim($this->tester->getDisplay()));
+    }
+
     public function testAlbumListExposesKvsAdminCountFields(): void
     {
         $this->tester->execute([
@@ -584,8 +611,8 @@ class AlbumCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('albums') . ' (' .
             'album_id INTEGER, user_id INTEGER, admin_user_id INTEGER, title TEXT, dir TEXT, description TEXT, ' .
-            'gallery_url TEXT, custom1 TEXT, custom2 TEXT, custom3 TEXT, af_custom1 INTEGER, af_custom2 INTEGER, ' .
-            'af_custom3 INTEGER, is_review_needed INTEGER, is_locked INTEGER, ' .
+            'gallery_url TEXT, delete_reason TEXT, custom1 TEXT, custom2 TEXT, custom3 TEXT, af_custom1 INTEGER, ' .
+            'af_custom2 INTEGER, af_custom3 INTEGER, is_review_needed INTEGER, is_locked INTEGER, ' .
             'status_id INTEGER, is_private INTEGER, access_level_id INTEGER, tokens_required INTEGER, ' .
             'post_date TEXT, album_viewed INTEGER, album_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'photos_amount INTEGER, favourites_count INTEGER, purchases_count INTEGER, content_source_id INTEGER, ' .
@@ -630,17 +657,17 @@ class AlbumCommandTest extends TestCase
         $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'moderator', 0), (9, 'admin', 1)");
         $db->exec(
             "INSERT INTO " . TestHelper::table('albums') .
-            ' (album_id, user_id, admin_user_id, title, dir, description, gallery_url, custom1, custom2, custom3, ' .
+            ' (album_id, user_id, admin_user_id, title, dir, description, gallery_url, delete_reason, custom1, custom2, custom3, ' .
             'af_custom1, af_custom2, af_custom3, is_review_needed, is_locked, status_id, is_private, access_level_id, ' .
             'tokens_required, post_date, album_viewed, album_viewed_unique, rating, rating_amount, photos_amount, ' .
             'favourites_count, purchases_count, content_source_id, admin_flag_id, server_group_id, added_date, ip) VALUES ' .
-            "(10, 1, 9, 'Active Album', 'active-album', 'Active album description', '', '', '', '', " .
+            "(10, 1, 9, 'Active Album', 'active-album', 'Active album description', '', '', '', '', '', " .
             "0, 0, 0, 0, 0, 1, 0, 0, 0, '2026-05-25 10:00:00', 12, 12, 40, 10, 7, 5, 0, 0, 0, 0, " .
             "'2026-05-25 09:00:00', 0), " .
             "(20, 2, 8, 'Disabled Album', 'disabled-album', 'Disabled album description', " .
-            "'https://gallery.example/20', 'featured', '', '', 1, 0, 0, 1, 1, 0, 2, 2, 15, " .
+            "'https://gallery.example/20', '', 'featured', '', '', 1, 0, 0, 1, 1, 0, 2, 2, 15, " .
             "'2026-05-26 10:00:00', 5, 5, 10, 5, 3, 2, 1, 3, 4, 5, '2026-05-26 09:00:00', 2130706433), " .
-            "(5, 1, 0, 'Private Empty Album', 'private-empty-album', '', '', '', '', '', " .
+            "(5, 1, 0, 'Private Empty Album', 'private-empty-album', '', '', '', '', '', '', " .
             "0, 0, 0, 0, 0, 0, 1, 1, 0, '2026-05-24 10:00:00', 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, " .
             "'2026-05-24 09:00:00', 0)"
         );

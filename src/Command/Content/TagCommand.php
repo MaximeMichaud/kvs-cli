@@ -147,11 +147,16 @@ HELP
             // Search filter
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $searchEscape = $this->likeEscapeSql();
-                $conditions[] = '(t.tag LIKE :search' . $searchEscape
-                    . ' OR t.tag_dir LIKE :search' . $searchEscape
-                    . ' OR t.synonyms LIKE :search' . $searchEscape . ')';
-                $params['search'] = $this->containsLikePattern($search);
+                $conditions[] = $this->buildAdminSearchCondition(
+                    't.tag_id',
+                    [
+                        't.tag',
+                        't.tag_dir',
+                        't.synonyms',
+                    ],
+                    $search,
+                    $params
+                );
             }
 
             $fieldFilter = $this->getStringOption($input, 'field-filter');

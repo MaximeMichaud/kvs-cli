@@ -89,11 +89,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
-
-        if ($action === null || $action === '') {
-            return $this->showHelp();
-        }
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         return match ($action) {
             'list' => $this->listPlaylists($input),
@@ -276,11 +272,16 @@ HELP
 
         $search = $input->getOption('search');
         if (is_string($search) && $search !== '') {
-            $searchEscape = $this->likeEscapeSql();
-            $fromClause .= " AND (p.title LIKE :search" . $searchEscape
-                . " OR p.dir LIKE :search" . $searchEscape
-                . " OR p.description LIKE :search" . $searchEscape . ")";
-            $params['search'] = $this->containsLikePattern($search);
+            $fromClause .= ' AND ' . $this->buildAdminSearchCondition(
+                'p.playlist_id',
+                [
+                    'p.title',
+                    'p.dir',
+                    'p.description',
+                ],
+                $search,
+                $params
+            );
         }
 
         $fieldFilter = $this->getStringOption($input, 'field-filter');
@@ -1140,20 +1141,5 @@ HELP
 
             delete_playlists([$playlistId], 'ap');
         });
-    }
-
-    private function showHelp(): int
-    {
-        $this->io()->info('Available actions:');
-        $this->io()->listing([
-            'list : List playlists',
-            'show <id> : Show playlist details',
-            'create <title> --user=<user_id> : Create a playlist',
-            'add <id> --video=<video_id> : Add a video to a playlist',
-            'remove <id> --video=<video_id> : Remove a video from a playlist',
-            'delete <id> : Delete a playlist',
-        ]);
-
-        return self::SUCCESS;
     }
 }

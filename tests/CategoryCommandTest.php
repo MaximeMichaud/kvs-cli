@@ -131,6 +131,23 @@ class CategoryCommandTest extends TestCase
         $this->assertSame('action-scenes', $rows[0]['dir']);
     }
 
+    public function testCategoryListSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '20',
+            '--format' => 'json',
+            '--fields' => 'category_id,title',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['category_id'], $rows));
+        $this->assertSame('Drama', $rows[0]['title']);
+    }
+
     public function testCategoryListFiltersByGroupTitleLikeKvsAdmin(): void
     {
         $this->tester->execute([

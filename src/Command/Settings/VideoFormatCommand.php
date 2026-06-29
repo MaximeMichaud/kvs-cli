@@ -480,6 +480,21 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->getStringOption($input, 'status') !== null) {
+            $this->io()->error('The show action does not support --status. Use list --status to filter video formats.');
+            return self::FAILURE;
+        }
+
+        if ($this->getStringOption($input, 'group') !== null) {
+            $this->io()->error('The show action does not support --group. Use list --group to filter video formats.');
+            return self::FAILURE;
+        }
+
+        if ($this->getStringOption($input, 'search') !== null) {
+            $this->io()->error('The show action does not support --search. Use list --search to filter video formats.');
+            return self::FAILURE;
+        }
+
         $formatId = $this->getRequiredPositiveId($id, 'Format');
         if ($formatId === null) {
             return self::FAILURE;

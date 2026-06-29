@@ -168,13 +168,18 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $searchEscape = $this->likeEscapeSql();
-            $whereClause .= " AND (m.title LIKE :search" . $searchEscape
-                . " OR m.dir LIKE :search" . $searchEscape
-                . " OR m.description LIKE :search" . $searchEscape
-                . " OR m.alias LIKE :search" . $searchEscape
-                . " OR m.gallery_url LIKE :search" . $searchEscape . ")";
-            $params['search'] = $this->containsLikePattern($search);
+            $whereClause .= ' AND ' . $this->buildAdminSearchCondition(
+                'm.model_id',
+                [
+                    'm.title',
+                    'm.dir',
+                    'm.description',
+                    'm.alias',
+                    'm.gallery_url',
+                ],
+                $search,
+                $params
+            );
         }
 
         if (!$this->applyModelAdminFilters($db, $input, $whereClause, $params)) {

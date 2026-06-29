@@ -136,14 +136,10 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $action = $this->getStringArgument($input, 'action');
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         if ($this->getBoolOption($input, 'stats')) {
             return $this->showStats($input);
-        }
-
-        if ($action === null || $action === '') {
-            return $this->showHelp();
         }
 
         return match ($action) {
@@ -407,11 +403,24 @@ HELP
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $searchEscape = $this->likeEscapeSql();
-            $whereSql .= " AND (v.title LIKE :search" . $searchEscape
-                . " OR v.dir LIKE :search" . $searchEscape
-                . " OR v.description LIKE :search" . $searchEscape . ")";
-            $params['search'] = $this->containsLikePattern($search);
+            $whereSql .= ' AND ' . $this->buildAdminSearchCondition(
+                'v.video_id',
+                [
+                    'v.title',
+                    'v.dir',
+                    'v.description',
+                    'v.file_url',
+                    'v.embed',
+                    'v.gallery_url',
+                    'v.pseudo_url',
+                    'v.delete_reason',
+                    'v.custom1',
+                    'v.custom2',
+                    'v.custom3',
+                ],
+                $search,
+                $params
+            );
         }
 
         if (!$this->applyVideoAdminScalarFilters($input, $whereSql, $params)) {
@@ -1291,28 +1300,6 @@ HELP
             $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
-
-        return self::SUCCESS;
-    }
-
-    private function showHelp(): int
-    {
-        $this->io()->info('Available actions:');
-        $this->io()->listing([
-            'list : List videos with filters',
-            'show <id> : Show details for a specific video',
-            'delete <id> : Delete a video',
-            'update <id> : Update video information',
-            'stats : Show video statistics',
-        ]);
-
-        $this->io()->section('Examples');
-        $this->io()->text([
-            'kvs content:video list --status=active --limit=10',
-            'kvs content:video show 123',
-            'kvs content:video list --search="example" --category=5',
-            'kvs content:video stats',
-        ]);
 
         return self::SUCCESS;
     }

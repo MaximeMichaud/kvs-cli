@@ -302,12 +302,17 @@ HELP
 
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $searchEscape = $this->likeEscapeSql();
-            $whereClause .= " AND (d.title LIKE :search" . $searchEscape
-                . " OR d.dir LIKE :search" . $searchEscape
-                . " OR d.description LIKE :search" . $searchEscape
-                . " OR d.synonyms LIKE :search" . $searchEscape . ")";
-            $params['search'] = $this->containsLikePattern($search);
+            $whereClause .= ' AND ' . $this->buildAdminSearchCondition(
+                'd.dvd_id',
+                [
+                    'd.title',
+                    'd.dir',
+                    'd.description',
+                    'd.synonyms',
+                ],
+                $search,
+                $params
+            );
         }
 
         $user = $this->resolveUserIdOption($db, $input);

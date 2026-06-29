@@ -269,6 +269,23 @@ class UserCommandTest extends TestCase
         $this->assertSame('Alice Example', $rows[0]['display_name']);
     }
 
+    public function testUserListSearchesIdLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '2',
+            '--format' => 'json',
+            '--fields' => 'user_id,username',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([2], array_map(static fn (array $row): int => (int) $row['user_id'], $rows));
+        $this->assertSame('remove_me', $rows[0]['username']);
+    }
+
     public function testUserListSearchesAdditionalFieldsLikeKvsAdmin(): void
     {
         $this->tester->execute([
