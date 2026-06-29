@@ -249,6 +249,30 @@ HELP
                 $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'tag_rename',
+                    'video_count',
+                    'album_count',
+                    'total_usage',
+                    'videos_amount',
+                    'albums_amount',
+                    'posts_amount',
+                    'other_amount',
+                    'all_amount',
+                    'status',
+                    'videos',
+                    'albums',
+                    'posts',
+                    'playlists',
+                    'content_sources',
+                    'models',
+                    'dvds',
+                    'dvds_groups',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $tags */
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -284,7 +308,8 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['tag_id', 'tag', 'video_count', 'album_count', 'total_usage', 'status']
+                ['tag_id', 'tag', 'video_count', 'album_count', 'total_usage', 'status'],
+                $knownFields
             );
             $formatter->display($transformedTags, $this->io());
         } catch (\Exception $e) {

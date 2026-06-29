@@ -715,7 +715,7 @@ abstract class BaseCommand extends Command
             return false;
         }
 
-        return $this->findReferenceIdByText($db, $table, $idColumn, $textColumn, $value) ?? 0;
+        return $this->findReferenceIdByText($db, $table, $idColumn, $textColumn, $value) ?? -1;
     }
 
     protected function getRequiredPositiveId(?string $value, string $label): ?int
@@ -877,6 +877,27 @@ abstract class BaseCommand extends Command
             $this->io()->error($e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function getStatementColumnNames(\PDOStatement $stmt): array
+    {
+        $columns = [];
+        for ($i = 0; $i < $stmt->columnCount(); $i++) {
+            $meta = $stmt->getColumnMeta($i);
+            if (!is_array($meta)) {
+                continue;
+            }
+
+            $name = $meta['name'];
+            if ($name !== '') {
+                $columns[] = $name;
+            }
+        }
+
+        return array_values(array_unique($columns));
     }
 
     /**

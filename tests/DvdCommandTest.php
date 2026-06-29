@@ -221,7 +221,9 @@ class DvdCommandTest extends TestCase
     {
         $cases = [
             ['--group' => 'Featured Series', 'expected' => [30]],
+            ['--group' => '0', 'expected' => [10]],
             ['--dvd-group' => '8', 'expected' => [20]],
+            ['--dvd-group' => '0', 'expected' => [10]],
             ['--tag' => 'featured', 'expected' => [30]],
             ['--category' => 'Channels', 'expected' => [30]],
             ['--model' => 'Model One', 'expected' => [30]],
@@ -247,6 +249,23 @@ class DvdCommandTest extends TestCase
             $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
             $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
             $this->assertSame($expected, array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
+        }
+    }
+
+    public function testListDvdsRejectsInvalidGroupIdsBeforeQuery(): void
+    {
+        foreach (['--group', '--dvd-group'] as $option) {
+            foreach (['-1', '1.5'] as $value) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    'action' => 'list',
+                    $option => $value,
+                    '--format' => 'count',
+                ]);
+
+                $this->assertSame(1, $tester->getStatusCode(), "$option=$value");
+                $this->assertStringContainsString('Invalid value for --group', $tester->getDisplay());
+            }
         }
     }
 

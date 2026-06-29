@@ -101,6 +101,30 @@ class QueueCommandTest extends TestCase
         $this->assertSame(30, (int) $failedRows[0]['task_id']);
     }
 
+    public function testQueueListAcceptsDisplayedStatusAliases(): void
+    {
+        $cases = [
+            'scheduled' => [10, 'Scheduled'],
+            'in-process' => [20, 'In process'],
+            'in_process' => [20, 'In process'],
+            'error' => [30, 'Error'],
+        ];
+
+        foreach ($cases as $status => [$expectedTaskId, $expectedStatus]) {
+            $this->tester->execute([
+                'action' => 'list',
+                '--status' => $status,
+                '--format' => 'json',
+            ]);
+            $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertEquals(0, $this->tester->getStatusCode(), $status);
+            $this->assertCount(1, $rows, $status);
+            $this->assertSame($expectedTaskId, (int) $rows[0]['task_id'], $status);
+            $this->assertSame($expectedStatus, $rows[0]['status'], $status);
+        }
+    }
+
     public function testQueueListJsonFormat(): void
     {
         $this->tester->execute([
@@ -372,6 +396,34 @@ class QueueCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame("2\n", $this->tester->getDisplay());
+    }
+
+    public function testQueueHistoryAcceptsErrorStatusAlias(): void
+    {
+        $this->insertHistoryTask($this->db, [
+            'task_id' => 304,
+            'status_id' => 2,
+            'type_id' => 4,
+            'video_id' => 104,
+            'album_id' => 0,
+            'server_id' => 2,
+            'error_code' => 8,
+            'priority' => 20,
+            'message' => 'Screenshot error',
+            'data' => '',
+            'start_date' => '2026-05-26 10:00:00',
+            'end_date' => '2026-05-26 10:01:00',
+            'effective_duration' => 60,
+        ]);
+
+        $this->tester->execute([
+            'action' => 'history',
+            '--status' => 'error',
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame("1\n", $this->tester->getDisplay());
     }
 
     public function testQueueShowRequiresId(): void

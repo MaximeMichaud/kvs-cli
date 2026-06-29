@@ -190,6 +190,22 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'status',
+                    'type',
+                    'total_videos',
+                    'videos_amount',
+                    'videos',
+                    'comments_amount',
+                    'user',
+                    'views',
+                    'rating',
+                    'date',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $playlists */
             $playlists = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -230,7 +246,8 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['playlist_id', 'title', 'status', 'type', 'total_videos', 'username', 'added_date']
+                ['playlist_id', 'title', 'status', 'type', 'total_videos', 'username', 'added_date'],
+                $knownFields
             );
             $formatter->display($transformedPlaylists, $this->io());
 

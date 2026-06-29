@@ -231,6 +231,24 @@ class VideoCommandTest extends TestCase
         $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
     }
 
+    public function testVideoListMissingPlaylistTitleMatchesKvsAdminEmptyResult(): void
+    {
+        $this->db->exec('INSERT INTO ' . TestHelper::table('fav_videos') . ' VALUES (20, 0)');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--playlist' => '__missing_playlist__',
+            '--fields' => 'video_id',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([], $rows);
+    }
+
     public function testVideoListFiltersByKvsAdminPrivacyAccessReviewLockedAndRanges(): void
     {
         $cases = [

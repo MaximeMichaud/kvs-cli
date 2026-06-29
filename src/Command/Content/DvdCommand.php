@@ -221,6 +221,33 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'thumb',
+                    'status',
+                    'total_videos',
+                    'videos_amount',
+                    'videos',
+                    'total_videos_duration',
+                    'total_duration',
+                    'duration',
+                    'release_year',
+                    'views',
+                    'dvd_group',
+                    'dvd_group_status_id',
+                    'user',
+                    'comments_amount',
+                    'subscribers_count',
+                    'subscribers_amount',
+                    'subscribers',
+                    'rating',
+                    'tags',
+                    'categories',
+                    'models',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $dvds */
             $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -268,7 +295,7 @@ HELP
             $defaultFields = ['dvd_id', 'title', 'status', 'total_videos'];
 
             // Format and display using Formatter
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($transformedDvds, $this->io());
 
             return self::SUCCESS;
@@ -431,8 +458,20 @@ HELP
         if ($group === null) {
             return null;
         }
-        if (preg_match('/^[1-9]\d*$/', $group) === 1) {
+
+        $group = trim($group);
+        if ($group === '') {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $group) === 1) {
             return (int) $group;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $group) === 1) {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
         }
 
         $stmt = $db->prepare("SELECT dvd_group_id FROM {$this->table('dvds_groups')} WHERE title = :title LIMIT 1");

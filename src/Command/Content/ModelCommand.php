@@ -237,6 +237,38 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'thumb',
+                    'status',
+                    'videos',
+                    'videos_amount',
+                    'albums',
+                    'albums_amount',
+                    'posts_amount',
+                    'other_amount',
+                    'all_amount',
+                    'comments_amount',
+                    'subscribers_amount',
+                    'views',
+                    'country',
+                    'model_group',
+                    'city',
+                    'state',
+                    'birth_date',
+                    'death_date',
+                    'age',
+                    'measurements',
+                    'height',
+                    'weight',
+                    'rank',
+                    'rating',
+                    'tags',
+                    'categories',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $models */
             $models = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -248,7 +280,7 @@ HELP
             $defaultFields = ['model_id', 'title', 'status', 'video_count'];
 
             // Format and display using Formatter
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($transformedModels, $this->io());
 
             return self::SUCCESS;

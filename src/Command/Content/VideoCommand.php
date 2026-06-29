@@ -243,6 +243,27 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'status',
+                    'is_error',
+                    'is_private',
+                    'type',
+                    'access_level_id',
+                    'access',
+                    'resolution',
+                    'duration',
+                    'filesize',
+                    'file_size',
+                    'ip',
+                    'r_ctr',
+                    'thumb',
+                    'website_link',
+                    'rating',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $videos */
             $videos = $stmt->fetchAll();
@@ -302,7 +323,8 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['video_id', 'title', 'status', 'views', 'username', 'post_date']
+                ['video_id', 'title', 'status', 'views', 'username', 'post_date'],
+                $knownFields
             );
             $formatter->display($videos, $this->io());
 

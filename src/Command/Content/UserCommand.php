@@ -351,6 +351,17 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'status',
+                    'gender',
+                    'ip',
+                    'thumb',
+                    'days_left_message',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $users */
             $users = $stmt->fetchAll();
@@ -378,7 +389,7 @@ HELP
             }
 
             // Format and display output using centralized Formatter
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($users, $this->io());
 
             return self::SUCCESS;

@@ -218,6 +218,24 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'images',
+                    'status',
+                    'is_error',
+                    'is_private',
+                    'type',
+                    'access_level_id',
+                    'access',
+                    'views',
+                    'website_link',
+                    'ip',
+                    'thumb',
+                    'rating',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $albums */
             $albums = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -274,7 +292,8 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['album_id', 'title', 'image_count', 'status', 'is_private', 'username', 'post_date']
+                ['album_id', 'title', 'image_count', 'status', 'is_private', 'username', 'post_date'],
+                $knownFields
             );
             $formatter->display($transformedAlbums, $this->io());
 

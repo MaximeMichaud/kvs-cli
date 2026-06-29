@@ -396,6 +396,33 @@ HELP
             }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'comment_id',
+                    'id',
+                    'username',
+                    'user',
+                    'user_status_id',
+                    'object_id',
+                    'content',
+                    'object_type',
+                    'type',
+                    'object_title',
+                    'content_title',
+                    'object',
+                    'object_dir',
+                    'post_type_id',
+                    'comment',
+                    'comment_full',
+                    'ip',
+                    'country',
+                    'rating',
+                    'is_approved',
+                    'added_date',
+                    'date',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $comments */
             $comments = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -425,7 +452,8 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date']
+                ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date'],
+                $knownFields
             );
             $formatter->display($transformedComments, $this->io());
 
@@ -901,6 +929,33 @@ HELP
             }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'comment_id',
+                    'id',
+                    'username',
+                    'user',
+                    'user_status_id',
+                    'object_id',
+                    'content',
+                    'object_type',
+                    'type',
+                    'object_title',
+                    'content_title',
+                    'object',
+                    'object_dir',
+                    'post_type_id',
+                    'comment',
+                    'comment_full',
+                    'ip',
+                    'country',
+                    'rating',
+                    'is_approved',
+                    'added_date',
+                    'date',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $comments */
             $comments = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -911,7 +966,8 @@ HELP
                 } else {
                     $formatter = new Formatter(
                         $input->getOptions(),
-                        ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date']
+                        ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date'],
+                        $knownFields
                     );
                     $formatter->display([], $this->io());
                 }
@@ -946,7 +1002,8 @@ HELP
 
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date']
+                ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date'],
+                $knownFields
             );
             $formatter->display($transformedComments, $this->io());
 

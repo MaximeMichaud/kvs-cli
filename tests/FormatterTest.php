@@ -244,6 +244,33 @@ class FormatterTest extends TestCase
         $formatter->display($items, $this->output);
     }
 
+    public function testRejectsUnknownRequestedFieldWhenRowsAreEmptyAndKnownFieldsAreProvided(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'json', 'fields' => 'id,missing'],
+            ['id', 'title'],
+            ['id', 'title', 'status']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unknown field(s): missing');
+
+        $formatter->display([], $this->output);
+    }
+
+    public function testAllowsKnownSingleFieldWhenRowsAreEmpty(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'table', 'field' => 'title'],
+            ['id', 'title'],
+            ['id', 'title', 'status']
+        );
+
+        $formatter->display([], $this->output);
+
+        $this->assertSame('', $this->output->fetch());
+    }
+
     public function testFieldAliasResolution(): void
     {
         $items = [

@@ -292,6 +292,31 @@ HELP
             }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
+            $knownFields = array_merge(
+                $this->getStatementColumnNames($stmt),
+                [
+                    'id',
+                    'video_count',
+                    'album_count',
+                    'total_usage',
+                    'status',
+                    'thumb',
+                    'videos_amount',
+                    'albums_amount',
+                    'posts_amount',
+                    'other_amount',
+                    'all_amount',
+                    'videos',
+                    'albums',
+                    'posts',
+                    'playlists',
+                    'content_sources',
+                    'models',
+                    'dvds',
+                    'dvds_groups',
+                    'category_group',
+                ]
+            );
 
             /** @var list<array<string, mixed>> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -322,7 +347,8 @@ HELP
             // Format and display output using centralized Formatter
             $formatter = new Formatter(
                 $input->getOptions(),
-                ['category_id', 'title', 'video_count', 'album_count', 'total_usage', 'status']
+                ['category_id', 'title', 'video_count', 'album_count', 'total_usage', 'status'],
+                $knownFields
             );
             $formatter->display($categories, $this->io());
 

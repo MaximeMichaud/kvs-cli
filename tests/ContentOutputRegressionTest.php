@@ -596,6 +596,120 @@ class ContentOutputRegressionTest extends TestCase
         }
     }
 
+    public function testContentListsValidateSingleFieldWhenResultSetIsEmpty(): void
+    {
+        $cases = [
+            'video' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_videos ' .
+                    '(video_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, post_date TEXT, video_viewed INTEGER)'
+                );
+                $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+                return $this->createVideoCommand($db);
+            }, 'title'],
+            'album' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_albums ' .
+                    '(album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+                    'access_level_id INTEGER, post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, ' .
+                    'photos_amount INTEGER, ip TEXT)'
+                );
+                $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT, status_id INTEGER)');
+                $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
+                return $this->createAlbumCommand($db);
+            }, 'title'],
+            'user' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_users ' .
+                    '(user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, ' .
+                    'added_date TEXT, gender_id INTEGER, ip TEXT, avatar TEXT)'
+                );
+                return $this->createUserCommand($db);
+            }, 'username'],
+            'dvd' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_dvds ' .
+                    '(dvd_id INTEGER, title TEXT, status_id INTEGER, release_year INTEGER, dvd_viewed INTEGER, ' .
+                    'subscribers_count INTEGER, rating REAL, rating_amount INTEGER)'
+                );
+                $db->exec('CREATE TABLE ktvs_videos (dvd_id INTEGER, duration INTEGER)');
+                return $this->createDvdCommand($db);
+            }, 'title'],
+            'model' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_models ' .
+                    '(model_id INTEGER, title TEXT, status_id INTEGER, country TEXT, rating REAL, rating_amount INTEGER)'
+                );
+                $db->exec('CREATE TABLE ktvs_models_videos (model_id INTEGER)');
+                $db->exec('CREATE TABLE ktvs_models_albums (model_id INTEGER)');
+                $db->exec('CREATE TABLE ktvs_list_countries (country_code TEXT, language_code TEXT, title TEXT)');
+                return $this->createModelCommand($db);
+            }, 'title'],
+            'playlist' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_playlists ' .
+                    '(playlist_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
+                    'rating REAL, rating_amount INTEGER, playlist_viewed INTEGER, added_date TEXT)'
+                );
+                $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT, status_id INTEGER)');
+                $db->exec('CREATE TABLE ktvs_fav_videos (playlist_id INTEGER)');
+                $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
+                return $this->createPlaylistCommand($db);
+            }, 'title'],
+            'category' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_categories ' .
+                    '(category_id INTEGER, title TEXT, status_id INTEGER, screenshot1 TEXT, screenshot2 TEXT)'
+                );
+                $this->createCategoryRelationTables($db);
+                return $this->createCategoryCommand($db);
+            }, 'title'],
+            'tag' => [function (\PDO $db) {
+                $this->createTagTables($db);
+                return $this->createTagCommand($db);
+            }, 'tag'],
+            'comment' => [function (\PDO $db) {
+                $db->exec(
+                    'CREATE TABLE ktvs_comments ' .
+                    '(comment_id INTEGER, object_id INTEGER, object_type_id INTEGER, user_id INTEGER, comment TEXT, ' .
+                    'added_date TEXT, is_approved INTEGER, is_review_needed INTEGER, ip TEXT, rating INTEGER)'
+                );
+                $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT, status_id INTEGER)');
+                $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, title TEXT, dir TEXT)');
+                $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER, title TEXT, dir TEXT)');
+                $db->exec('CREATE TABLE ktvs_content_sources (content_source_id INTEGER, title TEXT, dir TEXT)');
+                $db->exec('CREATE TABLE ktvs_models (model_id INTEGER, title TEXT, dir TEXT)');
+                $db->exec('CREATE TABLE ktvs_dvds (dvd_id INTEGER, title TEXT, dir TEXT)');
+                $db->exec('CREATE TABLE ktvs_posts (post_id INTEGER, title TEXT, dir TEXT)');
+                $db->exec('CREATE TABLE ktvs_playlists (playlist_id INTEGER, title TEXT, dir TEXT)');
+                return $this->createCommentCommand($db);
+            }, 'comment'],
+        ];
+
+        foreach ($cases as $name => [$createCommand, $validField]) {
+            $validDb = $this->createSqliteConnection();
+            $validTester = new CommandTester($createCommand($validDb));
+            $validTester->execute([
+                'action' => 'list',
+                '--field' => $validField,
+                '--limit' => '1',
+            ]);
+
+            $invalidDb = $this->createSqliteConnection();
+            $invalidTester = new CommandTester($createCommand($invalidDb));
+            $invalidTester->execute([
+                'action' => 'list',
+                '--field' => '__not_a_field__',
+                '--limit' => '1',
+            ]);
+
+            $this->assertSame(0, $validTester->getStatusCode(), "$name valid empty field");
+            $this->assertSame('', trim($validTester->getDisplay()), "$name valid empty field output");
+            $this->assertSame(1, $invalidTester->getStatusCode(), "$name invalid empty field");
+            $this->assertStringContainsString('Unknown field(s): __not_a_field__', $invalidTester->getDisplay(), $name);
+        }
+    }
+
     public function testPlaylistListDefaultFieldsExposeFormattedStatusAndType(): void
     {
         $db = $this->createSqliteConnection();

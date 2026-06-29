@@ -84,7 +84,7 @@ class QueueCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats|history)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Task ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (pending|processing|failed)')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (scheduled|pending|in-process|processing|error|failed)')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by task type ID')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
             ->addOption('album', null, InputOption::VALUE_REQUIRED, 'Filter by album ID')
@@ -118,8 +118,8 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs queue list</>                         List all active tasks
-  <fg=green>kvs queue list --status=pending</>        List pending tasks
-  <fg=green>kvs queue list --status=failed</>         List failed tasks
+  <fg=green>kvs queue list --status=scheduled</>      List scheduled tasks
+  <fg=green>kvs queue list --status=error</>          List failed tasks
   <fg=green>kvs queue list --type=1</>                List new video tasks
   <fg=green>kvs queue show 123</>                     Show task #123 details
   <fg=green>kvs queue stats</>                        Show queue statistics
@@ -168,8 +168,12 @@ HELP
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = [
+                'scheduled' => StatusFormatter::TASK_PENDING,
                 'pending' => StatusFormatter::TASK_PENDING,
+                'in-process' => StatusFormatter::TASK_PROCESSING,
+                'in_process' => StatusFormatter::TASK_PROCESSING,
                 'processing' => StatusFormatter::TASK_PROCESSING,
+                'error' => StatusFormatter::TASK_FAILED,
                 'failed' => StatusFormatter::TASK_FAILED,
                 '0' => StatusFormatter::TASK_PENDING,
                 '1' => StatusFormatter::TASK_PROCESSING,
@@ -177,7 +181,9 @@ HELP
             ];
             $statusKey = strtolower($status);
             if (!array_key_exists($statusKey, $statusMap)) {
-                $this->io()->error('Invalid status "' . $status . '". Valid values: pending, processing, failed');
+                $this->io()->error(
+                    'Invalid status "' . $status . '". Valid values: scheduled, pending, in-process, processing, error, failed'
+                );
                 return self::FAILURE;
             }
             $fromClause .= " AND bt.status_id = :status";
@@ -836,6 +842,7 @@ HELP
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusMap = [
+                'error' => StatusFormatter::TASK_FAILED,
                 'failed' => StatusFormatter::TASK_FAILED,
                 'completed' => StatusFormatter::TASK_COMPLETED,
                 'deleted' => StatusFormatter::TASK_DELETED,
@@ -845,7 +852,7 @@ HELP
             ];
             $statusKey = strtolower($status);
             if (!array_key_exists($statusKey, $statusMap)) {
-                $this->io()->error('Invalid status "' . $status . '". Valid values: failed, completed, deleted');
+                $this->io()->error('Invalid status "' . $status . '". Valid values: error, failed, completed, deleted');
                 return self::FAILURE;
             }
             $fromClause .= " AND bh.status_id = :status";

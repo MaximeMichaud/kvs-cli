@@ -43,13 +43,17 @@ class Formatter
     /** @var array<string, mixed> */
     private array $args;
 
+    /** @var list<string>|null */
+    private ?array $knownFields;
+
     /**
      * Constructor
      *
      * @param array<string, mixed> $options Input options from command (typically $input->getOptions())
      * @param list<string> $defaultFields Default fields to display if --fields not specified
+     * @param list<string>|null $knownFields All fields that can be displayed even when there are no rows
      */
-    public function __construct(array $options, array $defaultFields)
+    public function __construct(array $options, array $defaultFields, ?array $knownFields = null)
     {
         $fieldsOption = $options['fields'] ?? null;
         $this->args = [
@@ -68,6 +72,8 @@ class Formatter
         } else {
             $this->args['fields'] = $defaultFields;
         }
+
+        $this->knownFields = $knownFields === null ? null : $this->normalizeKnownFields($knownFields);
     }
 
     /**
@@ -89,7 +95,24 @@ class Formatter
 
         if ($items === []) {
             if ($hasSingleField) {
+                if (is_string($field)) {
+                    $this->validateRequestedFields($items, [$field]);
+                }
                 return;
+            }
+
+            if ($this->args['fields-provided'] === true) {
+                $fields = $this->args['fields'];
+                if (is_array($fields)) {
+                    /** @var list<string> $validFields */
+                    $validFields = [];
+                    foreach ($fields as $requestedField) {
+                        if (is_string($requestedField)) {
+                            $validFields[] = $requestedField;
+                        }
+                    }
+                    $this->validateRequestedFields($items, $validFields);
+                }
             }
 
             if ($format === 'table') {
@@ -404,7 +427,12 @@ class Formatter
      */
     private function validateRequestedFields(array $items, array $fields): void
     {
-        if ($items === [] || $fields === []) {
+        if ($fields === []) {
+            return;
+        }
+
+        if ($items === []) {
+            $this->validateRequestedFieldsAgainstKnownFields($fields);
             return;
         }
 
@@ -432,6 +460,62 @@ class Formatter
             implode(', ', $unknown),
             implode(', ', $this->getAvailableFields($items))
         ));
+    }
+
+    /**
+     * @param list<string> $fields
+     */
+    private function validateRequestedFieldsAgainstKnownFields(array $fields): void
+    {
+        if ($this->knownFields === null) {
+            return;
+        }
+
+        $known = array_fill_keys($this->knownFields, true);
+        $unknown = [];
+        foreach ($fields as $field) {
+            if (!isset($known[$field])) {
+                $unknown[] = $field;
+            }
+        }
+
+        if ($unknown === []) {
+            return;
+        }
+
+        throw new \InvalidArgumentException(sprintf(
+            'Unknown field(s): %s. Available fields: %s',
+            implode(', ', $unknown),
+            implode(', ', $this->knownFields)
+        ));
+    }
+
+    /**
+     * @param list<string> $fields
+     * @return list<string>
+     */
+    private function normalizeKnownFields(array $fields): array
+    {
+        $known = [];
+        foreach ($fields as $field) {
+            if ($field !== '') {
+                $known[$field] = true;
+            }
+        }
+
+        foreach (self::FIELD_ALIASES as $alias => $aliasFields) {
+            foreach ($aliasFields as $aliasField) {
+                if (isset($known[$aliasField])) {
+                    $known[$alias] = true;
+                    break;
+                }
+            }
+        }
+
+        $fieldNames = array_keys($known);
+        sort($fieldNames, SORT_STRING);
+
+        return $fieldNames;
     }
 
     /**
