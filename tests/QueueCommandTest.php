@@ -180,6 +180,40 @@ class QueueCommandTest extends TestCase
         $this->assertStringNotContainsString('Plugin Error', $this->tester->getDisplay());
     }
 
+    public function testQueueListFiltersByKvsAdminErrorCode(): void
+    {
+        $this->insertTask($this->db, [
+            'task_id' => 40,
+            'status_id' => 2,
+            'type_id' => 4,
+            'video_id' => 102,
+            'album_id' => 0,
+            'server_id' => 1,
+            'error_code' => 8,
+            'priority' => 60,
+            'message' => 'Screenshot generation failed',
+            'data' => '',
+            'times_restarted' => 0,
+            'added_date' => '2026-05-26 11:00:00',
+            'start_date' => '2026-05-26 11:05:00',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--error-code' => '8',
+            '--format' => 'json',
+            '--fields' => 'task_id,error_code,error',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(40, (int) $rows[0]['task_id']);
+        $this->assertSame(8, (int) $rows[0]['error_code']);
+        $this->assertSame('08 - Screenshots error', $rows[0]['error']);
+    }
+
     public function testQueueListExposesKvsAdminObjectFields(): void
     {
         $this->tester->execute([
@@ -669,6 +703,26 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(304, (int) $rows[0]['task_id']);
+        $this->assertSame('Error', $rows[0]['status']);
+    }
+
+    public function testQueueHistoryFiltersByKvsAdminErrorCode(): void
+    {
+        $this->insertFailedHistoryTask();
+
+        $this->tester->execute([
+            'action' => 'history',
+            '--error-code' => '3',
+            '--format' => 'json',
+            '--fields' => 'task_id,error_code,status',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(304, (int) $rows[0]['task_id']);
+        $this->assertSame(3, (int) $rows[0]['error_code']);
         $this->assertSame('Error', $rows[0]['status']);
     }
 

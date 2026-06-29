@@ -157,6 +157,109 @@ class AlbumCommandTest extends TestCase
         $this->assertSame('Gallery Studio', $rows[0]['content_source']);
     }
 
+    public function testAlbumListFiltersRelationGroupsLikeKvsAdmin(): void
+    {
+        $cases = [
+            ['options' => ['--category-group' => 'Album Category Group'], 'expected' => [20]],
+            ['options' => ['--category-group' => 'Missing Group'], 'expected' => []],
+            ['options' => ['--model-group' => 'Album Model Group'], 'expected' => [20]],
+            ['options' => ['--model-group' => 'Missing Group'], 'expected' => []],
+            ['options' => ['--content-source-group' => 'Gallery Group'], 'expected' => [20]],
+            ['options' => ['--content-source-group' => 'Missing Group'], 'expected' => []],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--format' => 'json',
+                '--fields' => 'album_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        }
+    }
+
+    public function testAlbumListFiltersByKvsAdminAdminIpAndStorageGroup(): void
+    {
+        $cases = [
+            ['options' => ['--admin-user' => 'moderator'], 'expected' => [20]],
+            ['options' => ['--admin-user' => '9'], 'expected' => [10]],
+            ['options' => ['--admin-user' => 'missing-admin'], 'expected' => []],
+            ['options' => ['--ip' => '127.0.0.1'], 'expected' => [20]],
+            ['options' => ['--ip' => '0'], 'expected' => [10, 5]],
+            ['options' => ['--server-group' => 'Album Storage'], 'expected' => [20]],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--format' => 'json',
+                '--fields' => 'album_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        }
+    }
+
+    public function testAlbumListFiltersByKvsAdminFlagVotes(): void
+    {
+        $cases = [
+            ['options' => ['--flag' => '4'], 'expected' => [20]],
+            ['options' => ['--flag' => '6'], 'expected' => [10, 5]],
+            ['options' => ['--flag' => '6', '--flag-votes' => '2'], 'expected' => [10]],
+            ['options' => ['--flag' => '999'], 'expected' => []],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--format' => 'json',
+                '--fields' => 'album_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        }
+    }
+
+    public function testAlbumListRejectsFlagVotesWithoutFlag(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--flag-votes' => '2',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Option --flag-votes requires --flag', $this->tester->getDisplay());
+    }
+
+    public function testAlbumListRejectsInvalidIpFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--ip' => '999.999.999.999',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --ip (use: IPv4 address)', $this->tester->getDisplay());
+    }
+
     public function testAlbumListFiltersByKvsAdminTypeAccessReviewAndLock(): void
     {
         $cases = [
@@ -170,6 +273,14 @@ class AlbumCommandTest extends TestCase
             ['--not-review-needed' => true, 'expected' => [10, 5]],
             ['--locked' => true, 'expected' => [20]],
             ['--unlocked' => true, 'expected' => [10, 5]],
+            ['--has-errors' => '1', 'expected' => [20]],
+            ['--has-errors' => '10', 'expected' => [5]],
+            ['--posted' => 'yes', 'expected' => [10]],
+            ['--posted' => 'no', 'expected' => [20, 5]],
+            ['--show-id' => '13', 'expected' => [10]],
+            ['--show-id' => '14', 'expected' => [20]],
+            ['--show-id' => '16', 'expected' => [20]],
+            ['--show-id' => '17', 'expected' => [5]],
         ];
 
         foreach ($cases as $case) {
@@ -188,6 +299,75 @@ class AlbumCommandTest extends TestCase
             $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
             $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
             $this->assertSame($expected, array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        }
+    }
+
+    public function testAlbumListFiltersByKvsAdminPostDateRange(): void
+    {
+        $cases = [
+            ['options' => ['--post-date-from' => '2026-05-25'], 'expected' => [20, 10]],
+            ['options' => ['--post-date-to' => '2026-05-25'], 'expected' => [10, 5]],
+            [
+                'options' => [
+                    '--post-date-from' => '2026-05-25',
+                    '--post-date-to' => '2026-05-25',
+                ],
+                'expected' => [10],
+            ],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--format' => 'json',
+                '--fields' => 'album_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        }
+    }
+
+    public function testAlbumListRejectsInvalidPostDateFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--post-date-from' => 'not-a-date',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString(
+            'Invalid value for --post-date-from (use: YYYY-MM-DD)',
+            $this->tester->getDisplay()
+        );
+    }
+
+    public function testAlbumListRejectsInvalidAdminPropertyFilters(): void
+    {
+        $cases = [
+            ['--has-errors' => '100', 'expected' => 'Invalid value for --has-errors'],
+            ['--posted' => 'maybe', 'expected' => 'Invalid value for --posted'],
+            ['--show-id' => 'unknown', 'expected' => 'Invalid value for --show-id'],
+        ];
+
+        foreach ($cases as $case) {
+            $expected = $case['expected'];
+            unset($case['expected']);
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case,
+                '--format' => 'json',
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString($expected, $tester->getDisplay());
         }
     }
 
@@ -640,7 +820,8 @@ class AlbumCommandTest extends TestCase
             'status_id INTEGER, is_private INTEGER, access_level_id INTEGER, tokens_required INTEGER, ' .
             'post_date TEXT, album_viewed INTEGER, album_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'photos_amount INTEGER, favourites_count INTEGER, purchases_count INTEGER, content_source_id INTEGER, ' .
-            'admin_flag_id INTEGER, server_group_id INTEGER, added_date TEXT, ip INTEGER)'
+            'admin_flag_id INTEGER, server_group_id INTEGER, added_date TEXT, ip INTEGER, ' .
+            'has_errors INTEGER, relative_post_date INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('albums_images') . ' (album_id INTEGER)');
         $db->exec(
@@ -654,27 +835,41 @@ class AlbumCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('content_sources') . ' (' .
-            'content_source_id INTEGER, title TEXT, status_id INTEGER)'
+            'content_source_id INTEGER, title TEXT, status_id INTEGER, content_source_group_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('content_sources_groups') . ' (' .
+            'content_source_group_id INTEGER, title TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('flags') . ' (' .
             'flag_id INTEGER, title TEXT)'
         );
+        $db->exec('CREATE TABLE ' . TestHelper::table('flags_albums') . ' (album_id INTEGER, flag_id INTEGER, votes INTEGER)');
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('admin_servers_groups') . ' (' .
             'group_id INTEGER, title TEXT, status_id INTEGER)'
         );
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('categories_groups') . ' (category_group_id INTEGER, title TEXT)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') .
+            ' (category_id INTEGER, title TEXT, category_group_id INTEGER)'
+        );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories_albums') .
             ' (id INTEGER, category_id INTEGER, album_id INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
         $db->exec('CREATE TABLE ' . TestHelper::table('tags_albums') . ' (id INTEGER, tag_id INTEGER, album_id INTEGER)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models_groups') . ' (model_group_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT, model_group_id INTEGER)');
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models_albums') .
             ' (id INTEGER, model_id INTEGER, album_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_audit_log') .
+            ' (record_id INTEGER, object_id INTEGER, object_type_id INTEGER, action_id INTEGER)'
         );
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice', 1), (2, 'bob', 0)");
@@ -684,43 +879,59 @@ class AlbumCommandTest extends TestCase
             ' (album_id, user_id, admin_user_id, title, dir, description, gallery_url, delete_reason, custom1, custom2, custom3, ' .
             'af_custom1, af_custom2, af_custom3, is_review_needed, is_locked, status_id, is_private, access_level_id, ' .
             'tokens_required, post_date, album_viewed, album_viewed_unique, rating, rating_amount, photos_amount, ' .
-            'favourites_count, purchases_count, content_source_id, admin_flag_id, server_group_id, added_date, ip) VALUES ' .
+            'favourites_count, purchases_count, content_source_id, admin_flag_id, server_group_id, added_date, ip, ' .
+            'has_errors, relative_post_date) VALUES ' .
             "(10, 1, 9, 'Active Album', 'active-album', 'Active album description', '', '', '', '', '', " .
             "0, 0, 0, 0, 0, 1, 0, 0, 0, '2026-05-25 10:00:00', 12, 12, 40, 10, 7, 5, 0, 0, 0, 0, " .
-            "'2026-05-25 09:00:00', 0), " .
+            "'2026-05-25 09:00:00', 0, 0, 0), " .
             "(20, 2, 8, 'Disabled Album', 'disabled-album', 'Disabled album description', " .
             "'https://gallery.example/20', '', 'featured', '', '', 1, 0, 0, 1, 1, 0, 2, 2, 15, " .
-            "'2026-05-26 10:00:00', 5, 5, 10, 5, 3, 2, 1, 3, 4, 5, '2026-05-26 09:00:00', 2130706433), " .
+            "'2026-05-26 10:00:00', 5, 5, 10, 5, 3, 2, 1, 3, 4, 5, '2026-05-26 09:00:00', " .
+            "2130706433, 1, 0), " .
             "(5, 1, 0, 'Private Empty Album', 'private-empty-album', '', '', '', '', '', '', " .
             "0, 0, 0, 0, 0, 0, 1, 1, 0, '2026-05-24 10:00:00', 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, " .
-            "'2026-05-24 09:00:00', 0)"
+            "'2026-05-24 09:00:00', 0, 2, 0)"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .
-            " VALUES (3, 'Gallery Studio', 1)"
+            " VALUES (3, 'Gallery Studio', 1, 11)"
+        );
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('content_sources_groups') .
+            " VALUES (11, 'Gallery Group')"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('flags') .
             " VALUES (4, 'Album Review')"
         );
+        $db->exec("INSERT INTO " . TestHelper::table('flags_albums') . ' VALUES (10, 6, 3), (5, 6, 1)');
         $db->exec(
             "INSERT INTO " . TestHelper::table('admin_servers_groups') .
             " VALUES (5, 'Album Storage', 1)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('albums_images') . " VALUES (10), (10), (20)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_groups') . " VALUES (12, 'Album Category Group')");
         $db->exec(
             "INSERT INTO " . TestHelper::table('categories') .
-            " VALUES (1, 'Album Category'), (2, 'Second Album Category')"
+            " VALUES (1, 'Album Category', 0), (2, 'Second Album Category', 12)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('categories_albums') . " VALUES (1, 2, 20), (2, 1, 20)");
         $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'album-tag'), (2, 'zeta-album')");
         $db->exec("INSERT INTO " . TestHelper::table('tags_albums') . " VALUES (1, 2, 20), (2, 1, 20)");
-        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Album Model'), (2, 'Album Model Two')");
+        $db->exec("INSERT INTO " . TestHelper::table('models_groups') . " VALUES (13, 'Album Model Group')");
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('models') .
+            " VALUES (1, 'Album Model', 0), (2, 'Album Model Two', 13)"
+        );
         $db->exec("INSERT INTO " . TestHelper::table('models_albums') . " VALUES (1, 2, 20), (2, 1, 20)");
         $db->exec(
             'INSERT INTO ' . TestHelper::table('comments') .
             ' (comment_id, object_type_id, object_id) VALUES ' .
             '(1, 2, 10), (2, 2, 10), (3, 2, 20), (4, 1, 20)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_audit_log') .
+            ' VALUES (1, 10, 2, 100), (2, 20, 2, 140), (3, 5, 2, 110)'
         );
 
         return $db;

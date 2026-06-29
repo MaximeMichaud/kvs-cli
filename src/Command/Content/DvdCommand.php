@@ -34,6 +34,8 @@ class DvdCommand extends BaseCommand
         'review-needed',
         'not-review-needed',
         'field-filter',
+        'flag',
+        'flag-votes',
         'limit',
     ];
 
@@ -92,6 +94,8 @@ class DvdCommand extends BaseCommand
             ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only DVDs that need review')
             ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only DVDs that do not need review')
             ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/tags)')
+            ->addOption('flag', null, InputOption::VALUE_REQUIRED, 'Filter by user flag ID')
+            ->addOption('flag-votes', null, InputOption::VALUE_REQUIRED, 'Minimum user flag votes for --flag', '1')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -213,7 +217,7 @@ HELP
         try {
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
             if ($limit === null) {
@@ -253,43 +257,10 @@ HELP
             $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Transform DVDs for display (field aliases)
-            $transformedDvds = array_map(function (array $dvd): array {
-                $statusIdVal = $dvd['status_id'] ?? 0;
-                $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
-
-                $durationVal = $dvd['video_duration'] ?? 0;
-                $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
-
-                return [
-                    ...$dvd,
-                    'dvd_id' => $dvd['dvd_id'] ?? 0,
-                    'id' => $dvd['dvd_id'] ?? 0,
-                    'title' => $dvd['title'] ?? '',
-                    'thumb' => $dvd['cover1_front'] ?? $dvd['cover2_front'] ?? '',
-                    'status_id' => $statusId,
-                    'status' => StatusFormatter::dvd($statusId, false),
-                    'total_videos' => $dvd['video_count'] ?? 0,
-                    'videos_amount' => $dvd['video_count'] ?? 0,
-                    'videos' => $dvd['video_count'] ?? 0,
-                    'total_videos_duration' => $duration,
-                    'total_duration' => $this->formatDvdDuration($duration),
-                    'duration' => $this->formatDvdDuration($duration),
-                    'release_year' => $this->formatDvdReleaseYear($dvd['release_year'] ?? null),
-                    'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
-                    'views' => $dvd['dvd_viewed'] ?? 0,
-                    'dvd_group' => $dvd['dvd_group'] ?? '',
-                    'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
-                    'user' => $dvd['user'] ?? '',
-                    'comments_amount' => $dvd['comments_amount'] ?? 0,
-                    'subscribers_count' => $dvd['subscribers_count'] ?? 0,
-                    'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
-                    'subscribers' => $dvd['subscribers_count'] ?? 0,
-                    'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
-                    'tags' => $dvd['tags'] ?? '',
-                    'categories' => $dvd['categories'] ?? '',
-                    'models' => $dvd['models'] ?? '',
-                ];
-            }, $dvds);
+            $transformedDvds = array_map(
+                fn (array $dvd): array => $this->transformDvdListRow($dvd),
+                $dvds
+            );
 
             // Default fields
             $defaultFields = ['dvd_id', 'title', 'status', 'total_videos'];
@@ -303,6 +274,49 @@ HELP
             $this->io()->error('Failed to fetch DVDs: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $dvd
+     * @return array<string, mixed>
+     */
+    private function transformDvdListRow(array $dvd): array
+    {
+        $statusIdVal = $dvd['status_id'] ?? 0;
+        $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+
+        $durationVal = $dvd['video_duration'] ?? 0;
+        $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
+
+        return [
+            ...$dvd,
+            'dvd_id' => $dvd['dvd_id'] ?? 0,
+            'id' => $dvd['dvd_id'] ?? 0,
+            'title' => $dvd['title'] ?? '',
+            'thumb' => $dvd['cover1_front'] ?? $dvd['cover2_front'] ?? '',
+            'status_id' => $statusId,
+            'status' => StatusFormatter::dvd($statusId, false),
+            'total_videos' => $dvd['video_count'] ?? 0,
+            'videos_amount' => $dvd['video_count'] ?? 0,
+            'videos' => $dvd['video_count'] ?? 0,
+            'total_videos_duration' => $duration,
+            'total_duration' => $this->formatDvdDuration($duration),
+            'duration' => $this->formatDvdDuration($duration),
+            'release_year' => $this->formatDvdReleaseYear($dvd['release_year'] ?? null),
+            'dvd_viewed' => $dvd['dvd_viewed'] ?? 0,
+            'views' => $dvd['dvd_viewed'] ?? 0,
+            'dvd_group' => $dvd['dvd_group'] ?? '',
+            'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
+            'user' => $dvd['user'] ?? '',
+            'comments_amount' => $dvd['comments_amount'] ?? 0,
+            'subscribers_count' => $dvd['subscribers_count'] ?? 0,
+            'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
+            'subscribers' => $dvd['subscribers_count'] ?? 0,
+            'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
+            'tags' => $dvd['tags'] ?? '',
+            'categories' => $dvd['categories'] ?? '',
+            'models' => $dvd['models'] ?? '',
+        ];
     }
 
     private function hasDvdListOptionConflicts(InputInterface $input): bool
@@ -388,6 +402,10 @@ HELP
             $whereClause .= ' AND d.is_review_needed = 0';
         }
 
+        if (!$this->applyDvdFlagFilter($input, $whereClause, $params)) {
+            return false;
+        }
+
         $fieldFilter = $this->getStringOption($input, 'field-filter');
         if ($fieldFilter !== null) {
             $condition = $this->getDvdFieldFilterCondition($fieldFilter);
@@ -397,6 +415,42 @@ HELP
             }
             $whereClause .= " AND {$condition}";
         }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyDvdFlagFilter(InputInterface $input, string &$whereClause, array &$params): bool
+    {
+        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        if ($flag === false) {
+            return false;
+        }
+
+        $votesOption = $this->getStringOption($input, 'flag-votes');
+        if ($flag === null) {
+            if ($votesOption !== null && $this->isOptionExplicitlySet($input, 'flag-votes')) {
+                $this->io()->error('Option --flag-votes requires --flag');
+                return false;
+            }
+            return true;
+        }
+
+        $flagVotes = $this->getPositiveIntOptionOrDefault($input, 'flag-votes', 1);
+        if ($flagVotes === null) {
+            return false;
+        }
+
+        $flagsTable = $this->table('flags_dvds');
+        $whereClause .= " AND (
+            SELECT COALESCE(SUM(fd_filter.votes), 0)
+            FROM {$flagsTable} fd_filter
+            WHERE fd_filter.dvd_id = d.dvd_id AND fd_filter.flag_id = :user_flag
+        ) >= :minimum_flag_votes";
+        $params['user_flag'] = $flag;
+        $params['minimum_flag_votes'] = $flagVotes;
 
         return true;
     }
@@ -579,7 +633,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT COUNT(*) $fromClause $whereClause");
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->execute();
 

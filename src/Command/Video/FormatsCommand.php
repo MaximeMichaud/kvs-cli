@@ -734,8 +734,8 @@ HELP
         $db = $this->getDatabaseConnection(true);
         if ($db !== null) {
             $serverPaths = $this->getLocalVideoServerPaths($db, $videoId);
-            if ($serverPaths !== []) {
-                return $serverPaths;
+            if ($serverPaths['configured'] !== []) {
+                return $serverPaths['existing'] !== [] ? $serverPaths['existing'] : $serverPaths['configured'];
             }
         }
 
@@ -753,21 +753,26 @@ HELP
     }
 
     /**
-     * @return list<string>
+     * @return array{configured: list<string>, existing: list<string>}
      */
     private function getLocalVideoServerPaths(\PDO $db, string $videoId): array
     {
+        $result = [
+            'configured' => [],
+            'existing' => [],
+        ];
+
         try {
             $videoStmt = $db->prepare(
                 'SELECT server_group_id FROM ' . $this->table('videos') . ' WHERE video_id = :video_id'
             );
             if ($videoStmt === false) {
-                return [];
+                return $result;
             }
             $videoStmt->execute(['video_id' => (int) $videoId]);
             $video = $videoStmt->fetch();
             if (!is_array($video)) {
-                return [];
+                return $result;
             }
 
             $serverGroupId = $video['server_group_id'] ?? 0;
@@ -784,25 +789,30 @@ HELP
 
             $serverStmt = $db->prepare($query);
             if ($serverStmt === false) {
-                return [];
+                return $result;
             }
             $serverStmt->execute($params);
 
-            $paths = [];
             while (($server = $serverStmt->fetch()) !== false) {
                 if (!is_array($server)) {
                     continue;
                 }
 
                 $path = $server['path'] ?? null;
-                if (is_string($path) && $path !== '' && is_dir($path)) {
-                    $paths[] = $path;
+                if (is_string($path) && $path !== '') {
+                    $result['configured'][] = $path;
+                    if (is_dir($path)) {
+                        $result['existing'][] = $path;
+                    }
                 }
             }
 
-            return array_values(array_unique($paths));
+            return [
+                'configured' => array_values(array_unique($result['configured'])),
+                'existing' => array_values(array_unique($result['existing'])),
+            ];
         } catch (\Exception) {
-            return [];
+            return $result;
         }
     }
 

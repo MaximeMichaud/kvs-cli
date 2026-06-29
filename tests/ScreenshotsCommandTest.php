@@ -70,6 +70,64 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringNotContainsString('Screenshots directory not found', $output);
     }
 
+    public function testListScreenshotsRejectsMissingVideoWhenDatabaseIsAvailable(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, status_id INTEGER)');
+
+        $tester = new CommandTester($this->createCommandWithDatabase($db));
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Video not found', $output);
+    }
+
+    public function testListScreenshotsAllowsMissingDirectoryForExistingManageableVideo(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, status_id INTEGER)');
+        $db->exec('INSERT INTO ktvs_videos VALUES (1234, 1)');
+
+        $tester = new CommandTester($this->createCommandWithDatabase($db));
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertSame([], $rows);
+    }
+
+    public function testListScreenshotsRejectsNonManageableVideoStatusWhenDatabaseIsAvailable(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, status_id INTEGER)');
+        $db->exec('INSERT INTO ktvs_videos VALUES (1234, 2)');
+
+        $tester = new CommandTester($this->createCommandWithDatabase($db));
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('screenshots are not manageable in KVS admin', $output);
+    }
+
     public function testListScreenshotsRejectsInvalidFormatBeforeMissingDirectory(): void
     {
         $this->tester->execute([
@@ -258,6 +316,21 @@ class ScreenshotsCommandTest extends TestCase
         $this->config = TestHelper::createTestConfiguration($this->kvsPath);
         $this->command = new ScreenshotsCommand($this->config);
         $this->tester = new CommandTester($this->command);
+    }
+
+    private function createCommandWithDatabase(\PDO $db): ScreenshotsCommand
+    {
+        return new class ($this->config, $db) extends ScreenshotsCommand {
+            public function __construct(Configuration $config, private \PDO $db)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->db;
+            }
+        };
     }
 
     private function createScreenshotFixture(string $videoId): void

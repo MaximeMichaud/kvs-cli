@@ -28,6 +28,8 @@ class VideoCommand extends BaseCommand
     private const SHOW_UNSUPPORTED_OPTIONS = [
         'status',
         'search',
+        'resolution',
+        'load-type',
         'category',
         'category-group',
         'tag',
@@ -39,6 +41,16 @@ class VideoCommand extends BaseCommand
         'model-group',
         'playlist',
         'user',
+        'admin-user',
+        'ip',
+        'server-group',
+        'format-video-group',
+        'feed',
+        'has-errors',
+        'posted',
+        'neuroscore',
+        'digiregs-copyright',
+        'show-id',
         'public',
         'private',
         'premium',
@@ -92,6 +104,35 @@ class VideoCommand extends BaseCommand
         'models',
     ];
 
+    /** @var array<string, array{0: bool, 1: int, 2: int|null}> */
+    private const VIDEO_NEUROSCORE_FILTERS = [
+        'score_missing' => [false, 1, null],
+        'score_postponed' => [true, 1, 0],
+        'score_processing' => [true, 1, 1],
+        'score_finished' => [true, 1, 2],
+        'title_missing' => [false, 3, null],
+        'title_postponed' => [true, 3, 0],
+        'title_processing' => [true, 3, 1],
+        'title_finished' => [true, 3, 2],
+        'categories_missing' => [false, 4, null],
+        'categories_postponed' => [true, 4, 0],
+        'categories_processing' => [true, 4, 1],
+        'categories_finished' => [true, 4, 2],
+        'models_missing' => [false, 5, null],
+        'models_postponed' => [true, 5, 0],
+        'models_processing' => [true, 5, 1],
+        'models_finished' => [true, 5, 2],
+    ];
+
+    /** @var array<string, array{0: bool, 1: int, 2: int|null}> */
+    private const VIDEO_DIGIREGS_COPYRIGHT_FILTERS = [
+        'copyright_applied' => [true, 2, null],
+        'copyright_not_applied' => [false, 2, null],
+        'copyright_empty' => [true, 2, 0],
+        'copyright_studio' => [true, 2, 1],
+        'copyright_watermark' => [true, 2, 2],
+    ];
+
     protected function configure(): void
     {
         $this
@@ -100,6 +141,8 @@ class VideoCommand extends BaseCommand
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error|processing|deleting|deleted)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles, directories, and descriptions')
+            ->addOption('resolution', null, InputOption::VALUE_REQUIRED, 'Filter by KVS resolution type ID')
+            ->addOption('load-type', null, InputOption::VALUE_REQUIRED, 'Filter by KVS load type ID (0|1|2|3|5)')
             ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
             ->addOption('category-group', null, InputOption::VALUE_REQUIRED, 'Filter by category group ID or title')
             ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
@@ -111,6 +154,16 @@ class VideoCommand extends BaseCommand
             ->addOption('model-group', null, InputOption::VALUE_REQUIRED, 'Filter by model group ID or title')
             ->addOption('playlist', null, InputOption::VALUE_REQUIRED, 'Filter by playlist ID or title')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
+            ->addOption('admin-user', null, InputOption::VALUE_REQUIRED, 'Filter by admin user ID or login')
+            ->addOption('ip', null, InputOption::VALUE_REQUIRED, 'Filter by IP address')
+            ->addOption('server-group', null, InputOption::VALUE_REQUIRED, 'Filter by storage server group ID or title')
+            ->addOption('format-video-group', null, InputOption::VALUE_REQUIRED, 'Filter by video format group ID or title')
+            ->addOption('feed', null, InputOption::VALUE_REQUIRED, 'Filter by import feed ID')
+            ->addOption('has-errors', null, InputOption::VALUE_REQUIRED, 'Filter by KVS processing error bit (1|10|100|1000|10000)')
+            ->addOption('posted', null, InputOption::VALUE_REQUIRED, 'Filter by public posting state (yes|no)')
+            ->addOption('neuroscore', null, InputOption::VALUE_REQUIRED, 'Filter by KVS Neuroscore operation state')
+            ->addOption('digiregs-copyright', null, InputOption::VALUE_REQUIRED, 'Filter by KVS DigiRegs copyright state')
+            ->addOption('show-id', null, InputOption::VALUE_REQUIRED, 'Filter by KVS admin show ID')
             ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public videos')
             ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private videos')
             ->addOption('premium', null, InputOption::VALUE_NONE, 'Show only premium videos')
@@ -498,6 +551,10 @@ HELP
             return false;
         }
 
+        if (!$this->applyVideoAdminColumnFilters($input, $whereSql, $params)) {
+            return false;
+        }
+
         if (!$this->applyVideoRelationFilters($db, $input, $whereSql, $params)) {
             return false;
         }
@@ -509,6 +566,152 @@ HELP
         if ($user !== null) {
             $whereSql .= " AND v.user_id = :user";
             $params['user'] = $user;
+        }
+
+        if (!$this->applyVideoAdminReferenceFilters($db, $input, $whereSql, $params)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoAdminColumnFilters(InputInterface $input, string &$whereSql, array &$params): bool
+    {
+        $resolution = $this->getOptionalNonNegativeIntOption($input, 'resolution');
+        if ($resolution === false) {
+            return false;
+        }
+        if ($resolution !== null) {
+            if ($resolution > 100) {
+                $whereSql .= ' AND v.resolution_type >= :resolution';
+                $params['resolution'] = $resolution - 100;
+            } else {
+                $whereSql .= ' AND v.resolution_type = :resolution';
+                $params['resolution'] = $resolution;
+            }
+        }
+
+        $loadType = $this->getOptionalNonNegativeIntOption($input, 'load-type');
+        if ($loadType === false) {
+            return false;
+        }
+        if ($loadType !== null) {
+            if (!in_array($loadType, [0, 1, 2, 3, 5], true)) {
+                $this->io()->error('Invalid value for --load-type (use: 0, 1, 2, 3 or 5)');
+                return false;
+            }
+            $whereSql .= ' AND v.load_type_id = :load_type';
+            $params['load_type'] = $loadType;
+        }
+
+        $feed = $this->getOptionalPositiveIntOption($input, 'feed');
+        if ($feed === false) {
+            return false;
+        }
+        if ($feed !== null) {
+            $whereSql .= ' AND v.feed_id = :feed';
+            $params['feed'] = $feed;
+        }
+
+        $hasErrors = $this->getOptionalPositiveIntOption($input, 'has-errors');
+        if ($hasErrors === false) {
+            return false;
+        }
+        if ($hasErrors !== null) {
+            $errorMasks = [
+                1 => 1,
+                10 => 2,
+                100 => 4,
+                1000 => 8,
+                10000 => 16,
+            ];
+            if (!isset($errorMasks[$hasErrors])) {
+                $this->io()->error('Invalid value for --has-errors (use: 1, 10, 100, 1000 or 10000)');
+                return false;
+            }
+            $whereSql .= ' AND (v.has_errors & :has_errors_mask) > 0';
+            $params['has_errors_mask'] = $errorMasks[$hasErrors];
+        }
+
+        $posted = $this->getStringOption($input, 'posted');
+        if ($posted !== null) {
+            if (!in_array($posted, ['yes', 'no'], true)) {
+                $this->io()->error('Invalid value for --posted (use: yes or no)');
+                return false;
+            }
+            $postedCondition = 'v.status_id = 1 AND v.relative_post_date <= 0 AND v.post_date <= CURRENT_TIMESTAMP';
+            if ($posted === 'yes') {
+                $whereSql .= " AND {$postedCondition}";
+            } else {
+                $whereSql .= " AND NOT ({$postedCondition})";
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoAdminReferenceFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereSql,
+        array &$params
+    ): bool {
+        $adminUser = $this->resolveAdminUserIdOption($db, $input);
+        if ($adminUser === false) {
+            return false;
+        }
+        if ($adminUser !== null) {
+            $whereSql .= ' AND v.admin_user_id = :admin_user';
+            $params['admin_user'] = $adminUser;
+        }
+
+        $ip = $this->getStringOption($input, 'ip');
+        if ($ip !== null) {
+            $ipNumber = $this->parseKvsIpv4Option($ip);
+            if ($ipNumber === false) {
+                return false;
+            }
+            $whereSql .= ' AND v.ip = :ip';
+            $params['ip'] = $ipNumber;
+        }
+
+        $serverGroup = $this->resolveServerGroupIdOption($db, $input);
+        if ($serverGroup === false) {
+            return false;
+        }
+        if ($serverGroup !== null) {
+            if ($serverGroup === 0) {
+                $this->io()->error('Invalid value for --server-group (use: integer >= 1 or title)');
+                return false;
+            }
+            $whereSql .= ' AND v.server_group_id = :server_group';
+            $params['server_group'] = $serverGroup;
+        }
+
+        $formatVideoGroup = $this->resolveReferenceIdOrTitleOption(
+            $db,
+            $input,
+            'format-video-group',
+            'formats_videos_groups',
+            'format_video_group_id',
+            'title'
+        );
+        if ($formatVideoGroup === false) {
+            return false;
+        }
+        if ($formatVideoGroup !== null) {
+            if ($formatVideoGroup === 0) {
+                $this->io()->error('Invalid value for --format-video-group (use: integer >= 1 or title)');
+                return false;
+            }
+            $whereSql .= ' AND v.format_video_group_id = :format_video_group';
+            $params['format_video_group'] = $formatVideoGroup;
         }
 
         return true;
@@ -567,6 +770,14 @@ HELP
             return false;
         }
 
+        if (!$this->applyVideoAdvancedOperationFilters($input, $whereSql, $params)) {
+            return false;
+        }
+
+        if (!$this->applyVideoShowIdFilter($input, $whereSql, $params)) {
+            return false;
+        }
+
         $fieldFilter = $this->getStringOption($input, 'field-filter');
         if ($fieldFilter !== null) {
             $condition = $this->getVideoFieldFilterCondition($fieldFilter);
@@ -578,6 +789,178 @@ HELP
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoShowIdFilter(InputInterface $input, string &$whereSql, array &$params): bool
+    {
+        $showId = $this->getStringOption($input, 'show-id');
+        if ($showId === null) {
+            return true;
+        }
+
+        $showId = trim($showId);
+        if ($showId === '') {
+            $this->io()->error('Invalid value for --show-id');
+            return false;
+        }
+
+        $auditLog = $this->table('admin_audit_log');
+        switch ($showId) {
+            case '15':
+                $whereSql .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = v.video_id AND aal_show.object_type_id = 1 AND aal_show.action_id = 100)';
+                return true;
+            case '16':
+                $whereSql .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = v.video_id AND aal_show.object_type_id = 1 AND aal_show.action_id = 140)';
+                return true;
+            case '17':
+                $whereSql .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = v.video_id AND aal_show.object_type_id = 1 AND aal_show.action_id = 140)' .
+                    ' AND u.status_id = 6';
+                return true;
+            case '18':
+                $whereSql .= ' AND v.feed_id > 0';
+                return true;
+            case '19':
+                $whereSql .= " AND v.gallery_url != ''";
+                return true;
+            case '20':
+                $whereSql .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = v.video_id AND aal_show.object_type_id = 1 AND aal_show.action_id = 110)';
+                return true;
+            case '25':
+                $whereSql .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = v.video_id AND aal_show.object_type_id = 1 AND aal_show.action_id = 130)';
+                return true;
+            case '21':
+                $whereSql .= ' AND v.screen_main = 1';
+                return true;
+            case '22':
+                $whereSql .= ' AND v.screen_main != 1';
+                return true;
+            case '23':
+                $whereSql .= ' AND v.rs_completed = 1';
+                return true;
+            case '24':
+                $whereSql .= ' AND v.rs_completed != 1';
+                return true;
+            case 'is_vertical':
+                $whereSql .= ' AND v.is_vertical = 1';
+                return true;
+            case 'is_horizontal':
+                $whereSql .= ' AND v.is_vertical = 0';
+                return true;
+        }
+
+        if (str_starts_with($showId, 'wf/') || str_starts_with($showId, 'wof/')) {
+            $withoutFormat = str_starts_with($showId, 'wof/');
+            $postfix = substr($showId, $withoutFormat ? 4 : 3);
+            if ($postfix === '') {
+                $this->io()->error('Invalid value for --show-id format filter');
+                return false;
+            }
+            $whereSql .= $withoutFormat
+                ? ' AND v.file_formats NOT LIKE :show_id_file_format AND v.load_type_id = 1'
+                : ' AND v.file_formats LIKE :show_id_file_format AND v.load_type_id = 1';
+            $params['show_id_file_format'] = "%||{$postfix}|%";
+            return true;
+        }
+
+        if (str_starts_with($showId, 'wq/') || str_starts_with($showId, 'woq/')) {
+            $withoutQuality = str_starts_with($showId, 'woq/');
+            $quality = substr($showId, $withoutQuality ? 4 : 3);
+            if (preg_match('/^\d+$/', $quality) !== 1) {
+                $this->io()->error('Invalid value for --show-id quality filter');
+                return false;
+            }
+            $whereSql .= $withoutQuality
+                ? " AND v.file_dimensions != '' AND INSTR(v.file_dimensions, 'x') > 0 " .
+                    "AND (SUBSTR(v.file_dimensions, INSTR(v.file_dimensions, 'x') + 1) + 0) < :show_id_quality"
+                : " AND v.file_dimensions != '' AND INSTR(v.file_dimensions, 'x') > 0 " .
+                    "AND (SUBSTR(v.file_dimensions, INSTR(v.file_dimensions, 'x') + 1) + 0) >= :show_id_quality";
+            $params['show_id_quality'] = (int) $quality;
+            return true;
+        }
+
+        $this->io()->error('Invalid value for --show-id');
+        return false;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoAdvancedOperationFilters(InputInterface $input, string &$whereSql, array &$params): bool
+    {
+        $neuroscore = $this->getStringOption($input, 'neuroscore');
+        if ($neuroscore !== null) {
+            if (!isset(self::VIDEO_NEUROSCORE_FILTERS[$neuroscore])) {
+                $this->io()->error(
+                    'Invalid value for --neuroscore. Use: ' . implode(', ', array_keys(self::VIDEO_NEUROSCORE_FILTERS))
+                );
+                return false;
+            }
+            [$exists, $operationType, $operationStatus] = self::VIDEO_NEUROSCORE_FILTERS[$neuroscore];
+            $this->appendVideoAdvancedOperationFilter(
+                $whereSql,
+                $params,
+                'neuroscore',
+                $exists,
+                $operationType,
+                $operationStatus
+            );
+        }
+
+        $digiregsCopyright = $this->getStringOption($input, 'digiregs-copyright');
+        if ($digiregsCopyright !== null) {
+            if (!isset(self::VIDEO_DIGIREGS_COPYRIGHT_FILTERS[$digiregsCopyright])) {
+                $this->io()->error(
+                    'Invalid value for --digiregs-copyright. Use: ' .
+                    implode(', ', array_keys(self::VIDEO_DIGIREGS_COPYRIGHT_FILTERS))
+                );
+                return false;
+            }
+            [$exists, $operationType, $operationStatus] = self::VIDEO_DIGIREGS_COPYRIGHT_FILTERS[$digiregsCopyright];
+            $this->appendVideoAdvancedOperationFilter(
+                $whereSql,
+                $params,
+                'digiregs_copyright',
+                $exists,
+                $operationType,
+                $operationStatus
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function appendVideoAdvancedOperationFilter(
+        string &$whereSql,
+        array &$params,
+        string $parameterPrefix,
+        bool $exists,
+        int $operationType,
+        ?int $operationStatus
+    ): void {
+        $alias = "vao_{$parameterPrefix}";
+        $operationTypeParameter = "{$parameterPrefix}_operation_type";
+        $condition = "SELECT 1 FROM {$this->table('videos_advanced_operations')} {$alias} " .
+            "WHERE {$alias}.video_id = v.video_id AND {$alias}.operation_type_id = :{$operationTypeParameter}";
+        $params[$operationTypeParameter] = $operationType;
+
+        if ($operationStatus !== null) {
+            $operationStatusParameter = "{$parameterPrefix}_operation_status";
+            $condition .= " AND {$alias}.operation_status_id = :{$operationStatusParameter}";
+            $params[$operationStatusParameter] = $operationStatus;
+        }
+
+        $whereSql .= $exists ? " AND EXISTS ({$condition})" : " AND NOT EXISTS ({$condition})";
     }
 
     /**
@@ -666,15 +1049,16 @@ HELP
 
         $flagsTable = $this->table('flags_videos');
         $whereSql .= " AND (
-            v.admin_flag_id = :flag
+            v.admin_flag_id = :admin_flag
             OR (
-                SELECT SUM(fv_filter.votes)
+                SELECT COALESCE(SUM(fv_filter.votes), 0)
                 FROM {$flagsTable} fv_filter
-                WHERE fv_filter.video_id = v.video_id AND fv_filter.flag_id = :flag
-            ) >= :flag_votes
+                WHERE fv_filter.video_id = v.video_id AND fv_filter.flag_id = :user_flag
+            ) >= :minimum_flag_votes
         )";
-        $params['flag'] = $flag;
-        $params['flag_votes'] = $flagVotes;
+        $params['admin_flag'] = $flag;
+        $params['user_flag'] = $flag;
+        $params['minimum_flag_votes'] = $flagVotes;
 
         return true;
     }

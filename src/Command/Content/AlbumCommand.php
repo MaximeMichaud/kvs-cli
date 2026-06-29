@@ -30,15 +30,28 @@ class AlbumCommand extends BaseCommand
         'tag',
         'model',
         'content-source',
+        'content-source-group',
+        'category-group',
+        'model-group',
         'public',
         'private',
         'premium',
         'access-level',
+        'admin-user',
+        'ip',
+        'server-group',
         'review-needed',
         'not-review-needed',
         'locked',
         'unlocked',
+        'has-errors',
+        'posted',
+        'show-id',
         'field-filter',
+        'flag',
+        'flag-votes',
+        'post-date-from',
+        'post-date-to',
         'search',
         'limit',
     ];
@@ -89,15 +102,28 @@ class AlbumCommand extends BaseCommand
             ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
             ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
             ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID or title')
+            ->addOption('content-source-group', null, InputOption::VALUE_REQUIRED, 'Filter by content source group ID or title')
+            ->addOption('category-group', null, InputOption::VALUE_REQUIRED, 'Filter by category group ID or title')
+            ->addOption('model-group', null, InputOption::VALUE_REQUIRED, 'Filter by model group ID or title')
             ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public albums')
             ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private albums')
             ->addOption('premium', null, InputOption::VALUE_NONE, 'Show only premium albums')
             ->addOption('access-level', null, InputOption::VALUE_REQUIRED, 'Filter by access level (0-3)')
+            ->addOption('admin-user', null, InputOption::VALUE_REQUIRED, 'Filter by admin user ID or login')
+            ->addOption('ip', null, InputOption::VALUE_REQUIRED, 'Filter by IP address')
+            ->addOption('server-group', null, InputOption::VALUE_REQUIRED, 'Filter by storage server group ID or title')
             ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only albums that need review')
             ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only albums that do not need review')
             ->addOption('locked', null, InputOption::VALUE_NONE, 'Show only locked albums')
             ->addOption('unlocked', null, InputOption::VALUE_NONE, 'Show only unlocked albums')
+            ->addOption('has-errors', null, InputOption::VALUE_REQUIRED, 'Filter by KVS processing error bit (1|10)')
+            ->addOption('posted', null, InputOption::VALUE_REQUIRED, 'Filter by public posting state (yes|no)')
+            ->addOption('show-id', null, InputOption::VALUE_REQUIRED, 'Filter by KVS admin show ID')
             ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/tags)')
+            ->addOption('flag', null, InputOption::VALUE_REQUIRED, 'Filter by admin or user flag ID')
+            ->addOption('flag-votes', null, InputOption::VALUE_REQUIRED, 'Minimum user flag votes for --flag', '1')
+            ->addOption('post-date-from', null, InputOption::VALUE_REQUIRED, 'Filter by minimum post date (YYYY-MM-DD)')
+            ->addOption('post-date-to', null, InputOption::VALUE_REQUIRED, 'Filter by maximum post date (YYYY-MM-DD)')
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles, directories, and descriptions')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
@@ -181,7 +207,7 @@ HELP
                 }
                 $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
                 foreach ($params as $key => $value) {
-                    $stmt->bindValue($key, $value);
+                    $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
                 }
                 $stmt->execute();
 
@@ -210,7 +236,7 @@ HELP
 
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
             if ($limit === null) {
@@ -344,6 +370,38 @@ HELP
             $params['user'] = $user;
         }
 
+        $adminUser = $this->resolveAdminUserIdOption($db, $input);
+        if ($adminUser === false) {
+            return false;
+        }
+        if ($adminUser !== null) {
+            $whereClause .= ' AND a.admin_user_id = :admin_user';
+            $params['admin_user'] = $adminUser;
+        }
+
+        $ip = $this->getStringOption($input, 'ip');
+        if ($ip !== null) {
+            $ipNumber = $this->parseKvsIpv4Option($ip);
+            if ($ipNumber === false) {
+                return false;
+            }
+            $whereClause .= ' AND a.ip = :ip';
+            $params['ip'] = $ipNumber;
+        }
+
+        $serverGroup = $this->resolveServerGroupIdOption($db, $input);
+        if ($serverGroup === false) {
+            return false;
+        }
+        if ($serverGroup !== null) {
+            if ($serverGroup === 0) {
+                $this->io()->error('Invalid value for --server-group (use: integer >= 1 or title)');
+                return false;
+            }
+            $whereClause .= ' AND a.server_group_id = :server_group';
+            $params['server_group'] = $serverGroup;
+        }
+
         if ($this->getBoolOption($input, 'public')) {
             $whereClause .= ' AND a.is_private = 0';
         } elseif ($this->getBoolOption($input, 'private')) {
@@ -373,7 +431,64 @@ HELP
             $whereClause .= ' AND a.is_locked = 0';
         }
 
+        $hasErrors = $this->getOptionalPositiveIntOption($input, 'has-errors');
+        if ($hasErrors === false) {
+            return false;
+        }
+        if ($hasErrors !== null) {
+            $errorMasks = [
+                1 => 1,
+                10 => 2,
+            ];
+            if (!isset($errorMasks[$hasErrors])) {
+                $this->io()->error('Invalid value for --has-errors (use: 1 or 10)');
+                return false;
+            }
+            $whereClause .= ' AND (a.has_errors & :has_errors_mask) > 0';
+            $params['has_errors_mask'] = $errorMasks[$hasErrors];
+        }
+
+        $posted = $this->getStringOption($input, 'posted');
+        if ($posted !== null) {
+            if (!in_array($posted, ['yes', 'no'], true)) {
+                $this->io()->error('Invalid value for --posted (use: yes or no)');
+                return false;
+            }
+            $postedCondition = 'a.status_id = 1 AND a.relative_post_date <= 0 AND a.post_date <= CURRENT_TIMESTAMP';
+            if ($posted === 'yes') {
+                $whereClause .= " AND {$postedCondition}";
+            } else {
+                $whereClause .= " AND NOT ({$postedCondition})";
+            }
+        }
+
+        if (!$this->applyAlbumShowIdFilter($input, $whereClause)) {
+            return false;
+        }
+
+        $postDateFrom = $this->getDateOption($input, 'post-date-from');
+        if ($postDateFrom === false) {
+            return false;
+        }
+        if ($postDateFrom !== null) {
+            $whereClause .= ' AND a.post_date >= :post_date_from';
+            $params['post_date_from'] = $postDateFrom;
+        }
+
+        $postDateTo = $this->getDateOption($input, 'post-date-to');
+        if ($postDateTo === false) {
+            return false;
+        }
+        if ($postDateTo !== null) {
+            $whereClause .= ' AND a.post_date <= :post_date_to';
+            $params['post_date_to'] = $postDateTo . ' 23:59:59';
+        }
+
         if (!$this->applyAlbumRelationFilters($db, $input, $whereClause, $params)) {
+            return false;
+        }
+
+        if (!$this->applyAlbumFlagFilter($input, $whereClause, $params)) {
             return false;
         }
 
@@ -419,6 +534,98 @@ HELP
         }
 
         return true;
+    }
+
+    private function applyAlbumShowIdFilter(InputInterface $input, string &$whereClause): bool
+    {
+        $showId = $this->getStringOption($input, 'show-id');
+        if ($showId === null) {
+            return true;
+        }
+
+        $showId = trim($showId);
+        $auditLog = $this->table('admin_audit_log');
+        switch ($showId) {
+            case '13':
+                $whereClause .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = a.album_id AND aal_show.object_type_id = 2 AND aal_show.action_id = 100)';
+                return true;
+            case '14':
+                $whereClause .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = a.album_id AND aal_show.object_type_id = 2 AND aal_show.action_id = 140)';
+                return true;
+            case '15':
+                $whereClause .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = a.album_id AND aal_show.object_type_id = 2 AND aal_show.action_id = 140)' .
+                    ' AND u.status_id = 6';
+                return true;
+            case '16':
+                $whereClause .= " AND a.gallery_url != ''";
+                return true;
+            case '17':
+                $whereClause .= " AND EXISTS (SELECT 1 FROM {$auditLog} aal_show " .
+                    'WHERE aal_show.object_id = a.album_id AND aal_show.object_type_id = 2 AND aal_show.action_id = 110)';
+                return true;
+        }
+
+        $this->io()->error('Invalid value for --show-id');
+        return false;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyAlbumFlagFilter(InputInterface $input, string &$whereClause, array &$params): bool
+    {
+        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        if ($flag === false) {
+            return false;
+        }
+
+        $votesOption = $this->getStringOption($input, 'flag-votes');
+        if ($flag === null) {
+            if ($votesOption !== null && $this->isOptionExplicitlySet($input, 'flag-votes')) {
+                $this->io()->error('Option --flag-votes requires --flag');
+                return false;
+            }
+            return true;
+        }
+
+        $flagVotes = $this->getPositiveIntOptionOrDefault($input, 'flag-votes', 1);
+        if ($flagVotes === null) {
+            return false;
+        }
+
+        $flagsTable = $this->table('flags_albums');
+        $whereClause .= " AND (
+            a.admin_flag_id = :admin_flag
+            OR (
+                SELECT COALESCE(SUM(fa_filter.votes), 0)
+                FROM {$flagsTable} fa_filter
+                WHERE fa_filter.album_id = a.album_id AND fa_filter.flag_id = :user_flag
+            ) >= :minimum_flag_votes
+        )";
+        $params['admin_flag'] = $flag;
+        $params['user_flag'] = $flag;
+        $params['minimum_flag_votes'] = $flagVotes;
+
+        return true;
+    }
+
+    private function getDateOption(InputInterface $input, string $name): string|false|null
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        $timestamp = strtotime($value);
+        if ($timestamp === false) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: YYYY-MM-DD)', $name));
+            return false;
+        }
+
+        return date('Y-m-d', $timestamp);
     }
 
     private function parseAlbumAccessLevelOption(InputInterface $input): int|false|null
@@ -578,6 +785,25 @@ HELP
             $params['category'] = $category;
         }
 
+        $categoryGroup = $this->resolveReferenceIdOrTitleOption(
+            $db,
+            $input,
+            'category-group',
+            'categories_groups',
+            'category_group_id',
+            'title'
+        );
+        if ($categoryGroup === false) {
+            return false;
+        }
+        if ($categoryGroup !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_albums')} cag "
+                . 'WHERE cag.album_id = a.album_id AND cag.category_id IN ('
+                . "SELECT cg.category_id FROM {$this->table('categories')} cg "
+                . 'WHERE cg.category_group_id = :category_group))';
+            $params['category_group'] = $categoryGroup;
+        }
+
         $tag = $this->resolveTagIdOption($db, $input);
         if ($tag === false) {
             return false;
@@ -598,6 +824,25 @@ HELP
             $params['model'] = $model;
         }
 
+        $modelGroup = $this->resolveReferenceIdOrTitleOption(
+            $db,
+            $input,
+            'model-group',
+            'models_groups',
+            'model_group_id',
+            'title'
+        );
+        if ($modelGroup === false) {
+            return false;
+        }
+        if ($modelGroup !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('models_albums')} mag "
+                . 'WHERE mag.album_id = a.album_id AND mag.model_id IN ('
+                . "SELECT mg.model_id FROM {$this->table('models')} mg "
+                . 'WHERE mg.model_group_id = :model_group))';
+            $params['model_group'] = $modelGroup;
+        }
+
         $contentSource = $this->resolveContentSourceIdOption($db, $input);
         if ($contentSource === false) {
             return false;
@@ -605,6 +850,24 @@ HELP
         if ($contentSource !== null) {
             $whereClause .= " AND a.content_source_id = :content_source";
             $params['content_source'] = $contentSource;
+        }
+
+        $contentSourceGroup = $this->resolveReferenceIdOrTitleOption(
+            $db,
+            $input,
+            'content-source-group',
+            'content_sources_groups',
+            'content_source_group_id',
+            'title'
+        );
+        if ($contentSourceGroup === false) {
+            return false;
+        }
+        if ($contentSourceGroup !== null) {
+            $whereClause .= ' AND a.content_source_id IN ('
+                . "SELECT csg.content_source_id FROM {$this->table('content_sources')} csg "
+                . 'WHERE csg.content_source_group_id = :content_source_group)';
+            $params['content_source_group'] = $contentSourceGroup;
         }
 
         return true;

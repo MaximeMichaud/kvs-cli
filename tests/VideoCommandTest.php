@@ -215,6 +215,128 @@ class VideoCommandTest extends TestCase
         }
     }
 
+    public function testVideoListFiltersByKvsAdminAdminIpAndStorageGroup(): void
+    {
+        $cases = [
+            ['options' => ['--admin-user' => 'moderator'], 'expected' => [10]],
+            ['options' => ['--admin-user' => '9'], 'expected' => [20]],
+            ['options' => ['--admin-user' => 'missing-admin'], 'expected' => []],
+            ['options' => ['--ip' => '127.0.0.1'], 'expected' => [10]],
+            ['options' => ['--ip' => '0'], 'expected' => [30, 20]],
+            ['options' => ['--server-group' => 'Primary Storage'], 'expected' => [10]],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--fields' => 'video_id',
+                '--format' => 'json',
+                '--limit' => 5,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        }
+    }
+
+    public function testVideoListRejectsInvalidIpFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--ip' => '999.999.999.999',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --ip (use: IPv4 address)', $this->tester->getDisplay());
+    }
+
+    public function testVideoListFiltersByKvsAdminVideoProperties(): void
+    {
+        $cases = [
+            ['options' => ['--resolution' => '2'], 'expected' => [10]],
+            ['options' => ['--resolution' => '101'], 'expected' => [30, 10]],
+            ['options' => ['--load-type' => '1'], 'expected' => [10]],
+            ['options' => ['--load-type' => '0'], 'expected' => [30]],
+            ['options' => ['--format-video-group' => 'HD Formats'], 'expected' => [10]],
+            ['options' => ['--format-video-group' => 'Missing Group'], 'expected' => []],
+            ['options' => ['--feed' => '100'], 'expected' => [10]],
+            ['options' => ['--feed' => '999'], 'expected' => []],
+            ['options' => ['--has-errors' => '1'], 'expected' => [20]],
+            ['options' => ['--has-errors' => '10'], 'expected' => [30]],
+            ['options' => ['--posted' => 'yes'], 'expected' => [30, 10]],
+            ['options' => ['--posted' => 'no'], 'expected' => [20]],
+            ['options' => ['--neuroscore' => 'score_missing'], 'expected' => [30]],
+            ['options' => ['--neuroscore' => 'score_finished'], 'expected' => [10]],
+            ['options' => ['--digiregs-copyright' => 'copyright_applied'], 'expected' => [30, 10]],
+            ['options' => ['--digiregs-copyright' => 'copyright_not_applied'], 'expected' => [20]],
+            ['options' => ['--digiregs-copyright' => 'copyright_studio'], 'expected' => [10]],
+            ['options' => ['--show-id' => '15'], 'expected' => [10]],
+            ['options' => ['--show-id' => '18'], 'expected' => [10]],
+            ['options' => ['--show-id' => '19'], 'expected' => [10]],
+            ['options' => ['--show-id' => '21'], 'expected' => [30]],
+            ['options' => ['--show-id' => '22'], 'expected' => [20, 10]],
+            ['options' => ['--show-id' => '23'], 'expected' => [10]],
+            ['options' => ['--show-id' => '24'], 'expected' => [30, 20]],
+            ['options' => ['--show-id' => 'is_vertical'], 'expected' => [20]],
+            ['options' => ['--show-id' => 'is_horizontal'], 'expected' => [30, 10]],
+            ['options' => ['--show-id' => 'wf/mp4'], 'expected' => [10]],
+            ['options' => ['--show-id' => 'wq/720'], 'expected' => [30, 10]],
+            ['options' => ['--show-id' => 'woq/720'], 'expected' => [20]],
+        ];
+
+        foreach ($cases as $case) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case['options'],
+                '--fields' => 'video_id',
+                '--format' => 'json',
+                '--limit' => 5,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($case['expected'], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        }
+    }
+
+    public function testVideoListRejectsInvalidAdminPropertyFilters(): void
+    {
+        $cases = [
+            ['--load-type' => '4', 'expected' => 'Invalid value for --load-type'],
+            ['--feed' => '0', 'expected' => 'Invalid value for --feed'],
+            ['--server-group' => '0', 'expected' => 'Invalid value for --server-group'],
+            ['--format-video-group' => '0', 'expected' => 'Invalid value for --format-video-group'],
+            ['--has-errors' => '2', 'expected' => 'Invalid value for --has-errors'],
+            ['--posted' => 'maybe', 'expected' => 'Invalid value for --posted'],
+            ['--neuroscore' => 'unknown', 'expected' => 'Invalid value for --neuroscore'],
+            ['--digiregs-copyright' => 'unknown', 'expected' => 'Invalid value for --digiregs-copyright'],
+            ['--show-id' => 'unknown', 'expected' => 'Invalid value for --show-id'],
+            ['--show-id' => 'wq/not-a-number', 'expected' => 'Invalid value for --show-id quality filter'],
+        ];
+
+        foreach ($cases as $case) {
+            $expected = $case['expected'];
+            unset($case['expected']);
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case,
+                '--format' => 'json',
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString($expected, $tester->getDisplay());
+        }
+    }
+
     public function testVideoListFiltersPlaylistByTitleLikeKvsAdmin(): void
     {
         $this->tester->execute([
@@ -900,7 +1022,9 @@ class VideoCommandTest extends TestCase
             'description TEXT, gallery_url TEXT, website_link TEXT, file_url TEXT, embed TEXT, pseudo_url TEXT, ' .
             'delete_reason TEXT, custom1 TEXT, custom2 TEXT, custom3 TEXT, af_custom1 INTEGER, af_custom2 INTEGER, ' .
             'af_custom3 INTEGER, tokens_required INTEGER, content_source_id INTEGER, dvd_id INTEGER, admin_flag_id INTEGER, ' .
-            'server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER)'
+            'server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER, ' .
+            'load_type_id INTEGER, feed_id INTEGER, has_errors INTEGER, relative_post_date INTEGER, ' .
+            'is_vertical INTEGER, rs_completed INTEGER, file_formats TEXT)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT, status_id INTEGER)');
         $db->exec(
@@ -963,6 +1087,14 @@ class VideoCommandTest extends TestCase
         $db->exec('CREATE TABLE ' . TestHelper::table('playlists') . ' (playlist_id INTEGER, title TEXT)');
         $db->exec('CREATE TABLE ' . TestHelper::table('fav_videos') . ' (video_id INTEGER, playlist_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('flags_videos') . ' (video_id INTEGER, flag_id INTEGER, votes INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('videos_advanced_operations') .
+            ' (video_id INTEGER, operation_type_id INTEGER, operation_status_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_audit_log') .
+            ' (record_id INTEGER, object_id INTEGER, object_type_id INTEGER, action_id INTEGER)'
+        );
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice', 1), (2, 'bob', 0)");
         $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'moderator', 0), (9, 'admin', 1)");
@@ -973,17 +1105,29 @@ class VideoCommandTest extends TestCase
             "comments_count, favourites_count, purchases_count, r_ctr, description, gallery_url, custom1, custom2, custom3, " .
             "website_link, file_url, embed, pseudo_url, delete_reason, af_custom1, af_custom2, af_custom3, " .
             "tokens_required, content_source_id, dvd_id, admin_flag_id, server_group_id, " .
-            "format_video_group_id, screen_main, ip) VALUES " .
+            "format_video_group_id, screen_main, ip, load_type_id, feed_id, has_errors, relative_post_date) VALUES " .
             "(10, 1, 8, 'Featured Clip', 1, 2, 'featured-clip', 0, 0, 125, 1048576, 0, 0, '1920x1080', " .
             "'2026-05-26 10:00:00', 40, 10, 123, 12, 2, 7, 1, 0.125, 'Featured description', " .
             "'https://example.test/gallery', 'custom one', '', '', '', '', '<iframe src=\"featured\"></iframe>', '', '', " .
-            "1, 0, 0, 5, 3, 4, 5, 6, 7, 3, 2130706433), " .
+            "1, 0, 0, 5, 3, 4, 5, 6, 7, 3, 2130706433, 1, 100, 0, 0), " .
             "(20, 2, 9, 'Disabled Clip', 0, 0, 'disabled-clip', 2, 2, 61, 524288, 1, 1, '640x360', " .
             "'2026-05-25 10:00:00', 0, 1, 5, 0, 1, 0, 0, 0.050, '', '', '', '', '', '', '', '', '', '', " .
-            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0), " .
             "(30, 1, 0, 'Older Active Clip', 1, 1, 'older-active-clip', 1, 0, 3600, 2097152, 0, 0, '1280x720', " .
             "'2026-05-24 10:00:00', 15, 5, 20, 0, 0, 1, 0, 0, '', '', '', '', '', '', '', '', '', '', " .
-            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
+            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0)"
+        );
+        $db->exec(
+            "UPDATE " . TestHelper::table('videos') .
+            " SET is_vertical = 0, rs_completed = 1, file_formats = '||mp4|' WHERE video_id = 10"
+        );
+        $db->exec(
+            "UPDATE " . TestHelper::table('videos') .
+            " SET is_vertical = 1, rs_completed = 0, file_formats = '' WHERE video_id = 20"
+        );
+        $db->exec(
+            "UPDATE " . TestHelper::table('videos') .
+            " SET screen_main = 1, is_vertical = 0, rs_completed = 0, file_formats = '||webm|' WHERE video_id = 30"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .
@@ -1033,6 +1177,14 @@ class VideoCommandTest extends TestCase
         $db->exec("INSERT INTO " . TestHelper::table('playlists') . " VALUES (100, 'Editorial Picks')");
         $db->exec("INSERT INTO " . TestHelper::table('fav_videos') . " VALUES (10, 100), (30, 100)");
         $db->exec("INSERT INTO " . TestHelper::table('flags_videos') . " VALUES (30, 6, 3), (20, 6, 1)");
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('videos_advanced_operations') .
+            " VALUES (10, 1, 2), (20, 1, 0), (10, 2, 1), (30, 2, 2)"
+        );
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('admin_audit_log') .
+            " VALUES (1, 10, 1, 100), (2, 20, 1, 140), (3, 30, 1, 110)"
+        );
 
         return $db;
     }

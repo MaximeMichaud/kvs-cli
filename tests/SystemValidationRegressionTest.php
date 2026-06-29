@@ -63,7 +63,7 @@ class SystemValidationRegressionTest extends TestCase
     public function testQueueRejectsInvalidPositiveIntegerFiltersBeforeSql(): void
     {
         foreach (['list', 'history'] as $action) {
-            foreach (['type', 'video', 'album', 'server'] as $option) {
+            foreach (['type', 'error-code', 'video', 'album', 'server'] as $option) {
                 foreach (['abc', '1.5', '-1'] as $value) {
                     $tester = new CommandTester($this->createQueueCommand());
                     $tester->execute([
@@ -78,6 +78,23 @@ class SystemValidationRegressionTest extends TestCase
                     $this->assertStringNotContainsString('no such table', strtolower($display), "$action --$option=$value");
                 }
             }
+        }
+    }
+
+    public function testQueueRejectsZeroErrorCodeBeforeSql(): void
+    {
+        foreach (['list', 'history'] as $action) {
+            $tester = new CommandTester($this->createQueueCommand());
+            $tester->execute([
+                'action' => $action,
+                '--format' => 'count',
+                '--error-code' => '0',
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "$action --error-code=0: $display");
+            $this->assertStringContainsString('Invalid value for --error-code', $display);
+            $this->assertStringNotContainsString('no such table', strtolower($display));
         }
     }
 

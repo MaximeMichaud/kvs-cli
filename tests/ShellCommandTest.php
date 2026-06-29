@@ -141,10 +141,49 @@ class ShellCommandTest extends TestCase
         $this->assertSame($mysqli, $variables['kvs_db']);
     }
 
+    public function testShellIsBlockedInProductionByDefaultBeforeStartingPsysh(): void
+    {
+        $previousKvsEnv = getenv('KVS_ENV');
+        $previousAllowEval = getenv('KVS_ALLOW_EVAL');
+        putenv('KVS_ENV');
+        putenv('KVS_ALLOW_EVAL');
+
+        try {
+            $this->tester->execute([]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Shell command is disabled in production environment.', $output);
+            $this->assertStringNotContainsString('KVS Interactive Shell', $output);
+        } finally {
+            if ($previousKvsEnv === false) {
+                putenv('KVS_ENV');
+            } else {
+                putenv('KVS_ENV=' . $previousKvsEnv);
+            }
+            if ($previousAllowEval === false) {
+                putenv('KVS_ALLOW_EVAL');
+            } else {
+                putenv('KVS_ALLOW_EVAL=' . $previousAllowEval);
+            }
+        }
+    }
+
     public function testShellRequiresPsySH(): void
     {
         if (!class_exists('Psy\Shell')) {
-            $this->tester->execute([]);
+            $previousKvsEnv = getenv('KVS_ENV');
+            putenv('KVS_ENV=dev');
+
+            try {
+                $this->tester->execute([]);
+            } finally {
+                if ($previousKvsEnv === false) {
+                    putenv('KVS_ENV');
+                } else {
+                    putenv('KVS_ENV=' . $previousKvsEnv);
+                }
+            }
 
             $output = $this->tester->getDisplay();
             $this->assertEquals(1, $this->tester->getStatusCode());

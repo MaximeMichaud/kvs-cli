@@ -57,6 +57,12 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if (!$this->isEvalAllowed()) {
+            $this->io()->error('Shell command is disabled in production environment.');
+            $this->io()->text('Set KVS_ALLOW_EVAL=true to override, or use KVS_ENV=dev');
+            return self::FAILURE;
+        }
+
         if (!class_exists('Psy\Shell')) {
             $this->io()->error('PsySH is not installed. Run: composer require psy/psysh');
             return self::FAILURE;

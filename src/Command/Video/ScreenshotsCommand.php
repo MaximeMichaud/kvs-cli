@@ -120,6 +120,10 @@ HELP
         }
 
         if (!is_dir($screenshotsPath)) {
+            if (!$this->ensureVideoIsManageableInKvs($videoId)) {
+                return self::FAILURE;
+            }
+
             if (!$this->isTableFormat($input)) {
                 return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
             }
@@ -136,6 +140,10 @@ HELP
         $files = $this->findImageFiles($screenshotsPath, $extensions);
 
         if ($files === []) {
+            if (!$this->ensureVideoIsManageableInKvs($videoId)) {
+                return self::FAILURE;
+            }
+
             if (!$this->isTableFormat($input)) {
                 return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
             }
@@ -171,6 +179,30 @@ HELP
         $formatter->display($screenshots, $this->io());
 
         return self::SUCCESS;
+    }
+
+    private function ensureVideoIsManageableInKvs(string $videoId): bool
+    {
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            return true;
+        }
+
+        try {
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM {$this->table('videos')} WHERE video_id = :id AND status_id IN (0, 1)"
+            );
+            $stmt->bindValue('id', (int) $videoId, \PDO::PARAM_INT);
+            $stmt->execute();
+            if ((int) $stmt->fetchColumn() > 0) {
+                return true;
+            }
+        } catch (\Throwable) {
+            return true;
+        }
+
+        $this->io()->error("Video not found or screenshots are not manageable in KVS admin: $videoId");
+        return false;
     }
 
     /**

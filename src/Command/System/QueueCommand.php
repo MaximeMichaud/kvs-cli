@@ -86,6 +86,7 @@ class QueueCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'Task ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (scheduled|pending|in-process|processing|error|failed)')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by task type ID')
+            ->addOption('error-code', null, InputOption::VALUE_REQUIRED, 'Filter by KVS task error code')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
             ->addOption('album', null, InputOption::VALUE_REQUIRED, 'Filter by album ID')
             ->addOption('server', null, InputOption::VALUE_REQUIRED, 'Filter by conversion server ID')
@@ -1018,6 +1019,15 @@ HELP
         string $alias,
         array &$params
     ): bool {
+        $errorCode = $this->getOptionalPositiveIntOption($input, 'error-code');
+        if ($errorCode === false) {
+            return false;
+        }
+        if ($errorCode !== null) {
+            $fromClause .= sprintf(' AND %s.error_code = :error_code', $alias);
+            $params['error_code'] = $errorCode;
+        }
+
         $filters = [
             'type' => ['column' => 'type_id', 'param' => 'type'],
             'video' => ['column' => 'video_id', 'param' => 'video_id'],

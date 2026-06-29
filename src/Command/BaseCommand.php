@@ -668,6 +668,67 @@ abstract class BaseCommand extends Command
         return $this->resolveReferenceIdOption($db, $input, $name, 'tags', 'tag_id', 'tag');
     }
 
+    protected function resolveReferenceIdOrTitleOption(
+        \PDO $db,
+        InputInterface $input,
+        string $name,
+        string $table,
+        string $idColumn,
+        string $titleColumn
+    ): int|false|null {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0 or title)', $name));
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $value) === 1) {
+            return (int) $value;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $value) === 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0 or title)', $name));
+            return false;
+        }
+
+        return $this->findReferenceIdByText($db, $table, $idColumn, $titleColumn, $value) ?? -1;
+    }
+
+    protected function resolveAdminUserIdOption(\PDO $db, InputInterface $input, string $name = 'admin-user'): int|false|null
+    {
+        return $this->resolveReferenceIdOrTitleOption($db, $input, $name, 'admin_users', 'user_id', 'login');
+    }
+
+    protected function resolveServerGroupIdOption(\PDO $db, InputInterface $input, string $name = 'server-group'): int|false|null
+    {
+        return $this->resolveReferenceIdOrTitleOption($db, $input, $name, 'admin_servers_groups', 'group_id', 'title');
+    }
+
+    protected function parseKvsIpv4Option(string $ip, string $name = 'ip'): int|false
+    {
+        if (preg_match('/^\d+$/', $ip) === 1) {
+            return (int) $ip;
+        }
+
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: IPv4 address)', $name));
+            return false;
+        }
+
+        $ipLong = ip2long($ip);
+        if ($ipLong === false) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: IPv4 address)', $name));
+            return false;
+        }
+
+        return (int) sprintf('%u', $ipLong);
+    }
+
     protected function findReferenceIdByText(
         \PDO $db,
         string $table,

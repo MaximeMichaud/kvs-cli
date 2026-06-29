@@ -132,9 +132,34 @@ class FormatsPathTest extends TestCase
         $this->assertStringNotContainsString('../../../static/sample', $output);
     }
 
-    public function testListFallsBackWhenLocalStorageServerPathIsStale(): void
+    public function testListRejectsStaleConfiguredLocalStorageServerPath(): void
     {
         $this->db->exec("UPDATE ktvs_admin_servers SET path = '/stale/contents/videos'");
+
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertSame(
+            '/stale/contents/videos/1000/1234',
+            $rows[0]['path'] ?? null,
+            $output
+        );
+        $this->assertFalse($rows[0]['exists'] ?? true, $output);
+        $this->assertStringContainsString('Video directory not found', $rows[0]['message'] ?? '');
+        $this->assertStringNotContainsString('1234.mp4', $output);
+    }
+
+    public function testListFallsBackToProjectContentPathWhenNoLocalStorageServerIsConfigured(): void
+    {
+        $this->db->exec('DELETE FROM ktvs_admin_servers');
 
         $tester = new CommandTester($this->createCommand());
         $tester->execute([
@@ -147,13 +172,13 @@ class FormatsPathTest extends TestCase
         $output = $tester->getDisplay();
         $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
 
-        $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('1234.mp4', $output);
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertSame('1234.mp4', $rows[0]['file'] ?? null);
         $this->assertSame(
             $this->tempDir . '/contents/videos/1000/1234/1234.mp4',
-            $rows[0]['path'] ?? null
+            $rows[0]['path'] ?? null,
+            $output
         );
-        $this->assertStringNotContainsString('/stale/contents/videos', $output);
     }
 
     public function testListAndCheckUseSecondLocalServerWhenFileIsStoredThere(): void

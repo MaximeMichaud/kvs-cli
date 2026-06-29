@@ -231,6 +231,9 @@ class DvdCommandTest extends TestCase
             ['--usage' => 'notused/videos', 'expected' => []],
             ['--review-needed' => true, 'expected' => [30]],
             ['--not-review-needed' => true, 'expected' => [20, 10]],
+            ['--flag' => '4', 'expected' => [30, 20]],
+            ['--flag' => '4', '--flag-votes' => '2', 'expected' => [30]],
+            ['--flag' => '999', 'expected' => []],
         ];
 
         foreach ($cases as $case) {
@@ -250,6 +253,18 @@ class DvdCommandTest extends TestCase
             $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
             $this->assertSame($expected, array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
         }
+    }
+
+    public function testListDvdsRejectsFlagVotesWithoutFlag(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--flag-votes' => '2',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Option --flag-votes requires --flag', $this->tester->getDisplay());
     }
 
     public function testListDvdsRejectsInvalidGroupIdsBeforeQuery(): void
@@ -663,6 +678,7 @@ class DvdCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('models_dvds') . ' (' .
             'id INTEGER, model_id INTEGER, dvd_id INTEGER)'
         );
+        $db->exec('CREATE TABLE ' . TestHelper::table('flags_dvds') . ' (dvd_id INTEGER, flag_id INTEGER, votes INTEGER)');
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
             'dvd_id INTEGER, duration INTEGER)'
@@ -715,6 +731,7 @@ class DvdCommandTest extends TestCase
             " VALUES (1, 'Model One'), (2, 'Model Two')"
         );
         $db->exec('INSERT INTO ' . TestHelper::table('models_dvds') . ' VALUES (1, 2, 30), (2, 1, 30)');
+        $db->exec('INSERT INTO ' . TestHelper::table('flags_dvds') . ' VALUES (30, 4, 3), (20, 4, 1)');
         $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (30, 3600), (30, 90), (20, 120), (10, 300)');
         $db->exec(
             'INSERT INTO ' . TestHelper::table('comments') .
