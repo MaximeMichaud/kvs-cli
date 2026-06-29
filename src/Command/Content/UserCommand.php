@@ -54,6 +54,61 @@ class UserCommand extends BaseCommand
         'no/friends',
     ];
 
+    /** @var list<string> */
+    private const USER_STRING_FIELD_FILTER_COLUMNS = [
+        'description',
+        'avatar',
+        'cover',
+        'city',
+        'website',
+        'education',
+        'occupation',
+        'about_me',
+        'interests',
+        'favourite_movies',
+        'favourite_music',
+        'favourite_books',
+        'custom1',
+        'custom2',
+        'custom3',
+        'custom4',
+        'custom5',
+        'custom6',
+        'custom7',
+        'custom8',
+        'custom9',
+        'custom10',
+    ];
+
+    /** @var list<string> */
+    private const USER_ZERO_FIELD_FILTER_COLUMNS = [
+        'favourite_category_id',
+        'country_id',
+        'gender_id',
+        'relationship_status_id',
+        'orientation_id',
+        'profile_viewed',
+        'tokens_available',
+        'tokens_required',
+    ];
+
+    /** @var array<string, int> */
+    private const USER_GENDER_ALIASES = [
+        'male' => 1,
+        'female' => 2,
+        'couple' => 3,
+        'transsexual' => 4,
+        'trans' => 4,
+    ];
+
+    /** @var array<string, int> */
+    private const USER_BANNED_STATUS_ALIASES = [
+        'temporary' => 1,
+        'temp' => 1,
+        'permanent' => 2,
+        'perm' => 2,
+    ];
+
     protected function configure(): void
     {
         $this
@@ -112,8 +167,12 @@ HELP
             )
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in user admin text fields')
+            ->addOption('country', null, InputOption::VALUE_REQUIRED, 'Filter by country ID or title')
+            ->addOption('gender', null, InputOption::VALUE_REQUIRED, 'Filter by gender (male|female|couple|transsexual|1-4)')
             ->addOption('ip', null, InputOption::VALUE_REQUIRED, 'Filter by IP address')
             ->addOption('activity', null, InputOption::VALUE_REQUIRED, 'Filter by KVS admin activity bucket')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/avatar)')
+            ->addOption('banned-status', null, InputOption::VALUE_REQUIRED, 'Filter by KVS login protection status (temporary|permanent|1|2)')
             ->addOption('removal-requested', null, InputOption::VALUE_NONE, 'Filter users who requested account deletion')
             ->addOption('trusted', null, InputOption::VALUE_NONE, 'Filter trusted users only')
             ->addOption('untrusted', null, InputOption::VALUE_NONE, 'Filter untrusted users only')
@@ -219,6 +278,10 @@ HELP
             $whereClause .= " AND u.is_trusted = 0";
         }
 
+        if (!$this->applyUserAdminFilters($db, $input, $whereClause, $params)) {
+            return self::FAILURE;
+        }
+
         if (!$this->applyUserActivityFilter($input, $whereClause, $params)) {
             return self::FAILURE;
         }
@@ -230,7 +293,7 @@ HELP
                 }
                 $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
                 foreach ($params as $key => $value) {
-                    $stmt->bindValue($key, $value);
+                    $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
                 }
                 $stmt->execute();
 
@@ -248,7 +311,7 @@ HELP
 
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
-                $stmt->bindValue($key, $value);
+                $stmt->bindValue($key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT);
             if ($limit === null) {
@@ -311,6 +374,199 @@ HELP
         }
 
         return sprintf('%u', $ipLong);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyUserAdminFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $countryId = $this->resolveUserCountryFilter($db, $input);
+        if ($countryId === false) {
+            return false;
+        }
+        if ($countryId !== null) {
+            $whereClause .= ' AND u.country_id = :country';
+            $params['country'] = $countryId;
+        }
+
+        $genderId = $this->parseUserGenderFilter($input);
+        if ($genderId === false) {
+            return false;
+        }
+        if ($genderId !== null) {
+            $whereClause .= ' AND u.gender_id = :gender';
+            $params['gender'] = $genderId;
+        }
+
+        $bannedStatus = $this->parseUserBannedStatusFilter($input);
+        if ($bannedStatus === false) {
+            return false;
+        }
+        if ($bannedStatus === 1) {
+            $whereClause .= ' AND (u.login_protection_is_banned = 1 AND u.login_protection_restore_code <> 0)';
+        } elseif ($bannedStatus === 2) {
+            $whereClause .= ' AND (u.login_protection_is_banned = 1 AND u.login_protection_restore_code = 0)';
+        }
+
+        $fieldFilter = $this->getStringOption($input, 'field-filter');
+        if ($fieldFilter !== null) {
+            $condition = $this->getUserFieldFilterCondition($fieldFilter);
+            if ($condition === null) {
+                $this->io()->error('Invalid user field filter. Use: ' . implode(', ', $this->getUserFieldFilterValues()));
+                return false;
+            }
+            $whereClause .= " AND {$condition}";
+        }
+
+        return true;
+    }
+
+    private function resolveUserCountryFilter(\PDO $db, InputInterface $input): int|false|null
+    {
+        $country = $this->getStringOption($input, 'country');
+        if ($country === null) {
+            return null;
+        }
+
+        $country = trim($country);
+        if ($country === '') {
+            $this->io()->error('Invalid value for --country (use: integer >= 0 or country title)');
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $country) === 1) {
+            return (int) $country;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $country) === 1) {
+            $this->io()->error('Invalid value for --country (use: integer >= 0 or country title)');
+            return false;
+        }
+
+        $stmt = $db->prepare(
+            "SELECT country_id FROM {$this->table('list_countries')} "
+            . "WHERE title = :title ORDER BY language_code = 'en' DESC LIMIT 1"
+        );
+        $stmt->execute(['title' => $country]);
+        $id = $stmt->fetchColumn();
+
+        return is_numeric($id) ? (int) $id : -1;
+    }
+
+    private function parseUserGenderFilter(InputInterface $input): int|false|null
+    {
+        $gender = $this->getStringOption($input, 'gender');
+        if ($gender === null) {
+            return null;
+        }
+
+        $gender = strtolower(trim($gender));
+        if (isset(self::USER_GENDER_ALIASES[$gender])) {
+            return self::USER_GENDER_ALIASES[$gender];
+        }
+
+        if (preg_match('/^\d+$/', $gender) === 1) {
+            $genderId = (int) $gender;
+            if ($genderId >= 1 && $genderId <= 4) {
+                return $genderId;
+            }
+        }
+
+        $this->io()->error('Invalid value for --gender (use: male, female, couple, transsexual, 1, 2, 3 or 4)');
+        return false;
+    }
+
+    private function parseUserBannedStatusFilter(InputInterface $input): int|false|null
+    {
+        $status = $this->getStringOption($input, 'banned-status');
+        if ($status === null) {
+            return null;
+        }
+
+        $status = strtolower(trim($status));
+        if (isset(self::USER_BANNED_STATUS_ALIASES[$status])) {
+            return self::USER_BANNED_STATUS_ALIASES[$status];
+        }
+
+        if ($status === '1' || $status === '2') {
+            return (int) $status;
+        }
+
+        $this->io()->error('Invalid value for --banned-status (use: temporary, permanent, 1 or 2)');
+        return false;
+    }
+
+    /** @return list<string> */
+    private function getUserFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::USER_STRING_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::USER_ZERO_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            $values[] = "{$prefix}/birth_date";
+        }
+
+        return $values;
+    }
+
+    private function getUserFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $field] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true)) {
+            return null;
+        }
+
+        return $state === 'empty'
+            ? $this->getEmptyUserFieldFilterCondition($field)
+            : $this->getFilledUserFieldFilterCondition($field);
+    }
+
+    private function getEmptyUserFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::USER_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "u.{$field} = ''";
+        }
+
+        if (in_array($field, self::USER_ZERO_FIELD_FILTER_COLUMNS, true)) {
+            return "u.{$field} = 0";
+        }
+
+        if ($field === 'birth_date') {
+            return "u.birth_date = '0000-00-00'";
+        }
+
+        return null;
+    }
+
+    private function getFilledUserFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::USER_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "u.{$field} <> ''";
+        }
+
+        if (in_array($field, self::USER_ZERO_FIELD_FILTER_COLUMNS, true)) {
+            return "u.{$field} <> 0";
+        }
+
+        if ($field === 'birth_date') {
+            return "u.birth_date <> '0000-00-00'";
+        }
+
+        return null;
     }
 
     /**
