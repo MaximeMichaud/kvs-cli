@@ -122,9 +122,9 @@ HELP
 
         $query = "SELECT s.*,
                     (SELECT COUNT(*) FROM {$this->table('background_tasks')}
-                     WHERE status_id IN (0,1) AND server_id = s.server_id) as tasks_pending,
+                     WHERE status_id IN (0,1) AND server_id = s.server_id) as tasks_amount,
                     (SELECT COUNT(*) FROM {$this->table('background_tasks_history')}
-                     WHERE server_id = s.server_id) as tasks_completed
+                     WHERE server_id = s.server_id) as finished_tasks_amount
                  FROM {$this->table('admin_conversion_servers')} s
                  WHERE 1=1";
 
@@ -183,8 +183,11 @@ HELP
                 $isDebug = $this->getNumericField($server, 'is_debug_enabled');
                 $maxTasks = $this->getNumericField($server, 'max_tasks');
                 $isMaxTasksPriority = $this->getNumericField($server, 'max_tasks_priority') === 1;
+                $tasksAmount = $this->getNumericField($server, 'tasks_amount');
+                $finishedTasksAmount = $this->getNumericField($server, 'finished_tasks_amount');
 
                 return [
+                    ...$server,
                     'server_id' => $server['server_id'] ?? 0,
                     'id' => $server['server_id'] ?? 0,
                     'title' => $server['title'] ?? '',
@@ -192,8 +195,10 @@ HELP
                     'status' => StatusFormatter::conversion($statusId, false),
                     'priority' => StatusFormatter::conversionPriority($priority, false),
                     'max_tasks' => $isMaxTasksPriority ? "{$maxTasks} (prioritize)" : $maxTasks,
-                    'tasks_pending' => $server['tasks_pending'] ?? 0,
-                    'tasks_completed' => $server['tasks_completed'] ?? 0,
+                    'tasks_amount' => $tasksAmount,
+                    'finished_tasks_amount' => $finishedTasksAmount,
+                    'tasks_pending' => $tasksAmount,
+                    'tasks_completed' => $finishedTasksAmount,
                     'free_space' => $this->formatBytes($freeSpace),
                     'load' => number_format($load, 2),
                     'api_version' => $server['api_version'] ?? '',

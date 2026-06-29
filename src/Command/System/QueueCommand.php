@@ -89,6 +89,8 @@ class QueueCommand extends BaseCommand
             ->addOption('server', null, InputOption::VALUE_REQUIRED, 'Filter by conversion server ID')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields')
+            ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation')
             ->setHelp(<<<'HELP'
 Manage KVS background tasks queue (video/album conversion, processing, etc.).
 
@@ -208,7 +210,11 @@ HELP
         }
 
         $query = "SELECT bt.*,
-                  cs.title as server_name
+                  cs.title as server_name,
+                  cs.title as server,
+                  CASE WHEN bt.video_id > 0 THEN bt.video_id WHEN bt.album_id > 0 THEN bt.album_id END as object_id,
+                  CASE WHEN bt.video_id > 0 THEN bt.video_id WHEN bt.album_id > 0 THEN bt.album_id END as object,
+                  CASE WHEN bt.video_id > 0 THEN 1 WHEN bt.album_id > 0 THEN 2 END as object_type_id
                   $fromClause";
         $query .= " ORDER BY bt.priority DESC, bt.added_date ASC LIMIT :limit";
 
@@ -638,7 +644,10 @@ HELP
             return self::FAILURE;
         }
 
-        $fromClause = "FROM {$this->table('background_tasks_history')} WHERE 1=1";
+        $fromClause = "FROM {$this->table('background_tasks_history')} bh
+                       LEFT JOIN {$this->table('admin_conversion_servers')} cs
+                           ON bh.server_id = cs.server_id
+                       WHERE 1=1";
         $params = [];
 
         $status = $this->getStringOption($input, 'status');
@@ -656,31 +665,31 @@ HELP
                 $this->io()->error('Invalid status "' . $status . '". Valid values: failed, completed, deleted');
                 return self::FAILURE;
             }
-            $fromClause .= " AND status_id = :status";
+            $fromClause .= " AND bh.status_id = :status";
             $params['status'] = $statusMap[$statusKey];
         }
 
         $type = $this->getIntOption($input, 'type');
         if ($type !== null) {
-            $fromClause .= " AND type_id = :type";
+            $fromClause .= " AND bh.type_id = :type";
             $params['type'] = $type;
         }
 
         $videoId = $this->getIntOption($input, 'video');
         if ($videoId !== null) {
-            $fromClause .= " AND video_id = :video_id";
+            $fromClause .= " AND bh.video_id = :video_id";
             $params['video_id'] = $videoId;
         }
 
         $albumId = $this->getIntOption($input, 'album');
         if ($albumId !== null) {
-            $fromClause .= " AND album_id = :album_id";
+            $fromClause .= " AND bh.album_id = :album_id";
             $params['album_id'] = $albumId;
         }
 
         $serverId = $this->getIntOption($input, 'server');
         if ($serverId !== null) {
-            $fromClause .= " AND server_id = :server_id";
+            $fromClause .= " AND bh.server_id = :server_id";
             $params['server_id'] = $serverId;
         }
 
@@ -691,8 +700,14 @@ HELP
             return $this->countQueueHistory($db, $fromClause, $params);
         }
 
-        $query = "SELECT * $fromClause";
-        $query .= " ORDER BY end_date DESC LIMIT :limit";
+        $query = "SELECT bh.*,
+                  cs.title as server_name,
+                  cs.title as server,
+                  CASE WHEN bh.video_id > 0 THEN bh.video_id WHEN bh.album_id > 0 THEN bh.album_id END as object_id,
+                  CASE WHEN bh.video_id > 0 THEN bh.video_id WHEN bh.album_id > 0 THEN bh.album_id END as object,
+                  CASE WHEN bh.video_id > 0 THEN 1 WHEN bh.album_id > 0 THEN 2 END as object_type_id
+                  $fromClause";
+        $query .= " ORDER BY bh.end_date DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -723,47 +738,37 @@ HELP
                 return self::SUCCESS;
             }
 
-            // Transform for display
-            /** @var list<array{task_id: int, status_id: int, type_id: int, video_id: int|null, album_id: int|null, effective_duration: int|null, end_date: string|null, id: int, status: string, type: string, content_id: string, duration: string}> $tasks */
-            $tasks = array_map(function (array $task): array {
-                $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
-                $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
-                $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
-                $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
-                $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
-
-                $task['id'] = $task['task_id'];
-                $task['status_id'] = $statusId;
-                $task['status'] = StatusFormatter::task($statusId, false);
-                $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                $task['content_id'] = $videoId > 0
-                    ? "Video #{$videoId}"
-                    : ($albumId > 0 ? "Album #{$albumId}" : '-');
-                $task['duration'] = $this->formatDuration($effectiveDuration);
-                return $task;
-            }, $tasks);
+            $tasks = array_map(fn (array $task): array => $this->transformHistoryTask($task), $tasks);
 
             if ($format === 'table') {
                 $this->io()->title('Task History');
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];
                 foreach ($tasks as $task) {
-                    $statusId = $task['status_id'];
+                    $taskIdValue = $task['task_id'] ?? null;
+                    $taskId = is_numeric($taskIdValue) ? (int) $taskIdValue : null;
+                    $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
                     $statusColor = match ($statusId) {
                         StatusFormatter::TASK_COMPLETED => 'green',
                         StatusFormatter::TASK_FAILED => 'red',
                         StatusFormatter::TASK_DELETED => 'gray',
                         default => 'yellow',
                     };
-                    $endDate = $task['end_date'] ?? '';
+                    $endDateValue = $task['end_date'] ?? '';
+                    $endDate = is_string($endDateValue) ? $endDateValue : '';
                     $timestamp = $endDate !== '' ? strtotime($endDate) : false;
                     $endDateStr = $timestamp !== false ? date('Y-m-d H:i', $timestamp) : '-';
+                    $status = is_scalar($task['status'] ?? null) ? (string) $task['status'] : '';
+                    $type = is_scalar($task['type'] ?? null) ? (string) $task['type'] : '';
+                    $contentId = is_scalar($task['content_id'] ?? null) ? (string) $task['content_id'] : '';
+                    $duration = is_scalar($task['duration'] ?? null) ? (string) $task['duration'] : '';
+
                     $rows[] = [
-                        $task['task_id'],
-                        "<fg={$statusColor}>{$task['status']}</>",
-                        $task['type'],
-                        $task['content_id'],
-                        $task['duration'],
+                        $taskId,
+                        "<fg={$statusColor}>{$status}</>",
+                        $type,
+                        $contentId,
+                        $duration,
                         $endDateStr,
                     ];
                 }
@@ -782,6 +787,31 @@ HELP
             $this->io()->error('Failed to fetch history: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function transformHistoryTask(array $task): array
+    {
+        $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
+        $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
+        $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
+        $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
+        $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
+        $serverId = is_numeric($task['server_id'] ?? null) ? (int) $task['server_id'] : 0;
+        $serverName = $task['server_name'] ?? null;
+
+        $task['id'] = $task['task_id'];
+        $task['status_id'] = $statusId;
+        $task['status'] = StatusFormatter::task($statusId, false);
+        $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
+        $task['content_id'] = $videoId > 0 ? "Video #{$videoId}" : ($albumId > 0 ? "Album #{$albumId}" : '-');
+        $task['server'] = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-');
+        $task['duration'] = $this->formatDuration($effectiveDuration);
+
+        return $task;
     }
 
     private function showHelp(): int

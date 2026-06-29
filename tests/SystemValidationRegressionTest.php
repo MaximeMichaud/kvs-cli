@@ -461,6 +461,53 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame('10s', $rows[0]['timeline']);
     }
 
+    public function testVideoFormatListExposesKvsAdminFields(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => implode(',', [
+                'format_video_id',
+                'title',
+                'postfix',
+                'status_id',
+                'size',
+                'limit_total_duration',
+                'limit_offset_start',
+                'limit_offset_end',
+                'access_level_id',
+                'is_download_enabled',
+                'download_order',
+                'is_hotlink_protection_enabled',
+                'limit_speed_value',
+                'is_timeline_enabled',
+                'videos_count',
+            ]),
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['format_video_id']);
+        $this->assertSame('MP4 480p', $rows[0]['title']);
+        $this->assertSame('.mp4', $rows[0]['postfix']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('848x480', $rows[0]['size']);
+        $this->assertSame(20, (int) $rows[0]['limit_total_duration']);
+        $this->assertSame(5, (int) $rows[0]['limit_offset_start']);
+        $this->assertSame(10, (int) $rows[0]['limit_offset_end']);
+        $this->assertSame(0, (int) $rows[0]['access_level_id']);
+        $this->assertSame(0, (int) $rows[0]['is_download_enabled']);
+        $this->assertSame(7, (int) $rows[0]['download_order']);
+        $this->assertSame(1, (int) $rows[0]['is_hotlink_protection_enabled']);
+        $this->assertSame(2048, (int) $rows[0]['limit_speed_value']);
+        $this->assertSame(1, (int) $rows[0]['is_timeline_enabled']);
+        $this->assertSame(1, (int) $rows[0]['videos_count']);
+    }
+
     public function testVideoFormatGroupsRejectsListFilters(): void
     {
         $this->createVideoFormatTables();
@@ -478,6 +525,29 @@ class SystemValidationRegressionTest extends TestCase
             $this->assertStringContainsString("The groups action does not support --$option", $tester->getDisplay());
             $this->assertStringNotContainsString('Default', $tester->getDisplay());
         }
+    }
+
+    public function testVideoFormatGroupsExposeKvsAdminFields(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'groups',
+            '--fields' => 'format_video_group_id,title,is_default,is_premium,set_duration_from,videos_count,format_count',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['format_video_group_id']);
+        $this->assertSame('Default', $rows[0]['title']);
+        $this->assertSame(1, (int) $rows[0]['is_default']);
+        $this->assertSame(0, (int) $rows[0]['is_premium']);
+        $this->assertSame('.mp4', $rows[0]['set_duration_from']);
+        $this->assertSame(1, (int) $rows[0]['videos_count']);
+        $this->assertSame(2, (int) $rows[0]['format_count']);
     }
 
     public function testConversionRejectsNegativeLimitBeforeSql(): void
@@ -600,17 +670,21 @@ class SystemValidationRegressionTest extends TestCase
             timeline_option INTEGER,
             timeline_amount INTEGER,
             timeline_interval INTEGER,
+            download_order INTEGER,
+            limit_speed_value INTEGER,
             ffmpeg_options TEXT
         )');
         $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
             format_video_group_id INTEGER,
             title TEXT,
             is_default INTEGER,
-            is_premium INTEGER
+            is_premium INTEGER,
+            set_duration_from TEXT
         )');
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos_groups " .
-            "(format_video_group_id, title, is_default, is_premium) VALUES (1, 'Default', 1, 0)"
+            "(format_video_group_id, title, is_default, is_premium, set_duration_from) " .
+            "VALUES (1, 'Default', 1, 0, '.mp4')"
         );
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos " .
@@ -618,10 +692,19 @@ class SystemValidationRegressionTest extends TestCase
             "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, limit_total_duration, " .
             "limit_total_duration_unit_id, limit_total_min_duration_sec, limit_total_max_duration_sec, " .
             "limit_number_parts, limit_offset_start, limit_offset_start_unit_id, limit_offset_end, " .
-            "limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, ffmpeg_options) " .
+            "limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, download_order, " .
+            "limit_speed_value, ffmpeg_options) " .
             "VALUES " .
-            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, 2, 0, 10, '-vcodec libx264'), " .
-            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, '')"
+            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, 2, 0, 10, 7, 2048, '-vcodec libx264'), " .
+            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, '')"
+        );
+        $this->db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, load_type_id INTEGER, status_id INTEGER, file_formats TEXT)');
+        $this->db->exec('ALTER TABLE ktvs_videos ADD COLUMN format_video_group_id INTEGER DEFAULT 1');
+        $this->db->exec(
+            "INSERT INTO ktvs_videos (video_id, load_type_id, status_id, file_formats, format_video_group_id) VALUES " .
+            "(1, 1, 1, '||.mp4|', 1), " .
+            "(2, 1, 2, '||.mp4|', 1), " .
+            "(3, 1, 1, '||_cond.mp4|', 2)"
         );
     }
 

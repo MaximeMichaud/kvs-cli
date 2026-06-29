@@ -222,6 +222,7 @@ HELP
                 $hasError = $errorIter > 1 || $errorStreamIter > 1;
 
                 return [
+                    ...$server,
                     'server_id' => $server['server_id'] ?? 0,
                     'id' => $server['server_id'] ?? 0,
                     'title' => $server['title'] ?? '',
@@ -621,8 +622,15 @@ HELP
                 SELECT g.*,
                     (SELECT COUNT(*) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as server_count,
                     (SELECT COUNT(*) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id AND status_id = 1) as active_count,
+                    (SELECT COALESCE(MIN(free_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as free_space,
                     (SELECT COALESCE(MIN(free_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as min_free_space,
-                    (SELECT COALESCE(MIN(total_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as total_space
+                    (SELECT COALESCE(MIN(total_space), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as total_space,
+                    (SELECT COALESCE(AVG(`load`), 0) FROM {$this->table('admin_servers')} WHERE group_id = g.group_id) as `load`,
+                    (
+                        SELECT COUNT(*) FROM {$this->table('videos')} WHERE server_group_id = g.group_id
+                    ) + (
+                        SELECT COUNT(*) FROM {$this->table('albums')} WHERE server_group_id = g.group_id
+                    ) as total_content_count
                 FROM {$this->table('admin_servers_groups')} g
                 ORDER BY g.group_id ASC
             ");
@@ -674,26 +682,37 @@ HELP
                     ? (int) $group['total_space'] : 0;
                 $minFreeSpace = isset($group['min_free_space']) && is_numeric($group['min_free_space'])
                     ? (int) $group['min_free_space'] : 0;
+                $load = isset($group['load']) && is_numeric($group['load'])
+                    ? (float) $group['load'] : 0.0;
 
-                $contentCount = $contentType === 1
-                    ? ($videoGroups[$groupId] ?? 0)
-                    : ($albumGroups[$groupId] ?? 0);
+                $contentCount = isset($group['total_content_count']) && is_numeric($group['total_content_count'])
+                    ? (int) $group['total_content_count']
+                    : ($contentType === 1 ? ($videoGroups[$groupId] ?? 0) : ($albumGroups[$groupId] ?? 0));
                 $contentTypeStr = $contentType === 1 ? 'Videos' : 'Albums';
 
                 $titleVal = $group['title'] ?? '';
                 $title = is_string($titleVal) ? $titleVal : '';
 
                 return [
+                    ...$group,
                     'group_id' => $groupId,
                     'id' => $groupId,
                     'title' => $title,
                     'status_id' => $statusId,
                     'status' => StatusFormatter::server($statusId, false),
+                    'content_type_id' => $contentType,
                     'content_type' => $contentTypeStr,
                     'servers' => "{$activeCount}/{$serverCount}",
+                    'servers_count' => $serverCount,
+                    'servers_amount' => $serverCount,
+                    'total_servers_amount' => $serverCount,
+                    'active_servers_amount' => $activeCount,
                     'content_count' => number_format($contentCount),
+                    'total_content' => number_format($contentCount) . " {$contentTypeStr}",
                     'total_space' => $this->formatBytes($totalSpace),
+                    'free_space' => $this->formatBytes($minFreeSpace),
                     'min_free' => $this->formatBytes($minFreeSpace),
+                    'load' => number_format($load, 2),
                 ];
             }, $groups);
 

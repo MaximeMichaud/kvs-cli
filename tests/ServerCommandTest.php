@@ -133,6 +133,59 @@ class ServerCommandTest extends TestCase
         }
     }
 
+    public function testServerListExposesKvsAdminStorageServerFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'control_script_url',
+                'control_script_url_version',
+                'control_script_url_lock_ip',
+                'path',
+                'ftp_host',
+                'ftp_port',
+                'ftp_user',
+                'ftp_folder',
+                'ftp_timeout',
+                'ftp_force_ssl',
+                's3_region',
+                's3_endpoint',
+                's3_bucket',
+                's3_prefix',
+                'time_offset',
+                'lb_weight',
+                'lb_countries',
+                'is_debug_enabled',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('https://control.example.test', $rowsById[1]['control_script_url']);
+        $this->assertSame('1.0', $rowsById[1]['control_script_url_version']);
+        $this->assertSame(1, (int) $rowsById[1]['control_script_url_lock_ip']);
+        $this->assertSame('/data/videos', $rowsById[1]['path']);
+        $this->assertSame('0.25', (string) $rowsById[1]['time_offset']);
+        $this->assertSame('1.5', (string) $rowsById[1]['lb_weight']);
+        $this->assertSame('CA,US', $rowsById[1]['lb_countries']);
+        $this->assertSame('2026-05-20 10:00:00', $rowsById[1]['added_date']);
+
+        $this->assertSame('ftp.example.test', $rowsById[3]['ftp_host']);
+        $this->assertSame('21', $rowsById[3]['ftp_port']);
+        $this->assertSame('ftp-user', $rowsById[3]['ftp_user']);
+        $this->assertSame('/albums', $rowsById[3]['ftp_folder']);
+        $this->assertSame('30', $rowsById[3]['ftp_timeout']);
+        $this->assertSame(1, (int) $rowsById[3]['ftp_force_ssl']);
+        $this->assertSame(1, (int) $rowsById[3]['is_debug_enabled']);
+    }
+
     public function testServerListWithGroupFilterIsolatesGroups(): void
     {
         $this->tester->execute([
@@ -365,6 +418,41 @@ class ServerCommandTest extends TestCase
         $this->assertSame('2 GB', $rowsById[10]['min_free'] ?? null);
     }
 
+    public function testServerGroupListExposesKvsAdminGroupFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'group_id',
+                'content_type_id',
+                'servers_count',
+                'servers_amount',
+                'total_servers_amount',
+                'active_servers_amount',
+                'total_content',
+                'free_space',
+                'load',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'group_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(1, (int) $rowsById[10]['content_type_id']);
+        $this->assertSame(2, (int) $rowsById[10]['servers_count']);
+        $this->assertSame(2, (int) $rowsById[10]['servers_amount']);
+        $this->assertSame(2, (int) $rowsById[10]['total_servers_amount']);
+        $this->assertSame(1, (int) $rowsById[10]['active_servers_amount']);
+        $this->assertSame('3 Videos', $rowsById[10]['total_content']);
+        $this->assertSame('2 GB', $rowsById[10]['free_space']);
+        $this->assertSame('0.75', $rowsById[10]['load']);
+        $this->assertSame('2026-05-20 10:00:00', $rowsById[10]['added_date']);
+    }
+
     public function testServerGroupShow(): void
     {
         $this->tester->execute([
@@ -491,9 +579,10 @@ class ServerCommandTest extends TestCase
             'connection_type_id INTEGER, streaming_type_id INTEGER, total_space INTEGER, free_space INTEGER, ' .
             '`load` REAL, error_iteration INTEGER, error_streaming_iteration INTEGER, error_id INTEGER, ' .
             'error_streaming_id INTEGER, is_debug_enabled INTEGER, urls TEXT, path TEXT, ftp_host TEXT, ' .
-            'ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, s3_region TEXT, s3_bucket TEXT, s3_endpoint TEXT, ' .
-            's3_api_key TEXT, s3_api_secret TEXT, control_script_url TEXT, control_script_url_version TEXT, ' .
-            'added_date TEXT)'
+            'ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, ftp_timeout TEXT, ftp_force_ssl INTEGER, ' .
+            's3_region TEXT, s3_bucket TEXT, s3_endpoint TEXT, s3_prefix TEXT, s3_api_key TEXT, ' .
+            's3_api_secret TEXT, control_script_url TEXT, control_script_url_version TEXT, ' .
+            'control_script_url_lock_ip INTEGER, time_offset REAL, lb_weight REAL, lb_countries TEXT, added_date TEXT)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('videos') . ' (server_group_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('albums') . ' (server_group_id INTEGER)');
@@ -508,15 +597,19 @@ class ServerCommandTest extends TestCase
             ' (server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, ' .
             'total_space, free_space, `load`, error_iteration, error_streaming_iteration, error_id, ' .
             'error_streaming_id, is_debug_enabled, urls, path, ftp_host, ftp_port, ftp_user, ftp_folder, ' .
-            's3_region, s3_bucket, s3_endpoint, control_script_url, control_script_url_version, added_date) VALUES ' .
+            'ftp_timeout, ftp_force_ssl, s3_region, s3_bucket, s3_endpoint, s3_prefix, control_script_url, ' .
+            'control_script_url_version, control_script_url_lock_ip, time_offset, lb_weight, lb_countries, ' .
+            'added_date) VALUES ' .
             "(1, 10, 1, 'Video Local', 1, 0, 0, 10737418240, 6442450944, 0.50, 0, 0, 0, 0, 0, " .
-            "'https://cdn1.example.test', '/data/videos', '', '', '', '', '', '', '', " .
-            "'https://control.example.test', '1.0', '2026-05-20 10:00:00'), " .
+            "'https://cdn1.example.test', '/data/videos', '', '', '', '', '', 0, '', '', '', '', " .
+            "'https://control.example.test', '1.0', 1, 0.25, 1.5, 'CA,US', " .
+            "'2026-05-20 10:00:00'), " .
             "(2, 10, 1, 'Video Disabled', 0, 1, 1, 5368709120, 2147483648, 1.00, 0, 0, 0, 0, 0, " .
-            "'https://cdn2.example.test', '/mnt/videos', '', '', '', '', '', '', '', '', '', '2026-05-21 10:00:00'), " .
+            "'https://cdn2.example.test', '/mnt/videos', '', '', '', '', '', 0, '', '', '', '', " .
+            "'', '', 0, 0, 1.0, 'CA', '2026-05-21 10:00:00'), " .
             "(3, 20, 2, 'Album Error', 1, 2, 4, 2147483648, 536870912, 2.00, 3, 0, 1, 0, 1, " .
             "'https://albums.example.test', '', 'ftp.example.test', '21', 'ftp-user', '/albums', " .
-            "'', '', '', '', '', '2026-05-22 10:00:00')"
+            "'30', 1, '', '', '', '', '', '', 0, 0, 2.5, 'US', '2026-05-22 10:00:00')"
         );
         $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (10), (10), (10)');
         $db->exec('INSERT INTO ' . TestHelper::table('albums') . ' VALUES (20), (20)');
@@ -531,11 +624,13 @@ class ServerCommandTest extends TestCase
             ' (server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, ' .
             'total_space, free_space, `load`, error_iteration, error_streaming_iteration, error_id, ' .
             'error_streaming_id, is_debug_enabled, urls, path, ftp_host, ftp_port, ftp_user, ftp_folder, ' .
-            's3_region, s3_bucket, s3_endpoint, s3_api_key, s3_api_secret, control_script_url, ' .
-            'control_script_url_version, added_date) VALUES ' .
+            'ftp_timeout, ftp_force_ssl, s3_region, s3_bucket, s3_endpoint, s3_prefix, s3_api_key, ' .
+            's3_api_secret, control_script_url, control_script_url_version, control_script_url_lock_ip, ' .
+            'time_offset, lb_weight, lb_countries, added_date) VALUES ' .
             "(4, 20, 2, 'Album S3', 1, 3, 4, 3221225472, 1073741824, 0.25, 0, 0, 0, 0, 0, " .
-            "'https://s3-cdn.example.test', '', '', '', '', '', 'ca-central-1', 'album-bucket', " .
-            "'https://s3.example.test', 'hidden-fixture-value-a', 'hidden-fixture-value-b', '', '', " .
+            "'https://s3-cdn.example.test', '', '', '', '', '', '', 0, 'ca-central-1', 'album-bucket', " .
+            "'https://s3.example.test', 'albums', 'hidden-fixture-value-a', 'hidden-fixture-value-b', '', '', " .
+            "0, 0, 1.0, 'CA', " .
             "'2026-05-23 10:00:00')"
         );
     }

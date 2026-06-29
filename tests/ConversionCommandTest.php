@@ -104,6 +104,63 @@ class ConversionCommandTest extends TestCase
         $this->assertSame(2, (int) $rowsById[2]['max_tasks']);
     }
 
+    public function testConversionListExposesKvsAdminServerFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'title',
+                'status_id',
+                'api_version',
+                'tasks_amount',
+                'finished_tasks_amount',
+                'load',
+                'free_space',
+                'heartbeat_date',
+                'max_tasks',
+                'process_priority',
+                'connection_type_id',
+                'task_types',
+                'path',
+                'ftp_host',
+                'ftp_port',
+                'ftp_user',
+                'ftp_timeout',
+                'is_debug_enabled',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('Main Converter', $rowsById[1]['title']);
+        $this->assertSame(1, (int) $rowsById[1]['status_id']);
+        $this->assertSame('7.0.0', $rowsById[1]['api_version']);
+        $this->assertSame(2, (int) $rowsById[1]['tasks_amount']);
+        $this->assertSame(2, (int) $rowsById[1]['finished_tasks_amount']);
+        $this->assertSame('1.25', $rowsById[1]['load']);
+        $this->assertSame('6 GB', $rowsById[1]['free_space']);
+        $this->assertSame('2026-05-26 10:00:00', $rowsById[1]['heartbeat_date']);
+        $this->assertSame('4 (prioritize)', $rowsById[1]['max_tasks']);
+        $this->assertSame(9, (int) $rowsById[1]['process_priority']);
+        $this->assertSame(0, (int) $rowsById[1]['connection_type_id']);
+        $this->assertSame('a:1:{i:0;s:12:"video_admins";}', $rowsById[1]['task_types']);
+        $this->assertSame('/tmp/kvs-main-converter', $rowsById[1]['path']);
+        $this->assertSame(0, (int) $rowsById[1]['is_debug_enabled']);
+        $this->assertSame('2026-05-20 10:00:00', $rowsById[1]['added_date']);
+
+        $this->assertSame('ftp.example.test', $rowsById[2]['ftp_host']);
+        $this->assertSame('21', $rowsById[2]['ftp_port']);
+        $this->assertSame('ftp-user', $rowsById[2]['ftp_user']);
+        $this->assertSame('45', $rowsById[2]['ftp_timeout']);
+    }
+
     public function testConversionListIgnoresDisabledServerErrorsLikeKvsAdmin(): void
     {
         $this->db->exec(
@@ -520,8 +577,9 @@ class ConversionCommandTest extends TestCase
             'server_id INTEGER, title TEXT, status_id INTEGER, task_types TEXT, is_allow_any_tasks INTEGER, ' .
             'max_tasks INTEGER, max_tasks_priority INTEGER, process_priority INTEGER, option_storage_servers INTEGER, ' .
             'option_pull_source_files INTEGER, is_debug_enabled INTEGER, connection_type_id INTEGER, path TEXT, ' .
-            'ftp_host TEXT, ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, total_space INTEGER, free_space INTEGER, ' .
-            '`load` REAL, heartbeat_date TEXT, api_version TEXT, error_id INTEGER, error_iteration INTEGER, added_date TEXT)'
+            'ftp_host TEXT, ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, ftp_timeout TEXT, total_space INTEGER, ' .
+            'free_space INTEGER, `load` REAL, heartbeat_date TEXT, api_version TEXT, error_id INTEGER, ' .
+            'error_iteration INTEGER, added_date TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('background_tasks') . ' (' .
@@ -536,19 +594,19 @@ class ConversionCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
             ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
             'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
-            'path, ftp_host, ftp_port, ftp_user, ftp_folder, total_space, free_space, `load`, heartbeat_date, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
             'api_version, error_id, error_iteration, added_date) VALUES ' .
             "(1, 'Main Converter', 1, 'a:1:{i:0;s:12:\"video_admins\";}', 0, 4, 1, 9, 1, 0, 0, 0, " .
-            "'/tmp/kvs-main-converter', '', '', '', '', 10737418240, 6442450944, 1.25, " .
+            "'/tmp/kvs-main-converter', '', '', '', '', '', 10737418240, 6442450944, 1.25, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-20 10:00:00'), " .
             "(2, 'Disabled Converter', 0, '', 1, 2, 0, 14, 0, 0, 0, 2, " .
-            "'', 'ftp.example.test', '21', 'ftp-user', '/incoming', 5368709120, 1073741824, 0.10, " .
+            "'', 'ftp.example.test', '21', 'ftp-user', '/incoming', '45', 5368709120, 1073741824, 0.10, " .
             "'0000-00-00 00:00:00', '7.0.0', 0, 0, '2026-05-21 10:00:00'), " .
             "(3, 'Error Converter', 1, '', 1, 4, 0, 4, 1, 1, 1, 0, " .
-            "'/tmp/kvs-error-converter', '', '', '', '', 2147483648, 536870912, 3.50, " .
+            "'/tmp/kvs-error-converter', '', '', '', '', '', 2147483648, 536870912, 3.50, " .
             "'2026-05-26 10:00:00', '7.0.0', 4, 3, '2026-05-22 10:00:00'), " .
             "(4, 'Init Converter', 2, '', 1, 1, 0, 19, 0, 0, 0, 1, " .
-            "'/mnt/kvs-init-converter', '', '', '', '', 1073741824, 536870912, 0.00, " .
+            "'/mnt/kvs-init-converter', '', '', '', '', '', 1073741824, 536870912, 0.00, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-23 10:00:00')"
         );
         $db->exec(

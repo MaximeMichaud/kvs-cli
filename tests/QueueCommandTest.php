@@ -121,6 +121,46 @@ class QueueCommandTest extends TestCase
         $this->assertSame('Conversion Failed', $rows[0]['error']);
     }
 
+    public function testQueueListExposesKvsAdminObjectFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'task_id',
+                'status_id',
+                'error_code',
+                'message',
+                'type_id',
+                'server',
+                'object',
+                'object_id',
+                'object_type_id',
+                'priority',
+                'added_date',
+                'start_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['task_id']);
+        $this->assertSame(2, (int) $rows[0]['status_id']);
+        $this->assertSame(3, (int) $rows[0]['error_code']);
+        $this->assertSame('Converter returned exit code 1', $rows[0]['message']);
+        $this->assertSame(4, (int) $rows[0]['type_id']);
+        $this->assertSame('Backup Worker', $rows[0]['server']);
+        $this->assertSame(101, (int) $rows[0]['object']);
+        $this->assertSame(101, (int) $rows[0]['object_id']);
+        $this->assertSame(1, (int) $rows[0]['object_type_id']);
+        $this->assertSame(50, (int) $rows[0]['priority']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+        $this->assertSame('2026-05-26 10:05:00', $rows[0]['start_date']);
+    }
+
     public function testQueueListCountFormatIgnoresLimitButAppliesFilters(): void
     {
         $this->tester->execute([
@@ -181,6 +221,44 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('New Video', $output);
         $this->assertStringContainsString('New Album', $output);
         $this->assertStringNotContainsString('Create Video Format', $output);
+    }
+
+    public function testQueueHistoryExposesKvsAdminObjectFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'task_id',
+                'status_id',
+                'error_code',
+                'message',
+                'type_id',
+                'server',
+                'object',
+                'object_id',
+                'object_type_id',
+                'start_date',
+                'end_date',
+                'effective_duration',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(301, (int) $rows[0]['task_id']);
+        $this->assertSame(3, (int) $rows[0]['status_id']);
+        $this->assertSame(0, (int) $rows[0]['error_code']);
+        $this->assertSame('Finished conversion', $rows[0]['message']);
+        $this->assertSame(1, (int) $rows[0]['type_id']);
+        $this->assertSame('Local Worker', $rows[0]['server']);
+        $this->assertSame(100, (int) $rows[0]['object']);
+        $this->assertSame(100, (int) $rows[0]['object_id']);
+        $this->assertSame(1, (int) $rows[0]['object_type_id']);
+        $this->assertSame(3661, (int) $rows[0]['effective_duration']);
     }
 
     public function testQueueHistoryCountFormatIgnoresLimitButAppliesFilters(): void

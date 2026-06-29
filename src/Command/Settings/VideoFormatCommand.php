@@ -98,19 +98,9 @@ HELP
         }
 
         $query = "SELECT
-                f.format_video_id,
-                f.title,
-                f.postfix,
-                f.status_id,
+                f.*,
                 CASE WHEN f.status_id = 2 AND f.is_conditional = 1 THEN 9 ELSE f.status_id END as display_status_id,
-                f.size,
-                f.access_level_id,
-                f.is_download_enabled,
-                f.is_timeline_enabled,
-                f.timeline_option,
-                f.timeline_amount,
-                f.timeline_interval,
-                f.format_video_group_id,
+                CASE WHEN f.is_hotlink_protection_disabled = 1 THEN 0 ELSE 1 END as is_hotlink_protection_enabled,
                 g.title as group_title
             FROM {$this->table('formats_videos')} f
             LEFT JOIN {$this->table('formats_videos_groups')} g
@@ -172,6 +162,7 @@ HELP
 
             /** @var list<array<string, mixed>> $formats */
             $formats = $stmt->fetchAll();
+            $formats = $this->addVideoCounts($db, $formats);
 
             if ($formats === []) {
                 $this->io()->warning('No video formats found');
@@ -206,6 +197,58 @@ HELP
             $this->io()->error('Failed to fetch video formats: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $formats
+     * @return list<array<string, mixed>>
+     */
+    private function addVideoCounts(\PDO $db, array $formats): array
+    {
+        $postfixesByIndex = [];
+        foreach ($formats as $index => $format) {
+            $postfix = $format['postfix'] ?? '';
+            if (is_string($postfix) && $postfix !== '') {
+                $postfixesByIndex[$index] = $postfix;
+            }
+            $formats[$index]['videos_count'] = 0;
+        }
+
+        if ($postfixesByIndex === []) {
+            return $formats;
+        }
+
+        try {
+            $stmt = $db->query("
+                SELECT file_formats
+                FROM {$this->table('videos')}
+                WHERE load_type_id = 1 AND status_id IN (0, 1)
+            ");
+        } catch (\Throwable) {
+            return $formats;
+        }
+
+        if ($stmt === false) {
+            return $formats;
+        }
+
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $video) {
+            if (!is_array($video)) {
+                continue;
+            }
+            $fileFormats = $video['file_formats'] ?? '';
+            if (!is_string($fileFormats)) {
+                continue;
+            }
+
+            foreach ($postfixesByIndex as $index => $postfix) {
+                if (str_contains($fileFormats, "||{$postfix}|")) {
+                    $formats[$index]['videos_count']++;
+                }
+            }
+        }
+
+        return $formats;
     }
 
     private function showFormat(InputInterface $input, ?string $id): int
@@ -355,16 +398,20 @@ HELP
 
         try {
             $stmt = $db->query("
-                SELECT
-                    g.format_video_group_id,
-                    g.title,
-                    g.is_default,
-                    g.is_premium,
-                    COUNT(f.format_video_id) as format_count
+                SELECT g.*,
+                    (
+                        SELECT COUNT(*)
+                        FROM {$this->table('formats_videos')} f
+                        WHERE f.format_video_group_id = g.format_video_group_id
+                    ) as format_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM {$this->table('videos')} v
+                        WHERE v.format_video_group_id = g.format_video_group_id
+                            AND v.load_type_id = 1
+                            AND v.status_id IN (0, 1)
+                    ) as videos_count
                 FROM {$this->table('formats_videos_groups')} g
-                LEFT JOIN {$this->table('formats_videos')} f
-                    ON g.format_video_group_id = f.format_video_group_id
-                GROUP BY g.format_video_group_id, g.title, g.is_default, g.is_premium
                 ORDER BY g.format_video_group_id ASC
             ");
 
