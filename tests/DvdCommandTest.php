@@ -209,9 +209,9 @@ class DvdCommandTest extends TestCase
         $this->assertSame('back-2.jpg', $rows[0]['cover2_back']);
         $this->assertSame('channel-owner', $rows[0]['user']);
         $this->assertSame(2, (int) $rows[0]['is_video_upload_allowed']);
-        $this->assertSame('featured,series', $rows[0]['tags']);
-        $this->assertSame('Channels,Featured', $rows[0]['categories']);
-        $this->assertSame('Model One,Model Two', $rows[0]['models']);
+        $this->assertSame('series,featured', $rows[0]['tags']);
+        $this->assertSame('Featured,Channels', $rows[0]['categories']);
+        $this->assertSame('Model Two,Model One', $rows[0]['models']);
         $this->assertSame(4.5, (float) $rows[0]['avg_videos_rating']);
         $this->assertSame(1200, (int) $rows[0]['avg_videos_popularity']);
     }
@@ -427,7 +427,7 @@ class DvdCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags_dvds') . ' (' .
-            'tag_id INTEGER, dvd_id INTEGER)'
+            'id INTEGER, tag_id INTEGER, dvd_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
@@ -435,7 +435,7 @@ class DvdCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories_dvds') . ' (' .
-            'category_id INTEGER, dvd_id INTEGER)'
+            'id INTEGER, category_id INTEGER, dvd_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models') . ' (' .
@@ -443,7 +443,7 @@ class DvdCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models_dvds') . ' (' .
-            'model_id INTEGER, dvd_id INTEGER)'
+            'id INTEGER, model_id INTEGER, dvd_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
@@ -480,17 +480,17 @@ class DvdCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('tags') .
             " VALUES (1, 'featured'), (2, 'series')"
         );
-        $db->exec('INSERT INTO ' . TestHelper::table('tags_dvds') . ' VALUES (1, 30), (2, 30)');
+        $db->exec('INSERT INTO ' . TestHelper::table('tags_dvds') . ' VALUES (1, 2, 30), (2, 1, 30)');
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories') .
             " VALUES (1, 'Channels'), (2, 'Featured')"
         );
-        $db->exec('INSERT INTO ' . TestHelper::table('categories_dvds') . ' VALUES (1, 30), (2, 30)');
+        $db->exec('INSERT INTO ' . TestHelper::table('categories_dvds') . ' VALUES (1, 2, 30), (2, 1, 30)');
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
             " VALUES (1, 'Model One'), (2, 'Model Two')"
         );
-        $db->exec('INSERT INTO ' . TestHelper::table('models_dvds') . ' VALUES (1, 30), (2, 30)');
+        $db->exec('INSERT INTO ' . TestHelper::table('models_dvds') . ' VALUES (1, 2, 30), (2, 1, 30)');
         $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (30, 3600), (30, 90), (20, 120), (10, 300)');
         $db->exec(
             'INSERT INTO ' . TestHelper::table('comments') .

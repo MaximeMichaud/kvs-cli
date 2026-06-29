@@ -226,7 +226,7 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['models']);
         $this->assertSame(1, (int) $rows[0]['dvds']);
         $this->assertSame(1, (int) $rows[0]['dvds_groups']);
-        $this->assertSame(9, (int) $rows[0]['total_usage']);
+        $this->assertSame(14, (int) $rows[0]['total_usage']);
     }
 
     public function testListExposesKvsAdminCountFields(): void
@@ -293,7 +293,7 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('4k', $output);
         $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
         $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
-        $this->assertMatchesRegularExpression('/Total Usage\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Total Usage\W+13/', $output);
     }
 
     public function testCreateWithoutName(): void

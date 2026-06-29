@@ -198,6 +198,7 @@ HELP
                 $statusIdVal = $tag['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
                 $otherAmount = $this->getTagStoredOtherAmount($tag);
+                $allAmount = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
                 $transformedTags[] = [
                     ...$tag,
                     'tag_id' => $tag['tag_id'] ?? 0,
@@ -206,12 +207,12 @@ HELP
                     'tag_rename' => $tag['tag'] ?? '',
                     'video_count' => $counts['videos'],
                     'album_count' => $counts['albums'],
-                    'total_usage' => array_sum($counts),
+                    'total_usage' => $allAmount,
                     'videos_amount' => $counts['videos'],
                     'albums_amount' => $counts['albums'],
                     'posts_amount' => $counts['posts'],
                     'other_amount' => $otherAmount,
-                    'all_amount' => $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount,
+                    'all_amount' => $allAmount,
                     'status_id' => $statusId,
                     'status' => StatusFormatter::tag($statusId, false),
                     ...$counts,
@@ -283,7 +284,9 @@ HELP
                 $info[] = [$label, (string) ($counts[$suffix] ?? 0)];
             }
 
-            $info[] = ['Total Usage', (string) array_sum($counts)];
+            $otherAmount = $this->getTagStoredOtherAmount($tag);
+            $totalUsage = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
+            $info[] = ['Total Usage', (string) $totalUsage];
             $info[] = ['Added', $addedDate];
 
             $this->renderTable(['Property', 'Value'], $info);

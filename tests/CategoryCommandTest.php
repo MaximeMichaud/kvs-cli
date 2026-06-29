@@ -67,7 +67,7 @@ class CategoryCommandTest extends TestCase
         $this->assertSame('Active', $rows[1]['status']);
         $this->assertSame(2, (int) $rows[1]['video_count']);
         $this->assertSame(1, (int) $rows[1]['album_count']);
-        $this->assertSame(5, (int) $rows[1]['total_usage']);
+        $this->assertSame(15, (int) $rows[1]['total_usage']);
         $this->assertSame(0, (int) $rows[0]['total_usage']);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }

@@ -361,7 +361,7 @@ HELP
         }
         if ($this->isModelFieldRequested($input, 'tags')) {
             $extraSelects[] = "(
-                SELECT GROUP_CONCAT(t.tag)
+                SELECT GROUP_CONCAT(t.tag ORDER BY tm.id ASC)
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags_models')} tm ON tm.tag_id = t.tag_id
                 WHERE tm.model_id = m.model_id
@@ -369,7 +369,7 @@ HELP
         }
         if ($this->isModelFieldRequested($input, 'categories')) {
             $extraSelects[] = "(
-                SELECT GROUP_CONCAT(c.title)
+                SELECT GROUP_CONCAT(c.title ORDER BY cm_rel.id ASC)
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories_models')} cm_rel ON cm_rel.category_id = c.category_id
                 WHERE cm_rel.model_id = m.model_id

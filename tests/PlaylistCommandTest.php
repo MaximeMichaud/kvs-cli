@@ -202,8 +202,8 @@ class PlaylistCommandTest extends TestCase
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(30, (int) $rows[0]['playlist_id']);
-        $this->assertSame('training', $rows[0]['tags']);
-        $this->assertSame('Featured', $rows[0]['categories']);
+        $this->assertSame('practice,training', $rows[0]['tags']);
+        $this->assertSame('Archive,Featured', $rows[0]['categories']);
     }
 
     public function testPlaylistListCsvFormat(): void
@@ -263,8 +263,8 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('A test playlist', $output);
         $this->assertStringContainsString('#100: Intro Video', $output);
         $this->assertStringContainsString('#101: Second Video', $output);
-        $this->assertStringContainsString('Featured', $output);
-        $this->assertStringContainsString('training', $output);
+        $this->assertStringContainsString('Archive, Featured', $output);
+        $this->assertStringContainsString('practice, training', $output);
     }
 
     public function testPlaylistShowNotFound(): void
@@ -597,7 +597,7 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories_playlists') . ' (' .
-            'category_id INTEGER, playlist_id INTEGER)'
+            'id INTEGER, category_id INTEGER, playlist_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
@@ -605,7 +605,7 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags_playlists') . ' (' .
-            'tag_id INTEGER, playlist_id INTEGER)'
+            'id INTEGER, tag_id INTEGER, playlist_id INTEGER)'
         );
 
         $db->exec(
@@ -643,19 +643,19 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories') .
-            " (category_id, title) VALUES (1, 'Featured')"
+            " (category_id, title) VALUES (1, 'Featured'), (2, 'Archive')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories_playlists') .
-            ' (category_id, playlist_id) VALUES (1, 30)'
+            ' (id, category_id, playlist_id) VALUES (1, 2, 30), (2, 1, 30)'
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
-            " (tag_id, tag) VALUES (1, 'training')"
+            " (tag_id, tag) VALUES (1, 'training'), (2, 'practice')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_playlists') .
-            ' (tag_id, playlist_id) VALUES (1, 30)'
+            ' (id, tag_id, playlist_id) VALUES (1, 2, 30), (2, 1, 30)'
         );
 
         return $db;

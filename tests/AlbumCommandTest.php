@@ -129,9 +129,9 @@ class AlbumCommandTest extends TestCase
         $this->assertSame('Gallery Studio', $rows[0]['content_source']);
         $this->assertSame('Album Review', $rows[0]['admin_flag']);
         $this->assertSame('Album Storage', $rows[0]['server_group']);
-        $this->assertSame('album-tag', $rows[0]['tags']);
-        $this->assertSame('Album Category', $rows[0]['categories']);
-        $this->assertSame('Album Model', $rows[0]['models']);
+        $this->assertSame('zeta-album,album-tag', $rows[0]['tags']);
+        $this->assertSame('Second Album Category,Album Category', $rows[0]['categories']);
+        $this->assertSame('Album Model Two,Album Model', $rows[0]['models']);
         $this->assertSame('127.0.0.1', $rows[0]['ip']);
     }
 
@@ -266,11 +266,17 @@ class AlbumCommandTest extends TestCase
             'group_id INTEGER, title TEXT, status_id INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories_albums') . ' (category_id INTEGER, album_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_albums') .
+            ' (id INTEGER, category_id INTEGER, album_id INTEGER)'
+        );
         $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags_albums') . ' (tag_id INTEGER, album_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_albums') . ' (id INTEGER, tag_id INTEGER, album_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('models_albums') . ' (model_id INTEGER, album_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('models_albums') .
+            ' (id INTEGER, model_id INTEGER, album_id INTEGER)'
+        );
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice', 1), (2, 'bob', 0)");
         $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'moderator', 0), (9, 'admin', 1)");
@@ -298,12 +304,15 @@ class AlbumCommandTest extends TestCase
             " VALUES (5, 'Album Storage', 1)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('albums_images') . " VALUES (10), (10), (20)");
-        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Album Category')");
-        $db->exec("INSERT INTO " . TestHelper::table('categories_albums') . " VALUES (1, 20)");
-        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'album-tag')");
-        $db->exec("INSERT INTO " . TestHelper::table('tags_albums') . " VALUES (1, 20)");
-        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Album Model')");
-        $db->exec("INSERT INTO " . TestHelper::table('models_albums') . " VALUES (1, 20)");
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('categories') .
+            " VALUES (1, 'Album Category'), (2, 'Second Album Category')"
+        );
+        $db->exec("INSERT INTO " . TestHelper::table('categories_albums') . " VALUES (1, 2, 20), (2, 1, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'album-tag'), (2, 'zeta-album')");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_albums') . " VALUES (1, 2, 20), (2, 1, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Album Model'), (2, 'Album Model Two')");
+        $db->exec("INSERT INTO " . TestHelper::table('models_albums') . " VALUES (1, 2, 20), (2, 1, 20)");
         $db->exec(
             'INSERT INTO ' . TestHelper::table('comments') .
             ' (comment_id, object_type_id, object_id) VALUES ' .

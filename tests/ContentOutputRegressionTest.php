@@ -257,9 +257,9 @@ class ContentOutputRegressionTest extends TestCase
             'rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (id INTEGER, category_id INTEGER, video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ktvs_tags_videos (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags_videos (id INTEGER, tag_id INTEGER, video_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
             "(20, 'Daily news', 1, 2, 0, 120, 5050, '1280x720', '2024-01-02 00:00:00', 20, 5, 15, 7, '')"
@@ -284,9 +284,9 @@ class ContentOutputRegressionTest extends TestCase
             'rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (id INTEGER, category_id INTEGER, video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ktvs_tags_videos (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags_videos (id INTEGER, tag_id INTEGER, video_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
             "(20, 'Premium news', 1, 2, 2, 120, 5050, '1280x720', '2024-01-02 00:00:00', 20, 5, 15, 7, '')"

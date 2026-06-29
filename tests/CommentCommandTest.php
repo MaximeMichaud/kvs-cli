@@ -350,6 +350,56 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Great test video', $output);
     }
 
+    public function testPendingActionJsonFormatIsNotDecoratedAndExposesContentAlias(): void
+    {
+        $this->tester->execute([
+            'action' => 'pending',
+            '--format' => 'json',
+            '--fields' => 'comment_id,content,content_title,type,is_approved',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertStringNotContainsString('Pending Comments', $output);
+        $this->assertStringNotContainsString('Use kvs comment approve ID', $output);
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['comment_id']);
+        $this->assertSame(100, (int) $rows[0]['content']);
+        $this->assertSame('Intro Video', $rows[0]['content_title']);
+        $this->assertSame('Video', $rows[0]['type']);
+        $this->assertSame(0, (int) $rows[0]['is_approved']);
+    }
+
+    public function testPendingActionCountFormatIgnoresPaginationAndIsNotDecorated(): void
+    {
+        $this->insertComment($this->db, [
+            'comment_id' => 40,
+            'object_id' => 200,
+            'object_type_id' => 2,
+            'object_sub_id' => 0,
+            'user_id' => 1,
+            'anonymous_username' => '',
+            'is_approved' => 0,
+            'is_review_needed' => 1,
+            'comment' => 'Second pending comment',
+            'country_code' => 'CA',
+            'ip' => 0,
+            'rating' => 0,
+            'added_date' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->tester->execute([
+            'action' => 'pending',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('2', trim($this->tester->getDisplay()));
+    }
+
     public function testDefaultActionIsList(): void
     {
         $this->tester->execute([]);

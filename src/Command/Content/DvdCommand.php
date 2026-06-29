@@ -437,7 +437,7 @@ HELP
         }
         if ($this->isDvdFieldRequested($input, 'tags')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(t.tag)
+                SELECT GROUP_CONCAT(t.tag ORDER BY td.id ASC)
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags_dvds')} td ON td.tag_id = t.tag_id
                 WHERE td.dvd_id = d.dvd_id
@@ -445,7 +445,7 @@ HELP
         }
         if ($this->isDvdFieldRequested($input, 'categories')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(c.title)
+                SELECT GROUP_CONCAT(c.title ORDER BY cd.id ASC)
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories_dvds')} cd ON cd.category_id = c.category_id
                 WHERE cd.dvd_id = d.dvd_id
@@ -453,7 +453,7 @@ HELP
         }
         if ($this->isDvdFieldRequested($input, 'models')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(m.title)
+                SELECT GROUP_CONCAT(m.title ORDER BY md.id ASC)
                 FROM {$this->table('models')} m
                 INNER JOIN {$this->table('models_dvds')} md ON md.model_id = m.model_id
                 WHERE md.dvd_id = d.dvd_id

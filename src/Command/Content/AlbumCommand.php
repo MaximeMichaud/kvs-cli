@@ -251,7 +251,7 @@ HELP
         }
         if ($this->isAlbumFieldRequested($input, 'tags')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(t.tag)
+                SELECT GROUP_CONCAT(t.tag ORDER BY ta.id ASC)
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags_albums')} ta ON ta.tag_id = t.tag_id
                 WHERE ta.album_id = a.album_id
@@ -259,7 +259,7 @@ HELP
         }
         if ($this->isAlbumFieldRequested($input, 'categories')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(c.title)
+                SELECT GROUP_CONCAT(c.title ORDER BY ca.id ASC)
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories_albums')} ca ON ca.category_id = c.category_id
                 WHERE ca.album_id = a.album_id
@@ -267,7 +267,7 @@ HELP
         }
         if ($this->isAlbumFieldRequested($input, 'models')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(m.title)
+                SELECT GROUP_CONCAT(m.title ORDER BY ma.id ASC)
                 FROM {$this->table('models')} m
                 INNER JOIN {$this->table('models_albums')} ma ON ma.model_id = m.model_id
                 WHERE ma.album_id = a.album_id

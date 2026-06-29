@@ -183,8 +183,11 @@ HELP
             /** @var list<array<string, mixed>> $videos */
             $videos = $stmt->fetchAll();
 
+            $thumbFormat = $this->isFieldRequested($input, 'thumb') ? $this->getVideoThumbFormat($db) : null;
+            $thumbBaseUrl = $thumbFormat !== null ? $this->getVideoThumbBaseUrl() : null;
+
             // Transform data for display (field aliases and calculated values)
-            $videos = array_map(function (array $video): array {
+            $videos = array_map(function (array $video) use ($thumbFormat, $thumbBaseUrl): array {
                 // Add field aliases
                 $video['id'] = $video['video_id'];
                 $statusId = isset($video['status_id']) && is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
@@ -215,8 +218,7 @@ HELP
                     $video['ip'] = $this->formatKvsIp($video['ip']);
                 }
 
-                $screenMain = $video['screen_main'] ?? null;
-                $video['thumb'] = is_numeric($screenMain) && (int) $screenMain > 0 ? (string) $screenMain : '';
+                $video['thumb'] = $this->formatVideoThumb($video, $thumbFormat, $thumbBaseUrl);
                 $video['rating'] = format_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
                 return $video;
@@ -296,7 +298,7 @@ HELP
         }
         if ($this->isFieldRequested($input, 'tags')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(t.tag)
+                SELECT GROUP_CONCAT(t.tag ORDER BY tv.id ASC)
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags_videos')} tv ON tv.tag_id = t.tag_id
                 WHERE tv.video_id = v.video_id
@@ -304,7 +306,7 @@ HELP
         }
         if ($this->isFieldRequested($input, 'categories')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(c.title)
+                SELECT GROUP_CONCAT(c.title ORDER BY cv.id ASC)
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories_videos')} cv ON cv.category_id = c.category_id
                 WHERE cv.video_id = v.video_id
@@ -312,7 +314,7 @@ HELP
         }
         if ($this->isFieldRequested($input, 'models')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(m.title)
+                SELECT GROUP_CONCAT(m.title ORDER BY mv.id ASC)
                 FROM {$this->table('models')} m
                 INNER JOIN {$this->table('models_videos')} mv ON mv.model_id = m.model_id
                 WHERE mv.video_id = v.video_id
@@ -396,6 +398,7 @@ HELP
                 SELECT c.title FROM {$this->table('categories')} c
                 JOIN {$this->table('categories_videos')} cv ON c.category_id = cv.category_id
                 WHERE cv.video_id = :id
+                ORDER BY cv.id ASC
             ");
             $stmt->execute(['id' => $id]);
             $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
@@ -409,6 +412,7 @@ HELP
                 SELECT t.tag FROM {$this->table('tags')} t
                 JOIN {$this->table('tags_videos')} tv ON t.tag_id = tv.tag_id
                 WHERE tv.video_id = :id
+                ORDER BY tv.id ASC
             ");
             $stmt->execute(['id' => $id]);
             $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
@@ -423,6 +427,120 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    private function getVideoThumbFormat(\PDO $db): ?string
+    {
+        try {
+            $stmt = $db->query("
+                SELECT size
+                FROM {$this->table('formats_screenshots')}
+                WHERE status_id = 1 AND group_id = 1
+            ");
+        } catch (\PDOException) {
+            return null;
+        }
+
+        if ($stmt === false) {
+            return null;
+        }
+
+        $targetWidth = $this->getVideoThumbTargetWidth();
+        $bestFormat = null;
+        $bestDistance = PHP_INT_MAX;
+
+        while (($size = $stmt->fetchColumn()) !== false) {
+            if (!is_string($size) || $size === '' || $size === 'source') {
+                continue;
+            }
+
+            $width = $this->parseSizeWidth($size);
+            if ($width === null) {
+                continue;
+            }
+
+            $distance = abs($targetWidth - $width);
+            if ($bestFormat === null || $distance < $bestDistance) {
+                $bestFormat = $size;
+                $bestDistance = $distance;
+            }
+        }
+
+        return $bestFormat;
+    }
+
+    private function getVideoThumbTargetWidth(): int
+    {
+        $config = $this->getKvsRuntimeConfig();
+        $configuredSize = $config['maximum_thumb_size'] ?? '150x150';
+        if (!is_scalar($configuredSize)) {
+            return 150;
+        }
+
+        return $this->parseSizeWidth((string) $configuredSize) ?? 150;
+    }
+
+    private function parseSizeWidth(string $size): ?int
+    {
+        $parts = explode('x', $size, 2);
+        if ($parts[0] === '' || !ctype_digit($parts[0])) {
+            return null;
+        }
+
+        $width = (int) $parts[0];
+        return $width > 0 ? $width : null;
+    }
+
+    private function getVideoThumbBaseUrl(): ?string
+    {
+        $config = $this->getKvsRuntimeConfig();
+        foreach (['content_url_videos_screenshots_admin_panel', 'content_url_videos_screenshots'] as $key) {
+            $value = $config[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return rtrim($value, '/');
+            }
+        }
+
+        $projectUrl = $config['project_url'] ?? null;
+        if (is_string($projectUrl) && trim($projectUrl) !== '') {
+            return rtrim($projectUrl, '/') . '/contents/videos_screenshots';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function formatVideoThumb(array $video, ?string $thumbFormat, ?string $thumbBaseUrl): string
+    {
+        $screenMain = $video['screen_main'] ?? null;
+        $videoId = $video['video_id'] ?? null;
+        $statusId = $video['status_id'] ?? null;
+
+        if (
+            $thumbFormat === null
+            || $thumbBaseUrl === null
+            || !is_numeric($screenMain)
+            || (int) $screenMain <= 0
+            || !is_numeric($videoId)
+            || !is_numeric($statusId)
+            || !in_array((int) $statusId, [StatusFormatter::VIDEO_DISABLED, StatusFormatter::VIDEO_ACTIVE], true)
+        ) {
+            return '';
+        }
+
+        $videoIdInt = (int) $videoId;
+        $dirPath = (int) (floor($videoIdInt / 1000) * 1000);
+
+        return sprintf(
+            '%s/%d/%d/%s/%d.jpg',
+            $thumbBaseUrl,
+            $dirPath,
+            $videoIdInt,
+            $thumbFormat,
+            (int) $screenMain
+        );
     }
 
     private function deleteVideo(?string $id, InputInterface $input): int

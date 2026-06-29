@@ -254,7 +254,7 @@ HELP
 
         if ($this->isPlaylistFieldRequested($input, 'tags')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(t.tag)
+                SELECT GROUP_CONCAT(t.tag ORDER BY tp.id ASC)
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags_playlists')} tp ON tp.tag_id = t.tag_id
                 WHERE tp.playlist_id = p.playlist_id
@@ -262,7 +262,7 @@ HELP
         }
         if ($this->isPlaylistFieldRequested($input, 'categories')) {
             $selects[] = "(
-                SELECT GROUP_CONCAT(c.title)
+                SELECT GROUP_CONCAT(c.title ORDER BY cp.id ASC)
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories_playlists')} cp ON cp.category_id = c.category_id
                 WHERE cp.playlist_id = p.playlist_id
@@ -414,6 +414,7 @@ HELP
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories')}_playlists cp ON c.category_id = cp.category_id
                 WHERE cp.playlist_id = :id
+                ORDER BY cp.id ASC
             ");
             $stmt->execute(['id' => $id]);
             /** @var list<array{title: string}> $categories */
@@ -432,6 +433,7 @@ HELP
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags')}_playlists tp ON t.tag_id = tp.tag_id
                 WHERE tp.playlist_id = :id
+                ORDER BY tp.id ASC
             ");
             $stmt->execute(['id' => $id]);
             /** @var list<array{tag: string}> $tags */

@@ -200,18 +200,19 @@ HELP
                 $counts = $this->extractCategoryUsageCounts($category);
                 $statusIdVal = $category['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $otherAmount = $this->getCategoryStoredOtherAmount($category);
+                $allAmount = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
                 $category['id'] = $category['category_id'] ?? 0;
                 $category['video_count'] = $counts['videos'];
                 $category['album_count'] = $counts['albums'];
-                $category['total_usage'] = array_sum($counts);
+                $category['total_usage'] = $allAmount;
                 $category['status'] = StatusFormatter::category($statusId, false);
-                $otherAmount = $this->getCategoryStoredOtherAmount($category);
                 $category['thumb'] = $category['screenshot1'] ?? $category['screenshot2'] ?? '';
                 $category['videos_amount'] = $counts['videos'];
                 $category['albums_amount'] = $counts['albums'];
                 $category['posts_amount'] = $counts['posts'];
                 $category['other_amount'] = $otherAmount;
-                $category['all_amount'] = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
+                $category['all_amount'] = $allAmount;
 
                 return [
                     ...$category,

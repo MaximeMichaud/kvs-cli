@@ -578,6 +578,22 @@ HELP
                 return self::FAILURE;
             }
 
+            $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+            $hasSingleField = $this->getStringOption($input, 'field') !== null;
+            $decorateOutput = $format === 'table' && !$hasSingleField;
+
+            if ($format === 'count') {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} c WHERE $whereClause");
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue(':' . $key, $value);
+                }
+                $stmt->execute();
+
+                $total = $stmt->fetchColumn();
+                $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+                return self::SUCCESS;
+            }
+
             $countrySelect = '';
             $countryJoin = '';
             if ($this->isCommentFieldRequested($input, 'country')) {
@@ -611,11 +627,21 @@ HELP
             $comments = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             if ($comments === []) {
-                $this->io()->success('No pending comments awaiting moderation');
+                if ($decorateOutput) {
+                    $this->io()->success('No pending comments awaiting moderation');
+                } else {
+                    $formatter = new Formatter(
+                        $input->getOptions(),
+                        ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date']
+                    );
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
-            $this->io()->title('Pending Comments (' . count($comments) . ' awaiting moderation)');
+            if ($decorateOutput) {
+                $this->io()->title('Pending Comments (' . count($comments) . ' awaiting moderation)');
+            }
 
             // Transform comments
             $transformedComments = array_map(function (array $comment): array {
@@ -625,6 +651,7 @@ HELP
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
+                    'object_id' => $comment['object_id'] ?? 0,
                     'comment' => $comment['comment'] ?? '',
                     'comment_full' => $comment['comment'] ?? '',
                     'country' => $comment['country'] ?? '',
@@ -640,11 +667,13 @@ HELP
             );
             $formatter->display($transformedComments, $this->io());
 
-            $this->io()->newLine();
-            $this->io()->text(
-                '<info>Tip:</info> Use <comment>kvs comment approve ID</comment> ' .
-                'or <comment>kvs comment reject ID</comment> to moderate'
-            );
+            if ($decorateOutput) {
+                $this->io()->newLine();
+                $this->io()->text(
+                    '<info>Tip:</info> Use <comment>kvs comment approve ID</comment> ' .
+                    'or <comment>kvs comment reject ID</comment> to moderate'
+                );
+            }
 
             return self::SUCCESS;
         } catch (\Exception $e) {

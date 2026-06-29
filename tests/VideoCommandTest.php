@@ -19,7 +19,11 @@ class VideoCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation([
+            'project_url' => 'https://example.test',
+            'content_url_videos_screenshots' => 'https://cdn.example.test/videos_screenshots',
+            'content_url_videos_screenshots_admin_panel' => 'https://admin-cdn.example.test/videos_screenshots',
+        ]);
         $this->db = $this->createDatabase();
 
         $this->config = TestHelper::createTestConfiguration($this->kvsPath);
@@ -132,7 +136,7 @@ class VideoCommandTest extends TestCase
         $this->assertStringContainsString('Featured Clip', $output);
         $this->assertStringContainsString('Featured description', $output);
         $this->assertStringContainsString('Action', $output);
-        $this->assertStringContainsString('tag-one, tag-two', $output);
+        $this->assertStringContainsString('tag-two, tag-one', $output);
         $this->assertMatchesRegularExpression('/Duration\W+2:05/', $output);
         $this->assertMatchesRegularExpression('/Views\W+123/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
@@ -201,15 +205,15 @@ class VideoCommandTest extends TestCase
 
         $this->assertSame(10, (int) $rows[0]['video_id']);
         $this->assertSame('Featured Clip', $rows[0]['title']);
-        $this->assertSame('3', $rows[0]['thumb']);
+        $this->assertSame('https://admin-cdn.example.test/videos_screenshots/0/10/320x180/3.jpg', $rows[0]['thumb']);
         $this->assertSame('Studio One', $rows[0]['content_source']);
         $this->assertSame('Series One', $rows[0]['dvd']);
         $this->assertSame('Needs Review', $rows[0]['admin_flag']);
         $this->assertSame('Primary Storage', $rows[0]['server_group']);
         $this->assertSame('HD Formats', $rows[0]['format_video_group']);
-        $this->assertSame('tag-one,tag-two', $rows[0]['tags']);
-        $this->assertSame('Action', $rows[0]['categories']);
-        $this->assertSame('Model One', $rows[0]['models']);
+        $this->assertSame('tag-two,tag-one', $rows[0]['tags']);
+        $this->assertSame('Drama,Action', $rows[0]['categories']);
+        $this->assertSame('Model Two,Model One', $rows[0]['models']);
         $this->assertSame('127.0.0.1', $rows[0]['ip']);
     }
 
@@ -287,12 +291,19 @@ class VideoCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('comments') .
             ' (comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
         );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('formats_screenshots') .
+            ' (format_screenshot_id INTEGER, size TEXT, status_id INTEGER, group_id INTEGER)'
+        );
         $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories_videos') . ' (category_id INTEGER, video_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_videos') .
+            ' (id INTEGER, category_id INTEGER, video_id INTEGER)'
+        );
         $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (id INTEGER, tag_id INTEGER, video_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('models_videos') . ' (model_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models_videos') . ' (id INTEGER, model_id INTEGER, video_id INTEGER)');
 
         $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice', 1), (2, 'bob', 0)");
         $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'moderator', 0), (9, 'admin', 1)");
@@ -331,12 +342,16 @@ class VideoCommandTest extends TestCase
             ' (comment_id, object_type_id, object_id) VALUES ' .
             '(1, 1, 10), (2, 1, 10), (3, 2, 10), (4, 1, 20)'
         );
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('formats_screenshots') .
+            " VALUES (1, 'source', 1, 1), (2, '640x360', 1, 1), (3, '320x180', 1, 1)"
+        );
         $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Action'), (2, 'Drama')");
-        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 10), (2, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 2, 10), (2, 1, 10), (3, 2, 20)");
         $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one'), (2, 'tag-two')");
-        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 10), (2, 10)");
-        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One')");
-        $db->exec("INSERT INTO " . TestHelper::table('models_videos') . " VALUES (1, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 2, 10), (2, 1, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One'), (2, 'Model Two')");
+        $db->exec("INSERT INTO " . TestHelper::table('models_videos') . " VALUES (1, 2, 10), (2, 1, 10)");
 
         return $db;
     }
