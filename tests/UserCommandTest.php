@@ -70,6 +70,25 @@ class UserCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testUserListExposesKvsPremiumDaysLeftMessage(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'premium',
+            '--format' => 'json',
+            '--fields' => 'user_id,status_id,days_left_message',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(3, (int) $rows[0]['user_id']);
+        $this->assertSame(3, (int) $rows[0]['status_id']);
+        $this->assertSame('30 days, trial', $rows[0]['days_left_message']);
+    }
+
     public function testUserListFormats(): void
     {
         // Test JSON format
@@ -299,7 +318,13 @@ class UserCommandTest extends TestCase
             'gender_id INTEGER, country_id TEXT, birth_date TEXT, ip TEXT, added_date TEXT, last_login_date TEXT, ' .
             'profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, tokens_available INTEGER, ' .
             'tokens_required INTEGER, total_videos_count INTEGER, total_albums_count INTEGER, is_trusted INTEGER, ' .
-            'is_removal_requested INTEGER, removal_reason TEXT, favourite_category_id INTEGER, avatar TEXT)'
+            'is_removal_requested INTEGER, removal_reason TEXT, favourite_category_id INTEGER, avatar TEXT, ' .
+            'is_trial INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('bill_transactions') . ' (' .
+            'transaction_id INTEGER, user_id INTEGER, status_id INTEGER, access_end_date TEXT, ' .
+            'duration_rebill INTEGER, is_unlimited_access INTEGER)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('videos') . ' (user_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('albums') . ' (user_id INTEGER)');
@@ -314,14 +339,20 @@ class UserCommandTest extends TestCase
             " (user_id, username, display_name, email, status_id, gender_id, country_id, birth_date, ip, " .
             "added_date, last_login_date, profile_viewed, logins_count, activity, tokens_available, tokens_required, " .
             "total_videos_count, total_albums_count, is_trusted, is_removal_requested, removal_reason, " .
-            "favourite_category_id, avatar) VALUES " .
+            "favourite_category_id, avatar, is_trial) VALUES " .
             "(1, 'alice', 'Alice Example', 'alice@example.com', 2, 2, 'CA', '1990-01-02', 2130706433, " .
-            "'2026-05-26 10:00:00', '2026-05-26 11:00:00', 1000, 4, 42, 50, 10, 2, 1, 1, 0, '', 10, '1/1.jpg'), " .
+            "'2026-05-26 10:00:00', '2026-05-26 11:00:00', 1000, 4, 42, 50, 10, 2, 1, 1, 0, '', " .
+            "10, '1/1.jpg', 0), " .
             "(2, 'remove_me', 'Remove Me', 'remove@example.com', 0, 0, '', '0000-00-00', '', " .
             "'2026-05-25 10:00:00', '0000-00-00 00:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 1, " .
-            "'Delete my account', 0, ''), " .
+            "'Delete my account', 0, '', 0), " .
             "(3, 'premium', 'Premium User', 'premium@example.com', 3, 1, 'US', '1985-03-04', '127.0.0.2', " .
-            "'2026-05-24 10:00:00', '2026-05-24 12:00:00', 50, 2, 10, 100, 0, 0, 0, 0, 0, '', 0, '')"
+            "'2026-05-24 10:00:00', '2026-05-24 12:00:00', 50, 2, 10, 100, 0, 0, 0, 0, 0, '', " .
+            "0, '', 1)"
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('bill_transactions') .
+            " VALUES (1, 3, 4, '2026-06-24 12:00:00', 30, 0)"
         );
         $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' VALUES (1), (1), (2)');
         $db->exec('INSERT INTO ' . TestHelper::table('albums') . ' VALUES (1)');

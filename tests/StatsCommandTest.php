@@ -74,7 +74,7 @@ class StatsCommandTest extends TestCase
         $this->assertLessThan($manyVotesPosition, $betterAveragePosition);
     }
 
-    public function testVideoStatsUseKvsAdminCommentRelationCounts(): void
+    public function testVideoStatsUseKvsAdminCommentCounters(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -83,15 +83,18 @@ class StatsCommandTest extends TestCase
             'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'comments_count INTEGER, favourites_count INTEGER, duration INTEGER, added_date TEXT)'
         );
-        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ktvs_comments (' .
+            'comment_id INTEGER, object_id INTEGER, object_type_id INTEGER, is_approved INTEGER)'
+        );
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
-            "(1, 'Stale Counter', 'stale', 1, 0, 100, 10, 45, 5, 0, 0, 60, '2026-01-01 00:00:00'), " .
-            "(2, 'Other Video', 'other', 1, 0, 50, 5, 45, 5, 99, 0, 60, '2026-01-01 00:00:00')"
+            "(1, 'Reviewed Comments', 'reviewed', 1, 0, 100, 10, 45, 5, 2, 0, 60, '2026-01-01 00:00:00'), " .
+            "(2, 'Other Video', 'other', 1, 0, 50, 5, 45, 5, 0, 0, 60, '2026-01-01 00:00:00')"
         );
         $db->exec(
             'INSERT INTO ktvs_comments VALUES ' .
-            '(1, 1, 1), (2, 1, 1), (3, 2, 2)'
+            '(1, 1, 1, 1), (2, 1, 1, 1), (3, 1, 1, 0), (4, 2, 2, 1)'
         );
 
         $tester = new CommandTester($this->createStatsCommand($db));
@@ -101,7 +104,7 @@ class StatsCommandTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode(), $output);
         $this->assertMatchesRegularExpression('/Total Comments\W+2/', $output);
-        $this->assertStringNotContainsString('99', $output);
+        $this->assertDoesNotMatchRegularExpression('/Total Comments\W+3/', $output);
     }
 
     public function testAlbumStatsUseKvsRatingPercent(): void

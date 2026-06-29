@@ -208,6 +208,43 @@ class ServerCommandTest extends TestCase
         $this->assertSame(1, (int) $rowsById[3]['is_debug_enabled']);
     }
 
+    public function testServerListExposesKvsAdminComputedWarningFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'free_space_percent',
+                'error_text',
+                'is_error',
+                'is_warning',
+                'is_free_space_warning',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('(60%)', $rowsById[1]['free_space_percent']);
+        $this->assertSame('', $rowsById[1]['error_text']);
+        $this->assertSame(0, (int) $rowsById[1]['is_error']);
+        $this->assertSame(0, (int) $rowsById[1]['is_warning']);
+        $this->assertSame(0, (int) $rowsById[1]['is_free_space_warning']);
+
+        $this->assertSame('(25%)', $rowsById[3]['free_space_percent']);
+        $this->assertSame(
+            ' (This server has debug log enabled) (Content path is not writable)',
+            $rowsById[3]['error_text']
+        );
+        $this->assertSame(1, (int) $rowsById[3]['is_error']);
+        $this->assertSame(1, (int) $rowsById[3]['is_warning']);
+        $this->assertSame(0, (int) $rowsById[3]['is_free_space_warning']);
+    }
+
     public function testServerListWithGroupFilterIsolatesGroups(): void
     {
         $this->tester->execute([
@@ -638,6 +675,37 @@ class ServerCommandTest extends TestCase
         $this->assertSame('2 GB', $rowsById[10]['free_space']);
         $this->assertSame('0.75', $rowsById[10]['load']);
         $this->assertSame('2026-05-20 10:00:00', $rowsById[10]['added_date']);
+    }
+
+    public function testServerGroupListExposesKvsAdminComputedWarningFields(): void
+    {
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT, value TEXT)');
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('options') .
+            " VALUES ('SERVER_GROUP_MIN_FREE_SPACE_MB', '3072')"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'group_id',
+                'free_space_percent',
+                'error_text',
+                'is_warning',
+                'is_free_space_warning',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'group_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('(40%)', $rowsById[10]['free_space_percent']);
+        $this->assertSame(' (No free space is available)', $rowsById[10]['error_text']);
+        $this->assertSame(1, (int) $rowsById[10]['is_warning']);
+        $this->assertSame(1, (int) $rowsById[10]['is_free_space_warning']);
     }
 
     public function testServerGroupShow(): void

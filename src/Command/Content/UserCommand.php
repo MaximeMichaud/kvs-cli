@@ -114,7 +114,7 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::USER_ACTIVE,
                 'disabled' => StatusFormatter::USER_DISABLED,
                 'premium' => StatusFormatter::USER_PREMIUM,
@@ -124,6 +124,9 @@ HELP
                 'generated' => StatusFormatter::USER_GENERATED,
                 'webmaster' => StatusFormatter::USER_WEBMASTER,
             ], [0, 1, 2, 3, 4, 5, 6]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $whereClause .= " AND u.status_id = :status";
                 $params['status'] = $statusId;
@@ -133,8 +136,9 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= " AND (u.username LIKE :search OR u.email LIKE :search)";
-            $params['search'] = "%$search%";
+            $whereClause .= " AND (u.username LIKE :search" . $this->likeEscapeSql()
+                . " OR u.email LIKE :search" . $this->likeEscapeSql() . ")";
+            $params['search'] = $this->containsLikePattern($search);
         }
 
         // Removal requested filter
@@ -183,7 +187,7 @@ HELP
 
             /** @var list<array<string, mixed>> $users */
             $users = $stmt->fetchAll();
-            $users = array_map(function (array $user): array {
+            $users = array_map(function (array $user) use ($db): array {
                 $statusId = $this->getInt($user['status_id'] ?? null);
                 $user['id'] = $user['user_id'] ?? 0;
                 $user['status'] = StatusFormatter::user($statusId, false);
@@ -195,7 +199,7 @@ HELP
                 $avatar = is_scalar($avatar) ? (string) $avatar : '';
                 $user['thumb'] = $avatar;
 
-                return $user;
+                return $this->hydrateUserListAppendFields($db, $user);
             }, $users);
 
             // Determine default fields based on filters
@@ -296,6 +300,63 @@ HELP
         }
 
         return $selects;
+    }
+
+    /**
+     * Hydrate append-only fields used by KVS admin users grid.
+     *
+     * @param array<string, mixed> $user
+     * @return array<string, mixed>
+     */
+    private function hydrateUserListAppendFields(\PDO $db, array $user): array
+    {
+        $user['days_left_message'] = '';
+        if ($this->getInt($user['status_id'] ?? null) !== StatusFormatter::USER_PREMIUM) {
+            return $user;
+        }
+
+        $userId = $this->getInt($user['user_id'] ?? null);
+        if ($userId <= 0) {
+            return $user;
+        }
+
+        try {
+            $stmt = $db->prepare("
+                SELECT status_id, access_end_date, duration_rebill, is_unlimited_access
+                FROM {$this->table('bill_transactions')}
+                WHERE status_id IN (1, 4) AND user_id = :user_id
+                ORDER BY transaction_id DESC
+                LIMIT 1
+            ");
+            $stmt->execute(['user_id' => $userId]);
+            $transaction = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (\Throwable) {
+            return $user;
+        }
+
+        if (!is_array($transaction)) {
+            return $user;
+        }
+
+        if ($this->getInt($transaction['is_unlimited_access'] ?? null) === 1) {
+            $message = "\u{221E}";
+        } elseif ($this->getInt($transaction['status_id'] ?? null) === 4) {
+            $message = $this->getInt($transaction['duration_rebill'] ?? null) . ' days';
+        } else {
+            $accessEndDate = $this->getStr($transaction['access_end_date'] ?? null);
+            $accessEndTimestamp = strtotime($accessEndDate);
+            $daysLeft = $accessEndTimestamp !== false
+                ? (int) round(($accessEndTimestamp - time()) / 86400)
+                : 0;
+            $message = $daysLeft . ' days';
+        }
+
+        if ($this->getInt($user['is_trial'] ?? null) === 1) {
+            $message .= ', trial';
+        }
+
+        $user['days_left_message'] = $message;
+        return $user;
     }
 
     /**

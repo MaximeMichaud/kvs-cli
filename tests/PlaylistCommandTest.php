@@ -81,6 +81,54 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(['alice', 'alice'], array_column($rows, 'user'));
     }
 
+    public function testPlaylistListFiltersUserByUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'alice',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,user',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30, 20], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame(['alice', 'alice'], array_column($rows, 'user'));
+    }
+
+    public function testPlaylistListFiltersTagByNameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--tag' => 'practice',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,tags',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('practice,training', $rows[0]['tags']);
+    }
+
+    public function testPlaylistListFiltersCategoryByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--category' => 'Archive',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,categories',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('Archive,Featured', $rows[0]['categories']);
+    }
+
     public function testPlaylistListPublicFilter(): void
     {
         $this->tester->execute([
@@ -129,6 +177,22 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('Test Playlist', $output);
         $this->assertStringNotContainsString('Private Playlist', $output);
         $this->assertStringNotContainsString('Disabled Playlist', $output);
+    }
+
+    public function testPlaylistListSearchesDirectoryLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'private-playlist',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,dir',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('private-playlist', $rows[0]['dir']);
     }
 
     public function testPlaylistListJsonFormat(): void

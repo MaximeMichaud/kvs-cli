@@ -229,7 +229,7 @@ HELP
 
             // Transform data for display
             /** @var list<array{task_id: int, status_id: int, type_id: int, video_id: int|null, album_id: int|null, server_id: int|null, server_name: string|null, error_code: int|null, priority: int, id: int, status: string, type: string, content_id: string, server: string, error: string}> $tasks */
-            $tasks = array_map(function (array $task): array {
+            $tasks = array_map(function (array $task) use ($db): array {
                 $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
                 $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
                 $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
@@ -248,7 +248,7 @@ HELP
                 $task['error'] = $errorCode > 0
                     ? (self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}")
                     : '';
-                return $task;
+                return $this->hydrateTaskListAppendFields($task, $db);
             }, $tasks);
 
             // Format and display
@@ -282,6 +282,103 @@ HELP
             $this->io()->error('Failed to fetch queue: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Hydrate append-only fields used by KVS admin background_tasks grid.
+     *
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function hydrateTaskListAppendFields(array $task, \PDO $db): array
+    {
+        $task['format_postfix'] = '';
+        $task['format_size'] = '';
+        $task['pc_complete'] = '';
+        $task['is_error'] = $this->scalarToPositiveInt($task['status_id'] ?? null) === StatusFormatter::TASK_FAILED ? 1 : 0;
+
+        $taskData = $this->unserializeTaskData($task['data'] ?? null);
+        if ($taskData !== []) {
+            $formatGroupId = $this->scalarToPositiveInt($taskData['new_format_video_group_id'] ?? null);
+            if ($formatGroupId !== null) {
+                $task['format_postfix'] = $this->fetchFormatVideoGroupTitle($db, $formatGroupId);
+            } elseif (isset($taskData['format_postfix']) && is_scalar($taskData['format_postfix'])) {
+                $task['format_postfix'] = (string) $taskData['format_postfix'];
+            }
+
+            if (isset($taskData['format_size']) && is_scalar($taskData['format_size'])) {
+                $task['format_size'] = (string) $taskData['format_size'];
+            }
+        }
+
+        $taskId = $this->scalarToPositiveInt($task['task_id'] ?? null);
+        if ($taskId !== null) {
+            $task['pc_complete'] = $this->readTaskProgressCompletion($taskId);
+        }
+
+        return $task;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function unserializeTaskData(mixed $data): array
+    {
+        if (!is_string($data) || $data === '') {
+            return [];
+        }
+
+        $taskData = @unserialize($data, ['allowed_classes' => false]);
+        if (!is_array($taskData)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($taskData as $key => $value) {
+            if (is_string($key)) {
+                $normalized[$key] = $value;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function fetchFormatVideoGroupTitle(\PDO $db, int $formatGroupId): string
+    {
+        $stmt = $db->prepare("
+            SELECT title
+            FROM {$this->table('formats_videos_groups')}
+            WHERE format_video_group_id = :format_group_id
+        ");
+        $stmt->execute(['format_group_id' => $formatGroupId]);
+
+        $title = $stmt->fetchColumn();
+        return is_scalar($title) ? (string) $title : '';
+    }
+
+    private function readTaskProgressCompletion(int $taskId): string
+    {
+        $progressFile = $this->config->getKvsPath() . '/admin/data/engine/tasks/' . $taskId . '.dat';
+        if (!is_file($progressFile)) {
+            return '';
+        }
+
+        $progress = @file_get_contents($progressFile);
+        if ($progress === false || $progress === '') {
+            return '';
+        }
+
+        return ((int) $progress) . '%';
+    }
+
+    private function scalarToPositiveInt(mixed $value): ?int
+    {
+        if (!is_scalar($value) || !is_numeric($value)) {
+            return null;
+        }
+
+        $intValue = (int) $value;
+        return $intValue > 0 ? $intValue : null;
     }
 
     private function showTask(?string $id, InputInterface $input): int

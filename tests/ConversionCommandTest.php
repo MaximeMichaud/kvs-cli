@@ -162,6 +162,55 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('45', $rowsById[2]['ftp_timeout']);
     }
 
+    public function testConversionListExposesKvsAdminComputedFields(): void
+    {
+        $logsDir = $this->kvsPath . '/admin/logs';
+        self::assertTrue(is_dir($logsDir) || mkdir($logsDir, 0777, true));
+        file_put_contents($logsDir . '/debug_conversion_server_3.txt', 'debug log');
+
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT, value TEXT)');
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('options') .
+            " VALUES ('SYSTEM_CONVERSION_API_VERSION', '8.0.0')"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'api_version',
+                'free_space_percent',
+                'error_text',
+                'is_error',
+                'has_debug_log',
+                'has_old_api',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('7.0.0 (obsolete)', $rowsById[1]['api_version']);
+        $this->assertSame('(60%)', $rowsById[1]['free_space_percent']);
+        $this->assertSame('', $rowsById[1]['error_text']);
+        $this->assertSame(0, (int) $rowsById[1]['is_error']);
+        $this->assertSame(0, (int) $rowsById[1]['has_debug_log']);
+        $this->assertSame(1, (int) $rowsById[1]['has_old_api']);
+
+        $this->assertSame('(25%)', $rowsById[3]['free_space_percent']);
+        $this->assertSame(
+            '(Some libraries are not configured correctly on this server)',
+            $rowsById[3]['error_text']
+        );
+        $this->assertSame(1, (int) $rowsById[3]['is_error']);
+        $this->assertSame(1, (int) $rowsById[3]['has_debug_log']);
+        $this->assertSame(1, (int) $rowsById[3]['has_old_api']);
+    }
+
     public function testConversionListIgnoresDisabledServerErrorsLikeKvsAdmin(): void
     {
         $this->db->exec(

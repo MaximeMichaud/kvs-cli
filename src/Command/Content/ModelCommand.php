@@ -27,7 +27,7 @@ class ModelCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'Model ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names, directories, descriptions, aliases, and gallery URLs')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -92,11 +92,14 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::MODEL_ACTIVE,
                 'disabled' => StatusFormatter::MODEL_DISABLED,
                 'inactive' => StatusFormatter::MODEL_DISABLED,
             ]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $whereClause .= " AND m.status_id = :status";
                 $params['status'] = $statusId;
@@ -106,8 +109,13 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= " AND m.title LIKE :search";
-            $params['search'] = "%$search%";
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (m.title LIKE :search" . $searchEscape
+                . " OR m.dir LIKE :search" . $searchEscape
+                . " OR m.description LIKE :search" . $searchEscape
+                . " OR m.alias LIKE :search" . $searchEscape
+                . " OR m.gallery_url LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {

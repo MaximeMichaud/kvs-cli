@@ -182,8 +182,8 @@ HELP
         // Filter by search term
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND variable LIKE :search";
-            $params['search'] = '%' . strtoupper($search) . '%';
+            $query .= " AND variable LIKE :search" . $this->likeEscapeSql();
+            $params['search'] = $this->containsLikePattern(strtoupper($search));
         }
 
         // Filter by exact value

@@ -80,7 +80,7 @@ HELP
             ->addArgument('id', InputArgument::OPTIONAL, 'Comment ID(s) - comma-separated for batch')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
             ->addOption('album', null, InputOption::VALUE_REQUIRED, 'Filter by album ID')
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID, username, or anonymous name')
             ->addOption(
                 'limit',
                 null,
@@ -88,7 +88,7 @@ HELP
                 'Number of results to show',
                 Constants::DEFAULT_COMMENT_LIMIT
             )
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in comment text')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in comment text and usernames')
             ->addOption('oldest', null, InputOption::VALUE_NONE, 'Show oldest first (default: recent)')
             ->addOption('approved', null, InputOption::VALUE_NONE, 'Show only approved comments')
             ->addOption('pending', null, InputOption::VALUE_NONE, 'Show only pending comments')
@@ -131,7 +131,7 @@ HELP
         };
     }
 
-    private function getCommentObjectSelectSql(): string
+    private function getCommentObjectSelectSql(InputInterface $input): string
     {
         $titleCases = [
             Constants::OBJECT_TYPE_VIDEO => ['videos', 'video_id'],
@@ -154,6 +154,7 @@ HELP
         ];
 
         $titleSql = [];
+        $dirSql = [];
         foreach ($titleCases as $typeId => [$table, $idColumn]) {
             $titleSql[] = sprintf(
                 'WHEN %d THEN (SELECT title FROM %s WHERE %s = c.object_id)',
@@ -161,11 +162,41 @@ HELP
                 $this->table($table),
                 $idColumn
             );
+            if ($this->isCommentFieldRequested($input, 'object_dir')) {
+                $dirSql[] = sprintf(
+                    'WHEN %d THEN (SELECT dir FROM %s WHERE %s = c.object_id)',
+                    $typeId,
+                    $this->table($table),
+                    $idColumn
+                );
+            }
         }
 
         $typeSql = [];
         foreach ($typeNames as $typeId => $label) {
             $typeSql[] = sprintf("WHEN %d THEN '%s'", $typeId, $label);
+        }
+
+        $objectDirSql = "'' as object_dir";
+        if ($dirSql !== []) {
+            $objectDirSql = "
+                       CASE c.object_type_id
+                           " . implode("\n                           ", $dirSql) . "
+                           ELSE ''
+                       END as object_dir";
+        }
+
+        $postTypeSql = '0 as post_type_id';
+        if ($this->isCommentFieldRequested($input, 'post_type_id')) {
+            $postTypeSql = "
+                       CASE c.object_type_id
+                           WHEN " . Constants::OBJECT_TYPE_POST . " THEN (
+                               SELECT post_type_id
+                               FROM {$this->table('posts')}
+                               WHERE post_id = c.object_id
+                           )
+                           ELSE 0
+                       END as post_type_id";
         }
 
         return "
@@ -176,7 +207,9 @@ HELP
                        CASE c.object_type_id
                            " . implode("\n                           ", $typeSql) . "
                            ELSE 'Unknown'
-                       END as object_type";
+                       END as object_type,
+                       $objectDirSql,
+                       $postTypeSql";
     }
 
     private function isCommentFieldRequested(InputInterface $input, string $field): bool
@@ -221,15 +254,20 @@ HELP
             $conditions = ['1=1'];
             $params = [];
 
-            if (!$this->applyCommentReferenceFilters($input, $conditions, $params)) {
+            if (!$this->applyCommentReferenceFilters($db, $input, $conditions, $params)) {
                 return self::FAILURE;
             }
 
             // Search filter
             $search = $this->getStringOption($input, 'search');
+            $countJoinSql = '';
             if ($search !== null) {
-                $conditions[] = 'c.comment LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $searchEscape = $this->likeEscapeSql();
+                $conditions[] = '(c.comment LIKE :search' . $searchEscape
+                    . ' OR c.anonymous_username LIKE :search' . $searchEscape
+                    . ' OR u.username LIKE :search' . $searchEscape . ')';
+                $params['search'] = $this->containsLikePattern($search);
+                $countJoinSql = "LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id";
             }
 
             // Approval status filters
@@ -250,6 +288,7 @@ HELP
                 $countSql = "
                     SELECT COUNT(*)
                     FROM {$this->table('comments')} c
+                    $countJoinSql
                     WHERE $whereClause
                 ";
 
@@ -278,7 +317,7 @@ HELP
             $sql = "
                 SELECT c.*,
                        u.username$userStatusSelect,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                        $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
@@ -308,6 +347,8 @@ HELP
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
+                    'object_dir' => $comment['object_dir'] ?? '',
+                    'post_type_id' => $comment['post_type_id'] ?? 0,
                     'comment' => $comment['comment'] ?? '',
                     'comment_full' => $comment['comment'] ?? '',
                     'ip' => array_key_exists('ip', $comment) ? $this->formatKvsIp($comment['ip']) : '',
@@ -336,8 +377,12 @@ HELP
      * @param list<string> $conditions
      * @param array<string, int|string> $params
      */
-    private function applyCommentReferenceFilters(InputInterface $input, array &$conditions, array &$params): bool
-    {
+    private function applyCommentReferenceFilters(
+        \PDO $db,
+        InputInterface $input,
+        array &$conditions,
+        array &$params
+    ): bool {
         $videoId = $this->getOptionalNonNegativeIntOption($input, 'video');
         if ($videoId === false) {
             return false;
@@ -356,13 +401,29 @@ HELP
             $params['album_id'] = $albumId;
         }
 
-        $userId = $this->getOptionalNonNegativeIntOption($input, 'user');
-        if ($userId === false) {
-            return false;
-        }
-        if ($userId !== null) {
-            $conditions[] = 'c.user_id = :user_id';
-            $params['user_id'] = $userId;
+        $user = $this->getStringOption($input, 'user');
+        if ($user !== null) {
+            $user = trim($user);
+            if ($user === '') {
+                $this->io()->error('Invalid value for --user (use: integer >= 0 or username)');
+                return false;
+            }
+            if (preg_match('/^\d+$/', $user) === 1) {
+                $conditions[] = 'c.user_id = :user_id';
+                $params['user_id'] = (int) $user;
+            } elseif (preg_match('/^-?\d+(?:\.\d+)?$/', $user) === 1) {
+                $this->io()->error('Invalid value for --user (use: integer >= 0 or username)');
+                return false;
+            } else {
+                $userId = $this->findReferenceIdByText($db, 'users', 'user_id', 'username', $user);
+                if ($userId !== null) {
+                    $conditions[] = 'c.user_id = :user_id';
+                    $params['user_id'] = $userId;
+                } else {
+                    $conditions[] = 'c.anonymous_username = :anonymous_username';
+                    $params['anonymous_username'] = $user;
+                }
+            }
         }
 
         return true;
@@ -391,7 +452,7 @@ HELP
                 SELECT c.*,
                        u.username,
                        u.email,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id = :id
@@ -623,15 +684,15 @@ HELP
             $conditions = ['c.is_review_needed = 1'];
             $params = [];
 
-            if (!$this->applyCommentReferenceFilters($input, $conditions, $params)) {
+            if (!$this->applyCommentReferenceFilters($db, $input, $conditions, $params)) {
                 return self::FAILURE;
             }
 
             // Search filter
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $conditions[] = 'c.comment LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $conditions[] = 'c.comment LIKE :search' . $this->likeEscapeSql();
+                $params['search'] = $this->containsLikePattern($search);
             }
 
             $whereClause = implode(' AND ', $conditions);
@@ -672,7 +733,7 @@ HELP
             $sql = "
                 SELECT c.*,
                        u.username$userStatusSelect,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                        $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
@@ -718,9 +779,12 @@ HELP
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
+                    'object_dir' => $comment['object_dir'] ?? '',
+                    'post_type_id' => $comment['post_type_id'] ?? 0,
                     'object_id' => $comment['object_id'] ?? 0,
                     'comment' => $comment['comment'] ?? '',
                     'comment_full' => $comment['comment'] ?? '',
+                    'ip' => array_key_exists('ip', $comment) ? $this->formatKvsIp($comment['ip']) : '',
                     'country' => $comment['country'] ?? '',
                     'rating' => $comment['rating'] ?? 0,
                     'is_approved' => $comment['is_approved'] ?? 0,
@@ -770,7 +834,7 @@ HELP
             $stmt = $db->prepare("
                 SELECT c.*,
                        u.username,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id IN ($placeholders)
@@ -1019,7 +1083,7 @@ HELP
             $stmt = $db->prepare("
                 SELECT c.*,
                        u.username,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id IN ($placeholders)

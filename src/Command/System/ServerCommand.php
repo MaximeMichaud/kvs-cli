@@ -194,7 +194,7 @@ HELP
             return $this->countRows($db, "SELECT COUNT(*) $fromSql", $params, 'servers');
         }
 
-        $query = "SELECT s.*, g.title as group_title
+        $query = "SELECT s.*, g.title as group_title, g.status_id as group_status_id
                  $fromSql
                  ORDER BY s.group_id ASC, s.server_id ASC LIMIT :limit";
 
@@ -213,8 +213,9 @@ HELP
             /** @var list<array<string, mixed>> $servers */
             $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             $servers = $this->addStorageContentCounts($db, $servers);
+            $minFreeSpaceBytes = $this->getServerGroupMinFreeSpaceBytes($db);
 
-            $transformed = array_map(function (array $server): array {
+            $transformed = array_map(function (array $server) use ($minFreeSpaceBytes): array {
                 $statusId = isset($server['status_id']) && is_numeric($server['status_id'])
                     ? (int) $server['status_id'] : 0;
                 $streamingType = isset($server['streaming_type_id']) && is_numeric($server['streaming_type_id'])
@@ -242,9 +243,16 @@ HELP
                     $server['control_script_url_version'] = 'N/A';
                     $server['control_script_url_lock_ip'] = 0;
                 }
+                $computedAdminFields = $this->buildKvsAdminServerComputedFields(
+                    $server,
+                    $totalSpace,
+                    $freeSpace,
+                    $minFreeSpaceBytes
+                );
 
                 return [
                     ...$server,
+                    ...$computedAdminFields,
                     'server_id' => $server['server_id'] ?? 0,
                     'id' => $server['server_id'] ?? 0,
                     'title' => $server['title'] ?? '',
@@ -275,6 +283,124 @@ HELP
             $this->io()->error('Failed to fetch servers: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{error_text: string, free_space_percent: string, is_error: int, is_warning: int, is_free_space_warning: int}
+     */
+    private function buildKvsAdminServerComputedFields(
+        array $server,
+        int $totalSpace,
+        int $freeSpace,
+        int $minFreeSpaceBytes
+    ): array {
+        $errorText = '';
+        $isWarning = 0;
+        $isFreeSpaceWarning = 0;
+
+        if ($this->getNumericField($server, 'is_debug_enabled') === 1) {
+            $isWarning = 1;
+            $errorText .= ' (This server has debug log enabled)';
+        }
+
+        if (
+            $this->getNumericField($server, 'group_status_id') === StatusFormatter::SERVER_ACTIVE
+            && $minFreeSpaceBytes > 0
+            && $freeSpace < $minFreeSpaceBytes
+        ) {
+            $isWarning = 1;
+            $isFreeSpaceWarning = 1;
+            $errorText .= ' (No free space is available)';
+        }
+
+        if ($this->getNumericField($server, 'warning_id') > 0) {
+            $isWarning = 1;
+            $errorText .= ' (Content is not protected from direct access)';
+        }
+
+        if ($this->hasIpProtectionWarning($server)) {
+            $isWarning = 1;
+            $errorText .= ' (IP protection without subdomain)';
+        }
+
+        $isError = 0;
+        if ($this->getNumericField($server, 'error_iteration') > 1) {
+            $isError = 1;
+            if ($this->getNumericField($server, 'error_id') === 1) {
+                $errorText .= ' (Content path is not writable)';
+            }
+        }
+
+        if ($this->getNumericField($server, 'error_streaming_iteration') > 1) {
+            $isError = 1;
+            $errorText .= $this->formatStreamingServerErrorText($this->getNumericField($server, 'error_streaming_id'));
+        }
+
+        return [
+            'error_text' => $errorText,
+            'free_space_percent' => $totalSpace > 0 ? '(' . round(($freeSpace / $totalSpace) * 100, 2) . '%)' : '',
+            'is_error' => $isError,
+            'is_warning' => $isWarning,
+            'is_free_space_warning' => $isFreeSpaceWarning,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     */
+    private function hasIpProtectionWarning(array $server): bool
+    {
+        if (
+            $this->getNumericField($server, 'status_id') !== StatusFormatter::SERVER_ACTIVE
+            || $this->getNumericField($server, 'control_script_url_lock_ip') !== 1
+            || $this->getNumericField($server, 'is_remote') !== 1
+        ) {
+            return false;
+        }
+
+        $licenseDomain = $this->config->get('project_licence_domain', '');
+        if (!is_string($licenseDomain) || $licenseDomain === '') {
+            return false;
+        }
+
+        $urlHost = parse_url($this->getStringField($server, 'urls'), PHP_URL_HOST);
+        return is_string($urlHost) && !str_ends_with($urlHost, $licenseDomain);
+    }
+
+    private function formatStreamingServerErrorText(int $errorId): string
+    {
+        return match ($errorId) {
+            2 => ' (Control script is not responding)',
+            3 => ' (Control script has wrong secret key)',
+            4 => ' (Time is not synchronized)',
+            5 => ' (Content check found errors)',
+            6 => ' (CDN control script is missing)',
+            7 => ' (Server is not using HTTPS)',
+            default => '',
+        };
+    }
+
+    private function getServerGroupMinFreeSpaceBytes(\PDO $db): int
+    {
+        try {
+            $stmt = $db->prepare("
+                SELECT value
+                FROM {$this->table('options')}
+                WHERE variable = 'SERVER_GROUP_MIN_FREE_SPACE_MB'
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $value = $stmt->fetchColumn();
+        } catch (\Throwable) {
+            return 0;
+        }
+
+        if (!is_numeric($value)) {
+            return 0;
+        }
+
+        return max(0, (int) $value) * 1024 * 1024;
     }
 
     /**
@@ -797,6 +923,7 @@ HELP
             $stmtGroups->execute();
             /** @var list<array<string, mixed>> $groups */
             $groups = $stmtGroups->fetchAll(\PDO::FETCH_ASSOC);
+            $minFreeSpaceBytes = $this->getServerGroupMinFreeSpaceBytes($db);
 
             // Get content counts
             $videoGroups = [];
@@ -828,7 +955,7 @@ HELP
                 }
             }
 
-            $transformed = array_map(function (array $group) use ($videoGroups, $albumGroups): array {
+            $transformed = array_map(function (array $group) use ($videoGroups, $albumGroups, $minFreeSpaceBytes): array {
                 $groupId = isset($group['group_id']) && is_numeric($group['group_id'])
                     ? (int) $group['group_id'] : 0;
                 $statusId = isset($group['status_id']) && is_numeric($group['status_id'])
@@ -853,9 +980,16 @@ HELP
 
                 $titleVal = $group['title'] ?? '';
                 $title = is_string($titleVal) ? $titleVal : '';
+                $computedAdminFields = $this->buildKvsAdminServerGroupComputedFields(
+                    $statusId,
+                    $totalSpace,
+                    $minFreeSpace,
+                    $minFreeSpaceBytes
+                );
 
                 return [
                     ...$group,
+                    ...$computedAdminFields,
                     'group_id' => $groupId,
                     'id' => $groupId,
                     'title' => $title,
@@ -886,6 +1020,27 @@ HELP
             $this->io()->error('Failed to fetch groups: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return array{error_text: string, free_space_percent: string, is_warning: int, is_free_space_warning: int}
+     */
+    private function buildKvsAdminServerGroupComputedFields(
+        int $statusId,
+        int $totalSpace,
+        int $freeSpace,
+        int $minFreeSpaceBytes
+    ): array {
+        $isFreeSpaceWarning = $statusId === StatusFormatter::SERVER_ACTIVE
+            && $minFreeSpaceBytes > 0
+            && $freeSpace < $minFreeSpaceBytes;
+
+        return [
+            'error_text' => $isFreeSpaceWarning ? ' (No free space is available)' : '',
+            'free_space_percent' => $totalSpace > 0 ? '(' . round(($freeSpace / $totalSpace) * 100, 2) . '%)' : '',
+            'is_warning' => $isFreeSpaceWarning ? 1 : 0,
+            'is_free_space_warning' => $isFreeSpaceWarning ? 1 : 0,
+        ];
     }
 
     private function showGroup(string $id, InputInterface $input): int

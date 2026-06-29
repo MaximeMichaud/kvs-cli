@@ -171,6 +171,69 @@ class CommentCommandTest extends TestCase
         $this->assertSame('alice', $rows[0]['user']);
     }
 
+    public function testListCommentsFilterByUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'alice',
+            '--format' => 'json',
+            '--fields' => 'comment_id,user',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['comment_id']);
+        $this->assertSame('alice', $rows[0]['user']);
+    }
+
+    public function testListCommentsFilterByAnonymousUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'GuestUser',
+            '--format' => 'json',
+            '--fields' => 'comment_id,user',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['comment_id']);
+        $this->assertSame('GuestUser', $rows[0]['user']);
+    }
+
+    public function testListCommentsSearchesRegisteredUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'bob',
+            '--format' => 'json',
+            '--fields' => 'comment_id,user,comment',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+        $this->assertSame('bob', $rows[0]['user']);
+        $this->assertSame('Needs review test phrase', $rows[0]['comment']);
+    }
+
+    public function testListCommentsCountSearchesAnonymousUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'GuestUser',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('1', trim($this->tester->getDisplay()));
+    }
+
     public function testListCommentsAllowsZeroUserSentinel(): void
     {
         $this->tester->execute([
@@ -191,7 +254,7 @@ class CommentCommandTest extends TestCase
     public function testListAndPendingRejectInvalidNumericFilters(): void
     {
         foreach (['list', 'pending'] as $action) {
-            foreach (['video', 'album', 'user'] as $option) {
+            foreach (['video', 'album'] as $option) {
                 foreach (['abc', '1.5', '-1'] as $value) {
                     $tester = new CommandTester($this->command);
                     $tester->execute([
@@ -204,6 +267,19 @@ class CommentCommandTest extends TestCase
                     $this->assertSame(1, $tester->getStatusCode(), "$action --$option=$value: $display");
                     $this->assertStringContainsString("Invalid value for --$option", $display, "$action --$option=$value");
                 }
+            }
+
+            foreach (['1.5', '-1'] as $value) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    'action' => $action,
+                    '--format' => 'count',
+                    '--user' => $value,
+                ]);
+
+                $display = $tester->getDisplay();
+                $this->assertSame(1, $tester->getStatusCode(), "$action --user=$value: $display");
+                $this->assertStringContainsString('Invalid value for --user', $display, "$action --user=$value");
             }
         }
     }
@@ -243,6 +319,41 @@ class CommentCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['is_approved']);
     }
 
+    public function testListCommentsExposesKvsObjectCompanionFields(): void
+    {
+        $this->insertComment($this->db, [
+            'comment_id' => 40,
+            'object_id' => 600,
+            'object_type_id' => 12,
+            'object_sub_id' => 0,
+            'user_id' => 1,
+            'anonymous_username' => '',
+            'is_approved' => 1,
+            'is_review_needed' => 0,
+            'comment' => 'Post companion field test',
+            'country_code' => 'CA',
+            'ip' => 2130706433,
+            'rating' => 4,
+            'added_date' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Post companion field test',
+            '--fields' => 'comment_id,object,object_dir,post_type_id',
+            '--format' => 'json',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(40, (int) $rows[0]['comment_id']);
+        $this->assertSame('Post Title', $rows[0]['object']);
+        $this->assertSame('post-title', $rows[0]['object_dir']);
+        $this->assertSame(2, (int) $rows[0]['post_type_id']);
+    }
+
     public function testListCommentsUsesAnonymousUsernameForAnonymousUser(): void
     {
         $this->tester->execute([
@@ -264,7 +375,7 @@ class CommentCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'pending',
-            '--fields' => 'comment_id,user,user_status_id',
+            '--fields' => 'comment_id,user,user_status_id,ip',
             '--format' => 'json',
         ]);
 
@@ -274,6 +385,7 @@ class CommentCommandTest extends TestCase
         $this->assertSame(20, (int) $rows[0]['comment_id']);
         $this->assertSame('bob', $rows[0]['user']);
         $this->assertSame(0, (int) $rows[0]['user_status_id']);
+        $this->assertSame('0.0.0.0', $rows[0]['ip']);
     }
 
     public function testStatsUsesAnonymousUsernameForTopCommenters(): void
@@ -625,15 +737,16 @@ class CommentCommandTest extends TestCase
         $this->createObjectTable($db, 'content_sources', 'content_source_id');
         $this->createObjectTable($db, 'models', 'model_id');
         $this->createObjectTable($db, 'dvds', 'dvd_id');
-        $this->createObjectTable($db, 'posts', 'post_id');
+        $this->createObjectTable($db, 'posts', 'post_id', true);
         $this->createObjectTable($db, 'playlists', 'playlist_id');
     }
 
-    private function createObjectTable(PDO $db, string $table, string $idColumn): void
+    private function createObjectTable(PDO $db, string $table, string $idColumn, bool $includePostType = false): void
     {
+        $postTypeColumn = $includePostType ? ', post_type_id INTEGER' : '';
         $db->exec(
             'CREATE TABLE ' . TestHelper::table($table) . ' (' .
-            $idColumn . ' INTEGER, title TEXT, comments_count INTEGER)'
+            $idColumn . ' INTEGER, title TEXT, dir TEXT, comments_count INTEGER' . $postTypeColumn . ')'
         );
     }
 
@@ -652,27 +765,34 @@ class CommentCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('videos') .
-            " (video_id, title, comments_count) VALUES (100, 'Intro Video', 2)"
+            " (video_id, title, dir, comments_count) VALUES (100, 'Intro Video', 'intro-video', 2)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('albums') .
-            " (album_id, title, comments_count) VALUES (200, 'Sample Album', 1)"
+            " (album_id, title, dir, comments_count) VALUES (200, 'Sample Album', 'sample-album', 1)"
         );
 
         $objectFixtures = [
-            ['content_sources', 'content_source_id', 300, 'Source Title'],
-            ['models', 'model_id', 400, 'Model Title'],
-            ['dvds', 'dvd_id', 500, 'DVD Title'],
-            ['posts', 'post_id', 600, 'Post Title'],
-            ['playlists', 'playlist_id', 700, 'Playlist Title'],
+            ['content_sources', 'content_source_id', 300, 'Source Title', 'source-title', null],
+            ['models', 'model_id', 400, 'Model Title', 'model-title', null],
+            ['dvds', 'dvd_id', 500, 'DVD Title', 'dvd-title', null],
+            ['posts', 'post_id', 600, 'Post Title', 'post-title', 2],
+            ['playlists', 'playlist_id', 700, 'Playlist Title', 'playlist-title', null],
         ];
 
-        foreach ($objectFixtures as [$table, $idColumn, $id, $title]) {
+        foreach ($objectFixtures as [$table, $idColumn, $id, $title, $dir, $postTypeId]) {
+            $postTypeColumn = $postTypeId === null ? '' : ', post_type_id';
+            $postTypeValue = $postTypeId === null ? '' : ', :post_type_id';
             $stmt = $db->prepare(
                 'INSERT INTO ' . TestHelper::table($table) .
-                " ({$idColumn}, title, comments_count) VALUES (:id, :title, 0)"
+                " ({$idColumn}, title, dir, comments_count{$postTypeColumn}) " .
+                "VALUES (:id, :title, :dir, 0{$postTypeValue})"
             );
-            $stmt->execute(['id' => $id, 'title' => $title]);
+            $params = ['id' => $id, 'title' => $title, 'dir' => $dir];
+            if ($postTypeId !== null) {
+                $params['post_type_id'] = $postTypeId;
+            }
+            $stmt->execute($params);
         }
 
         $this->insertComment($db, [

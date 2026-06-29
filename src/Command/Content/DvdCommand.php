@@ -27,7 +27,7 @@ class DvdCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'DVD ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in DVD titles')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in DVD titles, directories, descriptions, and synonyms')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -97,11 +97,14 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::DVD_ACTIVE,
                 'disabled' => StatusFormatter::DVD_DISABLED,
                 'inactive' => StatusFormatter::DVD_DISABLED,
             ]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $whereClause .= " AND d.status_id = :status";
                 $params['status'] = $statusId;
@@ -111,8 +114,12 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= " AND d.title LIKE :search";
-            $params['search'] = "%$search%";
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (d.title LIKE :search" . $searchEscape
+                . " OR d.dir LIKE :search" . $searchEscape
+                . " OR d.description LIKE :search" . $searchEscape
+                . " OR d.synonyms LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {

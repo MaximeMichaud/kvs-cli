@@ -186,8 +186,9 @@ HELP
 
             /** @var list<array<string, mixed>> $servers */
             $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $latestApiVersion = $this->getLatestConversionApiVersion($db);
 
-            $transformed = array_map(function (array $server): array {
+            $transformed = array_map(function (array $server) use ($latestApiVersion): array {
                 $statusId = $this->getNumericField($server, 'status_id');
                 $priority = $this->getNumericField($server, 'process_priority');
                 $totalSpace = $this->getNumericField($server, 'total_space');
@@ -200,9 +201,17 @@ HELP
                 $tasksAmount = $this->getNumericField($server, 'tasks_amount');
                 $finishedTasksAmount = $this->getNumericField($server, 'finished_tasks_amount');
                 $taskTypes = $this->formatTaskTypesForList($this->getStringField($server, 'task_types'));
+                $computedAdminFields = $this->buildKvsAdminConversionComputedFields(
+                    $server,
+                    $totalSpace,
+                    $freeSpace,
+                    $latestApiVersion
+                );
+                $apiVersion = $computedAdminFields['api_version'];
 
                 return [
                     ...$server,
+                    ...$computedAdminFields,
                     'server_id' => $server['server_id'] ?? 0,
                     'id' => $server['server_id'] ?? 0,
                     'title' => $server['title'] ?? '',
@@ -217,7 +226,7 @@ HELP
                     'tasks_completed' => $finishedTasksAmount,
                     'free_space' => $this->formatBytes($freeSpace),
                     'load' => number_format($load, 2),
-                    'api_version' => $server['api_version'] ?? '',
+                    'api_version' => $apiVersion,
                     'heartbeat' => $this->formatHeartbeat($this->getStringField($server, 'heartbeat_date')),
                     'has_error' => $statusId !== 0 && $errorIter > 1 ? 'Yes' : 'No',
                     'debug' => $isDebug === 1 ? 'On' : 'Off',
@@ -236,6 +245,90 @@ HELP
             $this->io()->error('Failed to fetch conversion servers: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array{api_version: string, error_text: string, free_space_percent: string, has_debug_log: int, has_old_api: int, is_error: int}
+     */
+    private function buildKvsAdminConversionComputedFields(
+        array $server,
+        int $totalSpace,
+        int $freeSpace,
+        string $latestApiVersion
+    ): array {
+        $serverId = $this->getNumericField($server, 'server_id');
+        $statusId = $this->getNumericField($server, 'status_id');
+        $errorIteration = $this->getNumericField($server, 'error_iteration');
+        $errorId = $this->getNumericField($server, 'error_id');
+        $isDebug = $this->getNumericField($server, 'is_debug_enabled');
+        $apiVersion = $this->getStringField($server, 'api_version');
+        $hasOldApi = 0;
+
+        if ($this->isConversionApiVersionObsolete($apiVersion, $latestApiVersion)) {
+            $apiVersion .= ' (obsolete)';
+            $hasOldApi = 1;
+        }
+
+        $isError = 0;
+        $errorText = '';
+        if ($statusId !== StatusFormatter::CONVERSION_DISABLED && $errorIteration > 1) {
+            $isError = 1;
+            $errorText = $this->formatConversionServerErrorText($errorId);
+        } elseif ($isDebug === 1) {
+            $errorText = '(This server has debug log enabled)';
+        }
+
+        return [
+            'api_version' => $apiVersion,
+            'error_text' => $errorText,
+            'free_space_percent' => $totalSpace > 0 ? '(' . round(($freeSpace / $totalSpace) * 100, 2) . '%)' : '',
+            'has_debug_log' => is_file(
+                $this->config->getKvsPath() . '/admin/logs/debug_conversion_server_' . $serverId . '.txt'
+            ) ? 1 : 0,
+            'has_old_api' => $hasOldApi,
+            'is_error' => $isError,
+        ];
+    }
+
+    private function formatConversionServerErrorText(int $errorId): string
+    {
+        return match ($errorId) {
+            1 => '(Conversion path is not writable)',
+            2 => '(Conversion script is not working)',
+            3 => '(Conversion script executed more than 15 minutes ago)',
+            4 => '(Some libraries are not configured correctly on this server)',
+            5 => '(This server has obsolete API version)',
+            6 => "(This server didn't report any activity for the last 2 hours)",
+            default => '',
+        };
+    }
+
+    private function isConversionApiVersionObsolete(string $apiVersion, string $latestApiVersion): bool
+    {
+        if ($apiVersion === '' || $latestApiVersion === '') {
+            return false;
+        }
+
+        return (int) str_replace('.', '', $apiVersion) < (int) str_replace('.', '', $latestApiVersion);
+    }
+
+    private function getLatestConversionApiVersion(\PDO $db): string
+    {
+        try {
+            $stmt = $db->prepare("
+                SELECT value
+                FROM {$this->table('options')}
+                WHERE variable = 'SYSTEM_CONVERSION_API_VERSION'
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $value = $stmt->fetchColumn();
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return is_scalar($value) ? (string) $value : '';
     }
 
     private function showServer(?string $id, InputInterface $input): int

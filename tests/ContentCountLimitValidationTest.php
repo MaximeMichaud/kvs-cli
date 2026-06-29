@@ -55,14 +55,14 @@ class ContentCountLimitValidationTest extends TestCase
     public function testCountFormatRejectsInvalidPositiveIntegerFiltersBeforeSql(): void
     {
         $cases = [
-            'content:video --user' => ['content:video', 'user'],
             'content:video --category' => ['content:video', 'category'],
+            'content:video --user' => ['content:video', 'user'],
             'content:album --user' => ['content:album', 'user'],
             'content:playlist --user' => ['content:playlist', 'user'],
         ];
 
         foreach ($cases as $label => [$commandName, $option]) {
-            foreach (['abc', '1.5', '-1'] as $value) {
+            foreach (['1.5', '-1'] as $value) {
                 $commands = $this->createCommands();
                 $tester = new CommandTester($commands[$commandName]);
                 $tester->execute([

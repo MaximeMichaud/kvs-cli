@@ -142,6 +142,39 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame('4K', $rows[0]['tag']);
     }
 
+    public function testListWithSearchMatchesDirectoryAndSynonymsLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'ultra hd',
+            '--fields' => 'tag_id,tag_dir,synonyms',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4k', $rows[0]['tag_dir']);
+        $this->assertSame('uhd, ultra hd', $rows[0]['synonyms']);
+
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('tags') .
+            " (tag_id, tag, tag_dir, synonyms, status_id) VALUES (50, 'Slug Target', 'directory-only', '', 1)"
+        );
+
+        $slugTester = new CommandTester($this->command);
+        $slugTester->execute([
+            'action' => 'list',
+            '--search' => 'directory-only',
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(0, $slugTester->getStatusCode());
+        $this->assertSame('1', trim($slugTester->getDisplay()));
+    }
+
     public function testListExposesKvsAdminRenameField(): void
     {
         $this->tester->execute([

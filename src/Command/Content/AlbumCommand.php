@@ -29,8 +29,12 @@ class AlbumCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'Album ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error|processing|deleting|deleted)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
+            ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
+            ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID or title')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles, directories, and descriptions')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -98,38 +102,8 @@ HELP
 
         $params = [];
 
-        $status = $this->getStringOption($input, 'status');
-        if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
-                'active' => StatusFormatter::ALBUM_ACTIVE,
-                'disabled' => StatusFormatter::ALBUM_DISABLED,
-                'inactive' => StatusFormatter::ALBUM_DISABLED,
-                'error' => StatusFormatter::ALBUM_ERROR,
-                'processing' => StatusFormatter::ALBUM_PROCESSING,
-                'in_process' => StatusFormatter::ALBUM_PROCESSING,
-                'in-process' => StatusFormatter::ALBUM_PROCESSING,
-                'deleting' => StatusFormatter::ALBUM_DELETING,
-                'deleted' => StatusFormatter::ALBUM_DELETED,
-            ], [0, 1, 2, 3, 4, 5]);
-            if ($statusId !== null) {
-                $whereClause .= " AND a.status_id = :status";
-                $params['status'] = $statusId;
-            }
-        }
-
-        $user = $this->getOptionalNonNegativeIntOption($input, 'user');
-        if ($user === false) {
+        if (!$this->applyAlbumListFilters($db, $input, $whereClause, $params)) {
             return self::FAILURE;
-        }
-        if ($user !== null) {
-            $whereClause .= " AND a.user_id = :user";
-            $params['user'] = $user;
-        }
-
-        $search = $this->getStringOption($input, 'search');
-        if ($search !== null) {
-            $whereClause .= " AND a.title LIKE :search";
-            $params['search'] = '%' . $search . '%';
         }
 
         try {
@@ -204,6 +178,7 @@ HELP
                         'images' => $album['image_count'] ?? 0,  // Alias
                         'status_id' => $statusId,
                         'status' => StatusFormatter::album($statusId, false),  // Alias
+                        'is_error' => $statusId === 2 ? 1 : 0,
                         'is_private' => $privacy,
                         'type' => $privacy,
                         'access_level_id' => $accessLevelId,
@@ -215,6 +190,11 @@ HELP
                         'comments_count' => $album['comments_count'] ?? 0,
                         'favourites_count' => $album['favourites_count'] ?? 0,
                         'purchases_count' => $album['purchases_count'] ?? 0,
+                        'website_link' => $this->buildKvsWebsiteLink(
+                            $album,
+                            'album_id',
+                            'WEBSITE_LINK_PATTERN_ALBUM'
+                        ),
                         'ip' => array_key_exists('ip', $album) ? $this->formatKvsIp($albumIp) : '',
                         'thumb' => '',
                         'rating' => $calculatedRating,
@@ -238,6 +218,113 @@ HELP
     }
 
     /**
+     * @param array<string, int|string> $params
+     */
+    private function applyAlbumListFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::ALBUM_ACTIVE,
+                'disabled' => StatusFormatter::ALBUM_DISABLED,
+                'inactive' => StatusFormatter::ALBUM_DISABLED,
+                'error' => StatusFormatter::ALBUM_ERROR,
+                'processing' => StatusFormatter::ALBUM_PROCESSING,
+                'in_process' => StatusFormatter::ALBUM_PROCESSING,
+                'in-process' => StatusFormatter::ALBUM_PROCESSING,
+                'deleting' => StatusFormatter::ALBUM_DELETING,
+                'deleted' => StatusFormatter::ALBUM_DELETED,
+            ], [0, 1, 2, 3, 4, 5]);
+            if ($statusId === false) {
+                return false;
+            }
+            if ($statusId !== null) {
+                $whereClause .= " AND a.status_id = :status";
+                $params['status'] = $statusId;
+            }
+        }
+
+        $user = $this->resolveUserIdOption($db, $input);
+        if ($user === false) {
+            return false;
+        }
+        if ($user !== null) {
+            $whereClause .= " AND a.user_id = :user";
+            $params['user'] = $user;
+        }
+
+        if (!$this->applyAlbumRelationFilters($db, $input, $whereClause, $params)) {
+            return false;
+        }
+
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (a.title LIKE :search" . $searchEscape
+                . " OR a.dir LIKE :search" . $searchEscape
+                . " OR a.description LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyAlbumRelationFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_albums')} ca "
+                . "WHERE ca.album_id = a.album_id AND ca.category_id = :category)";
+            $params['category'] = $category;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_albums')} ta "
+                . "WHERE ta.album_id = a.album_id AND ta.tag_id = :tag)";
+            $params['tag'] = $tag;
+        }
+
+        $model = $this->resolveModelIdOption($db, $input);
+        if ($model === false) {
+            return false;
+        }
+        if ($model !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('models_albums')} ma "
+                . "WHERE ma.album_id = a.album_id AND ma.model_id = :model)";
+            $params['model'] = $model;
+        }
+
+        $contentSource = $this->resolveContentSourceIdOption($db, $input);
+        if ($contentSource === false) {
+            return false;
+        }
+        if ($contentSource !== null) {
+            $whereClause .= " AND a.content_source_id = :content_source";
+            $params['content_source'] = $contentSource;
+        }
+
+        return true;
+    }
+
+    /**
      * @return array{0: string, 1: string}
      */
     private function buildAlbumRelationSql(InputInterface $input): array
@@ -245,13 +332,19 @@ HELP
         $selects = [];
         $joins = [];
 
-        if ($this->isAlbumFieldRequested($input, 'content_source')) {
+        if (
+            $this->isAlbumFieldRequested($input, 'content_source')
+            || $this->isAlbumFieldRequested($input, 'content_source_status_id')
+        ) {
             $selects[] = 'cs.title as content_source';
             $selects[] = 'cs.status_id as content_source_status_id';
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = a.content_source_id";
         }
 
-        if ($this->isAlbumFieldRequested($input, 'admin_user')) {
+        if (
+            $this->isAlbumFieldRequested($input, 'admin_user')
+            || $this->isAlbumFieldRequested($input, 'admin_user_is_superadmin')
+        ) {
             $selects[] = 'au.login as admin_user';
             $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
             $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = a.admin_user_id";
@@ -262,7 +355,10 @@ HELP
             $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = a.admin_flag_id";
         }
 
-        if ($this->isAlbumFieldRequested($input, 'server_group')) {
+        if (
+            $this->isAlbumFieldRequested($input, 'server_group')
+            || $this->isAlbumFieldRequested($input, 'server_group_status_id')
+        ) {
             $selects[] = 'sg.title as server_group';
             $selects[] = 'sg.status_id as server_group_status_id';
             $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = a.server_group_id";

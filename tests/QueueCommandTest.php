@@ -196,6 +196,40 @@ class QueueCommandTest extends TestCase
         $this->assertSame('2026-05-26 10:05:00', $rows[0]['start_date']);
     }
 
+    public function testQueueListExposesKvsAdminAppendFields(): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE ' . TestHelper::table('background_tasks') . ' SET data = :data WHERE task_id = 30'
+        );
+        $stmt->execute([
+            'data' => serialize([
+                'format_postfix' => '.mp4',
+                'format_size' => '720p',
+            ]),
+        ]);
+
+        $progressDir = $this->kvsPath . '/admin/data/engine/tasks';
+        self::assertTrue(is_dir($progressDir) || mkdir($progressDir, 0777, true));
+        file_put_contents($progressDir . '/30.dat', '42');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'task_id,format_postfix,format_size,pc_complete,is_error',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['task_id']);
+        $this->assertSame('.mp4', $rows[0]['format_postfix']);
+        $this->assertSame('720p', $rows[0]['format_size']);
+        $this->assertSame('42%', $rows[0]['pc_complete']);
+        $this->assertSame(1, (int) $rows[0]['is_error']);
+    }
+
     public function testQueueListCountFormatIgnoresLimitButAppliesFilters(): void
     {
         $this->tester->execute([

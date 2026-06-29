@@ -138,6 +138,22 @@ class ModelCommandTest extends TestCase
         $this->assertStringNotContainsString('Disabled Model', $output);
     }
 
+    public function testListModelsSearchesDescriptionLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Main model profile',
+            '--format' => 'json',
+            '--fields' => 'model_id,description',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['model_id'], $rows));
+        $this->assertSame('Main model profile', $rows[0]['description']);
+    }
+
     public function testListModelsUsesKvsAdminRelationContentCounts(): void
     {
         $this->db->exec(

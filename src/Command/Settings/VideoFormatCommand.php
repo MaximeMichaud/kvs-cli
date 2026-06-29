@@ -172,6 +172,7 @@ HELP
             /** @var list<array<string, mixed>> $formats */
             $formats = $stmt->fetchAll();
             $formats = $this->addVideoCounts($db, $formats);
+            $deletingProgressByPostfix = $this->getDeletingFormatProgressByPostfix($db);
             $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
 
             if ($formats === []) {
@@ -185,7 +186,8 @@ HELP
             }
 
             // Transform data for display
-            $formats = array_map(function (array $format): array {
+            $formats = array_map(function (array $format) use ($deletingProgressByPostfix): array {
+                $format = $this->addKvsAdminListComputedFields($format, $deletingProgressByPostfix);
                 $format = $this->addKvsFileBackedFields($format);
                 $format['id'] = $format['format_video_id'];
                 $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
@@ -228,6 +230,139 @@ HELP
             $this->io()->error('Failed to fetch video formats: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, string> $deletingProgressByPostfix
+     * @param array<string, mixed> $format
+     * @return array<string, mixed>
+     */
+    private function addKvsAdminListComputedFields(array $format, array $deletingProgressByPostfix): array
+    {
+        $format['pc_complete'] = '';
+        $format['is_error'] = 0;
+        $format['source_text'] = '';
+        $format['watermark_position_offset'] = '';
+        $format['watermark_position_scrolling'] = '';
+        $format['watermark2_position_offset'] = '';
+        $format['watermark2_position_scrolling'] = '';
+
+        $rawStatusId = $this->getIntField($format, 'status_id');
+        if ($rawStatusId === StatusFormatter::FORMAT_DELETING) {
+            $postfix = isset($format['postfix']) && is_scalar($format['postfix']) ? (string) $format['postfix'] : '';
+            if ($postfix !== '' && array_key_exists($postfix, $deletingProgressByPostfix)) {
+                $format['pc_complete'] = $deletingProgressByPostfix[$postfix];
+            } else {
+                $format['display_status_id'] = StatusFormatter::FORMAT_ERROR;
+                $format['is_error'] = 1;
+            }
+        } elseif ($rawStatusId === StatusFormatter::FORMAT_ERROR) {
+            $format['is_error'] = 1;
+        }
+
+        if ($this->getIntField($format, 'is_use_as_source') === 1) {
+            $format['source_text'] = '(Use as source)';
+        }
+
+        $format = $this->addKvsWatermarkAppendFields(
+            $format,
+            'watermark_position_id',
+            'watermark_offset_random',
+            'watermark_scrolling_times',
+            'watermark_scrolling_duration',
+            'watermark_position_offset',
+            'watermark_position_scrolling'
+        );
+
+        return $this->addKvsWatermarkAppendFields(
+            $format,
+            'watermark2_position_id',
+            'watermark2_offset_random',
+            'watermark2_scrolling_times',
+            'watermark2_scrolling_duration',
+            'watermark2_position_offset',
+            'watermark2_position_scrolling'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     * @return array<string, mixed>
+     */
+    private function addKvsWatermarkAppendFields(
+        array $format,
+        string $positionKey,
+        string $randomOffsetKey,
+        string $scrollingTimesKey,
+        string $scrollingDurationKey,
+        string $offsetOutputKey,
+        string $scrollingOutputKey
+    ): array {
+        $randomOffset = $format[$randomOffsetKey] ?? '';
+        $randomOffset = is_scalar($randomOffset) ? (string) $randomOffset : '';
+
+        if (in_array($this->getIntField($format, $positionKey), [5, 6, 7], true)) {
+            $format[$scrollingOutputKey] = $this->getIntField($format, $scrollingTimesKey)
+                . ' x ' . $this->getIntField($format, $scrollingDurationKey) . 's';
+            if ($randomOffset !== '') {
+                $format[$scrollingOutputKey] .= " ±{$randomOffset}";
+            }
+            return $format;
+        }
+
+        if ($randomOffset !== '') {
+            $format[$offsetOutputKey] = "±{$randomOffset}";
+        }
+
+        return $format;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getDeletingFormatProgressByPostfix(\PDO $db): array
+    {
+        try {
+            $stmt = $db->query("
+                SELECT task_id, data
+                FROM {$this->table('background_tasks')}
+                WHERE type_id = 6
+            ");
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if ($stmt === false) {
+            return [];
+        }
+
+        /** @var list<array<string, mixed>> $tasks */
+        $tasks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $progressByPostfix = [];
+        foreach ($tasks as $task) {
+            $taskDataValue = $task['data'] ?? null;
+            if (!is_string($taskDataValue) || $taskDataValue === '') {
+                continue;
+            }
+            $taskData = @unserialize($taskDataValue, ['allowed_classes' => false]);
+            if (!is_array($taskData) || !isset($taskData['format_postfix']) || !is_scalar($taskData['format_postfix'])) {
+                continue;
+            }
+
+            $taskId = $this->getIntField($task, 'task_id');
+            $progressByPostfix[(string) $taskData['format_postfix']] = $this->readFormatDeletionProgress($taskId);
+        }
+
+        return $progressByPostfix;
+    }
+
+    private function readFormatDeletionProgress(int $taskId): string
+    {
+        $progressFile = $this->config->getKvsPath() . '/admin/data/engine/tasks/' . $taskId . '.dat';
+        $progress = @file_get_contents($progressFile);
+
+        return ((int) ($progress !== false ? $progress : 0)) . '%';
     }
 
     /**

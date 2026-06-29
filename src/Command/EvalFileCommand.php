@@ -46,6 +46,7 @@ The <info>eval-file</info> command executes a PHP file with the KVS context pre-
   $kvsConfig - KVS CLI configuration object
   $kvsPath   - KVS installation path
   $db        - Database connection
+  $kvs_db    - KVS-style mysqli connection
   $argv      - Script arguments
 
 <comment>Available classes:</comment>
@@ -123,6 +124,7 @@ HELP
             if ($db === null) {
                 $this->io()->warning('Database connection not available');
             }
+            $kvs_db = $db;
 
             // Load bootstrap (this defines Model and DB classes with mysqli)
             $bootstrap = $this->getEvalBootstrapCode($this->config->getTablePrefix());

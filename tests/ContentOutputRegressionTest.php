@@ -380,8 +380,9 @@ class ContentOutputRegressionTest extends TestCase
         $db = $this->createSqliteConnection();
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
-            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
+            'album_id INTEGER, user_id INTEGER, title TEXT, dir TEXT, description TEXT, status_id INTEGER, ' .
+            'is_private INTEGER, post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
@@ -389,8 +390,10 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(4, 1, 'Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5, 0), " .
-            "(5, 1, 'Indoor Set', 1, 0, '2024-01-03 00:00:00', 20, 20, 5, 0)"
+            "(4, 1, 'Outdoor Set', 'outdoor-set', 'Outdoor album description', 1, 0, " .
+            "'2024-01-02 00:00:00', 15, 20, 5, 0), " .
+            "(5, 1, 'Indoor Set', 'indoor-set', 'Indoor album description', 1, 0, " .
+            "'2024-01-03 00:00:00', 20, 20, 5, 0)"
         );
 
         $searchTester = new CommandTester($this->createAlbumCommand($db));

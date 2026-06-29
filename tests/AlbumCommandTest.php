@@ -19,7 +19,9 @@ class AlbumCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation([
+            'project_url' => 'https://example.test',
+        ]);
         $this->db = $this->createDatabase();
 
         $this->config = TestHelper::createTestConfiguration($this->kvsPath);
@@ -69,6 +71,92 @@ class AlbumCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testAlbumListFiltersUserByUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'bob',
+            '--format' => 'json',
+            '--fields' => 'album_id,user',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame('bob', $rows[0]['user']);
+    }
+
+    public function testAlbumListFiltersCategoryByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--category' => 'Album Category',
+            '--format' => 'json',
+            '--fields' => 'album_id,categories',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        $this->assertSame('Second Album Category,Album Category', $rows[0]['categories']);
+    }
+
+    public function testAlbumListFiltersTagByNameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--tag' => 'zeta-album',
+            '--format' => 'json',
+            '--fields' => 'album_id,tags',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        $this->assertSame('zeta-album,album-tag', $rows[0]['tags']);
+    }
+
+    public function testAlbumListFiltersModelByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--model' => 'Album Model Two',
+            '--format' => 'json',
+            '--fields' => 'album_id,models',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        $this->assertSame('Album Model Two,Album Model', $rows[0]['models']);
+    }
+
+    public function testAlbumListFiltersContentSourceByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--content-source' => 'Gallery Studio',
+            '--format' => 'json',
+            '--fields' => 'album_id,content_source',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        $this->assertSame('Gallery Studio', $rows[0]['content_source']);
+    }
+
     public function testAlbumListUsesStoredPhotosAmount(): void
     {
         $this->tester->execute([
@@ -83,6 +171,54 @@ class AlbumCommandTest extends TestCase
         $this->assertSame(0, $this->tester->getStatusCode());
         $this->assertSame(3, (int) $rows[0]['images']);
         $this->assertSame(7, (int) $rows[1]['images']);
+    }
+
+    public function testAlbumListExposesKvsWebsiteLinkField(): void
+    {
+        file_put_contents(
+            $this->kvsPath . '/admin/data/system/website_ui_params.dat',
+            serialize([
+                'WEBSITE_LINK_PATTERN_ALBUM' => 'album/%ID%/%DIR%/',
+                'DISABLED_CONTENT_AVAILABILITY' => '0',
+            ])
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,website_link',
+            '--format' => 'json',
+            '--limit' => 2,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'album_id');
+
+        $this->assertSame(
+            'https://example.test/album/10/active-album/',
+            $rowsById[10]['website_link']
+        );
+        $this->assertSame(
+            'https://example.test/album/20/disabled-album/',
+            $rowsById[20]['website_link']
+        );
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testAlbumListSearchesDescriptionLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Active album description',
+            '--format' => 'json',
+            '--fields' => 'album_id,description',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        $this->assertSame('Active album description', $rows[0]['description']);
     }
 
     public function testAlbumListExposesKvsAdminCountFields(): void
@@ -133,6 +269,44 @@ class AlbumCommandTest extends TestCase
         $this->assertSame('Second Album Category,Album Category', $rows[0]['categories']);
         $this->assertSame('Album Model Two,Album Model', $rows[0]['models']);
         $this->assertSame('127.0.0.1', $rows[0]['ip']);
+    }
+
+    public function testAlbumListExposesRelationStatusFieldsWhenRequestedDirectly(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'album_id,content_source_status_id,server_group_status_id,admin_user_is_superadmin',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame(1, (int) $rows[0]['content_source_status_id']);
+        $this->assertSame(1, (int) $rows[0]['server_group_status_id']);
+        $this->assertSame(0, (int) $rows[0]['admin_user_is_superadmin']);
+    }
+
+    public function testAlbumListExposesKvsAdminErrorHighlightField(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('albums') . ' SET status_id = 2 WHERE album_id = 20');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Disabled Album',
+            '--fields' => 'album_id,status_id,is_error',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(20, (int) $rows[0]['album_id']);
+        $this->assertSame(2, (int) $rows[0]['status_id']);
+        $this->assertSame(1, (int) $rows[0]['is_error']);
     }
 
     public function testAlbumListExposesKvsAdminRawScalarAndUserFields(): void

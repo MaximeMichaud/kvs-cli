@@ -79,11 +79,11 @@ HELP
             ->addArgument('values', InputArgument::IS_ARRAY | InputArgument::OPTIONAL, 'Target category ID or category IDs')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Category title')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Category description')
-            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Category group ID')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Category group ID or title')
             ->addOption('parent', null, InputOption::VALUE_REQUIRED, 'Deprecated alias for --group')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Status (active|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in category titles')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in category titles, directories, descriptions, and synonyms')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused categories')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
@@ -128,11 +128,14 @@ HELP
             $conditions = [];
             $params = [];
 
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::CATEGORY_ACTIVE,
                 'inactive' => StatusFormatter::CATEGORY_INACTIVE,
                 'disabled' => StatusFormatter::CATEGORY_INACTIVE,
             ]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $conditions[] = 'c.status_id = :status';
                 $params['status'] = $statusId;
@@ -140,18 +143,21 @@ HELP
 
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $conditions[] = 'c.title LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $searchEscape = $this->likeEscapeSql();
+                $conditions[] = '(c.title LIKE :search' . $searchEscape
+                    . ' OR c.dir LIKE :search' . $searchEscape
+                    . ' OR c.description LIKE :search' . $searchEscape
+                    . ' OR c.synonyms LIKE :search' . $searchEscape . ')';
+                $params['search'] = $this->containsLikePattern($search);
             }
 
-            $groupId = $this->getStringOption($input, 'group');
+            $groupId = $this->resolveCategoryGroupFilter($db, $input);
+            if ($groupId === false) {
+                return self::FAILURE;
+            }
             if ($groupId !== null) {
-                if (!ctype_digit($groupId)) {
-                    $this->io()->error('Category group ID must be numeric');
-                    return self::FAILURE;
-                }
                 $conditions[] = 'c.category_group_id = :group';
-                $params['group'] = (int) $groupId;
+                $params['group'] = $groupId;
             }
 
             $usageJoins = $this->getCategoryUsageJoins();
@@ -262,6 +268,40 @@ HELP
             $this->io()->error('Failed to count categories: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function resolveCategoryGroupFilter(\PDO $db, InputInterface $input): int|false|null
+    {
+        $group = $this->getStringOption($input, 'group');
+        if ($group === null) {
+            $group = $this->getStringOption($input, 'parent');
+        }
+        if ($group === null) {
+            return null;
+        }
+
+        $group = trim($group);
+        if ($group === '') {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $group) === 1) {
+            return (int) $group;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $group) === 1) {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        return $this->findReferenceIdByText(
+            $db,
+            'categories_groups',
+            'category_group_id',
+            'title',
+            $group
+        ) ?? 0;
     }
 
     private function showTree(InputInterface $input): int

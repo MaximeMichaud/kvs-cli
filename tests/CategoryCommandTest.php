@@ -113,6 +113,56 @@ class CategoryCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['category_group_id']);
     }
 
+    public function testCategoryListSearchesDirectoryLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'action-scenes',
+            '--format' => 'json',
+            '--fields' => 'category_id,title,dir',
+            '--limit' => 5,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['category_id'], $rows));
+        $this->assertSame('Action', $rows[0]['title']);
+        $this->assertSame('action-scenes', $rows[0]['dir']);
+    }
+
+    public function testCategoryListFiltersByGroupTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--group' => 'Genres',
+            '--format' => 'json',
+            '--fields' => 'category_id,title,category_group_id',
+            '--limit' => 5,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['category_id']);
+        $this->assertSame('Action', $rows[0]['title']);
+        $this->assertSame(2, (int) $rows[0]['category_group_id']);
+    }
+
+    public function testCategoryListHonorsDeprecatedParentAliasForGroupFilter(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--parent' => '2',
+            '--format' => 'count',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('1', trim($this->tester->getDisplay()));
+    }
+
     public function testCategoryListExposesKvsAdminThumbField(): void
     {
         $this->tester->execute([
@@ -297,7 +347,7 @@ class CategoryCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
-            'category_id INTEGER, title TEXT, description TEXT, category_group_id INTEGER, ' .
+            'category_id INTEGER, title TEXT, dir TEXT, description TEXT, synonyms TEXT, category_group_id INTEGER, ' .
             'status_id INTEGER, screenshot1 TEXT, screenshot2 TEXT, added_date TEXT, ' .
             'total_content_sources INTEGER, total_playlists INTEGER, ' .
             'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
@@ -316,11 +366,13 @@ class CategoryCommandTest extends TestCase
 
         $db->exec(
             "INSERT INTO " . TestHelper::table('categories') .
-            " (category_id, title, description, category_group_id, status_id, screenshot1, screenshot2, added_date, " .
+            " (category_id, title, dir, description, synonyms, category_group_id, status_id, screenshot1, " .
+            "screenshot2, added_date, " .
             "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES " .
-            "(10, 'Action', 'High energy scenes', 2, 1, 'action-1.jpg', 'action-2.jpg', '2026-05-25 10:00:00', 1, 2, 3, 4, 0), " .
-            "(20, 'Drama', '', 0, 0, '', '', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
-            "(30, 'Unused Category', '', 0, 1, '', '', '2026-05-26 11:00:00', 0, 0, 0, 0, 0)"
+            "(10, 'Action', 'action-scenes', 'High energy scenes', 'stunts', 2, 1, 'action-1.jpg', " .
+            "'action-2.jpg', '2026-05-25 10:00:00', 1, 2, 3, 4, 0), " .
+            "(20, 'Drama', 'drama', '', '', 0, 0, '', '', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
+            "(30, 'Unused Category', 'unused-category', '', '', 0, 1, '', '', '2026-05-26 11:00:00', 0, 0, 0, 0, 0)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('categories_groups') . " VALUES (2, 'Genres')");
         $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (10, 100), (10, 101), (20, 200)");

@@ -28,10 +28,12 @@ class PlaylistCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|create|add|remove|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Playlist ID, or title for create')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
             ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public playlists')
             ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private playlists')
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles and descriptions')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles, directories, and descriptions')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Playlist title for create action')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Playlist description for create action')
             ->addOption('dir', null, InputOption::VALUE_REQUIRED, 'Playlist directory slug for create action')
@@ -58,7 +60,7 @@ Manage KVS playlists.
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs playlist list</>
   <fg=green>kvs playlist list --public</>
-  <fg=green>kvs playlist list --private --user=5</>
+  <fg=green>kvs playlist list --private --user=alice</>
   <fg=green>kvs playlist list --status=active --limit=50</>
   <fg=green>kvs playlist list --search="favorites"</>
 	  <fg=green>kvs playlist list --field=title</>
@@ -120,42 +122,8 @@ HELP
 
         $params = [];
 
-        // Status filter
-        $status = $this->getStringOption($input, 'status');
-        if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
-                'active' => StatusFormatter::PLAYLIST_ACTIVE,
-                'disabled' => StatusFormatter::PLAYLIST_DISABLED,
-                'inactive' => StatusFormatter::PLAYLIST_DISABLED,
-            ]);
-            if ($statusId !== null) {
-                $fromClause .= " AND p.status_id = :status";
-                $params['status'] = $statusId;
-            }
-        }
-
-        // User filter
-        $user = $this->getOptionalNonNegativeIntOption($input, 'user');
-        if ($user === false) {
+        if (!$this->applyPlaylistListFilters($db, $input, $fromClause, $params)) {
             return self::FAILURE;
-        }
-        if ($user !== null) {
-            $fromClause .= " AND p.user_id = :user";
-            $params['user'] = $user;
-        }
-
-        // Public/Private filter
-        if ($input->getOption('public')) {
-            $fromClause .= " AND p.is_private = 0";
-        } elseif ($input->getOption('private')) {
-            $fromClause .= " AND p.is_private = 1";
-        }
-
-        // Search filter
-        $search = $input->getOption('search');
-        if (is_string($search) && $search !== '') {
-            $fromClause .= " AND (p.title LIKE :search OR p.description LIKE :search)";
-            $params['search'] = '%' . $search . '%';
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
@@ -241,6 +209,90 @@ HELP
             $this->io()->error('Failed to fetch playlists: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyPlaylistListFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$fromClause,
+        array &$params
+    ): bool {
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::PLAYLIST_ACTIVE,
+                'disabled' => StatusFormatter::PLAYLIST_DISABLED,
+                'inactive' => StatusFormatter::PLAYLIST_DISABLED,
+            ]);
+            if ($statusId === false) {
+                return false;
+            }
+            if ($statusId !== null) {
+                $fromClause .= " AND p.status_id = :status";
+                $params['status'] = $statusId;
+            }
+        }
+
+        $user = $this->resolveUserIdOption($db, $input);
+        if ($user === false) {
+            return false;
+        }
+        if ($user !== null) {
+            $fromClause .= " AND p.user_id = :user";
+            $params['user'] = $user;
+        }
+
+        if ($input->getOption('public')) {
+            $fromClause .= " AND p.is_private = 0";
+        } elseif ($input->getOption('private')) {
+            $fromClause .= " AND p.is_private = 1";
+        }
+
+        $search = $input->getOption('search');
+        if (is_string($search) && $search !== '') {
+            $searchEscape = $this->likeEscapeSql();
+            $fromClause .= " AND (p.title LIKE :search" . $searchEscape
+                . " OR p.dir LIKE :search" . $searchEscape
+                . " OR p.description LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
+        }
+
+        return $this->applyPlaylistRelationFilters($db, $input, $fromClause, $params);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyPlaylistRelationFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$fromClause,
+        array &$params
+    ): bool {
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $fromClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_playlists')} cp "
+                . "WHERE cp.playlist_id = p.playlist_id AND cp.category_id = :category)";
+            $params['category'] = $category;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $fromClause .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_playlists')} tp "
+                . "WHERE tp.playlist_id = p.playlist_id AND tp.tag_id = :tag)";
+            $params['tag'] = $tag;
+        }
+
+        return true;
     }
 
     private function isPlaylistFieldRequested(InputInterface $input, string $field): bool

@@ -303,6 +303,22 @@ class DvdCommandTest extends TestCase
         $this->assertStringNotContainsString('Disabled Series', $output);
     }
 
+    public function testListDvdsSearchesDescriptionLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Long running',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,description',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
+        $this->assertSame('Long running series', $rows[0]['description']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListDvdsFormats(string $format): void
     {

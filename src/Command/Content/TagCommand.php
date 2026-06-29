@@ -72,7 +72,7 @@ HELP
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Tag name (for update)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter/set status (active|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in tag names')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in tag names, directories, and synonyms')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused tags')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
@@ -118,11 +118,14 @@ HELP
             // Status filter
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = $this->parseStatusFilter($input, [
+                $statusId = $this->parseStatusFilterOrFail($input, [
                     'active' => StatusFormatter::TAG_ACTIVE,
                     'inactive' => StatusFormatter::TAG_INACTIVE,
                     'disabled' => StatusFormatter::TAG_INACTIVE,
                 ]);
+                if ($statusId === false) {
+                    return self::FAILURE;
+                }
                 if ($statusId !== null) {
                     $conditions[] = 't.status_id = :status';
                     $params['status'] = $statusId;
@@ -132,8 +135,11 @@ HELP
             // Search filter
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $conditions[] = 't.tag LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $searchEscape = $this->likeEscapeSql();
+                $conditions[] = '(t.tag LIKE :search' . $searchEscape
+                    . ' OR t.tag_dir LIKE :search' . $searchEscape
+                    . ' OR t.synonyms LIKE :search' . $searchEscape . ')';
+                $params['search'] = $this->containsLikePattern($search);
             }
 
             $usageSelectors = $this->getTagUsageAggregateSelectors();
