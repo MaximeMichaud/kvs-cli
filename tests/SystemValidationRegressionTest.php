@@ -60,6 +60,63 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --limit', $tester->getDisplay());
     }
 
+    public function testQueueRejectsInvalidPositiveIntegerFiltersBeforeSql(): void
+    {
+        foreach (['list', 'history'] as $action) {
+            foreach (['type', 'video', 'album', 'server'] as $option) {
+                foreach (['abc', '1.5', '-1'] as $value) {
+                    $tester = new CommandTester($this->createQueueCommand());
+                    $tester->execute([
+                        'action' => $action,
+                        '--format' => 'count',
+                        '--' . $option => $value,
+                    ]);
+
+                    $display = $tester->getDisplay();
+                    $this->assertSame(1, $tester->getStatusCode(), "$action --$option=$value: $display");
+                    $this->assertStringContainsString("Invalid value for --$option", $display, "$action --$option=$value");
+                    $this->assertStringNotContainsString('no such table', strtolower($display), "$action --$option=$value");
+                }
+            }
+        }
+    }
+
+    public function testQueueAllowsZeroSentinelFilters(): void
+    {
+        $this->createQueueTables();
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks " .
+            "(task_id, status_id, type_id, video_id, album_id, server_id, error_code, priority, added_date) " .
+            "VALUES (1, 0, 4, 10, 0, 0, 0, 0, '2026-06-01 00:00:00')"
+        );
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks_history " .
+            "(task_id, status_id, type_id, video_id, album_id, server_id, error_code, priority, start_date, effective_duration, end_date) " .
+            "VALUES (2, 3, 52, 0, 0, 0, 0, 0, '2026-06-01 00:00:00', 1, '2026-06-01 00:00:01')"
+        );
+
+        $listTester = new CommandTester($this->createQueueCommand());
+        $listTester->execute([
+            'action' => 'list',
+            '--album' => '0',
+            '--server' => '0',
+            '--format' => 'count',
+        ]);
+        $this->assertSame(0, $listTester->getStatusCode(), $listTester->getDisplay());
+        $this->assertSame("1\n", $listTester->getDisplay());
+
+        $historyTester = new CommandTester($this->createQueueCommand());
+        $historyTester->execute([
+            'action' => 'history',
+            '--video' => '0',
+            '--album' => '0',
+            '--server' => '0',
+            '--format' => 'count',
+        ]);
+        $this->assertSame(0, $historyTester->getStatusCode(), $historyTester->getDisplay());
+        $this->assertSame("1\n", $historyTester->getDisplay());
+    }
+
     public function testQueueShowHistoryUsesConversionServerNameAndHistoryFields(): void
     {
         $this->createQueueTables();
@@ -357,6 +414,24 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('syntax error', strtolower($tester->getDisplay()));
     }
 
+    public function testServerRejectsInvalidGroupBeforeSql(): void
+    {
+        foreach (['abc', '1.5', '-1'] as $value) {
+            $tester = new CommandTester($this->createServerCommand());
+            $tester->execute([
+                'action' => 'list',
+                '--group' => $value,
+                '--format' => 'count',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "--group=$value: $display");
+            $this->assertStringContainsString('Invalid value for --group', $display, "--group=$value");
+            $this->assertStringNotContainsString('no such table', strtolower($display), "--group=$value");
+        }
+    }
+
     public function testConversionRejectsInvalidStatus(): void
     {
         $tester = new CommandTester($this->createConversionCommand());
@@ -382,6 +457,24 @@ class SystemValidationRegressionTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode());
         $this->assertStringContainsString('Invalid value for --status: bogus', $tester->getDisplay());
+    }
+
+    public function testVideoFormatRejectsInvalidGroupBeforeSql(): void
+    {
+        foreach (['abc', '1.5', '-1'] as $value) {
+            $tester = new CommandTester($this->createVideoFormatCommand());
+            $tester->execute([
+                'action' => 'list',
+                '--group' => $value,
+                '--format' => 'count',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "--group=$value: $display");
+            $this->assertStringContainsString('Invalid value for --group', $display, "--group=$value");
+            $this->assertStringNotContainsString('no such table', strtolower($display), "--group=$value");
+        }
     }
 
     public function testVideoFormatRejectsUnknownAction(): void

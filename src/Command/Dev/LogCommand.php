@@ -54,7 +54,11 @@ class LogCommand extends BaseCommand
             return $this->followLog($type);
         }
 
-        $tail = $this->getIntOptionOrDefault($input, 'tail', 50);
+        $tail = $this->getPositiveIntOptionOrDefault($input, 'tail', 50);
+        if ($tail === null) {
+            return self::FAILURE;
+        }
+
         return $this->showLog($type, $tail);
     }
 

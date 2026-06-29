@@ -116,6 +116,9 @@ HELP
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countDvds($db, $fromClause, $whereClause, $params);
         }
 

@@ -131,7 +131,10 @@ HELP
         }
 
         // User filter
-        $user = $this->getIntOption($input, 'user');
+        $user = $this->getOptionalNonNegativeIntOption($input, 'user');
+        if ($user === false) {
+            return self::FAILURE;
+        }
         if ($user !== null) {
             $fromClause .= " AND p.user_id = :user";
             $params['user'] = $user;
@@ -152,6 +155,9 @@ HELP
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countPlaylists($db, $fromClause, $params);
         }
 

@@ -148,6 +148,9 @@ HELP
             $whereClause = implode(' AND ', $conditions);
 
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 $countJoins = $unusedOnly ? $usageJoins : '';
                 $stmt = $db->prepare("
                     SELECT COUNT(*)

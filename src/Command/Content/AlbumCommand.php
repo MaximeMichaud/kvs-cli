@@ -115,7 +115,10 @@ HELP
             }
         }
 
-        $user = $this->getIntOption($input, 'user');
+        $user = $this->getOptionalNonNegativeIntOption($input, 'user');
+        if ($user === false) {
+            return self::FAILURE;
+        }
         if ($user !== null) {
             $whereClause .= " AND a.user_id = :user";
             $params['user'] = $user;
@@ -129,6 +132,9 @@ HELP
 
         try {
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
                 foreach ($params as $key => $value) {
                     $stmt->bindValue($key, $value);

@@ -173,7 +173,10 @@ HELP
         }
 
         // Group filter
-        $groupId = $this->getIntOption($input, 'group');
+        $groupId = $this->getOptionalNonNegativeIntOption($input, 'group');
+        if ($groupId === false) {
+            return self::FAILURE;
+        }
         if ($groupId !== null) {
             $query .= " AND s.group_id = :group_id";
             $params['group_id'] = $groupId;

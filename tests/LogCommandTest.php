@@ -186,6 +186,21 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogTailRejectsInvalidLineCounts(): void
+    {
+        foreach (['-1', '0', 'abc', '1.5'] as $tail) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'type' => 'system',
+                '--tail' => $tail,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tail . ': ' . $tester->getDisplay());
+            $this->assertStringContainsString('Invalid value for --tail', $tester->getDisplay(), $tail);
+            $this->assertStringNotContainsString('System started', $tester->getDisplay(), $tail);
+        }
+    }
+
     public function testLogClear(): void
     {
         // Answer 'no' to confirmation

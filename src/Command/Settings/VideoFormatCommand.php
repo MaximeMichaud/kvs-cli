@@ -154,7 +154,10 @@ HELP
             }
         }
 
-        $groupId = $this->getIntOption($input, 'group');
+        $groupId = $this->getOptionalNonNegativeIntOption($input, 'group');
+        if ($groupId === false) {
+            return self::FAILURE;
+        }
         if ($groupId !== null) {
             $query .= " AND f.format_video_group_id = :group_id";
             $params['group_id'] = $groupId;

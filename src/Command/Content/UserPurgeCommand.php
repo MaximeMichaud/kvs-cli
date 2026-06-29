@@ -67,8 +67,14 @@ HELP
     {
         $removalRequested = $this->getBoolOption($input, 'removal-requested');
         $noContent = $this->getBoolOption($input, 'no-content');
-        $inactiveDays = $this->getIntOption($input, 'inactive-days');
-        $minAge = $this->getIntOption($input, 'min-age');
+        $inactiveDays = $this->getOptionalPositiveIntOption($input, 'inactive-days');
+        if ($inactiveDays === false) {
+            return self::FAILURE;
+        }
+        $minAge = $this->getOptionalPositiveIntOption($input, 'min-age');
+        if ($minAge === false) {
+            return self::FAILURE;
+        }
         $confirm = $this->getBoolOption($input, 'confirm');
         $yes = $this->getBoolOption($input, 'yes');
         $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 1000);

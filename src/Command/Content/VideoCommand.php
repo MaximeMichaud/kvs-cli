@@ -131,20 +131,29 @@ HELP
             $params['search'] = "%$search%";
         }
 
-        $category = $this->getIntOption($input, 'category');
+        $category = $this->getOptionalNonNegativeIntOption($input, 'category');
+        if ($category === false) {
+            return self::FAILURE;
+        }
         if ($category !== null) {
             $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
                 . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
             $params['category'] = $category;
         }
 
-        $user = $this->getIntOption($input, 'user');
+        $user = $this->getOptionalNonNegativeIntOption($input, 'user');
+        if ($user === false) {
+            return self::FAILURE;
+        }
         if ($user !== null) {
             $whereSql .= " AND v.user_id = :user";
             $params['user'] = $user;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countVideos($db, "$fromSql $whereSql", $params);
         }
 

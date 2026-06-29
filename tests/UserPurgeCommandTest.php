@@ -24,6 +24,38 @@ class UserPurgeCommandTest extends TestCase
         TestHelper::removeDir($this->kvsPath);
     }
 
+    public function testRejectsInvalidPositiveIntegerFiltersBeforeSql(): void
+    {
+        $config = TestHelper::createTestConfiguration($this->kvsPath);
+        $db = new PDO('sqlite::memory:');
+        $command = new class ($config, $db) extends UserPurgeCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+
+        foreach (['inactive-days', 'min-age'] as $option) {
+            foreach (['abc', '1.5', '0', '-1'] as $value) {
+                $tester = new CommandTester($command);
+                $tester->execute([
+                    '--no-content' => true,
+                    '--' . $option => $value,
+                ]);
+
+                $display = $tester->getDisplay();
+                $this->assertSame(1, $tester->getStatusCode(), "$option=$value: $display");
+                $this->assertStringContainsString("Invalid value for --$option", $display, "$option=$value");
+                $this->assertStringNotContainsString('no such table', strtolower($display), "$option=$value");
+            }
+        }
+    }
+
     public function testDryRunExcludesSystemAccounts(): void
     {
         $db = new PDO('sqlite::memory:');

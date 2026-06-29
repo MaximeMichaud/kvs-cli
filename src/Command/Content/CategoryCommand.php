@@ -162,6 +162,9 @@ HELP
 
             $whereClause = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
             if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 return $this->countCategories($db, $whereClause, $params, $unusedOnly ? $usageJoins : '');
             }
 

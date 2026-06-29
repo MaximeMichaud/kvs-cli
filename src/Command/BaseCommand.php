@@ -501,6 +501,36 @@ abstract class BaseCommand extends Command
         return (int) $value;
     }
 
+    protected function getOptionalPositiveIntOption(InputInterface $input, string $name): int|false|null
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        if (preg_match('/^\d+$/', $value) !== 1 || (int) $value < 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 1)', $name));
+            return false;
+        }
+
+        return (int) $value;
+    }
+
+    protected function getOptionalNonNegativeIntOption(InputInterface $input, string $name): int|false|null
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        if (preg_match('/^\d+$/', $value) !== 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0)', $name));
+            return false;
+        }
+
+        return (int) $value;
+    }
+
     /**
      * Render a table with consistent box style
      *

@@ -178,28 +178,8 @@ HELP
             $params['status'] = $statusMap[$statusKey];
         }
 
-        $type = $this->getIntOption($input, 'type');
-        if ($type !== null) {
-            $fromClause .= " AND bt.type_id = :type";
-            $params['type'] = $type;
-        }
-
-        $videoId = $this->getIntOption($input, 'video');
-        if ($videoId !== null) {
-            $fromClause .= " AND bt.video_id = :video_id";
-            $params['video_id'] = $videoId;
-        }
-
-        $albumId = $this->getIntOption($input, 'album');
-        if ($albumId !== null) {
-            $fromClause .= " AND bt.album_id = :album_id";
-            $params['album_id'] = $albumId;
-        }
-
-        $serverId = $this->getIntOption($input, 'server');
-        if ($serverId !== null) {
-            $fromClause .= " AND bt.server_id = :server_id";
-            $params['server_id'] = $serverId;
+        if (!$this->applyTaskReferenceFilters($input, $fromClause, 'bt', $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
@@ -757,28 +737,8 @@ HELP
             $params['status'] = $statusMap[$statusKey];
         }
 
-        $type = $this->getIntOption($input, 'type');
-        if ($type !== null) {
-            $fromClause .= " AND bh.type_id = :type";
-            $params['type'] = $type;
-        }
-
-        $videoId = $this->getIntOption($input, 'video');
-        if ($videoId !== null) {
-            $fromClause .= " AND bh.video_id = :video_id";
-            $params['video_id'] = $videoId;
-        }
-
-        $albumId = $this->getIntOption($input, 'album');
-        if ($albumId !== null) {
-            $fromClause .= " AND bh.album_id = :album_id";
-            $params['album_id'] = $albumId;
-        }
-
-        $serverId = $this->getIntOption($input, 'server');
-        if ($serverId !== null) {
-            $fromClause .= " AND bh.server_id = :server_id";
-            $params['server_id'] = $serverId;
+        if (!$this->applyTaskReferenceFilters($input, $fromClause, 'bh', $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
@@ -925,6 +885,36 @@ HELP
         ]);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, int> $params
+     */
+    private function applyTaskReferenceFilters(
+        InputInterface $input,
+        string &$fromClause,
+        string $alias,
+        array &$params
+    ): bool {
+        $filters = [
+            'type' => ['column' => 'type_id', 'param' => 'type'],
+            'video' => ['column' => 'video_id', 'param' => 'video_id'],
+            'album' => ['column' => 'album_id', 'param' => 'album_id'],
+            'server' => ['column' => 'server_id', 'param' => 'server_id'],
+        ];
+
+        foreach ($filters as $option => $filter) {
+            $value = $this->getOptionalNonNegativeIntOption($input, $option);
+            if ($value === false) {
+                return false;
+            }
+            if ($value !== null) {
+                $fromClause .= sprintf(' AND %s.%s = :%s', $alias, $filter['column'], $filter['param']);
+                $params[$filter['param']] = $value;
+            }
+        }
+
+        return true;
     }
 
     /**
