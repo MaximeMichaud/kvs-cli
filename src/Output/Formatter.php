@@ -93,6 +93,29 @@ class Formatter
             throw new \InvalidArgumentException('Format must be a string');
         }
 
+        if ($format === 'count' && $hasSingleField) {
+            throw new \InvalidArgumentException('The count format does not support --field.');
+        }
+
+        if ($format === 'count' && $this->args['fields-provided'] === true) {
+            throw new \InvalidArgumentException('The count format does not support --fields.');
+        }
+
+        if ($format === 'ids' && $hasSingleField) {
+            throw new \InvalidArgumentException('The ids format does not support --field.');
+        }
+
+        if ($format === 'ids' && $this->args['fields-provided'] === true) {
+            throw new \InvalidArgumentException('The ids format does not support --fields.');
+        }
+
+        if ($hasSingleField && $format !== 'table') {
+            throw new \InvalidArgumentException(sprintf(
+                'The --field option cannot be combined with --format=%s.',
+                $format
+            ));
+        }
+
         if ($items === []) {
             if ($hasSingleField) {
                 if (is_string($field)) {

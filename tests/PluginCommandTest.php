@@ -326,6 +326,34 @@ class PluginCommandTest extends TestCase
         $this->assertStringNotContainsString('In Formatter.php line', $output);
     }
 
+    public function testListCountFormatRejectsFieldSelection(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--fields' => 'id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('The count format does not support --fields.', $output);
+    }
+
+    public function testListCountFormatRejectsSingleFieldSelection(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'count',
+            '--field' => 'id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('The count format does not support --field.', $output);
+    }
+
     public function testListWithField(): void
     {
         $exitCode = $this->tester->execute([
@@ -346,6 +374,37 @@ class PluginCommandTest extends TestCase
         foreach ($lines as $line) {
             $this->assertNotEmpty(trim($line), 'Each line should contain plugin ID');
         }
+    }
+
+    public function testListIdsFormatRejectsFieldSelection(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'ids',
+            '--field' => 'name',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('The ids format does not support --field.', $output);
+    }
+
+    public function testListStructuredFormatRejectsSingleFieldSelection(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--field' => 'name',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString(
+            'The --field option cannot be combined with --format=json.',
+            $output
+        );
     }
 
     public function testListWithFormatCount(): void
@@ -753,6 +812,20 @@ class PluginCommandTest extends TestCase
 
         $this->assertSame(1, $exitCode, $output);
         $this->assertStringContainsString('The ids format requires result rows with an ID field.', $output);
+    }
+
+    public function testStatusCountFormatRejectsSingleFieldSelection(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            '--format' => 'count',
+            '--field' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('The count format does not support --field.', $output);
     }
 
     public function testStatusRejectsListFilters(): void

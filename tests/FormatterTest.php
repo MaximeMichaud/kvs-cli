@@ -56,6 +56,45 @@ class FormatterTest extends TestCase
         $this->assertEquals("3\n", $this->output->fetch());
     }
 
+    public function testCountFormatRejectsRequestedFields(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'count', 'fields' => 'id'],
+            ['id', 'title']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The count format does not support --fields.');
+
+        $formatter->display([['id' => 1, 'title' => 'Test 1']], $this->output);
+    }
+
+    public function testCountFormatRejectsSingleFieldSelection(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'count', 'field' => 'id'],
+            ['id', 'title']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The count format does not support --field.');
+
+        $formatter->display([['id' => 1, 'title' => 'Test 1']], $this->output);
+    }
+
+    public function testStructuredFormatRejectsSingleFieldSelection(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'json', 'field' => 'title'],
+            ['id', 'title']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The --field option cannot be combined with --format=json.');
+
+        $formatter->display([['id' => 1, 'title' => 'Test 1']], $this->output);
+    }
+
     public function testDisplayJsonFormat(): void
     {
         $items = [
@@ -180,6 +219,32 @@ class FormatterTest extends TestCase
 
         $output = trim($this->output->fetch());
         $this->assertEquals('1 2 3', $output);
+    }
+
+    public function testIdsFormatRejectsRequestedFields(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'ids', 'fields' => 'title'],
+            ['id', 'title']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The ids format does not support --fields.');
+
+        $formatter->display([['id' => 1, 'title' => 'Test 1']], $this->output);
+    }
+
+    public function testIdsFormatRejectsSingleFieldSelection(): void
+    {
+        $formatter = new Formatter(
+            ['format' => 'ids', 'field' => 'title'],
+            ['id', 'title']
+        );
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The ids format does not support --field.');
+
+        $formatter->display([['id' => 1, 'title' => 'Test 1']], $this->output);
     }
 
     public function testIdsFormatRejectsRowsWithoutIdFields(): void

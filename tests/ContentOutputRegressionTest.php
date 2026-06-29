@@ -173,6 +173,53 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('2', trim($countTester->getDisplay()));
     }
 
+    public function testVideoListIdsFormatRejectsFieldSelection(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, video_viewed INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec("INSERT INTO ktvs_videos VALUES (20, 1, 1, 'First video', '2024-01-01 00:00:00', 15)");
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'ids',
+            '--fields' => 'title',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('The ids format does not support --fields.', $tester->getDisplay());
+    }
+
+    public function testVideoListStructuredFormatRejectsSingleFieldSelection(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, user_id INTEGER, status_id INTEGER, title TEXT, post_date TEXT, video_viewed INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT)');
+        $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
+        $db->exec("INSERT INTO ktvs_videos VALUES (20, 1, 1, 'First video', '2024-01-01 00:00:00', 15)");
+
+        $tester = new CommandTester($this->createVideoCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--field' => 'title',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString(
+            'The --field option cannot be combined with',
+            $tester->getDisplay()
+        );
+    }
+
     public function testVideoListRejectsInvalidLimit(): void
     {
         $db = $this->createSqliteConnection();
