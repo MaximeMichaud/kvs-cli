@@ -99,6 +99,11 @@ HELP
             return self::FAILURE;
         }
 
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
+            return self::FAILURE;
+        }
+
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($screenshotsBasePath === '') {
             $this->io()->error('Screenshots path not configured');
@@ -169,6 +174,11 @@ HELP
             return self::FAILURE;
         }
 
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
+            return self::FAILURE;
+        }
+
         $plan = $this->prepareScreenshotGeneration($input, $videoId);
         if ($plan === null) {
             return self::FAILURE;
@@ -187,6 +197,11 @@ HELP
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -359,6 +374,16 @@ HELP
     private function getVideoContentDir(string $basePath, string $videoId): string
     {
         return $basePath . '/' . $this->getDirById($videoId) . '/' . $videoId;
+    }
+
+    private function normalizeVideoId(string $videoId): ?string
+    {
+        if (preg_match('/^[1-9]\d*$/', $videoId) !== 1) {
+            $this->io()->error('Invalid video ID (use: integer >= 1)');
+            return null;
+        }
+
+        return $videoId;
     }
 
     private function getDirById(string $id): int

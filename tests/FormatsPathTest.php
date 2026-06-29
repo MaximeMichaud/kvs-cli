@@ -94,6 +94,44 @@ class FormatsPathTest extends TestCase
         $this->assertStringContainsString('MP4 480p', $output);
     }
 
+    public function testListRejectsPathTraversalVideoIdBeforeScanningFiles(): void
+    {
+        $outsideDir = $this->tempDir . '/static/sample';
+        mkdir($outsideDir, 0755, true);
+        file_put_contents($outsideDir . '/demo-placeholder.mp4', 'video');
+
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '../../../static/sample',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid video ID', $output);
+        $this->assertStringNotContainsString('demo-placeholder.mp4', $output);
+    }
+
+    public function testCheckRejectsPathTraversalVideoIdBeforeBuildingFormatPaths(): void
+    {
+        $outsideDir = $this->tempDir . '/static/sample';
+        mkdir($outsideDir, 0755, true);
+        file_put_contents($outsideDir . '/demo-placeholder.mp4', 'video');
+
+        $tester = new CommandTester($this->createCommand());
+        $tester->execute([
+            'action' => 'check',
+            'video_id' => '../../../static/sample',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid video ID', $output);
+        $this->assertStringNotContainsString('../../../static/sample', $output);
+    }
+
     public function testListFallsBackWhenLocalStorageServerPathIsStale(): void
     {
         $this->db->exec("UPDATE ktvs_admin_servers SET path = '/stale/contents/videos'");

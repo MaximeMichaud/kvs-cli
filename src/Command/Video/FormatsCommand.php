@@ -85,6 +85,11 @@ HELP
             return self::FAILURE;
         }
 
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
+            return self::FAILURE;
+        }
+
         $videoPaths = $this->getVideoStorageDirs($videoId);
         if ($videoPaths === []) {
             $this->io()->error('Video storage path not configured');
@@ -189,6 +194,11 @@ HELP
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:formats check <video_id>');
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -840,6 +850,16 @@ HELP
     private function getDirById(string $id): int
     {
         return (int) floor((int) $id / 1000) * 1000;
+    }
+
+    private function normalizeVideoId(string $videoId): ?string
+    {
+        if (preg_match('/^[1-9]\d*$/', $videoId) !== 1) {
+            $this->io()->error('Invalid video ID (use: integer >= 1)');
+            return null;
+        }
+
+        return $videoId;
     }
 
     private function getFormatPostfixFromFilename(string $videoId, string $filename): ?string

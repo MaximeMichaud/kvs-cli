@@ -217,25 +217,8 @@ HELP
             $conditions = ['1=1'];
             $params = [];
 
-            // Video filter
-            $videoId = $this->getStringOption($input, 'video');
-            if ($videoId !== null) {
-                $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
-                $params['video_id'] = $videoId;
-            }
-
-            // Album filter
-            $albumId = $this->getStringOption($input, 'album');
-            if ($albumId !== null) {
-                $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
-                $params['album_id'] = $albumId;
-            }
-
-            // User filter
-            $userId = $this->getStringOption($input, 'user');
-            if ($userId !== null) {
-                $conditions[] = 'c.user_id = :user_id';
-                $params['user_id'] = $userId;
+            if (!$this->applyCommentReferenceFilters($input, $conditions, $params)) {
+                return self::FAILURE;
             }
 
             // Search filter
@@ -343,6 +326,42 @@ HELP
             $this->io()->error('Failed to fetch comments: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<string> $conditions
+     * @param array<string, int|string> $params
+     */
+    private function applyCommentReferenceFilters(InputInterface $input, array &$conditions, array &$params): bool
+    {
+        $videoId = $this->getOptionalNonNegativeIntOption($input, 'video');
+        if ($videoId === false) {
+            return false;
+        }
+        if ($videoId !== null) {
+            $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
+            $params['video_id'] = $videoId;
+        }
+
+        $albumId = $this->getOptionalNonNegativeIntOption($input, 'album');
+        if ($albumId === false) {
+            return false;
+        }
+        if ($albumId !== null) {
+            $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
+            $params['album_id'] = $albumId;
+        }
+
+        $userId = $this->getOptionalNonNegativeIntOption($input, 'user');
+        if ($userId === false) {
+            return false;
+        }
+        if ($userId !== null) {
+            $conditions[] = 'c.user_id = :user_id';
+            $params['user_id'] = $userId;
+        }
+
+        return true;
     }
 
     private function showComment(?string $id, InputInterface $input): int
@@ -578,25 +597,8 @@ HELP
             $conditions = ['c.is_review_needed = 1'];
             $params = [];
 
-            // Video filter
-            $videoId = $this->getStringOption($input, 'video');
-            if ($videoId !== null) {
-                $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
-                $params['video_id'] = $videoId;
-            }
-
-            // Album filter
-            $albumId = $this->getStringOption($input, 'album');
-            if ($albumId !== null) {
-                $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
-                $params['album_id'] = $albumId;
-            }
-
-            // User filter
-            $userId = $this->getStringOption($input, 'user');
-            if ($userId !== null) {
-                $conditions[] = 'c.user_id = :user_id';
-                $params['user_id'] = $userId;
+            if (!$this->applyCommentReferenceFilters($input, $conditions, $params)) {
+                return self::FAILURE;
             }
 
             // Search filter

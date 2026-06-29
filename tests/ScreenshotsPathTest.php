@@ -65,6 +65,26 @@ class ScreenshotsPathTest extends TestCase
         $this->assertStringContainsString('preview.jpg', $output);
     }
 
+    public function testListRejectsPathTraversalVideoIdBeforeScanningFiles(): void
+    {
+        $outsideDir = $this->tempDir . '/static/images';
+        mkdir($outsideDir, 0755, true);
+        file_put_contents($outsideDir . '/logo.png', 'image');
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '../../../static/images',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid video ID', $output);
+        $this->assertStringNotContainsString('logo.png', $output);
+    }
+
     public function testListFallsBackWhenConfiguredSourcesPathIsStale(): void
     {
         TestHelper::createMockSetupConfig($this->tempDir, [

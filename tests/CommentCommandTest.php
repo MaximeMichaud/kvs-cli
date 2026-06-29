@@ -171,6 +171,43 @@ class CommentCommandTest extends TestCase
         $this->assertSame('alice', $rows[0]['user']);
     }
 
+    public function testListCommentsAllowsZeroUserSentinel(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 0,
+            '--format' => 'json',
+            '--fields' => 'comment_id,user',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['comment_id']);
+        $this->assertSame('GuestUser', $rows[0]['user']);
+    }
+
+    public function testListAndPendingRejectInvalidNumericFilters(): void
+    {
+        foreach (['list', 'pending'] as $action) {
+            foreach (['video', 'album', 'user'] as $option) {
+                foreach (['abc', '1.5', '-1'] as $value) {
+                    $tester = new CommandTester($this->command);
+                    $tester->execute([
+                        'action' => $action,
+                        '--format' => 'count',
+                        '--' . $option => $value,
+                    ]);
+
+                    $display = $tester->getDisplay();
+                    $this->assertSame(1, $tester->getStatusCode(), "$action --$option=$value: $display");
+                    $this->assertStringContainsString("Invalid value for --$option", $display, "$action --$option=$value");
+                }
+            }
+        }
+    }
+
     public function testListCommentsExposesKvsAdminFields(): void
     {
         $this->tester->execute([
