@@ -6,6 +6,7 @@ use KVS\CLI\Command\Traits\InputHelperTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use KVS\CLI\Docker\DockerDetector;
+use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -513,6 +514,120 @@ abstract class BaseCommand extends Command
         $table->setHeaders($headers);
         $table->setRows($rows);
         $table->render();
+    }
+
+    protected function isTableFormat(InputInterface $input): bool
+    {
+        return $this->getStringOptionOrDefault($input, 'format', 'table') === 'table';
+    }
+
+    /**
+     * @param list<string> $allowedFormats
+     */
+    protected function validateOutputFormat(InputInterface $input, array $allowedFormats): ?string
+    {
+        $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+        if (!in_array($format, $allowedFormats, true)) {
+            $this->io()->error(sprintf(
+                'Invalid value for --format "%s" (expected: %s)',
+                $format,
+                implode(', ', $allowedFormats)
+            ));
+            return null;
+        }
+
+        return $format;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @param list<string> $defaultFields
+     */
+    protected function displayFormattedRows(InputInterface $input, array $rows, array $defaultFields): int
+    {
+        try {
+            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter->display($rows, $this->io());
+            return self::SUCCESS;
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param list<list<mixed>> $rows
+     * @param array<string, mixed> $extraFields
+     */
+    protected function displayDetailRows(InputInterface $input, array $rows, array $extraFields = []): int
+    {
+        $record = [];
+        foreach ($rows as $row) {
+            if (!isset($row[0])) {
+                continue;
+            }
+
+            $label = is_scalar($row[0]) ? (string) $row[0] : '';
+            $key = $this->detailLabelToKey($label);
+            if ($key === '') {
+                continue;
+            }
+
+            $record[$key] = $this->stripConsoleMarkup($row[1] ?? '');
+        }
+
+        foreach ($extraFields as $key => $value) {
+            $record[$key] = is_string($value) ? $this->stripConsoleMarkup($value) : $value;
+        }
+
+        return $this->displayFormattedRows($input, [$record], array_keys($record));
+    }
+
+    private function detailLabelToKey(string $label): string
+    {
+        $key = strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '_', trim($label)));
+        return trim($key, '_');
+    }
+
+    protected function stripConsoleMarkup(mixed $value): mixed
+    {
+        if (!is_scalar($value) && $value !== null) {
+            return $value;
+        }
+
+        $text = (string) $value;
+        return preg_replace('/<\\/?(?:fg|bg|options)(?:=[^>]*)?>|<\\/>/', '', $text) ?? $text;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     */
+    protected function displayMetricRows(InputInterface $input, array $rows): void
+    {
+        $formatter = new Formatter(
+            $input->getOptions(),
+            ['section', 'metric', 'value', 'display_value', 'label']
+        );
+        $formatter->display($rows, $this->io());
+    }
+
+    /**
+     * @return array{section: string, metric: string, value: mixed, display_value: string, label: string}
+     */
+    protected function metricRow(
+        string $section,
+        string $metric,
+        mixed $value,
+        ?string $displayValue = null,
+        string $label = ''
+    ): array {
+        return [
+            'section' => $section,
+            'metric' => $metric,
+            'value' => $value,
+            'display_value' => $displayValue ?? (is_scalar($value) || $value === null ? (string) $value : ''),
+            'label' => $label,
+        ];
     }
 
     protected function formatKvsIp(mixed $value): string

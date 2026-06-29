@@ -88,14 +88,14 @@ HELP
 
         return match ($action) {
             'list' => $this->listTags($input),
-            'show' => $this->showTag($identifier),
+            'show' => $this->showTag($identifier, $input),
             'create' => $this->createTag($identifier),
             'delete' => $this->deleteTag($identifier, $input),
             'update' => $this->updateTag($identifier, $input),
             'enable' => $this->toggleStatus($identifier, 1),
             'disable' => $this->toggleStatus($identifier, 0),
             'merge' => $this->mergeTags($identifier, $target, $input),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'tag',
                 $action,
@@ -233,7 +233,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showTag(?string $id): int
+    private function showTag(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Tag ID is required');
@@ -263,7 +263,6 @@ HELP
             }
 
             $tagName = is_string($tag['tag'] ?? null) ? $tag['tag'] : '';
-            $this->io()->section("Tag: $tagName");
 
             $counts = $this->extractTagUsageCounts($tag);
             $statusIdRaw = $tag['status_id'] ?? 0;
@@ -289,6 +288,11 @@ HELP
             $info[] = ['Total Usage', (string) $totalUsage];
             $info[] = ['Added', $addedDate];
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info);
+            }
+
+            $this->io()->section("Tag: $tagName");
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch tag: ' . $e->getMessage());
@@ -673,7 +677,7 @@ HELP
         }
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -732,12 +736,56 @@ HELP
             }
             $topTags = $stmt->fetchAll();
 
-            $this->io()->title('Tag Statistics');
-
-            $this->io()->section('Overall Statistics');
             $activeTags = is_numeric($overall['active_tags']) ? (int) $overall['active_tags'] : 0;
             $inactiveTags = is_numeric($overall['inactive_tags']) ? (int) $overall['inactive_tags'] : 0;
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('overall', 'Total Tags', $totalTags),
+                $this->metricRow('overall', 'Active Tags', $activeTags),
+                $this->metricRow('overall', 'Inactive Tags', $inactiveTags),
+                $this->metricRow('overall', 'Used Tags', $usedTags),
+                $this->metricRow('overall', 'Unused Tags', $unusedTags),
+            ];
+
+            /** @var list<list<int|string>> $topRows */
+            $topRows = [];
+            if ($topTags !== []) {
+                foreach ($topTags as $i => $tag) {
+                    if (!is_array($tag)) {
+                        continue;
+                    }
+                    /** @var array<string, mixed> $tag */
+                    $tagName = $tag['tag'] ?? '';
+                    $counts = $this->extractTagUsageCounts($tag);
+                    $videoCount = $counts['videos'];
+                    $albumCount = $counts['albums'];
+                    $otherCount = $counts['posts'] + $this->getTagStoredOtherAmount($tag);
+                    $total = $videoCount + $albumCount + $otherCount;
+                    $metricRows[] = $this->metricRow(
+                        'top_tags',
+                        (string) ($i + 1),
+                        $total,
+                        (string) $total,
+                        is_scalar($tagName) ? (string) $tagName : ''
+                    );
+                    $topRows[] = [
+                        is_scalar($tagName) ? (string) $tagName : '',
+                        $videoCount,
+                        $albumCount,
+                        $otherCount,
+                        $total,
+                    ];
+                }
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->title('Tag Statistics');
+            $this->io()->section('Overall Statistics');
             $this->renderTable(
                 ['Metric', 'Count'],
                 [
@@ -749,30 +797,9 @@ HELP
                 ]
             );
 
-            if ($topTags !== []) {
+            if ($topRows !== []) {
                 $this->io()->section('Top 10 Most Used Tags');
-                /** @var list<list<int|string>> $rows */
-                $rows = [];
-                foreach ($topTags as $tag) {
-                    if (!is_array($tag)) {
-                        continue;
-                    }
-                    /** @var array<string, mixed> $tag */
-                    $tagName = $tag['tag'] ?? '';
-                    $counts = $this->extractTagUsageCounts($tag);
-                    $videoCount = $counts['videos'];
-                    $albumCount = $counts['albums'];
-                    $otherCount = $counts['posts'] + $this->getTagStoredOtherAmount($tag);
-                    $total = $videoCount + $albumCount + $otherCount;
-                    $rows[] = [
-                        is_scalar($tagName) ? (string) $tagName : '',
-                        $videoCount,
-                        $albumCount,
-                        $otherCount,
-                        $total,
-                    ];
-                }
-                $this->renderTable(['Tag', 'Videos', 'Albums', 'Other', 'Total'], $rows);
+                $this->renderTable(['Tag', 'Videos', 'Albums', 'Other', 'Total'], $topRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());

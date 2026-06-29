@@ -91,11 +91,11 @@ HELP
 
         return match ($action) {
             'list' => $this->listServers($input),
-            'show' => $this->showServer($id),
+            'show' => $this->showServer($id, $input),
             'enable', 'activate' => $this->enableServer($id),
             'disable', 'deactivate' => $this->disableServer($id),
-            'stats' => $this->showStats(),
-            'group' => $id !== null ? $this->showGroup($id) : $this->listGroups($input),
+            'stats' => $this->showStats($input),
+            'group' => $id !== null ? $this->showGroup($id, $input) : $this->listGroups($input),
             default => $this->failUnknownAction(
                 'server',
                 $action,
@@ -341,7 +341,7 @@ HELP
         return "$contentCount $label";
     }
 
-    private function showServer(?string $id): int
+    private function showServer(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Server ID is required');
@@ -369,12 +369,15 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->section("Server #$id");
-
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, ['server_id' => $id]);
+            }
+
+            $this->io()->section("Server #$id");
             $this->renderTable(['Property', 'Value'], $info);
             $this->displayServerErrors($server);
 
@@ -561,7 +564,7 @@ HELP
         return isset($data[$key]) && is_string($data[$key]) ? $data[$key] : $default;
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -569,8 +572,6 @@ HELP
         }
 
         try {
-            $this->io()->section('Storage Statistics');
-
             // Overall stats
             $stmtStats = $db->query("
                 SELECT
@@ -613,6 +614,18 @@ HELP
             $usedSpace = $totalSpace - $freeSpace;
             $usedPercent = $totalSpace > 0 ? round(($usedSpace / $totalSpace) * 100, 1) : 0;
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('overall', 'Total Servers', $totalServers),
+                $this->metricRow('overall', 'Active', $activeServers),
+                $this->metricRow('overall', 'Disabled', $disabledServers),
+                $this->metricRow('overall', 'With Errors', $serversWithErrors),
+                $this->metricRow('overall', 'Total Space', $totalSpace, $this->formatBytes($totalSpace)),
+                $this->metricRow('overall', 'Used Space', $usedSpace, $this->formatBytes($usedSpace) . " ({$usedPercent}%)"),
+                $this->metricRow('overall', 'Free Space', $freeSpace, $this->formatBytes($freeSpace)),
+                $this->metricRow('overall', 'Avg Load', $avgLoad, number_format($avgLoad, 2)),
+            ];
+
             $overallInfo = [
                 ['Total Servers', (string) $totalServers],
                 ['Active', (string) $activeServers],
@@ -624,12 +637,7 @@ HELP
                 ['Avg Load', number_format($avgLoad, 2)],
             ];
 
-            $this->renderTable(['Metric', 'Value'], $overallInfo);
-
             // By content type
-            $this->io()->newLine();
-            $this->io()->section('By Content Type');
-
             $stmtType = $db->query("
                 SELECT
                     content_type_id,
@@ -658,14 +666,12 @@ HELP
                     $this->formatBytes($total),
                     $this->formatBytes($free),
                 ];
+                $metricRows[] = $this->metricRow('by_content_type', $typeName . ' Servers', $count, (string) $count, $typeName);
+                $metricRows[] = $this->metricRow('by_content_type', $typeName . ' Total Space', $total, $this->formatBytes($total), $typeName);
+                $metricRows[] = $this->metricRow('by_content_type', $typeName . ' Free Space', $free, $this->formatBytes($free), $typeName);
             }
 
-            $this->renderTable(['Type', 'Servers', 'Total Space', 'Free Space'], $typeData);
-
             // By connection type
-            $this->io()->newLine();
-            $this->io()->section('By Connection Type');
-
             $stmtConn = $db->query("
                 SELECT
                     connection_type_id,
@@ -687,8 +693,24 @@ HELP
                     StatusFormatter::serverConnection($connTypeId, false),
                     (string) $count,
                 ];
+                $connection = StatusFormatter::serverConnection($connTypeId, false);
+                $metricRows[] = $this->metricRow('by_connection_type', $connection, $count, (string) $count, $connection);
             }
 
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->section('Storage Statistics');
+            $this->renderTable(['Metric', 'Value'], $overallInfo);
+
+            $this->io()->newLine();
+            $this->io()->section('By Content Type');
+            $this->renderTable(['Type', 'Servers', 'Total Space', 'Free Space'], $typeData);
+
+            $this->io()->newLine();
+            $this->io()->section('By Connection Type');
             $this->renderTable(['Connection', 'Servers'], $connData);
 
             return self::SUCCESS;
@@ -822,7 +844,7 @@ HELP
         }
     }
 
-    private function showGroup(string $id): int
+    private function showGroup(string $id, InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -851,8 +873,6 @@ HELP
             $title = is_string($titleVal) ? $titleVal : '';
             $contentTypeStr = $contentType === 1 ? 'Videos' : 'Albums';
 
-            $this->io()->section("Server Group #$id: $title");
-
             // Get content count
             $contentTable = $contentType === 1 ? 'videos' : 'albums';
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table($contentTable)} WHERE server_group_id = :id");
@@ -870,12 +890,6 @@ HELP
                 ['Added', $addedTimestamp !== false ? date('Y-m-d H:i:s', $addedTimestamp) : 'Unknown'],
             ];
 
-            $this->renderTable(['Property', 'Value'], $info);
-
-            // Servers in group
-            $this->io()->newLine();
-            $this->io()->section('Servers in Group');
-
             $stmt = $db->prepare("
                 SELECT * FROM {$this->table('admin_servers')}
                 WHERE group_id = :id
@@ -885,34 +899,58 @@ HELP
             /** @var list<array<string, mixed>> $servers */
             $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            if (count($servers) === 0) {
+            $serverData = [];
+            $serverRecords = [];
+            foreach ($servers as $server) {
+                $serverId = isset($server['server_id']) && is_numeric($server['server_id'])
+                    ? (int) $server['server_id'] : 0;
+                $serverTitle = isset($server['title']) && is_string($server['title']) ? $server['title'] : '';
+                $serverStatus = isset($server['status_id']) && is_numeric($server['status_id'])
+                    ? (int) $server['status_id'] : 0;
+                $freeSpace = isset($server['free_space']) && is_numeric($server['free_space'])
+                    ? (int) $server['free_space'] : 0;
+                $totalSpace = isset($server['total_space']) && is_numeric($server['total_space'])
+                    ? (int) $server['total_space'] : 0;
+                $serverLoad = isset($server['load']) && is_numeric($server['load'])
+                    ? (float) $server['load'] : 0.0;
+
+                $freePercent = $totalSpace > 0 ? round(($freeSpace / $totalSpace) * 100, 1) : 0;
+                $status = StatusFormatter::server($serverStatus);
+                $freeSpaceDisplay = $this->formatBytes($freeSpace) . " ({$freePercent}%)";
+
+                $serverData[] = [
+                    (string) $serverId,
+                    $serverTitle,
+                    $status,
+                    $freeSpaceDisplay,
+                    number_format($serverLoad, 2),
+                ];
+                $serverRecords[] = [
+                    'server_id' => $serverId,
+                    'title' => $serverTitle,
+                    'status' => $this->stripConsoleMarkup($status),
+                    'free_space' => $freeSpaceDisplay,
+                    'load' => number_format($serverLoad, 2),
+                ];
+            }
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'group_id' => $groupId,
+                    'servers' => $serverRecords,
+                ]);
+            }
+
+            $this->io()->section("Server Group #$id: $title");
+            $this->renderTable(['Property', 'Value'], $info);
+
+            // Servers in group
+            $this->io()->newLine();
+            $this->io()->section('Servers in Group');
+
+            if (count($serverData) === 0) {
                 $this->io()->text('No servers in this group');
             } else {
-                $serverData = [];
-                foreach ($servers as $server) {
-                    $serverId = isset($server['server_id']) && is_numeric($server['server_id'])
-                        ? (int) $server['server_id'] : 0;
-                    $serverTitle = isset($server['title']) && is_string($server['title']) ? $server['title'] : '';
-                    $serverStatus = isset($server['status_id']) && is_numeric($server['status_id'])
-                        ? (int) $server['status_id'] : 0;
-                    $freeSpace = isset($server['free_space']) && is_numeric($server['free_space'])
-                        ? (int) $server['free_space'] : 0;
-                    $totalSpace = isset($server['total_space']) && is_numeric($server['total_space'])
-                        ? (int) $server['total_space'] : 0;
-                    $serverLoad = isset($server['load']) && is_numeric($server['load'])
-                        ? (float) $server['load'] : 0.0;
-
-                    $freePercent = $totalSpace > 0 ? round(($freeSpace / $totalSpace) * 100, 1) : 0;
-
-                    $serverData[] = [
-                        (string) $serverId,
-                        $serverTitle,
-                        StatusFormatter::server($serverStatus),
-                        $this->formatBytes($freeSpace) . " ({$freePercent}%)",
-                        number_format($serverLoad, 2),
-                    ];
-                }
-
                 $this->renderTable(['ID', 'Title', 'Status', 'Free Space', 'Load'], $serverData);
             }
 

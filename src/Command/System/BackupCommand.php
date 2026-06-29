@@ -23,6 +23,7 @@ class BackupCommand extends BaseCommand
 {
     use SecureFileTrait;
 
+    private const CREATE_TYPES = ['full', 'db', 'files'];
     private const LIST_FORMATS = ['table', 'json', 'csv', 'yaml', 'count'];
 
     protected function configure(): void
@@ -76,6 +77,15 @@ HELP
 
     private function createBackup(string $type, ?string $outputDir): int
     {
+        if (!in_array($type, self::CREATE_TYPES, true)) {
+            $this->io()->error(sprintf(
+                'Invalid value for --type "%s" (expected: %s)',
+                $type,
+                implode(', ', self::CREATE_TYPES)
+            ));
+            return self::FAILURE;
+        }
+
         $outputDir = $outputDir ?? dirname($this->config->getKvsPath()) . '/backups';
 
         if (!is_dir($outputDir)) {
@@ -340,9 +350,12 @@ HELP
             return self::FAILURE;
         }
 
-        $backupDir = $outputDir ?? dirname($this->config->getKvsPath()) . '/backups';
+        $backupDirs = $outputDir !== null
+            ? [$outputDir]
+            : $this->getDefaultBackupDirs();
+        $backupDirs = array_values(array_filter($backupDirs, static fn (string $dir): bool => is_dir($dir)));
 
-        if (!is_dir($backupDir)) {
+        if ($backupDirs === []) {
             if ($format === 'table') {
                 $this->io()->warning('No backups directory found');
                 return self::SUCCESS;
@@ -352,9 +365,12 @@ HELP
             return self::SUCCESS;
         }
 
-        $files = glob("$backupDir/kvs_backup_*.{tar.gz,sql.gz}", GLOB_BRACE);
+        $files = [];
+        foreach ($backupDirs as $backupDir) {
+            $files = array_merge($files, $this->findBackupFiles($backupDir));
+        }
 
-        if ($files === false || $files === []) {
+        if ($files === []) {
             if ($format === 'table') {
                 $this->io()->info('No backups found');
                 return self::SUCCESS;
@@ -383,6 +399,48 @@ HELP
         $this->displayBackupList($backups, $format);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getDefaultBackupDirs(): array
+    {
+        return array_values(array_unique([
+            dirname($this->config->getKvsPath()) . '/backups',
+            $this->config->getAdminPath() . '/data/backup',
+        ]));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function findBackupFiles(string $backupDir): array
+    {
+        $entries = scandir($backupDir);
+        if ($entries === false) {
+            return [];
+        }
+
+        $files = [];
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+
+            $path = $backupDir . '/' . $entry;
+            if (!is_file($path)) {
+                continue;
+            }
+
+            if (!str_ends_with($entry, '.gz') && !str_ends_with($entry, '.zip')) {
+                continue;
+            }
+
+            $files[] = $path;
+        }
+
+        return $files;
     }
 
     /**

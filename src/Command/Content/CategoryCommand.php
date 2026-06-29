@@ -100,8 +100,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listCategories($input),
-            'tree' => $this->showTree(),
-            'show' => $this->showCategory($id),
+            'tree' => $this->showTree($input),
+            'show' => $this->showCategory($id, $input),
             'create' => $this->createCategory($input),
             'delete' => $this->deleteCategory($id, $input),
             'update' => $this->updateCategory($id, $input),
@@ -261,7 +261,7 @@ HELP
         }
     }
 
-    private function showTree(): int
+    private function showTree(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -281,6 +281,22 @@ HELP
             }
             /** @var list<array<string, mixed>> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (!$this->isTableFormat($input)) {
+                $categories = array_map(function (array $category): array {
+                    $statusId = is_numeric($category['status_id'] ?? null) ? (int) $category['status_id'] : 0;
+                    $category['id'] = $category['category_id'] ?? 0;
+                    $category['status_id'] = $statusId;
+                    $category['status'] = StatusFormatter::category($statusId, false);
+                    return $category;
+                }, $categories);
+
+                return $this->displayFormattedRows(
+                    $input,
+                    $categories,
+                    ['category_id', 'title', 'category_group_id', 'video_count', 'status']
+                );
+            }
 
             $this->io()->section('Category Tree');
 
@@ -304,7 +320,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showCategory(?string $id): int
+    private function showCategory(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Category ID is required');
@@ -334,7 +350,6 @@ HELP
 
             $titleValue = $category['title'] ?? '';
             $categoryTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
-            $this->io()->section("Category: $categoryTitle");
 
             $usage = $this->getCategoryUsageCounts($db, $id);
             $videoCount = $usage['videos'] ?? 0;
@@ -370,9 +385,18 @@ HELP
                 ['Added', $addedDateStr],
             ];
 
+            $description = $category['description'] ?? null;
+            if (!$this->isTableFormat($input)) {
+                $extra = [];
+                if ($description !== null && $description !== '' && is_scalar($description)) {
+                    $extra['description'] = (string) $description;
+                }
+                return $this->displayDetailRows($input, $info, $extra);
+            }
+
+            $this->io()->section("Category: $categoryTitle");
             $this->renderTable(['Property', 'Value'], $info);
 
-            $description = $category['description'] ?? null;
             if ($description !== null && $description !== '' && is_scalar($description)) {
                 $this->io()->section('Description');
                 $this->io()->text((string) $description);
@@ -1200,7 +1224,7 @@ HELP
             $this->io()->success("Category updated successfully!");
 
             // Show updated category
-            return $this->showCategory($id);
+            return $this->showCategory($id, $input);
         } catch (\Exception $e) {
             $this->io()->error('Failed to update category: ' . $e->getMessage());
             return self::FAILURE;

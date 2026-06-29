@@ -71,8 +71,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listModels($input),
-            'show' => $this->showModel($id),
-            'stats' => $this->showStats(),
+            'show' => $this->showModel($id, $input),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction('model', $action, ['list', 'show', 'stats']),
         };
     }
@@ -243,7 +243,7 @@ HELP
         }
     }
 
-    private function showModel(?string $id): int
+    private function showModel(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Model ID is required');
@@ -276,7 +276,6 @@ HELP
             // Display model details
             $titleValue = $model['title'] ?? '';
             $modelTitle = is_scalar($titleValue) ? (string) $titleValue : '';
-            $this->io()->title("Model: $modelTitle");
 
             $videoCountVal = $model['video_count'] ?? 0;
             $albumCountVal = $model['album_count'] ?? 0;
@@ -322,6 +321,11 @@ HELP
             $this->addOptionalField($info, 'Weight', $model['weight'] ?? null);
             $this->addOptionalField($info, 'Description', $model['description'] ?? null);
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info);
+            }
+
+            $this->io()->title("Model: $modelTitle");
             $this->renderTable(['Field', 'Value'], $info);
 
             return self::SUCCESS;
@@ -400,7 +404,7 @@ HELP
         return false;
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -409,35 +413,52 @@ HELP
 
         try {
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
 
             // Total models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}");
             if ($stmt !== false) {
-                $stats[] = ['Total Models', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Total Models', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Total Models', $value, number_format($value));
             }
 
             // Active models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_ACTIVE);
             if ($stmt !== false) {
-                $stats[] = ['Active', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Active', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Active', $value, number_format($value));
             }
 
             // Disabled models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_DISABLED);
             if ($stmt !== false) {
-                $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Disabled', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Disabled', $value, number_format($value));
             }
 
             // Models with videos
             $stmt = $db->query("SELECT COUNT(DISTINCT model_id) FROM {$this->table('models')}_videos");
             if ($stmt !== false) {
-                $stats[] = ['Models with Videos', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Models with Videos', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Models with Videos', $value, number_format($value));
             }
 
             // Total video-model relations
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}_videos");
             if ($stmt !== false) {
-                $stats[] = ['Total Video Relations', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Total Video Relations', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Total Video Relations', $value, number_format($value));
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
             }
 
             $this->io()->title('Model Statistics');

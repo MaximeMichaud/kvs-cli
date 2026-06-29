@@ -29,7 +29,7 @@ class VideoCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete|stats)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Video ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error)')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error|processing|deleting|deleted)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles')
             ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID')
@@ -78,7 +78,7 @@ HELP
         $action = $this->getStringArgument($input, 'action');
 
         if ($this->getBoolOption($input, 'stats')) {
-            return $this->showStats();
+            return $this->showStats($input);
         }
 
         if ($action === null || $action === '') {
@@ -87,9 +87,9 @@ HELP
 
         return match ($action) {
             'list' => $this->listVideos($input),
-            'show' => $this->showVideo($this->getStringArgument($input, 'id')),
+            'show' => $this->showVideo($this->getStringArgument($input, 'id'), $input),
             'delete' => $this->deleteVideo($this->getStringArgument($input, 'id'), $input),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'stats']),
         };
     }
@@ -113,6 +113,11 @@ HELP
                 'active' => StatusFormatter::VIDEO_ACTIVE,
                 'disabled' => StatusFormatter::VIDEO_DISABLED,
                 'error' => StatusFormatter::VIDEO_ERROR,
+                'processing' => StatusFormatter::VIDEO_PROCESSING,
+                'in_process' => StatusFormatter::VIDEO_PROCESSING,
+                'in-process' => StatusFormatter::VIDEO_PROCESSING,
+                'deleting' => StatusFormatter::VIDEO_DELETING,
+                'deleted' => StatusFormatter::VIDEO_DELETED,
             ], [0, 1, 2, 3, 4, 5]);
             if ($statusId !== null) {
                 $whereSql .= " AND v.status_id = :status";
@@ -343,7 +348,7 @@ HELP
         }
     }
 
-    private function showVideo(?string $id): int
+    private function showVideo(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Video ID is required');
@@ -366,8 +371,6 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->section("Video #$id");
-
             $postTimestamp = strtotime($video['post_date']);
             $info = [
                 ['Title', $video['title']],
@@ -386,13 +389,6 @@ HELP
                 ['Favourites', number_format($video['favourites_count'])],
             ];
 
-            $this->renderTable(['Property', 'Value'], $info);
-
-            if ($video['description'] !== '') {
-                $this->io()->section('Description');
-                $this->io()->text($video['description']);
-            }
-
             $stmt = $db->prepare("
                 SELECT c.title FROM {$this->table('categories')} c
                 JOIN {$this->table('categories_videos')} cv ON c.category_id = cv.category_id
@@ -401,11 +397,6 @@ HELP
             ");
             $stmt->execute(['id' => $id]);
             $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-
-            if ($categories !== []) {
-                $this->io()->section('Categories');
-                $this->io()->listing($categories);
-            }
 
             $stmt = $db->prepare("
                 SELECT t.tag FROM {$this->table('tags')} t
@@ -416,9 +407,40 @@ HELP
             $stmt->execute(['id' => $id]);
             $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
+            $categoryValues = array_map(
+                static fn (mixed $v): string => is_scalar($v) ? (string) $v : '',
+                $categories
+            );
+            $tagValues = array_map(
+                static fn (mixed $v): string => is_scalar($v) ? (string) $v : '',
+                $tags
+            );
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'video_id' => $id,
+                    'description' => $video['description'],
+                    'categories' => $categoryValues,
+                    'tags' => $tagValues,
+                ]);
+            }
+
+            $this->io()->section("Video #$id");
+            $this->renderTable(['Property', 'Value'], $info);
+
+            if ($video['description'] !== '') {
+                $this->io()->section('Description');
+                $this->io()->text($video['description']);
+            }
+
+            if ($categories !== []) {
+                $this->io()->section('Categories');
+                $this->io()->listing($categoryValues);
+            }
+
             if ($tags !== []) {
                 $this->io()->section('Tags');
-                $this->io()->text(implode(', ', array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $tags)));
+                $this->io()->text(implode(', ', $tagValues));
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch video: ' . $e->getMessage());
@@ -620,7 +642,7 @@ HELP
         }, ['functions_servers.php', 'functions_admin.php']);
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -630,6 +652,8 @@ HELP
         try {
             /** @var list<list<string>> $stats */
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
 
             $queries = [
                 'Total Videos' => "SELECT COUNT(*) FROM {$this->table('videos')}",
@@ -648,21 +672,25 @@ HELP
                 if ($label === 'Total Duration') {
                     $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
                     $displayValue = $this->formatDuration($intVal);
+                    $metricRows[] = $this->metricRow('overall', $label, $intVal, $displayValue);
                 } elseif ($label === 'Average Rating') {
-                    $displayValue = is_numeric($rawValue)
-                        ? sprintf('%.1f/%d', calculate_kvs_rating($rawValue, 1), Constants::RATING_SCALE)
+                    $ratingValue = is_numeric($rawValue) ? calculate_kvs_rating($rawValue, 1) : null;
+                    $displayValue = $ratingValue !== null
+                        ? sprintf('%.1f/%d', $ratingValue, Constants::RATING_SCALE)
                         : 'N/A';
+                    $metricRows[] = $this->metricRow('overall', $label, $ratingValue, $displayValue);
                 } elseif ($label === 'Total Size') {
                     $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
                     $displayValue = format_bytes($intVal);
+                    $metricRows[] = $this->metricRow('overall', $label, $intVal, $displayValue);
                 } elseif (is_numeric($rawValue)) {
-                    $displayValue = number_format((int) $rawValue);
+                    $intVal = (int) $rawValue;
+                    $displayValue = number_format($intVal);
+                    $metricRows[] = $this->metricRow('overall', $label, $intVal, $displayValue);
                 }
 
                 $stats[] = [$label, $displayValue];
             }
-
-            $this->renderTable(['Metric', 'Value'], $stats);
 
             $stmt = $db->query("
                 SELECT v.title, v.video_viewed as views
@@ -673,9 +701,9 @@ HELP
             ");
             $topVideos = $stmt !== false ? $stmt->fetchAll() : [];
 
+            /** @var list<list<int|string>> $topRows */
+            $topRows = [];
             if ($topVideos !== []) {
-                $this->io()->section('Top 10 Most Viewed Videos');
-                $rows = [];
                 foreach ($topVideos as $i => $video) {
                     if (!is_array($video)) {
                         continue;
@@ -684,13 +712,31 @@ HELP
                     $title = is_string($titleVal) ? $titleVal : (is_scalar($titleVal) ? (string) $titleVal : '');
                     $viewsVal = $video['views'] ?? 0;
                     $views = is_numeric($viewsVal) ? (float) $viewsVal : 0.0;
-                    $rows[] = [
+                    $metricRows[] = $this->metricRow(
+                        'top_videos',
+                        (string) ($i + 1),
+                        (int) $views,
+                        number_format($views),
+                        $title
+                    );
+                    $topRows[] = [
                         $i + 1,
                         substr($title, 0, Constants::DEFAULT_TRUNCATE_LENGTH),
                         number_format($views),
                     ];
                 }
-                $this->renderTable(['#', 'Title', 'Views'], $rows);
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->renderTable(['Metric', 'Value'], $stats);
+
+            if ($topVideos !== []) {
+                $this->io()->section('Top 10 Most Viewed Videos');
+                $this->renderTable(['#', 'Title', 'Views'], $topRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());

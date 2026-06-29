@@ -267,6 +267,27 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('practice, training', $output);
     }
 
+    public function testPlaylistShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame('A test playlist', $rows[0]['description']);
+        $this->assertSame(['Archive', 'Featured'], $rows[0]['categories']);
+        $this->assertSame(['practice', 'training'], $rows[0]['tags']);
+        $this->assertSame('100', $rows[0]['videos_top'][0]['video_id']);
+        $this->assertStringNotContainsString('Playlist #30', $output);
+    }
+
     public function testPlaylistShowNotFound(): void
     {
         $this->tester->execute([

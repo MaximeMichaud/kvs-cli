@@ -202,6 +202,46 @@ class AlbumCommandTest extends TestCase
         $this->assertEquals(0, $testerCount->getStatusCode());
     }
 
+    public function testAlbumListAcceptsKvsLifecycleStatusAliases(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('albums') .
+            ' (album_id, user_id, admin_user_id, title, dir, description, status_id, is_private, access_level_id, tokens_required, ' .
+            'post_date, album_viewed, rating, rating_amount, photos_amount, favourites_count, purchases_count, ' .
+            'content_source_id, admin_flag_id, server_group_id, added_date, ip) VALUES ' .
+            "(30, 1, 0, 'Error Album', 'error-album', '', 2, 0, 0, 0, '2026-05-27 10:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, '2026-05-27 10:00:00', 0), " .
+            "(40, 1, 0, 'Processing Album', 'processing-album', '', 3, 0, 0, 0, " .
+            "'2026-05-27 11:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, '2026-05-27 11:00:00', 0), " .
+            "(50, 1, 0, 'Deleting Album', 'deleting-album', '', 4, 0, 0, 0, " .
+            "'2026-05-27 12:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, '2026-05-27 12:00:00', 0), " .
+            "(60, 1, 0, 'Deleted Album', 'deleted-album', '', 5, 0, 0, 0, '2026-05-27 13:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, '2026-05-27 13:00:00', 0)"
+        );
+
+        $cases = [
+            'error' => [30, 'Error'],
+            'in_process' => [40, 'Processing'],
+            'deleting' => [50, 'Deleting'],
+            'deleted' => [60, 'Deleted'],
+        ];
+
+        foreach ($cases as $status => [$expectedId, $expectedLabel]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--status' => $status,
+                '--fields' => 'album_id,status',
+                '--format' => 'json',
+                '--limit' => 1,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($expectedId, (int) $rows[0]['album_id']);
+            $this->assertSame($expectedLabel, $rows[0]['status']);
+        }
+    }
+
     public function testAlbumShow(): void
     {
         $this->tester->execute([
@@ -217,6 +257,25 @@ class AlbumCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/User\W+alice/', $output);
         $this->assertMatchesRegularExpression('/Images\W+7/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testAlbumShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['album_id']);
+        $this->assertSame('Active Album', $rows[0]['title']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame('7', $rows[0]['images']);
+        $this->assertStringNotContainsString('Album #10', $output);
     }
 
     public function testAlbumCommandMetadata(): void

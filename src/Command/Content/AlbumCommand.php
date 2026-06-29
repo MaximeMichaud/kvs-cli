@@ -27,7 +27,7 @@ class AlbumCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Album ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error|processing|deleting|deleted)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles')
@@ -77,7 +77,7 @@ HELP
 
         return match ($action) {
             'list' => $this->listAlbums($input),
-            'show' => $this->showAlbum($this->getStringArgument($input, 'id')),
+            'show' => $this->showAlbum($this->getStringArgument($input, 'id'), $input),
             'delete' => $this->deleteAlbum($this->getStringArgument($input, 'id'), $input),
             default => $this->failUnknownAction('album', $action, ['list', 'show', 'delete']),
         };
@@ -102,6 +102,12 @@ HELP
                 'active' => StatusFormatter::ALBUM_ACTIVE,
                 'disabled' => StatusFormatter::ALBUM_DISABLED,
                 'inactive' => StatusFormatter::ALBUM_DISABLED,
+                'error' => StatusFormatter::ALBUM_ERROR,
+                'processing' => StatusFormatter::ALBUM_PROCESSING,
+                'in_process' => StatusFormatter::ALBUM_PROCESSING,
+                'in-process' => StatusFormatter::ALBUM_PROCESSING,
+                'deleting' => StatusFormatter::ALBUM_DELETING,
+                'deleted' => StatusFormatter::ALBUM_DELETED,
             ], [0, 1, 2, 3, 4, 5]);
             if ($statusId !== null) {
                 $whereClause .= " AND a.status_id = :status";
@@ -310,7 +316,7 @@ HELP
         ];
     }
 
-    private function showAlbum(?string $id): int
+    private function showAlbum(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Album ID is required');
@@ -337,8 +343,6 @@ HELP
                 $this->io()->error("Album not found: $id");
                 return self::FAILURE;
             }
-
-            $this->io()->section("Album #$id");
 
             $title = isset($album['title']) && is_string($album['title']) ? $album['title'] : '';
             $statusIdVal = $album['status_id'] ?? 0;
@@ -369,6 +373,11 @@ HELP
                 ],
             ];
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, ['album_id' => $id]);
+            }
+
+            $this->io()->section("Album #$id");
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch album: ' . $e->getMessage());

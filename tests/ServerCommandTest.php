@@ -283,6 +283,26 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testServerShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('1', $rows[0]['server_id']);
+        $this->assertSame('Video Local', $rows[0]['title']);
+        $this->assertSame('Video Group', $rows[0]['group']);
+        $this->assertSame('/data/videos', $rows[0]['path']);
+        $this->assertStringNotContainsString('Server #1', $output);
+    }
+
     public function testServerShowDisplaysMountConnectionInfo(): void
     {
         $this->tester->execute([
@@ -390,6 +410,24 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testServerStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Servers']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Servers']['value'] ?? 0));
+        $this->assertStringNotContainsString('Storage Statistics', $this->tester->getDisplay());
+    }
+
     public function testServerGroupList(): void
     {
         $this->tester->execute([
@@ -420,6 +458,26 @@ class ServerCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(10, (int) $rows[0]['group_id']);
         $this->assertSame('Video Group', $rows[0]['title']);
+    }
+
+    public function testServerGroupShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(10, $rows[0]['group_id']);
+        $this->assertSame('Video Group', $rows[0]['title']);
+        $this->assertCount(2, $rows[0]['servers']);
+        $this->assertSame(1, $rows[0]['servers'][0]['server_id']);
+        $this->assertStringNotContainsString('Server Group #10', $output);
     }
 
     public function testServerGroupListRejectsInvalidLimitBeforeSql(): void

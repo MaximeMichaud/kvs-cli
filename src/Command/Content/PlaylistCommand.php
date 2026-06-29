@@ -88,7 +88,7 @@ HELP
 
         return match ($action) {
             'list' => $this->listPlaylists($input),
-            'show' => $this->showPlaylist($this->getStringArgument($input, 'id')),
+            'show' => $this->showPlaylist($this->getStringArgument($input, 'id'), $input),
             'create' => $this->createPlaylist($input),
             'add' => $this->addVideoToPlaylist(
                 $this->getStringArgument($input, 'id'),
@@ -294,7 +294,7 @@ HELP
         }
     }
 
-    private function showPlaylist(?string $id): int
+    private function showPlaylist(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Playlist ID is required');
@@ -323,8 +323,6 @@ HELP
                 $this->io()->error("Playlist not found: $id");
                 return self::FAILURE;
             }
-
-            $this->io()->section("Playlist #$id");
 
             // Type calculation
             $isPrivate = isset($playlist['is_private']) && is_numeric($playlist['is_private'])
@@ -375,15 +373,8 @@ HELP
                 ['Last Updated', $lastContentTimestamp !== false ? date('Y-m-d H:i:s', $lastContentTimestamp) : 'Never'],
             ];
 
-            $this->renderTable(['Property', 'Value'], $info);
-
             // Description section
             $description = isset($playlist['description']) && is_string($playlist['description']) ? $playlist['description'] : '';
-            if ($description !== '') {
-                $this->io()->newLine();
-                $this->io()->section('Description');
-                $this->io()->text($description);
-            }
 
             // Videos in playlist (top 10)
             $stmt = $db->prepare("
@@ -398,16 +389,6 @@ HELP
             /** @var list<array{video_id: int, title: string}> $videos */
             $videos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            if (count($videos) > 0) {
-                $this->io()->newLine();
-                $this->io()->section('Videos (Top 10)');
-                $videoList = [];
-                foreach ($videos as $video) {
-                    $videoList[] = sprintf('#%d: %s', $video['video_id'], $video['title']);
-                }
-                $this->io()->listing($videoList);
-            }
-
             // Categories
             $stmt = $db->prepare("
                 SELECT c.title
@@ -419,13 +400,6 @@ HELP
             $stmt->execute(['id' => $id]);
             /** @var list<array{title: string}> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if (count($categories) > 0) {
-                $this->io()->newLine();
-                $this->io()->section('Categories');
-                $categoryTitles = array_map(fn($c) => $c['title'], $categories);
-                $this->io()->text(implode(', ', $categoryTitles));
-            }
 
             // Tags
             $stmt = $db->prepare("
@@ -439,10 +413,53 @@ HELP
             /** @var list<array{tag: string}> $tags */
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+            $videoList = [];
+            foreach ($videos as $video) {
+                $videoList[] = [
+                    'video_id' => $video['video_id'],
+                    'title' => $video['title'],
+                ];
+            }
+            $categoryTitles = array_map(fn($c) => $c['title'], $categories);
+            $tagNames = array_map(fn($t) => $t['tag'], $tags);
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'playlist_id' => $id,
+                    'description' => $description,
+                    'videos_top' => $videoList,
+                    'categories' => $categoryTitles,
+                    'tags' => $tagNames,
+                ]);
+            }
+
+            $this->io()->section("Playlist #$id");
+            $this->renderTable(['Property', 'Value'], $info);
+
+            if ($description !== '') {
+                $this->io()->newLine();
+                $this->io()->section('Description');
+                $this->io()->text($description);
+            }
+
+            if (count($videos) > 0) {
+                $this->io()->newLine();
+                $this->io()->section('Videos (Top 10)');
+                $this->io()->listing(array_map(
+                    static fn (array $video): string => sprintf('#%d: %s', $video['video_id'], $video['title']),
+                    $videos
+                ));
+            }
+
+            if (count($categories) > 0) {
+                $this->io()->newLine();
+                $this->io()->section('Categories');
+                $this->io()->text(implode(', ', $categoryTitles));
+            }
+
             if (count($tags) > 0) {
                 $this->io()->newLine();
                 $this->io()->section('Tags');
-                $tagNames = array_map(fn($t) => $t['tag'], $tags);
                 $this->io()->text(implode(', ', $tagNames));
             }
 

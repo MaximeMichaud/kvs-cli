@@ -206,6 +206,23 @@ class QueueCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/Deleted\W+1/', $output);
     }
 
+    public function testQueueStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('queue_status', $rowsByMetric['Pending']['section'] ?? null);
+        $this->assertSame(1, (int) ($rowsByMetric['Pending']['value'] ?? 0));
+        $this->assertStringNotContainsString('Queue Statistics', $this->tester->getDisplay());
+    }
+
     public function testQueueHistory(): void
     {
         $this->tester->execute([
@@ -331,6 +348,25 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('Backup Worker', $output);
         $this->assertStringContainsString('Conversion Failed', $output);
         $this->assertStringContainsString('Converter returned exit code 1', $output);
+    }
+
+    public function testQueueShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['task_id']);
+        $this->assertSame('Failed', $rows[0]['status']);
+        $this->assertSame('Create Video Format', $rows[0]['type']);
+        $this->assertFalse($rows[0]['is_history']);
+        $this->assertStringNotContainsString('Task #30', $output);
     }
 
     public function testQueueHelpAction(): void

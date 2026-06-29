@@ -194,7 +194,7 @@ class DvdCommandTest extends TestCase
             'action' => 'list',
             '--format' => 'json',
             '--fields' => 'dvd_id,thumb,cover1_front,cover1_back,cover2_front,cover2_back,user,' .
-                'is_video_upload_allowed,tags,categories,models,avg_videos_rating,avg_videos_popularity',
+                'user_status_id,is_video_upload_allowed,tags,categories,models,avg_videos_rating,avg_videos_popularity',
             '--limit' => '1',
         ]);
 
@@ -208,6 +208,7 @@ class DvdCommandTest extends TestCase
         $this->assertSame('front-2.jpg', $rows[0]['cover2_front']);
         $this->assertSame('back-2.jpg', $rows[0]['cover2_back']);
         $this->assertSame('channel-owner', $rows[0]['user']);
+        $this->assertSame(1, (int) $rows[0]['user_status_id']);
         $this->assertSame(2, (int) $rows[0]['is_video_upload_allowed']);
         $this->assertSame('series,featured', $rows[0]['tags']);
         $this->assertSame('Featured,Channels', $rows[0]['categories']);
@@ -235,6 +236,25 @@ class DvdCommandTest extends TestCase
         $this->assertSame(25, (int) $rows[0]['tokens_required']);
         $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
         $this->assertSame(9, (int) $rows[0]['sort_id']);
+    }
+
+    public function testListDvdsExposesKvsAdminCustomFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,custom1,custom10,custom_file1,custom_file5',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('custom one', $rows[0]['custom1']);
+        $this->assertSame('custom ten', $rows[0]['custom10']);
+        $this->assertSame('file-one.pdf', $rows[0]['custom_file1']);
+        $this->assertSame('file-five.pdf', $rows[0]['custom_file5']);
     }
 
     public function testListDvdsFormatsZeroReleaseYearLikeKvsAdmin(): void
@@ -329,6 +349,25 @@ class DvdCommandTest extends TestCase
         $this->assertStringContainsString('Long running series', $output);
     }
 
+    public function testShowDvdSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame('2', $rows[0]['videos']);
+        $this->assertSame('Long running series', $rows[0]['description']);
+        $this->assertStringNotContainsString('DVD: Test Series', $output);
+    }
+
     public function testShowDvdOmitsZeroReleaseYearLikeKvsAdmin(): void
     {
         $this->db->exec('UPDATE ' . TestHelper::table('dvds') . ' SET release_year = 0 WHERE dvd_id = 10');
@@ -380,6 +419,23 @@ class DvdCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
     }
 
+    public function testStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total DVDs']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total DVDs']['value'] ?? 0));
+        $this->assertStringNotContainsString('DVD Statistics', $this->tester->getDisplay());
+    }
+
     public function testDefaultActionIsList(): void
     {
         $this->tester->execute([]);
@@ -411,7 +467,10 @@ class DvdCommandTest extends TestCase
             'subscribers_count INTEGER, rating INTEGER, rating_amount INTEGER, description TEXT, ' .
             'synonyms TEXT, tokens_required INTEGER, added_date TEXT, sort_id INTEGER, ' .
             'total_videos INTEGER, total_videos_duration INTEGER, avg_videos_rating REAL, ' .
-            'avg_videos_popularity INTEGER, dvd_group_id INTEGER)'
+            'avg_videos_popularity INTEGER, dvd_group_id INTEGER, ' .
+            'custom1 TEXT, custom2 TEXT, custom3 TEXT, custom4 TEXT, custom5 TEXT, ' .
+            'custom6 TEXT, custom7 TEXT, custom8 TEXT, custom9 TEXT, custom10 TEXT, ' .
+            'custom_file1 TEXT, custom_file2 TEXT, custom_file3 TEXT, custom_file4 TEXT, custom_file5 TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('dvds_groups') . ' (' .
@@ -419,7 +478,7 @@ class DvdCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
-            'user_id INTEGER, username TEXT)'
+            'user_id INTEGER, username TEXT, status_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
@@ -459,14 +518,20 @@ class DvdCommandTest extends TestCase
             ' (dvd_id, title, dir, status_id, release_year, dvd_viewed, cover1_front, cover1_back, ' .
             'cover2_front, cover2_back, user_id, is_video_upload_allowed, subscribers_count, rating, rating_amount, ' .
             'description, synonyms, tokens_required, added_date, sort_id, total_videos, total_videos_duration, ' .
-            'avg_videos_rating, avg_videos_popularity, dvd_group_id) VALUES ' .
+            'avg_videos_rating, avg_videos_popularity, dvd_group_id, custom1, custom2, custom3, custom4, ' .
+            'custom5, custom6, custom7, custom8, custom9, custom10, custom_file1, custom_file2, custom_file3, ' .
+            'custom_file4, custom_file5) VALUES ' .
             "(30, 'Test Series', 'test-series', 1, 2026, 100, 'front-1.jpg', 'back-1.jpg', " .
             "'front-2.jpg', 'back-2.jpg', 1, 2, 5, 40, 10, 'Long running series', " .
-            "'series, channel', 25, '2026-05-25 10:00:00', 9, 99, 99, 4.5, 1200, 7), " .
+            "'series, channel', 25, '2026-05-25 10:00:00', 9, 99, 99, 4.5, 1200, 7, " .
+            "'custom one', '', '', '', '', '', '', '', '', 'custom ten', 'file-one.pdf', '', '', '', " .
+            "'file-five.pdf'), " .
             "(20, 'Disabled Series', 'disabled-series', 0, 2025, 10, '', '', '', '', 2, 0, 0, 0, 0, '', '', 0, " .
-            "'2026-05-26 10:00:00', 10, 99, 99, 0, 0, 8), " .
+            "'2026-05-26 10:00:00', 10, 99, 99, 0, 0, 8, '', '', '', '', '', '', '', '', '', '', '', " .
+            "'', '', '', ''), " .
             "(10, 'Other Channel', 'other-channel', 1, 2024, 50, '', '', '', '', 0, 0, 2, 12, 3, '', '', 0, " .
-            "'2026-05-27 10:00:00', 11, 99, 99, 0, 0, 0)"
+            "'2026-05-27 10:00:00', 11, 99, 99, 0, 0, 0, '', '', '', '', '', '', '', '', '', '', '', " .
+            "'', '', '', '')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('dvds_groups') .
@@ -474,7 +539,7 @@ class DvdCommandTest extends TestCase
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('users') .
-            " VALUES (1, 'channel-owner'), (2, 'disabled-owner')"
+            " VALUES (1, 'channel-owner', 1), (2, 'disabled-owner', 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .

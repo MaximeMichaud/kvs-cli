@@ -134,6 +134,26 @@ class UserCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testUserShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('1', $rows[0]['user_id']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame(2, $rows[0]['videos_uploaded']);
+        $this->assertSame(1, $rows[0]['albums_created']);
+        $this->assertSame(3, $rows[0]['comments_posted']);
+        $this->assertStringNotContainsString('User: alice', $output);
+    }
+
     public function testTrustedFilterReturnsOnlyTrustedUsers(): void
     {
         $this->tester->execute([
@@ -159,7 +179,7 @@ class UserCommandTest extends TestCase
             'action' => 'list',
             '--search' => 'alice',
             '--fields' => 'user_id,username,videos_count,albums_count,posts_count,dvds_count,' .
-                'playlists_count,comments_count,favourite_category',
+                'playlists_count,public_playlists_count,comments_count,favourite_category',
             '--format' => 'json',
             '--limit' => 1,
         ]);
@@ -174,6 +194,7 @@ class UserCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['posts_count']);
         $this->assertSame(1, (int) $rows[0]['dvds_count']);
         $this->assertSame(2, (int) $rows[0]['playlists_count']);
+        $this->assertSame(1, (int) $rows[0]['public_playlists_count']);
         $this->assertSame(3, (int) $rows[0]['comments_count']);
         $this->assertSame('Featured', $rows[0]['favourite_category']);
     }
@@ -194,6 +215,23 @@ class UserCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['user_id']);
         $this->assertSame('1/1.jpg', $rows[0]['thumb']);
         $this->assertSame('127.0.0.1', $rows[0]['ip']);
+    }
+
+    public function testUserStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Users']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Users']['value'] ?? 0));
+        $this->assertStringNotContainsString('Most Recent Users', $this->tester->getDisplay());
     }
 
     public function testCommandMetadata(): void

@@ -90,6 +90,18 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogListIncludesNestedKvsLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/logs/plugins', 0755, true);
+        file_put_contents($this->tempDir . '/admin/logs/plugins/backup.txt', "[2024-01-01] INFO: Backup done\n");
+
+        $this->tester->execute(['--list' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertMatchesRegularExpression('/│\s*plugins\/backup\s*│\s*plugins\/backup\.txt\s*│/', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
     public function testLogViewSpecificType(): void
     {
         $this->tester->execute(['type' => 'system']);
@@ -121,6 +133,44 @@ class LogCommandTest extends TestCase
         $this->assertStringContainsString('data', $output);
         $this->assertStringContainsString('/logs/email.txt', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewReadsNestedKvsLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/logs/plugins', 0755, true);
+        file_put_contents($this->tempDir . '/admin/logs/plugins/backup.txt', "[2024-01-01] INFO: Backup done\n");
+
+        $this->tester->execute(['type' => 'plugins/backup']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Backup done', $output);
+        $this->assertStringContainsString('plugins/backup.txt', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewAcceptsListedNestedLogFile(): void
+    {
+        mkdir($this->tempDir . '/admin/logs/plugins', 0755, true);
+        file_put_contents($this->tempDir . '/admin/logs/plugins/backup.txt', "[2024-01-01] INFO: Backup done\n");
+
+        $this->tester->execute(['type' => 'plugins/backup.txt']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Backup done', $output);
+        $this->assertStringContainsString('plugins/backup.txt', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewRejectsParentDirectorySegments(): void
+    {
+        file_put_contents($this->tempDir . '/admin/include/private.txt', "SECRET-CONTENT\n");
+
+        $this->tester->execute(['type' => '../include/private']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringNotContainsString('SECRET-CONTENT', $output);
+        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testLogTail(): void

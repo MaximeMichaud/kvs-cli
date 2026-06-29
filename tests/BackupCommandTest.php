@@ -95,6 +95,22 @@ SH
         }
     }
 
+    public function testBackupCreateRejectsInvalidTypeBeforeCreatingOutputDirectory(): void
+    {
+        $outputDir = $this->rootDir . '/invalid-type-output';
+
+        $this->tester->execute([
+            '--create' => true,
+            '--type' => 'bogus',
+            '--output' => $outputDir,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --type "bogus"', $output);
+        $this->assertDirectoryDoesNotExist($outputDir);
+    }
+
     public function testDatabaseBackupSplitsHostPortForDumpCommand(): void
     {
         $previousHost = getenv('KVS_DB_HOST');
@@ -428,6 +444,28 @@ SH
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
         $this->assertStringContainsString('kvs_backup_db_2026-05-27.sql.gz', $output);
         $this->assertStringNotContainsString('No backups directory found', $output);
+    }
+
+    public function testBackupListIncludesNativeKvsBackupDirectory(): void
+    {
+        $nativeBackupDir = $this->tempDir . '/admin/data/backup';
+        mkdir($nativeBackupDir, 0755, true);
+        file_put_contents(
+            $nativeBackupDir . '/example-site-backup-auto-dwpsc-2026-06-29-123456.tar.gz',
+            'test'
+        );
+
+        $this->tester->execute([
+            '--list' => true,
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+
+        $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $files = array_column($decoded, 'file');
+        $this->assertContains('example-site-backup-auto-dwpsc-2026-06-29-123456.tar.gz', $files);
     }
 
     public function testBackupListSupportsJsonFormat(): void

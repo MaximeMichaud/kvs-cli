@@ -175,7 +175,7 @@ class CommentCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
-            '--fields' => 'comment_id,comment_full,object,ip,country,rating,is_approved',
+            '--fields' => 'comment_id,comment_full,object,user_status_id,ip,country,rating,is_approved',
             '--format' => 'json',
             '--limit' => 1,
         ]);
@@ -186,6 +186,7 @@ class CommentCommandTest extends TestCase
         $this->assertSame(30, (int) $rows[0]['comment_id']);
         $this->assertSame('Great test video', $rows[0]['comment_full']);
         $this->assertSame('Intro Video', $rows[0]['object']);
+        $this->assertSame(2, (int) $rows[0]['user_status_id']);
         $this->assertSame('127.0.0.1', $rows[0]['ip']);
         $this->assertSame('Canada', $rows[0]['country']);
         $this->assertSame(5, (int) $rows[0]['rating']);
@@ -207,6 +208,22 @@ class CommentCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(10, (int) $rows[0]['comment_id']);
         $this->assertSame('GuestUser', $rows[0]['user']);
+    }
+
+    public function testPendingCommentsExposeKvsAdminUserStatusField(): void
+    {
+        $this->tester->execute([
+            'action' => 'pending',
+            '--fields' => 'comment_id,user,user_status_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(20, (int) $rows[0]['comment_id']);
+        $this->assertSame('bob', $rows[0]['user']);
+        $this->assertSame(0, (int) $rows[0]['user_status_id']);
     }
 
     public function testStatsUsesAnonymousUsernameForTopCommenters(): void
@@ -300,6 +317,25 @@ class CommentCommandTest extends TestCase
         $this->assertStringContainsString('Great test video', $output);
     }
 
+    public function testShowCommentSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['id']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame('Approved', $rows[0]['status']);
+        $this->assertSame('Great test video', $rows[0]['comment']);
+        $this->assertStringNotContainsString('Comment #30', $output);
+    }
+
     public function testShowCommentUsesAnonymousUsernameForAnonymousUser(): void
     {
         $this->tester->execute([
@@ -358,6 +394,23 @@ class CommentCommandTest extends TestCase
         $this->assertStringContainsString('alice', $output);
         $this->assertStringContainsString('bob', $output);
         $this->assertStringContainsString('GuestUser', $output);
+    }
+
+    public function testStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Comments']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Comments']['value'] ?? 0));
+        $this->assertStringNotContainsString('Comment Statistics', $this->tester->getDisplay());
     }
 
     public function testPendingActionListsReviewNeededComments(): void
@@ -468,7 +521,7 @@ class CommentCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
-            'user_id INTEGER, username TEXT, email TEXT)'
+            'user_id INTEGER, username TEXT, email TEXT, status_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('list_countries') . ' (' .
@@ -496,8 +549,8 @@ class CommentCommandTest extends TestCase
     {
         $db->exec(
             'INSERT INTO ' . TestHelper::table('users') .
-            " (user_id, username, email) VALUES " .
-            "(1, 'alice', 'alice@example.test'), (2, 'bob', 'bob@example.test')"
+            " (user_id, username, email, status_id) VALUES " .
+            "(1, 'alice', 'alice@example.test', 2), (2, 'bob', 'bob@example.test', 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('list_countries') .

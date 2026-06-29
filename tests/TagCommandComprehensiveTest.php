@@ -296,6 +296,25 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertMatchesRegularExpression('/Total Usage\W+13/', $output);
     }
 
+    public function testShowTagSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['id']);
+        $this->assertSame('4K', $rows[0]['name']);
+        $this->assertSame('2', $rows[0]['videos']);
+        $this->assertSame('13', $rows[0]['total_usage']);
+        $this->assertStringNotContainsString('Tag: 4K', $output);
+    }
+
     public function testCreateWithoutName(): void
     {
         $exitCode = $this->tester->execute(['action' => 'create']);
@@ -541,6 +560,23 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Tag Statistics', $output);
         $this->assertStringContainsString('Overall Statistics', $output);
         $this->assertStringContainsString('Top 10 Most Used Tags', $output);
+    }
+
+    public function testStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Tags']['section'] ?? null);
+        $this->assertSame(4, (int) ($rowsByMetric['Total Tags']['value'] ?? 0));
+        $this->assertStringNotContainsString('Tag Statistics', $this->tester->getDisplay());
     }
 
     public function testCommandIntegrationWithHermeticDb(): void

@@ -19,6 +19,8 @@ class EmailCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'json'];
+
     protected function configure(): void
     {
         $this
@@ -140,7 +142,10 @@ HELP
             /** @var array<string, mixed> $settings */
             $settings = $decoded;
 
-            $format = $this->getStringOption($input, 'format');
+            $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+            if ($format === null) {
+                return self::FAILURE;
+            }
 
             if ($format === 'json') {
                 $this->io()->writeln((string) json_encode($this->maskSensitiveSettings($settings), JSON_PRETTY_PRINT));
@@ -514,6 +519,11 @@ HELP
 
     private function showLog(InputInterface $input): int
     {
+        $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($format === null) {
+            return self::FAILURE;
+        }
+
         $logDirs = [
             $this->config->getAdminPath() . '/logs',
             $this->config->getAdminPath() . '/data/logs',
@@ -529,6 +539,17 @@ HELP
         }
 
         if ($logFiles === []) {
+            if ($format === 'json') {
+                return $this->renderLogJson([
+                    'file' => null,
+                    'exists' => false,
+                    'total_lines' => 0,
+                    'shown_lines' => 0,
+                    'lines' => [],
+                    'message' => 'No email log files found',
+                ]);
+            }
+
             $this->io()->warning('No email log files found');
             $this->io()->text('Email logging is only enabled when debug level > 0');
             $this->io()->text('Enable it with: kvs email set --debug=1');
@@ -550,46 +571,116 @@ HELP
         }
 
         if (!file_exists($logFile)) {
+            if ($format === 'json') {
+                return $this->renderLogJson([
+                    'file' => $logFile,
+                    'exists' => false,
+                    'total_lines' => 0,
+                    'shown_lines' => 0,
+                    'lines' => [],
+                    'message' => 'Email log file not found',
+                ]);
+            }
+
             $this->io()->warning('Email log file not found');
             return self::SUCCESS;
+        }
+
+        $content = file_get_contents($logFile);
+        if ($content === false) {
+            if ($format === 'json') {
+                return $this->renderLogJson([
+                    'file' => $logFile,
+                    'exists' => true,
+                    'total_lines' => 0,
+                    'shown_lines' => 0,
+                    'lines' => [],
+                    'error' => 'Cannot read log file',
+                ], self::FAILURE);
+            }
+
+            $this->io()->error('Cannot read log file');
+            return self::FAILURE;
+        }
+
+        $lines = $this->splitLogLines($content);
+        $limit = max(0, $this->getIntOptionOrDefault($input, 'lines', 50));
+        $totalLines = count($lines);
+        $shownLines = $limit > 0 && $totalLines > $limit ? array_slice($lines, -$limit) : $lines;
+
+        if ($format === 'json') {
+            $payload = [
+                'file' => $logFile,
+                'exists' => true,
+                'total_lines' => $totalLines,
+                'shown_lines' => count($shownLines),
+                'lines' => $shownLines,
+            ];
+            if ($totalLines === 0) {
+                $payload['message'] = 'Log file is empty';
+            } elseif ($totalLines > count($shownLines)) {
+                $payload['message'] = 'Showing last ' . count($shownLines) . " of $totalLines lines";
+            }
+
+            return $this->renderLogJson($payload);
         }
 
         $this->io()->section('Email Log');
         $this->io()->text('<fg=gray>File: ' . $logFile . '</>');
         $this->io()->newLine();
 
-        $content = file_get_contents($logFile);
-        if ($content === false) {
-            $this->io()->error('Cannot read log file');
-            return self::FAILURE;
-        }
-
-        if (trim($content) === '') {
+        if ($totalLines === 0) {
             $this->io()->info('Log file is empty');
             return self::SUCCESS;
         }
 
-        // Show last N lines
-        $lines = explode("\n", $content);
-        $limit = $this->getIntOptionOrDefault($input, 'lines', 50);
-        $totalLines = count($lines);
-
-        if ($totalLines > $limit) {
-            $lines = array_slice($lines, -$limit);
+        if ($totalLines > count($shownLines)) {
             $this->io()->text("<fg=gray>Showing last $limit of $totalLines lines...</>");
             $this->io()->newLine();
         }
 
-        $this->io()->text(implode("\n", $lines));
+        $this->io()->text(implode("\n", $shownLines));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function renderLogJson(array $payload, int $statusCode = self::SUCCESS): int
+    {
+        $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            $this->io()->error('Failed to encode email log as JSON: ' . json_last_error_msg());
+            return self::FAILURE;
+        }
+
+        $this->io()->writeln($json);
+        return $statusCode;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitLogLines(string $content): array
+    {
+        $content = rtrim($content, "\r\n");
+        if ($content === '') {
+            return [];
+        }
+
+        $lines = preg_split('/\R/', $content);
+        return $lines !== false ? $lines : [];
     }
 
     private function showTemplates(InputInterface $input): int
     {
         $kvsPath = $this->config->getKvsPath();
         $blocksPath = $kvsPath . '/blocks';
-        $format = $this->getStringOption($input, 'format') ?? 'table';
+        $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($format === null) {
+            return self::FAILURE;
+        }
 
         if ($format === 'table') {
             $this->io()->section('Email Templates');

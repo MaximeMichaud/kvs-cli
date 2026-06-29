@@ -221,6 +221,44 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString($longValue, $fullTester->getDisplay());
     }
 
+    public function testOptionsListJsonUsesFullValueByDefault(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $longValue = '%total_videos%*20 + %total_albums%*20 + %total_comments%*10 + %logins%';
+        $stmt = $this->db->prepare('INSERT INTO ktvs_options VALUES (:variable, :value)');
+        $stmt->execute(['variable' => 'ACTIVITY_INDEX_FORMULA', 'value' => $longValue]);
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--search' => 'ACTIVITY_INDEX_FORMULA',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($longValue, $rows[0]['value'] ?? null);
+        $this->assertArrayNotHasKey('display_value', $rows[0]);
+    }
+
+    public function testOptionsListEmptyCountFormatOutputsZero(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('PROJECT_NAME', 'Demo')");
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--search' => '__missing__',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame("0\n", $tester->getDisplay());
+    }
+
     public function testOptionsSetRequiresYesInNonInteractiveMode(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -517,6 +555,21 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame('2048 kbit/s', $rows[0]['limit_speed_value']);
         $this->assertSame('10s', $rows[0]['is_timeline_enabled']);
         $this->assertSame(1, (int) $rows[0]['videos_count']);
+    }
+
+    public function testVideoFormatListEmptyCountFormatOutputsZero(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'disabled',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame("0\n", $tester->getDisplay());
     }
 
     public function testVideoFormatGroupsRejectsListFilters(): void

@@ -163,9 +163,15 @@ HELP
             /** @var list<array<string, mixed>> $formats */
             $formats = $stmt->fetchAll();
             $formats = $this->addVideoCounts($db, $formats);
+            $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
 
             if ($formats === []) {
-                $this->io()->warning('No video formats found');
+                if ($this->isTableFormat($input)) {
+                    $this->io()->warning('No video formats found');
+                } else {
+                    $formatter = new Formatter($input->getOptions(), $defaultFields);
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
@@ -204,8 +210,6 @@ HELP
 
                 return $format;
             }, $formats);
-
-            $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
 
             $formatter = new Formatter($input->getOptions(), $defaultFields);
             $formatter->display($formats, $this->io());

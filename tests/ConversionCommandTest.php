@@ -289,6 +289,25 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testConversionShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('1', $rows[0]['server_id']);
+        $this->assertSame('Main Converter', $rows[0]['title']);
+        $this->assertSame(['video_admins'], $rows[0]['task_types']);
+        $this->assertStringNotContainsString('Conversion Server #1', $output);
+    }
+
     public function testConversionShowParsesSerializedTaskTypes(): void
     {
         $this->tester->execute([
@@ -383,6 +402,25 @@ class ConversionCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/Processing\W+1/', $output);
         $this->assertMatchesRegularExpression('/Completed \(history\)\W+3/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConversionStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Servers']['section'] ?? null);
+        $this->assertSame(4, (int) ($rowsByMetric['Total Servers']['value'] ?? 0));
+        $this->assertSame('task_queue', $rowsByMetric['Pending']['section'] ?? null);
+        $this->assertStringNotContainsString('Conversion Statistics', $this->tester->getDisplay());
     }
 
     public function testConversionCommandMetadata(): void

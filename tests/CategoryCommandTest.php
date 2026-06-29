@@ -205,6 +205,41 @@ class CategoryCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testCategoryShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['id']);
+        $this->assertSame('Action', $rows[0]['title']);
+        $this->assertSame('High energy scenes', $rows[0]['description']);
+        $this->assertStringNotContainsString('Category: Action', $output);
+    }
+
+    public function testCategoryTreeSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'tree',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(3, $rows);
+        $this->assertContains('Action', array_column($rows, 'title'));
+        $this->assertArrayHasKey('video_count', $rows[0]);
+        $this->assertStringNotContainsString('Category Tree', $output);
+    }
+
     public function testCategoryCommandMetadata(): void
     {
         $this->assertEquals('content:category', $this->command->getName());

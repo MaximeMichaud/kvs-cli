@@ -142,6 +142,26 @@ class VideoCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testVideoShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['video_id']);
+        $this->assertSame('Featured Clip', $rows[0]['title']);
+        $this->assertSame('Featured description', $rows[0]['description']);
+        $this->assertSame(['Drama', 'Action'], $rows[0]['categories']);
+        $this->assertSame(['tag-two', 'tag-one'], $rows[0]['tags']);
+        $this->assertStringNotContainsString('Video #10', $output);
+    }
+
     public function testVideoListFormatsKvsResolutionTypesAboveFhd(): void
     {
         $this->db->exec(
@@ -236,6 +256,59 @@ class VideoCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['user_status_id']);
         $this->assertSame('moderator', $rows[0]['admin_user']);
         $this->assertSame(0, (int) $rows[0]['admin_user_is_superadmin']);
+    }
+
+    public function testVideoListAcceptsKvsLifecycleStatusAliases(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            ' (video_id, user_id, admin_user_id, title, status_id, resolution_type, is_private, duration, file_size, ' .
+            'file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, r_ctr, description, ' .
+            'content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id, screen_main, ip) VALUES ' .
+            "(40, 1, 0, 'Processing Clip', 3, 0, 0, 10, 0, '', '2026-05-27 10:00:00', 0, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 0, 0), " .
+            "(50, 1, 0, 'Deleting Clip', 4, 0, 0, 10, 0, '', '2026-05-27 11:00:00', 0, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 0, 0), " .
+            "(60, 1, 0, 'Deleted Clip', 5, 0, 0, 10, 0, '', '2026-05-27 12:00:00', 0, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 0, 0)"
+        );
+
+        $cases = [
+            'in_process' => [40, 'Processing'],
+            'deleting' => [50, 'Deleting'],
+            'deleted' => [60, 'Deleted'],
+        ];
+
+        foreach ($cases as $status => [$expectedId, $expectedLabel]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--status' => $status,
+                '--fields' => 'video_id,status',
+                '--format' => 'json',
+                '--limit' => 1,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($expectedId, (int) $rows[0]['video_id']);
+            $this->assertSame($expectedLabel, $rows[0]['status']);
+        }
+    }
+
+    public function testVideoStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Videos']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Videos']['value'] ?? 0));
+        $this->assertStringNotContainsString('Top 10 Most Viewed Videos', $this->tester->getDisplay());
     }
 
     public function testVideoCommandMetadata(): void

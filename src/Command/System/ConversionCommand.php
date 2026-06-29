@@ -109,14 +109,14 @@ HELP
 
         return match ($action) {
             'list' => $this->listServers($input),
-            'show' => $this->showServer($id),
+            'show' => $this->showServer($id, $input),
             'enable', 'activate' => $this->enableServer($id),
             'disable', 'deactivate' => $this->disableServer($id),
             'debug-on' => $this->toggleDebug($id, true),
             'debug-off' => $this->toggleDebug($id, false),
             'log' => $this->showLog($id),
             'config' => $this->showConfig($id),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'conversion',
                 $action,
@@ -236,7 +236,7 @@ HELP
         }
     }
 
-    private function showServer(?string $id): int
+    private function showServer(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Server ID is required');
@@ -267,11 +267,18 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->section("Conversion Server #$id");
-
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'server_id' => $id,
+                    'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
+                    'allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks') === 1,
+                ]);
+            }
+
+            $this->io()->section("Conversion Server #$id");
             $this->renderTable(['Property', 'Value'], $info);
 
             // Display task types
@@ -753,7 +760,7 @@ HELP
         }
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -761,8 +768,6 @@ HELP
         }
 
         try {
-            $this->io()->section('Conversion Statistics');
-
             // Overall stats
             $stmtStats = $db->query("
                 SELECT
@@ -804,6 +809,21 @@ HELP
             $usedSpace = $totalSpace - $freeSpace;
             $usedPercent = $totalSpace > 0 ? round(($usedSpace / $totalSpace) * 100, 1) : 0;
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('overall', 'Total Servers', $totalServers),
+                $this->metricRow('overall', 'Active', $activeServers),
+                $this->metricRow('overall', 'Disabled', $disabledServers),
+                $this->metricRow('overall', 'Initializing', $initServers),
+                $this->metricRow('overall', 'With Errors', $serversWithErrors),
+                $this->metricRow('overall', 'Debug Enabled', $debugEnabled),
+                $this->metricRow('overall', 'Total Capacity', $totalCapacity, "{$totalCapacity} concurrent tasks"),
+                $this->metricRow('overall', 'Total Space', $totalSpace, $this->formatBytes($totalSpace)),
+                $this->metricRow('overall', 'Used Space', $usedSpace, $this->formatBytes($usedSpace) . " ({$usedPercent}%)"),
+                $this->metricRow('overall', 'Free Space', $freeSpace, $this->formatBytes($freeSpace)),
+                $this->metricRow('overall', 'Avg Load', $avgLoad, number_format($avgLoad, 2)),
+            ];
+
             $overallInfo = [
                 ['Total Servers', (string) $totalServers],
                 ['Active', (string) $activeServers],
@@ -818,12 +838,7 @@ HELP
                 ['Avg Load', number_format($avgLoad, 2)],
             ];
 
-            $this->renderTable(['Metric', 'Value'], $overallInfo);
-
             // Task stats
-            $this->io()->newLine();
-            $this->io()->section('Task Queue');
-
             $stmtTasks = $db->query("
                 SELECT
                     SUM(CASE WHEN status_id = 0 THEN 1 ELSE 0 END) as pending,
@@ -848,7 +863,20 @@ HELP
                 ['Processing', (string) $processing],
                 ['Completed (history)', number_format($completed)],
             ];
+            $metricRows[] = $this->metricRow('task_queue', 'Pending', $pending);
+            $metricRows[] = $this->metricRow('task_queue', 'Processing', $processing);
+            $metricRows[] = $this->metricRow('task_queue', 'Completed (history)', $completed, number_format($completed));
 
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->section('Conversion Statistics');
+            $this->renderTable(['Metric', 'Value'], $overallInfo);
+
+            $this->io()->newLine();
+            $this->io()->section('Task Queue');
             $this->renderTable(['Status', 'Count'], $taskInfo);
 
             return self::SUCCESS;

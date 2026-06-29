@@ -318,6 +318,25 @@ class ModelCommandTest extends TestCase
         $this->assertStringContainsString('Main model profile', $output);
     }
 
+    public function testShowModelSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['model_id']);
+        $this->assertSame('Test Model', $rows[0]['name']);
+        $this->assertSame('2', $rows[0]['videos']);
+        $this->assertSame('Main model profile', $rows[0]['description']);
+        $this->assertStringNotContainsString('Model: Test Model', $output);
+    }
+
     public function testShowModelNotFound(): void
     {
         $this->tester->execute([
@@ -353,6 +372,23 @@ class ModelCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
         $this->assertMatchesRegularExpression('/Models with Videos\W+3/', $output);
         $this->assertMatchesRegularExpression('/Total Video Relations\W+4/', $output);
+    }
+
+    public function testStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Models']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Models']['value'] ?? 0));
+        $this->assertStringNotContainsString('Model Statistics', $this->tester->getDisplay());
     }
 
     public function testDefaultActionIsList(): void

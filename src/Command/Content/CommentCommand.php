@@ -102,7 +102,8 @@ HELP
                 'table'
             )
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable text truncation')
-            ->addOption('all', null, InputOption::VALUE_NONE, 'Apply to all pending comments');
+            ->addOption('all', null, InputOption::VALUE_NONE, 'Apply to all pending comments')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompt');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -113,11 +114,11 @@ HELP
         return match ($action) {
             'list' => $this->listComments($input),
             'pending' => $this->listPendingComments($input),
-            'show' => $this->showComment($id),
+            'show' => $this->showComment($id, $input),
             'approve' => $this->approveComments($input, $id),
             'reject' => $this->rejectComments($input, $id, 'reject'),
             'delete' => $this->rejectComments($input, $id, 'delete'),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'comment',
                 $action,
@@ -283,10 +284,13 @@ HELP
                 LEFT JOIN {$this->table('list_countries')} lc
                     ON c.country_code = lc.country_code AND lc.language_code = 'en'";
             }
+            $userStatusSelect = $this->isCommentFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
 
             $sql = "
                 SELECT c.*,
-                       u.username,
+                       u.username$userStatusSelect,
                        {$this->getCommentObjectSelectSql()}
                        $countrySelect
                 FROM {$this->table('comments')} c
@@ -312,6 +316,7 @@ HELP
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
                     'username' => $this->getCommentUsername($comment, ''),
+                    'user_status_id' => $comment['user_status_id'] ?? '',
                     'object_id' => $comment['object_id'] ?? 0,
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
@@ -340,7 +345,7 @@ HELP
         }
     }
 
-    private function showComment(?string $id): int
+    private function showComment(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Comment ID is required');
@@ -371,8 +376,6 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->title("Comment #$id");
-
             $approvalStatus = (bool)($comment['is_approved'] ?? 0)
                 ? '<fg=green>Approved</>'
                 : '<fg=yellow>Pending</>';
@@ -398,10 +401,16 @@ HELP
                 ['Posted', is_scalar($addedDateVal) ? (string) $addedDateVal : ''],
             ];
 
+            $commentText = is_scalar($commentTextVal) ? (string) $commentTextVal : '';
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, ['comment' => $commentText]);
+            }
+
+            $this->io()->title("Comment #$id");
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->io()->section('Comment Text');
-            $this->io()->text(is_scalar($commentTextVal) ? (string) $commentTextVal : '');
+            $this->io()->text($commentText);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch comment: ' . $e->getMessage());
             return self::FAILURE;
@@ -410,7 +419,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -481,9 +490,6 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->title('Comment Statistics');
-
-            $this->io()->section('Overall Statistics');
             $totalComments = is_numeric($overall['total_comments']) ? (int) $overall['total_comments'] : 0;
             $uniqueUsers = is_numeric($overall['unique_users']) ? (int) $overall['unique_users'] : 0;
             $videoComments = is_numeric($overall['video_comments']) ? (int) $overall['video_comments'] : 0;
@@ -499,40 +505,59 @@ HELP
             $lastComment = $overall['last_comment'] ?? null;
             $lastCommentStr = is_scalar($lastComment) ? (string) $lastComment : 'N/A';
 
-            $this->renderTable(
-                ['Metric', 'Value'],
-                [
-                    ['Total Comments', number_format($totalComments)],
-                    ['Unique Commenters', number_format($uniqueUsers)],
-                    ['Video Comments', number_format($videoComments)],
-                    ['Album Comments', number_format($albumComments)],
-                    ['Content Source Comments', number_format($contentSourceComments)],
-                    ['Model Comments', number_format($modelComments)],
-                    ['DVD Comments', number_format($dvdComments)],
-                    ['Post Comments', number_format($postComments)],
-                    ['Playlist Comments', number_format($playlistComments)],
-                    ['Comments (Last 7 Days)', number_format($recentComments)],
-                    ['First Comment', $firstCommentStr !== '' ? $firstCommentStr : 'N/A'],
-                    ['Latest Comment', $lastCommentStr !== '' ? $lastCommentStr : 'N/A'],
-                ]
-            );
+            $overallRows = [
+                ['Total Comments', $totalComments],
+                ['Unique Commenters', $uniqueUsers],
+                ['Video Comments', $videoComments],
+                ['Album Comments', $albumComments],
+                ['Content Source Comments', $contentSourceComments],
+                ['Model Comments', $modelComments],
+                ['DVD Comments', $dvdComments],
+                ['Post Comments', $postComments],
+                ['Playlist Comments', $playlistComments],
+                ['Comments (Last 7 Days)', $recentComments],
+                ['First Comment', $firstCommentStr !== '' ? $firstCommentStr : 'N/A'],
+                ['Latest Comment', $lastCommentStr !== '' ? $lastCommentStr : 'N/A'],
+            ];
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
+            /** @var list<list<string>> $tableRows */
+            $tableRows = [];
+            foreach ($overallRows as [$label, $value]) {
+                $displayValue = is_int($value) ? number_format($value) : $value;
+                $metricRows[] = $this->metricRow('overall', $label, $value, $displayValue);
+                $tableRows[] = [$label, $displayValue];
+            }
+
+            /** @var list<list<string>> $topRows */
+            $topRows = [];
             if ($topCommenters !== []) {
-                $this->io()->section('Top 10 Commenters');
-                /** @var list<list<string>> $rows */
-                $rows = [];
-                foreach ($topCommenters as $commenter) {
+                foreach ($topCommenters as $i => $commenter) {
                     if (!is_array($commenter)) {
                         continue;
                     }
                     $commenterUsername = $commenter['username'] ?? 'Unknown';
                     $commenterCount = $commenter['comment_count'] ?? 0;
-                    $rows[] = [
-                        is_scalar($commenterUsername) ? (string) $commenterUsername : 'Unknown',
-                        is_numeric($commenterCount) ? number_format((float) $commenterCount) : '0',
-                    ];
+                    $username = is_scalar($commenterUsername) ? (string) $commenterUsername : 'Unknown';
+                    $count = is_numeric($commenterCount) ? (int) $commenterCount : 0;
+                    $metricRows[] = $this->metricRow('top_commenters', (string) ($i + 1), $count, number_format($count), $username);
+                    $topRows[] = [$username, number_format($count)];
                 }
-                $this->renderTable(['User', 'Comments'], $rows);
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->title('Comment Statistics');
+            $this->io()->section('Overall Statistics');
+            $this->renderTable(['Metric', 'Value'], $tableRows);
+
+            if ($topRows !== []) {
+                $this->io()->section('Top 10 Commenters');
+                $this->renderTable(['User', 'Comments'], $topRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
@@ -612,10 +637,13 @@ HELP
                 LEFT JOIN {$this->table('list_countries')} lc
                     ON c.country_code = lc.country_code AND lc.language_code = 'en'";
             }
+            $userStatusSelect = $this->isCommentFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
 
             $sql = "
                 SELECT c.*,
-                       u.username,
+                       u.username$userStatusSelect,
                        {$this->getCommentObjectSelectSql()}
                        $countrySelect
                 FROM {$this->table('comments')} c
@@ -658,6 +686,7 @@ HELP
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
                     'username' => $this->getCommentUsername($comment),
+                    'user_status_id' => $comment['user_status_id'] ?? '',
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
@@ -747,7 +776,10 @@ HELP
             }
             $this->renderTable(['ID', 'User', 'Type', 'Comment'], $rows);
 
-            if ($this->io()->confirm('Approve ' . count($comments) . ' comment(s)?', false) !== true) {
+            if (
+                !$this->getBoolOption($input, 'yes')
+                && $this->io()->confirm('Approve ' . count($comments) . ' comment(s)?', false) !== true
+            ) {
                 if (!$input->isInteractive()) {
                     $this->io()->error('Comment moderation cancelled because confirmation was not provided.');
                     return self::FAILURE;
@@ -992,7 +1024,10 @@ HELP
             }
             $this->renderTable(['ID', 'User', 'Type', 'Comment'], $rows);
 
-            if ($this->io()->confirm('Reject and DELETE ' . count($comments) . ' comment(s)?', false) !== true) {
+            if (
+                !$this->getBoolOption($input, 'yes')
+                && $this->io()->confirm('Reject and DELETE ' . count($comments) . ' comment(s)?', false) !== true
+            ) {
                 if (!$input->isInteractive()) {
                     $this->io()->error('Comment moderation cancelled because confirmation was not provided.');
                     return self::FAILURE;

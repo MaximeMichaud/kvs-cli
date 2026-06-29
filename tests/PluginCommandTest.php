@@ -52,6 +52,16 @@ class PluginCommandTest extends TestCase
             'Track internal statistics.',
             true
         );
+        $this->createPluginFixture(
+            'digiregs',
+            'DigiRegs',
+            'Kernel Team',
+            '1.5',
+            '6.0.0',
+            'api,process_object',
+            'DigiRegs',
+            'Validate content records.'
+        );
         $this->createGuardedPluginFixture();
         $this->createPluginFixture(
             'awe_black_label',
@@ -136,6 +146,8 @@ class PluginCommandTest extends TestCase
         // Verify type values
         $this->assertStringContainsString('manual', $help);
         $this->assertStringContainsString('cron', $help);
+        $this->assertStringContainsString('api', $help);
+        $this->assertStringContainsString('process_object', $help);
 
         // Verify examples exist
         $this->assertStringContainsString('EXAMPLES', $help);
@@ -249,6 +261,38 @@ class PluginCommandTest extends TestCase
 
         $this->assertEquals(0, $exitCode);
         $this->assertStringContainsString('Name', $output);
+    }
+
+    public function testListWithTypeApi(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--type' => 'api',
+            '--format' => 'json',
+            '--fields' => 'id,types',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertContains('digiregs', $ids);
+    }
+
+    public function testListWithTypeProcessObject(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--type' => 'process_object',
+            '--format' => 'json',
+            '--fields' => 'id,types',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertContains('digiregs', $ids);
     }
 
     public function testListWithFields(): void
@@ -372,6 +416,25 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Metadata:', $output);
     }
 
+    public function testShowExistingPluginSupportsJsonFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertSame('Backup', $rows[0]['name'] ?? null);
+        $this->assertSame('Kernel Team', $rows[0]['author'] ?? null);
+        $this->assertStringContainsString('/admin/plugins/backup', $rows[0]['path'] ?? '');
+        $this->assertStringNotContainsString('Plugin:', $output);
+    }
+
     public function testShowWithoutId(): void
     {
         $exitCode = $this->tester->execute(['action' => 'show']);
@@ -413,6 +476,23 @@ class PluginCommandTest extends TestCase
         $path = trim($output);
         $this->assertStringContainsString('/admin/plugins/backup', $path);
         $this->assertDirectoryExists($path, 'Plugin directory should exist');
+    }
+
+    public function testPathForExistingPluginSupportsJsonFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'path',
+            'id' => 'backup',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertStringContainsString('/admin/plugins/backup', $rows[0]['path'] ?? '');
+        $this->assertStringNotContainsString('Plugin directory:', $output);
     }
 
     public function testPathWithoutId(): void
@@ -469,6 +549,36 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('By Type', $output);
         $this->assertStringContainsString('Type', $output);
         $this->assertStringContainsString('Count', $output);
+    }
+
+    public function testStatusSupportsJsonFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Plugins']['section'] ?? null);
+        $this->assertSame(4, (int) ($rowsByMetric['Total Plugins']['value'] ?? 0));
+        $this->assertStringNotContainsString('Plugin Statistics', $this->tester->getDisplay());
+    }
+
+    public function testTypeFilterIsValidatedBeforeStatusFilterCanEmptyResults(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'inactive',
+            '--type' => 'cron',
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame("0\n", $this->tester->getDisplay());
     }
 
     // ========================================
@@ -770,15 +880,18 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Unknown plugin action "invalid_action"', $output);
     }
 
-    public function testInvalidFormatThrowsException(): void
+    public function testInvalidFormatReturnsCleanCliError(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid format: invalid_format');
-
-        $this->tester->execute([
+        $exitCode = $this->tester->execute([
             'action' => 'list',
             '--format' => 'invalid_format'
         ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Invalid value for --format "invalid_format"', $output);
+        $this->assertStringNotContainsString('Formatter.php line', $output);
     }
 
     private function createPluginFixture(

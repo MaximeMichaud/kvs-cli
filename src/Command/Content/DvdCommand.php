@@ -66,8 +66,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listDvds($input),
-            'show' => $this->showDvd($id),
-            'stats' => $this->showStats(),
+            'show' => $this->showDvd($id, $input),
+            'stats' => $this->showStats($input),
             default => $this->unknownAction($action),
         };
     }
@@ -243,7 +243,7 @@ HELP
         }
     }
 
-    private function showDvd(?string $id): int
+    private function showDvd(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('DVD ID is required');
@@ -292,7 +292,6 @@ HELP
             // Display DVD details
             $titleValue = $dvd['title'] ?? '';
             $dvdTitle = is_scalar($titleValue) ? (string) $titleValue : '';
-            $this->io()->title("DVD: $dvdTitle");
 
             $totalVideosVal = $dvd['video_count'] ?? 0;
             $dvdViewedVal = $dvd['dvd_viewed'] ?? 0;
@@ -344,6 +343,11 @@ HELP
                 $info[] = ['Description', is_scalar($description) ? (string) $description : ''];
             }
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info);
+            }
+
+            $this->io()->title("DVD: $dvdTitle");
             $this->renderTable(['Field', 'Value'], $info);
 
             return self::SUCCESS;
@@ -410,11 +414,23 @@ HELP
                 $fields[] = $field;
             }
         }
+        for ($i = 1; $i <= 10; $i++) {
+            $field = "custom{$i}";
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $fields[] = $field;
+            }
+        }
+        for ($i = 1; $i <= 5; $i++) {
+            $field = "custom_file{$i}";
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $fields[] = $field;
+            }
+        }
 
         if ($this->isDvdFieldRequested($input, 'thumb')) {
             $fields[] = 'cover1_front';
         }
-        if ($this->isDvdFieldRequested($input, 'user')) {
+        if ($this->isDvdFieldRequested($input, 'user') || $this->isDvdFieldRequested($input, 'user_status_id')) {
             $fields[] = 'user_id';
         }
         if ($includeGroupFields) {
@@ -434,6 +450,13 @@ HELP
                 FROM {$this->table('users')} u
                 WHERE u.user_id = d.user_id
             ) as user";
+        }
+        if ($this->isDvdFieldRequested($input, 'user_status_id')) {
+            $selects[] = "(
+                SELECT u.status_id
+                FROM {$this->table('users')} u
+                WHERE u.user_id = d.user_id
+            ) as user_status_id";
         }
         if ($this->isDvdFieldRequested($input, 'tags')) {
             $selects[] = "(
@@ -500,7 +523,7 @@ HELP
         return sprintf('%d:%02d', $minutes, $remainingSeconds);
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -509,23 +532,36 @@ HELP
 
         try {
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
 
             // Total DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')}");
             if ($stmt !== false) {
-                $stats[] = ['Total DVDs', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Total DVDs', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Total DVDs', $value, number_format($value));
             }
 
             // Active DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_ACTIVE);
             if ($stmt !== false) {
-                $stats[] = ['Active', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Active', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Active', $value, number_format($value));
             }
 
             // Disabled DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_DISABLED);
             if ($stmt !== false) {
-                $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Disabled', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Disabled', $value, number_format($value));
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
             }
 
             $this->io()->title('DVD Statistics');

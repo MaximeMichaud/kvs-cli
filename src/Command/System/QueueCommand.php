@@ -133,8 +133,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listTasks($input),
-            'show' => $this->showTask($this->getStringArgument($input, 'id')),
-            'stats' => $this->showStats(),
+            'show' => $this->showTask($this->getStringArgument($input, 'id'), $input),
+            'stats' => $this->showStats($input),
             'history' => $this->showHistory($input),
             'help-action' => $this->showHelp(),
             default => $this->failUnknownAction(
@@ -304,7 +304,7 @@ HELP
         }
     }
 
-    private function showTask(?string $id): int
+    private function showTask(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Task ID is required');
@@ -324,9 +324,23 @@ HELP
             }
 
             [$task, $isHistory] = $result;
-            $this->io()->title("Task #$id" . ($isHistory ? ' (History)' : ''));
-
             $info = $this->buildTaskInfo($task, $isHistory);
+
+            if (!$this->isTableFormat($input)) {
+                $extra = [
+                    'task_id' => $id,
+                    'is_history' => $isHistory,
+                ];
+                $data = $task['data'] ?? null;
+                if (is_string($data) && $data !== '') {
+                    $unserialized = @unserialize($data, ['allowed_classes' => false]);
+                    $extra['data'] = $unserialized !== false ? $unserialized : $data;
+                }
+
+                return $this->displayDetailRows($input, $info, $extra);
+            }
+
+            $this->io()->title("Task #$id" . ($isHistory ? ' (History)' : ''));
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->displayTaskData($task);
@@ -498,7 +512,7 @@ HELP
         }
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -506,128 +520,49 @@ HELP
         }
 
         try {
-            $this->io()->title('Queue Statistics');
+            $statusCounts = $this->getQueueStatusCounts($db);
 
-            // Status counts
-            $stmt = $db->query("
-                SELECT status_id, COUNT(*) as count
-                FROM {$this->table('background_tasks')}
-                GROUP BY status_id
-            ");
-            /** @var array<int, int> $statusCounts */
-            $statusCounts = [];
-            if ($stmt !== false) {
-                while ($row = $stmt->fetch()) {
-                    if (is_array($row)) {
-                        $statusIdVal = $row['status_id'] ?? null;
-                        $countVal = $row['count'] ?? null;
-                        if (is_numeric($statusIdVal) && is_numeric($countVal)) {
-                            $statusCounts[(int) $statusIdVal] = (int) $countVal;
-                        }
-                    }
-                }
-            }
-
-            $this->io()->section('Queue Status');
-            /** @var list<list<string|int|null>> $rows */
-            $rows = [
+            /** @var list<list<string|int|null>> $statusRows */
+            $statusRows = [
                 [StatusFormatter::task(0), number_format($statusCounts[0] ?? 0)],
                 [StatusFormatter::task(1), number_format($statusCounts[1] ?? 0)],
                 [StatusFormatter::task(2), number_format($statusCounts[2] ?? 0)],
                 ['<fg=white>Total</>', number_format(array_sum($statusCounts))],
             ];
-            $this->renderTable(['Status', 'Count'], $rows);
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('queue_status', StatusFormatter::task(0, false), $statusCounts[0] ?? 0),
+                $this->metricRow('queue_status', StatusFormatter::task(1, false), $statusCounts[1] ?? 0),
+                $this->metricRow('queue_status', StatusFormatter::task(2, false), $statusCounts[2] ?? 0),
+                $this->metricRow('queue_status', 'Total', array_sum($statusCounts)),
+            ];
 
-            // Type breakdown (top N)
-            $stmt = $db->query("
-                SELECT type_id, COUNT(*) as count
-                FROM {$this->table('background_tasks')}
-                GROUP BY type_id
-                ORDER BY count DESC
-                LIMIT " . Constants::TOP_QUERY_LIMIT . "
-            ");
+            $typeRows = $this->getQueueTypeStatsRows($db, $metricRows);
+            $errorRows = $this->getQueueErrorStatsRows($db, $metricRows);
+            $historyRows = $this->getQueueRecentHistoryRows($db, $metricRows);
 
-            if ($stmt !== false) {
-                /** @var list<array<string, mixed>> $types */
-                $types = $stmt->fetchAll();
-                if ($types !== []) {
-                    $this->io()->section('Tasks by Type (Top ' . Constants::TOP_QUERY_LIMIT . ')');
-                    /** @var list<list<string|int|null>> $rows */
-                    $rows = [];
-                    foreach ($types as $type) {
-                        $typeIdVal = $type['type_id'] ?? null;
-                        $countVal = $type['count'] ?? null;
-                        $typeId = is_numeric($typeIdVal) ? (int) $typeIdVal : 0;
-                        $count = is_numeric($countVal) ? (int) $countVal : 0;
-                        $typeName = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                        $rows[] = [$typeId, $typeName, number_format($count)];
-                    }
-                    $this->renderTable(['ID', 'Type', 'Count'], $rows);
-                }
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
             }
 
-            // Error breakdown
-            $stmt = $db->query("
-                SELECT error_code, COUNT(*) as count
-                FROM {$this->table('background_tasks')}
-                WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND error_code > 0
-                GROUP BY error_code
-                ORDER BY count DESC
-            ");
+            $this->io()->title('Queue Statistics');
+            $this->io()->section('Queue Status');
+            $this->renderTable(['Status', 'Count'], $statusRows);
 
-            if ($stmt !== false) {
-                /** @var list<array<string, mixed>> $errors */
-                $errors = $stmt->fetchAll();
-                if ($errors !== []) {
-                    $this->io()->section('Failed Tasks by Error');
-                    /** @var list<list<string|int|null>> $rows */
-                    $rows = [];
-                    foreach ($errors as $error) {
-                        $errorCodeVal = $error['error_code'] ?? null;
-                        $countVal = $error['count'] ?? null;
-                        $errorCode = is_numeric($errorCodeVal) ? (int) $errorCodeVal : 0;
-                        $count = is_numeric($countVal) ? (int) $countVal : 0;
-                        $errorName = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
-                        $rows[] = [$errorCode, $errorName, number_format($count)];
-                    }
-                    $this->renderTable(['Code', 'Error', 'Count'], $rows);
-                }
+            if ($typeRows !== []) {
+                $this->io()->section('Tasks by Type (Top ' . Constants::TOP_QUERY_LIMIT . ')');
+                $this->renderTable(['ID', 'Type', 'Count'], $typeRows);
             }
 
-            // Recent history stats (last 24h)
-            $recentHistoryCutoff = date('Y-m-d H:i:s', time() - (Constants::RECENT_HOURS * 3600));
-            $stmt = $db->prepare("
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
-                    SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
-                    AVG(effective_duration) as avg_duration
-                FROM {$this->table('background_tasks_history')}
-                WHERE end_date >= :cutoff
-            ");
-            $stmt->execute(['cutoff' => $recentHistoryCutoff]);
+            if ($errorRows !== []) {
+                $this->io()->section('Failed Tasks by Error');
+                $this->renderTable(['Code', 'Error', 'Count'], $errorRows);
+            }
 
-            if ($stmt !== false) {
-                /** @var array<string, mixed>|false $history */
-                $history = $stmt->fetch();
-                $totalVal = $history['total'] ?? null;
-                $total = is_numeric($totalVal) ? (int) $totalVal : 0;
-                if (is_array($history) && $total > 0) {
-                    $completedVal = $history['completed'] ?? null;
-                    $deletedVal = $history['deleted'] ?? null;
-                    $avgDurationVal = $history['avg_duration'] ?? null;
-                    $completed = is_numeric($completedVal) ? (int) $completedVal : 0;
-                    $deleted = is_numeric($deletedVal) ? (int) $deletedVal : 0;
-                    $avgDuration = is_numeric($avgDurationVal) ? (int) $avgDurationVal : 0;
-                    $this->io()->section('Last 24 Hours');
-                    /** @var list<list<string|int|null>> $rows */
-                    $rows = [
-                        ['Completed', number_format($completed)],
-                        ['Deleted', number_format($deleted)],
-                        ['Avg Duration', $this->formatDuration($avgDuration)],
-                    ];
-                    $this->renderTable(['Metric', 'Value'], $rows);
-                }
+            if ($historyRows !== []) {
+                $this->io()->section('Last 24 Hours');
+                $this->renderTable(['Metric', 'Value'], $historyRows);
             }
 
             return self::SUCCESS;
@@ -635,6 +570,159 @@ HELP
             $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function getQueueStatusCounts(\PDO $db): array
+    {
+        $stmt = $db->query("
+            SELECT status_id, COUNT(*) as count
+            FROM {$this->table('background_tasks')}
+            GROUP BY status_id
+        ");
+
+        $statusCounts = [];
+        if ($stmt === false) {
+            return $statusCounts;
+        }
+
+        while ($row = $stmt->fetch()) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $statusIdVal = $row['status_id'] ?? null;
+            $countVal = $row['count'] ?? null;
+            if (is_numeric($statusIdVal) && is_numeric($countVal)) {
+                $statusCounts[(int) $statusIdVal] = (int) $countVal;
+            }
+        }
+
+        return $statusCounts;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $metricRows
+     * @return list<list<string|int|null>>
+     */
+    private function getQueueTypeStatsRows(\PDO $db, array &$metricRows): array
+    {
+        $stmt = $db->query("
+            SELECT type_id, COUNT(*) as count
+            FROM {$this->table('background_tasks')}
+            GROUP BY type_id
+            ORDER BY count DESC
+            LIMIT " . Constants::TOP_QUERY_LIMIT . "
+        ");
+        if ($stmt === false) {
+            return [];
+        }
+
+        /** @var list<array<string, mixed>> $types */
+        $types = $stmt->fetchAll();
+        $rows = [];
+        foreach ($types as $type) {
+            $typeId = is_numeric($type['type_id'] ?? null) ? (int) $type['type_id'] : 0;
+            $count = is_numeric($type['count'] ?? null) ? (int) $type['count'] : 0;
+            $typeName = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
+            $metricRows[] = $this->metricRow(
+                'tasks_by_type',
+                (string) $typeId,
+                $count,
+                number_format($count),
+                $typeName
+            );
+            $rows[] = [$typeId, $typeName, number_format($count)];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $metricRows
+     * @return list<list<string|int|null>>
+     */
+    private function getQueueErrorStatsRows(\PDO $db, array &$metricRows): array
+    {
+        $stmt = $db->query("
+            SELECT error_code, COUNT(*) as count
+            FROM {$this->table('background_tasks')}
+            WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND error_code > 0
+            GROUP BY error_code
+            ORDER BY count DESC
+        ");
+        if ($stmt === false) {
+            return [];
+        }
+
+        /** @var list<array<string, mixed>> $errors */
+        $errors = $stmt->fetchAll();
+        $rows = [];
+        foreach ($errors as $error) {
+            $errorCode = is_numeric($error['error_code'] ?? null) ? (int) $error['error_code'] : 0;
+            $count = is_numeric($error['count'] ?? null) ? (int) $error['count'] : 0;
+            $errorName = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
+            $metricRows[] = $this->metricRow(
+                'failed_tasks_by_error',
+                (string) $errorCode,
+                $count,
+                number_format($count),
+                $errorName
+            );
+            $rows[] = [$errorCode, $errorName, number_format($count)];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $metricRows
+     * @return list<list<string|int|null>>
+     */
+    private function getQueueRecentHistoryRows(\PDO $db, array &$metricRows): array
+    {
+        $recentHistoryCutoff = date('Y-m-d H:i:s', time() - (Constants::RECENT_HOURS * 3600));
+        $stmt = $db->prepare("
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
+                AVG(effective_duration) as avg_duration
+            FROM {$this->table('background_tasks_history')}
+            WHERE end_date >= :cutoff
+        ");
+        $stmt->execute(['cutoff' => $recentHistoryCutoff]);
+
+        /** @var array<string, mixed>|false $history */
+        $history = $stmt->fetch();
+        if (!is_array($history)) {
+            return [];
+        }
+
+        $total = is_numeric($history['total'] ?? null) ? (int) $history['total'] : 0;
+        if ($total <= 0) {
+            return [];
+        }
+
+        $completed = is_numeric($history['completed'] ?? null) ? (int) $history['completed'] : 0;
+        $deleted = is_numeric($history['deleted'] ?? null) ? (int) $history['deleted'] : 0;
+        $avgDuration = is_numeric($history['avg_duration'] ?? null) ? (int) $history['avg_duration'] : 0;
+        $metricRows[] = $this->metricRow('last_24_hours', 'Completed', $completed, number_format($completed));
+        $metricRows[] = $this->metricRow('last_24_hours', 'Deleted', $deleted, number_format($deleted));
+        $metricRows[] = $this->metricRow(
+            'last_24_hours',
+            'Avg Duration',
+            $avgDuration,
+            $this->formatDuration($avgDuration)
+        );
+
+        return [
+            ['Completed', number_format($completed)],
+            ['Deleted', number_format($deleted)],
+            ['Avg Duration', $this->formatDuration($avgDuration)],
+        ];
     }
 
     private function showHistory(InputInterface $input): int
