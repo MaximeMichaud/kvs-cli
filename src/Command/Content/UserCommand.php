@@ -226,6 +226,10 @@ HELP
 
     private function listUsers(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a user ID or username argument', 'show', 'a specific user')) {
+            return self::FAILURE;
+        }
+
         if ($this->hasConflictingBoolOptions($input, ['trusted', 'untrusted'])) {
             return self::FAILURE;
         }
@@ -1286,6 +1290,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a user ID or username argument', 'show', 'a specific user')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }

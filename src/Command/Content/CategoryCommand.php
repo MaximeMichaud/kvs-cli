@@ -174,6 +174,10 @@ HELP
 
     private function listCategories(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a category ID or title argument', 'show', 'a specific category')) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -422,6 +426,10 @@ HELP
 
     private function showTree(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'tree', 'id', 'a category ID or title argument', 'show', 'a specific category')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'tree', self::TREE_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }

@@ -129,6 +129,10 @@ HELP
 
     private function listTags(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'identifier', 'a tag ID or name argument', 'show', 'a specific tag')) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -820,6 +824,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'identifier', 'a tag ID or name argument', 'show', 'a specific tag')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }

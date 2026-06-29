@@ -152,6 +152,10 @@ HELP
 
     private function listDvds(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a DVD ID argument', 'show', 'a specific DVD')) {
+            return self::FAILURE;
+        }
+
         if ($this->hasDvdListOptionConflicts($input)) {
             return self::FAILURE;
         }
@@ -933,6 +937,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a DVD ID argument', 'show', 'a specific DVD')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }

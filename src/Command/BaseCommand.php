@@ -860,6 +860,37 @@ abstract class BaseCommand extends Command
         return false;
     }
 
+    protected function rejectUnsupportedArgument(
+        InputInterface $input,
+        string $action,
+        string $argumentName,
+        string $argumentDescription,
+        ?string $alternativeAction = null,
+        ?string $alternativeDescription = null
+    ): bool {
+        if ($this->getStringArgument($input, $argumentName) === null) {
+            return false;
+        }
+
+        $message = sprintf(
+            'The %s action does not support %s.',
+            $action,
+            $argumentDescription
+        );
+
+        if ($alternativeAction !== null) {
+            $message .= sprintf(
+                ' Use %s for %s.',
+                $alternativeAction,
+                $alternativeDescription ?? 'a specific item'
+            );
+        }
+
+        $this->io()->error($message);
+
+        return true;
+    }
+
     protected function isOptionExplicitlySet(InputInterface $input, string $name): bool
     {
         if (!$input->hasOption($name)) {

@@ -177,6 +177,10 @@ HELP
 
     private function listAlbums(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'an album ID argument', 'show', 'a specific album')) {
+            return self::FAILURE;
+        }
+
         if (
             $this->hasConflictingBoolOptions($input, ['public', 'private', 'premium'])
             || $this->hasConflictingBoolOptions($input, ['review-needed', 'not-review-needed'])

@@ -133,6 +133,10 @@ HELP
 
     private function listPlaylists(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a playlist ID argument', 'show', 'a specific playlist')) {
+            return self::FAILURE;
+        }
+
         if (
             $this->hasConflictingBoolOptions($input, ['public', 'private'])
             || $this->hasConflictingBoolOptions($input, ['review-needed', 'not-review-needed'])

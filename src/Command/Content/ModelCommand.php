@@ -147,6 +147,10 @@ HELP
 
     private function listModels(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a model ID argument', 'show', 'a specific model')) {
+            return self::FAILURE;
+        }
+
         if ($this->hasModelListOptionConflicts($input)) {
             return self::FAILURE;
         }
@@ -759,6 +763,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a model ID argument', 'show', 'a specific model')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }

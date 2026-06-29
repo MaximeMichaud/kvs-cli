@@ -301,6 +301,10 @@ HELP
 
     private function listComments(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a comment ID argument', 'show', 'a specific comment')) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -686,6 +690,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a comment ID argument', 'show', 'a specific comment')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
@@ -838,6 +846,10 @@ HELP
 
     private function listPendingComments(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'pending', 'id', 'a comment ID argument', 'show', 'a specific comment')) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'approved') || $this->getBoolOption($input, 'not-approved')) {
             $this->io()->error('The pending action does not support --approved or --not-approved.');
             return self::FAILURE;

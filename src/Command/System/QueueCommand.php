@@ -157,6 +157,10 @@ HELP
 
     private function listTasks(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a task ID argument', 'show', 'a specific task')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
@@ -619,6 +623,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a task ID argument', 'show', 'a specific task')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
@@ -840,6 +848,10 @@ HELP
 
     private function showHistory(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'history', 'id', 'a task ID argument', 'show', 'a specific task')) {
+            return self::FAILURE;
+        }
+
         if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }

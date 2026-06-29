@@ -243,6 +243,10 @@ HELP
 
     private function listVideos(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a video ID argument', 'show', 'a specific video')) {
+            return self::FAILURE;
+        }
+
         if ($this->hasVideoListOptionConflicts($input)) {
             return self::FAILURE;
         }
@@ -1661,6 +1665,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'stats', 'id', 'a video ID argument', 'show', 'a specific video')) {
+            return self::FAILURE;
+        }
+
         if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
