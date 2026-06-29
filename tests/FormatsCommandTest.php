@@ -243,6 +243,21 @@ class FormatsCommandTest extends TestCase
         $this->assertStringNotContainsString('Available Format Configurations', $output);
     }
 
+    public function testAvailableFormatsRejectsVideoIdArgument(): void
+    {
+        $this->tester->execute([
+            'action' => 'available',
+            'video_id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('available action does not support a video ID', $output);
+        $this->assertStringNotContainsString('720p MP4', $output);
+    }
+
     public function testAvailableFormatsShowsConditionalStatusLikeKvsAdmin(): void
     {
         $this->tester->execute([

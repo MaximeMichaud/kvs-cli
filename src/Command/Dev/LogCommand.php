@@ -39,14 +39,28 @@ class LogCommand extends BaseCommand
             return self::FAILURE;
         }
 
+        $type = $this->getStringArgument($input, 'type');
+
         if ($this->getBoolOption($input, 'list')) {
+            if ($type !== null && $type !== '') {
+                $this->io()->error(
+                    'The list action does not support a log type argument. Remove the type or omit --list.'
+                );
+                return self::FAILURE;
+            }
+            if ($this->rejectUnsupportedOptions($input, 'list', ['tail'])) {
+                return self::FAILURE;
+            }
+
             return $this->listLogs();
         }
 
-        $type = $this->getStringArgument($input, 'type');
-
         // If no type specified and no options, show list
         if ($type === null && !$this->getBoolOption($input, 'clear') && !$this->getBoolOption($input, 'follow')) {
+            if ($this->rejectUnsupportedOptions($input, 'list', ['tail'])) {
+                return self::FAILURE;
+            }
+
             return $this->listLogs();
         }
 

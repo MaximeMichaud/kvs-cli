@@ -142,6 +142,24 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringNotContainsString('Screenshots directory not found', $output);
     }
 
+    public function testListScreenshotsRejectsGenerationCountOption(): void
+    {
+        $this->createScreenshotFixture('1234');
+
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--count' => '999',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support --count', $output);
+        $this->assertStringNotContainsString('1.jpg', $output);
+    }
+
     public function testListScreenshotsWithExistingVideo(): void
     {
         $this->createScreenshotFixture('1234');

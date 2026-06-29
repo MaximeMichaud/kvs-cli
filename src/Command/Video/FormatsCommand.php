@@ -331,6 +331,14 @@ HELP
 
     private function showAvailableFormats(InputInterface $input): int
     {
+        $videoId = $this->getStringArgument($input, 'video_id');
+        if ($videoId !== null && $videoId !== '') {
+            $this->io()->error(
+                'The available action does not support a video ID. Use list or check for video-specific files.'
+            );
+            return self::FAILURE;
+        }
+
         $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
         if ($format === null) {
             return self::FAILURE;

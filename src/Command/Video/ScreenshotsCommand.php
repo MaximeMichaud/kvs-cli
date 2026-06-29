@@ -89,6 +89,10 @@ HELP
 
     private function listScreenshots(InputInterface $input, ?string $videoId): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'list', ['count'])) {
+            return self::FAILURE;
+        }
+
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots list <video_id>');

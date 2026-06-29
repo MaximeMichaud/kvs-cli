@@ -78,6 +78,45 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogListRejectsTypeArgument(): void
+    {
+        $this->tester->execute([
+            'type' => 'cron',
+            '--list' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support a log type argument', $output);
+        $this->assertStringNotContainsString('system.log', $output);
+    }
+
+    public function testLogListRejectsTailOption(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '--tail' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support --tail', $output);
+        $this->assertStringNotContainsString('system.log', $output);
+    }
+
+    public function testDefaultLogListRejectsTailOptionWithoutType(): void
+    {
+        $this->tester->execute(['--tail' => '1']);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support --tail', $output);
+        $this->assertStringNotContainsString('system.log', $output);
+    }
+
     public function testLogListIncludesAdminDataLogs(): void
     {
         mkdir($this->tempDir . '/admin/data/logs', 0755, true);
