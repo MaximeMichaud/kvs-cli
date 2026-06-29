@@ -103,6 +103,22 @@ class CommentCommandTest extends TestCase
         $this->assertSame('Needs review test phrase', $rows[0]['comment']);
     }
 
+    public function testListCommentsNotApprovedLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--not-approved' => true,
+            '--format' => 'json',
+            '--fields' => 'comment_id,comment',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+        $this->assertSame('Needs review test phrase', $rows[0]['comment']);
+    }
+
     public function testListCommentsOldest(): void
     {
         $this->tester->execute([
@@ -152,6 +168,94 @@ class CommentCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame([30, 20], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
         $this->assertSame(['Intro Video', 'Intro Video'], array_column($rows, 'content_title'));
+    }
+
+    public function testListCommentsFiltersByKvsAdminObjectTypeAndId(): void
+    {
+        $cases = [
+            'object type alias' => [['--object-type' => 'video'], [30, 20]],
+            'object type id' => [['--object-type' => '1'], [30, 20]],
+            'object id only' => [['--object-id' => '100'], [30, 20]],
+            'object type and id' => [['--object-type' => 'album', '--object-id' => '200'], [10]],
+            'object type no match' => [['--object-type' => 'album', '--object-id' => '100'], []],
+        ];
+
+        foreach ($cases as $label => [$options, $expectedIds]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--format' => 'json',
+                '--fields' => 'comment_id',
+                ...$options,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), "{$label}: {$tester->getDisplay()}");
+            $this->assertSame(
+                $expectedIds,
+                array_map(static fn (array $row): int => (int) $row['comment_id'], $rows),
+                $label
+            );
+        }
+    }
+
+    public function testListCommentsFiltersByKvsAdminPlaylistObject(): void
+    {
+        $this->insertComment($this->db, [
+            'comment_id' => 40,
+            'object_id' => 700,
+            'object_type_id' => 13,
+            'object_sub_id' => 0,
+            'user_id' => 1,
+            'anonymous_username' => '',
+            'is_approved' => 1,
+            'is_review_needed' => 0,
+            'comment' => 'Playlist feedback',
+            'country_code' => 'CA',
+            'ip' => 2130706433,
+            'rating' => 4,
+            'added_date' => date('Y-m-d H:i:s'),
+        ]);
+
+        foreach ([['--playlist' => '700'], ['--object-type' => 'playlist']] as $options) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--format' => 'json',
+                '--fields' => 'comment_id,object',
+                ...$options,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame([40], array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+            $this->assertSame('Playlist Title', $rows[0]['object']);
+        }
+    }
+
+    public function testListCommentsFiltersByIpLikeKvsAdmin(): void
+    {
+        $cases = [
+            '127.0.0.1' => [30],
+            '0.0.0.0' => [20, 10],
+        ];
+
+        foreach ($cases as $ip => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--ip' => $ip,
+                '--format' => 'json',
+                '--fields' => 'comment_id',
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['comment_id'], $rows));
+        }
     }
 
     public function testListCommentsFilterByUser(): void
@@ -254,7 +358,7 @@ class CommentCommandTest extends TestCase
     public function testListAndPendingRejectInvalidNumericFilters(): void
     {
         foreach (['list', 'pending'] as $action) {
-            foreach (['video', 'album'] as $option) {
+            foreach (['video', 'album', 'content-source', 'model', 'dvd', 'post', 'playlist', 'object-id'] as $option) {
                 foreach (['abc', '1.5', '-1'] as $value) {
                     $tester = new CommandTester($this->command);
                     $tester->execute([
@@ -281,20 +385,48 @@ class CommentCommandTest extends TestCase
                 $this->assertSame(1, $tester->getStatusCode(), "$action --user=$value: $display");
                 $this->assertStringContainsString('Invalid value for --user', $display, "$action --user=$value");
             }
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => $action,
+                '--format' => 'count',
+                '--object-type' => 'unknown',
+            ]);
+            $this->assertSame(1, $tester->getStatusCode(), "$action --object-type=unknown");
+            $this->assertStringContainsString('Invalid value for --object-type', $tester->getDisplay());
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => $action,
+                '--format' => 'count',
+                '--ip' => '999.999.999.999',
+            ]);
+            $this->assertSame(1, $tester->getStatusCode(), "$action --ip=999.999.999.999");
+            $this->assertStringContainsString('Invalid value for --ip', $tester->getDisplay());
         }
     }
 
-    public function testListCommentsRejectsConflictingApprovalFilters(): void
+    #[DataProvider('provideConflictingApprovalFilters')]
+    public function testListCommentsRejectsConflictingApprovalFilters(array $options): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--approved' => true,
-            '--pending' => true,
             '--format' => 'count',
+            ...$options,
         ]);
 
         $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('cannot be used together', $this->tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{options: array<string, true>}>
+     */
+    public static function provideConflictingApprovalFilters(): iterable
+    {
+        yield 'approved and pending' => ['options' => ['--approved' => true, '--pending' => true]];
+        yield 'approved and not approved' => ['options' => ['--approved' => true, '--not-approved' => true]];
+        yield 'pending and not approved' => ['options' => ['--pending' => true, '--not-approved' => true]];
     }
 
     public function testListCommentsExposesKvsAdminFields(): void

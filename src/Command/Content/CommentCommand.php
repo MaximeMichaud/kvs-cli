@@ -20,6 +20,30 @@ use function KVS\CLI\Utils\truncate;
 )]
 class CommentCommand extends BaseCommand
 {
+    /** @var array<string, int> */
+    private const COMMENT_OBJECT_FILTER_OPTIONS = [
+        'video' => Constants::OBJECT_TYPE_VIDEO,
+        'album' => Constants::OBJECT_TYPE_ALBUM,
+        'content-source' => Constants::OBJECT_TYPE_CONTENT_SOURCE,
+        'model' => Constants::OBJECT_TYPE_MODEL,
+        'dvd' => Constants::OBJECT_TYPE_DVD,
+        'post' => Constants::OBJECT_TYPE_POST,
+        'playlist' => Constants::OBJECT_TYPE_PLAYLIST,
+    ];
+
+    /** @var array<string, int> */
+    private const COMMENT_OBJECT_TYPE_ALIASES = [
+        'video' => Constants::OBJECT_TYPE_VIDEO,
+        'album' => Constants::OBJECT_TYPE_ALBUM,
+        'content-source' => Constants::OBJECT_TYPE_CONTENT_SOURCE,
+        'content_source' => Constants::OBJECT_TYPE_CONTENT_SOURCE,
+        'source' => Constants::OBJECT_TYPE_CONTENT_SOURCE,
+        'model' => Constants::OBJECT_TYPE_MODEL,
+        'dvd' => Constants::OBJECT_TYPE_DVD,
+        'post' => Constants::OBJECT_TYPE_POST,
+        'playlist' => Constants::OBJECT_TYPE_PLAYLIST,
+    ];
+
     protected function configure(): void
     {
         $this
@@ -80,7 +104,15 @@ HELP
             ->addArgument('id', InputArgument::OPTIONAL, 'Comment ID(s) - comma-separated for batch')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
             ->addOption('album', null, InputOption::VALUE_REQUIRED, 'Filter by album ID')
+            ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID')
+            ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID')
+            ->addOption('dvd', null, InputOption::VALUE_REQUIRED, 'Filter by DVD ID')
+            ->addOption('post', null, InputOption::VALUE_REQUIRED, 'Filter by post ID')
+            ->addOption('playlist', null, InputOption::VALUE_REQUIRED, 'Filter by playlist ID')
+            ->addOption('object-type', null, InputOption::VALUE_REQUIRED, 'Filter by KVS object type ID or alias')
+            ->addOption('object-id', null, InputOption::VALUE_REQUIRED, 'Filter by KVS object ID')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID, username, or anonymous name')
+            ->addOption('ip', null, InputOption::VALUE_REQUIRED, 'Filter by IP address')
             ->addOption(
                 'limit',
                 null,
@@ -92,6 +124,7 @@ HELP
             ->addOption('oldest', null, InputOption::VALUE_NONE, 'Show oldest first (default: recent)')
             ->addOption('approved', null, InputOption::VALUE_NONE, 'Show only approved comments')
             ->addOption('pending', null, InputOption::VALUE_NONE, 'Show only pending comments')
+            ->addOption('not-approved', null, InputOption::VALUE_NONE, 'Show only not approved comments')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
             ->addOption(
@@ -108,7 +141,7 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        if ($this->hasConflictingBoolOptions($input, ['approved', 'pending'])) {
+        if ($this->hasConflictingBoolOptions($input, ['approved', 'pending', 'not-approved'])) {
             return self::FAILURE;
         }
 
@@ -275,6 +308,8 @@ HELP
                 $conditions[] = 'c.is_approved = 1';
             } elseif ($this->getBoolOption($input, 'pending')) {
                 $conditions[] = 'c.is_review_needed = 1';
+            } elseif ($this->getBoolOption($input, 'not-approved')) {
+                $conditions[] = 'c.is_approved = 0';
             }
 
             $whereClause = implode(' AND ', $conditions);
@@ -294,7 +329,7 @@ HELP
 
                 $countStmt = $db->prepare($countSql);
                 foreach ($params as $key => $value) {
-                    $countStmt->bindValue(':' . $key, $value);
+                    $countStmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
                 }
                 $countStmt->execute();
 
@@ -329,7 +364,7 @@ HELP
 
             $stmt = $db->prepare($sql);
             foreach ($params as $key => $value) {
-                $stmt->bindValue(':' . $key, $value);
+                $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
@@ -383,22 +418,34 @@ HELP
         array &$conditions,
         array &$params
     ): bool {
-        $videoId = $this->getOptionalNonNegativeIntOption($input, 'video');
-        if ($videoId === false) {
-            return false;
-        }
-        if ($videoId !== null) {
-            $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
-            $params['video_id'] = $videoId;
+        foreach (self::COMMENT_OBJECT_FILTER_OPTIONS as $option => $objectTypeId) {
+            $objectId = $this->getOptionalNonNegativeIntOption($input, $option);
+            if ($objectId === false) {
+                return false;
+            }
+            if ($objectId !== null) {
+                $parameter = str_replace('-', '_', $option) . '_id';
+                $conditions[] = "c.object_id = :{$parameter} AND c.object_type_id = {$objectTypeId}";
+                $params[$parameter] = $objectId;
+            }
         }
 
-        $albumId = $this->getOptionalNonNegativeIntOption($input, 'album');
-        if ($albumId === false) {
+        $objectTypeId = $this->parseCommentObjectTypeOption($input);
+        if ($objectTypeId === false) {
             return false;
         }
-        if ($albumId !== null) {
-            $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
-            $params['album_id'] = $albumId;
+        if ($objectTypeId !== null) {
+            $conditions[] = 'c.object_type_id = :object_type_id';
+            $params['object_type_id'] = $objectTypeId;
+        }
+
+        $objectId = $this->getOptionalNonNegativeIntOption($input, 'object-id');
+        if ($objectId === false) {
+            return false;
+        }
+        if ($objectId !== null) {
+            $conditions[] = 'c.object_id = :object_id';
+            $params['object_id'] = $objectId;
         }
 
         $user = $this->getStringOption($input, 'user');
@@ -426,7 +473,59 @@ HELP
             }
         }
 
+        $ip = $this->getStringOption($input, 'ip');
+        if ($ip !== null) {
+            $ipNumber = $this->parseIpv4Option($ip);
+            if ($ipNumber === null) {
+                return false;
+            }
+            $conditions[] = 'c.ip = :ip';
+            $params['ip'] = $ipNumber;
+        }
+
         return true;
+    }
+
+    private function parseCommentObjectTypeOption(InputInterface $input): int|false|null
+    {
+        $objectType = $this->getStringOption($input, 'object-type');
+        if ($objectType === null) {
+            return null;
+        }
+
+        $objectType = strtolower(trim($objectType));
+        if (isset(self::COMMENT_OBJECT_TYPE_ALIASES[$objectType])) {
+            return self::COMMENT_OBJECT_TYPE_ALIASES[$objectType];
+        }
+
+        if (preg_match('/^\d+$/', $objectType) === 1) {
+            return (int) $objectType;
+        }
+
+        $this->io()->error(
+            'Invalid value for --object-type (use: video, album, content-source, model, dvd, post, playlist or ID)'
+        );
+        return false;
+    }
+
+    private function parseIpv4Option(string $ip): ?int
+    {
+        if (preg_match('/^\d+$/', $ip) === 1) {
+            return (int) $ip;
+        }
+
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            $this->io()->error('Invalid value for --ip (use: IPv4 address)');
+            return null;
+        }
+
+        $ipLong = ip2long($ip);
+        if ($ipLong === false) {
+            $this->io()->error('Invalid value for --ip (use: IPv4 address)');
+            return null;
+        }
+
+        return (int) sprintf('%u', $ipLong);
     }
 
     private function showComment(?string $id, InputInterface $input): int
@@ -709,7 +808,7 @@ HELP
             if ($format === 'count') {
                 $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} c WHERE $whereClause");
                 foreach ($params as $key => $value) {
-                    $stmt->bindValue(':' . $key, $value);
+                    $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
                 }
                 $stmt->execute();
 
@@ -745,7 +844,7 @@ HELP
 
             $stmt = $db->prepare($sql);
             foreach ($params as $key => $value) {
-                $stmt->bindValue(':' . $key, $value);
+                $stmt->bindValue(':' . $key, $value, is_int($value) ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
