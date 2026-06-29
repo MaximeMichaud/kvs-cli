@@ -346,8 +346,8 @@ HELP
 
     private function showServer(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -363,12 +363,12 @@ HELP
                 LEFT JOIN {$this->table('admin_servers_groups')} g ON s.group_id = g.group_id
                 WHERE s.server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Server not found: $id");
+                $this->io()->error("Server not found: $serverId");
                 return self::FAILURE;
             }
 
@@ -377,10 +377,10 @@ HELP
             $info = array_merge($info, $this->buildControlInfo($server));
 
             if (!$this->isTableFormat($input)) {
-                return $this->displayDetailRows($input, $info, ['server_id' => $id]);
+                return $this->displayDetailRows($input, $info, ['server_id' => (string) $serverId]);
             }
 
-            $this->io()->section("Server #$id");
+            $this->io()->section("Server #$serverId");
             $this->renderTable(['Property', 'Value'], $info);
             $this->displayServerErrors($server);
 
@@ -849,6 +849,11 @@ HELP
 
     private function showGroup(string $id, InputInterface $input): int
     {
+        $requestedGroupId = $this->getRequiredPositiveId($id, 'Server group');
+        if ($requestedGroupId === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -856,12 +861,12 @@ HELP
 
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('admin_servers_groups')} WHERE group_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $requestedGroupId]);
             /** @var array<string, mixed>|false $group */
             $group = $stmt->fetch();
 
             if ($group === false) {
-                $this->io()->error("Server group not found: $id");
+                $this->io()->error("Server group not found: $requestedGroupId");
                 return self::FAILURE;
             }
 
@@ -879,7 +884,7 @@ HELP
             // Get content count
             $contentTable = $contentType === 1 ? 'videos' : 'albums';
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table($contentTable)} WHERE server_group_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $requestedGroupId]);
             $contentCount = (int) $stmt->fetchColumn();
 
             $addedDate = isset($group['added_date']) && is_string($group['added_date']) ? $group['added_date'] : '';
@@ -898,7 +903,7 @@ HELP
                 WHERE group_id = :id
                 ORDER BY server_id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $requestedGroupId]);
             /** @var list<array<string, mixed>> $servers */
             $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -944,7 +949,7 @@ HELP
                 ]);
             }
 
-            $this->io()->section("Server Group #$id: $title");
+            $this->io()->section("Server Group #$requestedGroupId: $title");
             $this->renderTable(['Property', 'Value'], $info);
 
             // Servers in group

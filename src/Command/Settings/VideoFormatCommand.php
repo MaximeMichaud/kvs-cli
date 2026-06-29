@@ -335,9 +335,8 @@ HELP
             return self::FAILURE;
         }
 
-        if ($id === null || $id === '') {
-            $this->io()->error('Format ID is required');
-            $this->io()->text('Usage: kvs video-format show <id>');
+        $formatId = $this->getRequiredPositiveId($id, 'Format');
+        if ($formatId === null) {
             return self::FAILURE;
         }
 
@@ -357,12 +356,12 @@ HELP
                     ON f.format_video_group_id = g.format_video_group_id
                 WHERE f.format_video_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $formatId]);
             /** @var array<string, mixed>|false $format */
             $format = $stmt->fetch();
 
             if ($format === false) {
-                $this->io()->error("Format not found: $id");
+                $this->io()->error("Format not found: $formatId");
                 return self::FAILURE;
             }
 

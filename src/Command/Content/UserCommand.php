@@ -354,11 +354,7 @@ HELP
         }
 
         try {
-            $query = "SELECT * FROM {$this->table('users')} WHERE user_id = :id OR username = :id";
-            $stmt = $db->prepare($query);
-            $stmt->execute(['id' => $id]);
-            /** @var array<string, mixed>|false $user */
-            $user = $stmt->fetch();
+            $user = $this->fetchUserByIdOrUsername($db, $id);
 
             if ($user === false) {
                 $this->io()->error("User not found: $id");
@@ -560,32 +556,13 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will delete user using KVS native cleanup: $id");
-        $this->io()->warning('Associated videos and albums will be queued for KVS background deletion.');
-
-        if (
-            !$this->getBoolOption($input, 'yes')
-            && $this->io()->confirm('Do you want to continue?', false) !== true
-        ) {
-            if (!$input->isInteractive()) {
-                $this->io()->error('User deletion cancelled because confirmation was not provided.');
-                return self::FAILURE;
-            }
-
-            $this->io()->warning('User deletion cancelled');
-            return self::SUCCESS;
-        }
-
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
         }
 
         try {
-            $stmt = $db->prepare("SELECT user_id, username, status_id FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
-            $stmt->execute(['id' => $id]);
-            /** @var array<string, mixed>|false $user */
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $user = $this->fetchUserByIdOrUsername($db, $id);
 
             if ($user === false) {
                 $this->io()->error("User not found: $id");
@@ -604,6 +581,25 @@ HELP
                 return self::FAILURE;
             }
 
+            $username = $user['username'] ?? $id;
+            $username = is_scalar($username) ? (string) $username : $id;
+
+            $this->io()->warning("This will delete user using KVS native cleanup: {$username} ({$userId})");
+            $this->io()->warning('Associated videos and albums will be queued for KVS background deletion.');
+
+            if (
+                !$this->getBoolOption($input, 'yes')
+                && $this->io()->confirm('Do you want to continue?', false) !== true
+            ) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('User deletion cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
+                $this->io()->warning('User deletion cancelled');
+                return self::SUCCESS;
+            }
+
             $this->deleteUsersWithKvs([$userId]);
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE user_id = :id");
@@ -613,8 +609,6 @@ HELP
                 return self::FAILURE;
             }
 
-            $username = $user['username'] ?? $id;
-            $username = is_scalar($username) ? (string) $username : $id;
             $this->io()->success("User deleted with KVS cleanup: {$username} ({$userId})");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete user: ' . $e->getMessage());
@@ -622,6 +616,42 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function fetchUserByIdOrUsername(\PDO $db, string $idOrUsername): array|false
+    {
+        if (preg_match('/^[1-9]\d*$/', $idOrUsername) === 1) {
+            $stmt = $db->prepare("SELECT * FROM {$this->table('users')} WHERE user_id = :id");
+            $stmt->execute(['id' => (int) $idOrUsername]);
+            return $this->fetchAssocRow($stmt);
+        }
+
+        $stmt = $db->prepare("SELECT * FROM {$this->table('users')} WHERE username = :username");
+        $stmt->execute(['username' => $idOrUsername]);
+        return $this->fetchAssocRow($stmt);
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function fetchAssocRow(\PDOStatement $stmt): array|false
+    {
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return false;
+        }
+
+        $assoc = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $assoc[$key] = $value;
+            }
+        }
+
+        return $assoc;
     }
 
     /**

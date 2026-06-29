@@ -240,8 +240,8 @@ HELP
 
     private function showServer(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -260,12 +260,12 @@ HELP
                 FROM {$this->table('admin_conversion_servers')} s
                 WHERE s.server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: $id");
+                $this->io()->error("Conversion server not found: $serverId");
                 return self::FAILURE;
             }
 
@@ -274,13 +274,13 @@ HELP
 
             if (!$this->isTableFormat($input)) {
                 return $this->displayDetailRows($input, $info, [
-                    'server_id' => $id,
+                    'server_id' => (string) $serverId,
                     'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
                     'allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks') === 1,
                 ]);
             }
 
-            $this->io()->section("Conversion Server #$id");
+            $this->io()->section("Conversion Server #$serverId");
             $this->renderTable(['Property', 'Value'], $info);
 
             // Display task types
@@ -529,9 +529,8 @@ HELP
      */
     private function showLog(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
-            $this->io()->text('Usage: kvs system:conversion log <server_id>');
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -550,12 +549,12 @@ HELP
                 FROM {$this->table('admin_conversion_servers')}
                 WHERE server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: $id");
+                $this->io()->error("Conversion server not found: $serverId");
                 return self::FAILURE;
             }
 
@@ -573,7 +572,7 @@ HELP
             if (!file_exists($logFile)) {
                 if (!$this->isTableFormat($input)) {
                     $this->displayConversionFileRows($input, [[
-                        'server_id' => $id,
+                        'server_id' => (string) $serverId,
                         'title' => $this->getStringField($server, 'title'),
                         'file' => $logFile,
                         'exists' => false,
@@ -594,7 +593,7 @@ HELP
             if ($content === false) {
                 if (!$this->isTableFormat($input)) {
                     $this->displayConversionFileRows($input, [[
-                        'server_id' => $id,
+                        'server_id' => (string) $serverId,
                         'title' => $this->getStringField($server, 'title'),
                         'file' => $logFile,
                         'exists' => true,
@@ -613,7 +612,7 @@ HELP
 
             if (!$this->isTableFormat($input)) {
                 $this->displayConversionFileRows($input, [[
-                    'server_id' => $id,
+                    'server_id' => (string) $serverId,
                     'title' => $this->getStringField($server, 'title'),
                     'file' => $logFile,
                     'exists' => true,
@@ -647,9 +646,8 @@ HELP
      */
     private function showConfig(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
-            $this->io()->text('Usage: kvs system:conversion config <server_id>');
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -668,12 +666,12 @@ HELP
                 FROM {$this->table('admin_conversion_servers')}
                 WHERE server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: $id");
+                $this->io()->error("Conversion server not found: $serverId");
                 return self::FAILURE;
             }
 
@@ -694,7 +692,7 @@ HELP
             if (!file_exists($configFile)) {
                 if (!$this->isTableFormat($input)) {
                     $this->displayConversionFileRows($input, [[
-                        'server_id' => $id,
+                        'server_id' => (string) $serverId,
                         'title' => $title,
                         'file' => $configFile,
                         'exists' => false,
@@ -717,7 +715,7 @@ HELP
             if ($content === false) {
                 if (!$this->isTableFormat($input)) {
                     $this->displayConversionFileRows($input, [[
-                        'server_id' => $id,
+                        'server_id' => (string) $serverId,
                         'title' => $title,
                         'file' => $configFile,
                         'exists' => true,
@@ -741,7 +739,7 @@ HELP
 
             if (!$this->isTableFormat($input)) {
                 $this->displayConversionFileRows($input, [[
-                    'server_id' => $id,
+                    'server_id' => (string) $serverId,
                     'title' => $title,
                     'file' => $configFile,
                     'exists' => true,
@@ -813,10 +811,8 @@ HELP
 
     private function toggleDebug(?string $id, bool $enable): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
-            $action = $enable ? 'debug-on' : 'debug-off';
-            $this->io()->text("Usage: kvs system:conversion {$action} <server_id>");
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -828,12 +824,12 @@ HELP
         try {
             // Check if server exists
             $stmt = $db->prepare("SELECT title, is_debug_enabled FROM {$this->table('admin_conversion_servers')} WHERE server_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: {$id}");
+                $this->io()->error("Conversion server not found: {$serverId}");
                 return self::FAILURE;
             }
 
@@ -848,7 +844,7 @@ HELP
 
             // Update debug status
             $stmt = $db->prepare("UPDATE {$this->table('admin_conversion_servers')} SET is_debug_enabled = :debug WHERE server_id = :id");
-            $stmt->execute(['debug' => $targetDebug, 'id' => $id]);
+            $stmt->execute(['debug' => $targetDebug, 'id' => $serverId]);
 
             $title = $this->getStringField($server, 'title');
             $action = $enable ? 'enabled' : 'disabled';

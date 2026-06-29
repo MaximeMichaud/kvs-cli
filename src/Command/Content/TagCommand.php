@@ -238,9 +238,8 @@ HELP
 
     private function showTag(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Tag ID is required');
-            $this->io()->text('Usage: kvs content:tag show <id>');
+        $tagIdInput = $this->getRequiredPositiveId($id, 'Tag');
+        if ($tagIdInput === null) {
             return self::FAILURE;
         }
 
@@ -256,12 +255,12 @@ HELP
                 FROM {$this->table('tags')} t
                 WHERE t.tag_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $tagIdInput]);
             /** @var array<string, mixed>|false $tag */
             $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if ($tag === false) {
-                $this->io()->error("Tag not found: $id");
+                $this->io()->error("Tag not found: $tagIdInput");
                 return self::FAILURE;
             }
 
@@ -814,9 +813,8 @@ HELP
 
     private function updateTag(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Tag ID is required');
-            $this->io()->text('Usage: kvs content:tag update <tag_id> --name="New Name" --status=inactive');
+        $tagId = $this->getRequiredPositiveId($id, 'Tag');
+        if ($tagId === null) {
             return self::FAILURE;
         }
 
@@ -828,16 +826,16 @@ HELP
         try {
             // Get current tag
             $stmt = $db->prepare("SELECT * FROM {$this->table('tags')} WHERE tag_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $tagId]);
             $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($tag)) {
-                $this->io()->error("Tag not found: $id");
+                $this->io()->error("Tag not found: $tagId");
                 return self::FAILURE;
             }
 
             $updates = [];
-            $params = ['id' => $id];
+            $params = ['id' => $tagId];
 
             // Name
             $name = $this->getStringOption($input, 'name');
@@ -854,9 +852,9 @@ HELP
                     }
 
                     $db->beginTransaction();
-                    $this->mergeTagRelations($db, $id, $targetId);
+                    $this->mergeTagRelations($db, (string) $tagId, $targetId);
                     $deleteStmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
-                    $deleteStmt->execute(['id' => $id]);
+                    $deleteStmt->execute(['id' => $tagId]);
                     $db->commit();
 
                     $tagValue = $tag['tag'] ?? '';
@@ -872,7 +870,7 @@ HELP
                 $updates[] = 'tag = :tag';
                 $params['tag'] = $name;
                 // Also update tag_dir (URL slug)
-                $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), $id);
+                $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), (string) $tagId);
                 $updates[] = 'tag_dir = :tag_dir';
                 $params['tag_dir'] = $tagDir;
             }
@@ -912,7 +910,7 @@ HELP
             $this->renderTable(
                 ['Property', 'Value'],
                 [
-                    ['ID', $id],
+                    ['ID', (string) $tagId],
                     ['New Name', $newName],
                     ['Status', $statusLabel],
                 ]

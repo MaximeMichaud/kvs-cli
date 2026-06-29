@@ -286,8 +286,8 @@ HELP
 
     private function showTask(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Task ID is required');
+        $taskId = $this->getRequiredPositiveId($id, 'Task');
+        if ($taskId === null) {
             return self::FAILURE;
         }
 
@@ -297,9 +297,9 @@ HELP
         }
 
         try {
-            $result = $this->fetchTask($db, $id);
+            $result = $this->fetchTask($db, $taskId);
             if ($result === null) {
-                $this->io()->error("Task not found: $id");
+                $this->io()->error("Task not found: $taskId");
                 return self::FAILURE;
             }
 
@@ -308,7 +308,7 @@ HELP
 
             if (!$this->isTableFormat($input)) {
                 $extra = [
-                    'task_id' => $id,
+                    'task_id' => (string) $taskId,
                     'is_history' => $isHistory,
                 ];
                 $data = $task['data'] ?? null;
@@ -320,11 +320,11 @@ HELP
                 return $this->displayDetailRows($input, $info, $extra);
             }
 
-            $this->io()->title("Task #$id" . ($isHistory ? ' (History)' : ''));
+            $this->io()->title("Task #$taskId" . ($isHistory ? ' (History)' : ''));
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->displayTaskData($task);
-            $this->displayTaskProgress($task, $id, $isHistory);
+            $this->displayTaskProgress($task, (string) $taskId, $isHistory);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -337,7 +337,7 @@ HELP
      * Fetch task from active or history table
      * @return array{0: array<string, mixed>, 1: bool}|null
      */
-    private function fetchTask(\PDO $db, string $id): ?array
+    private function fetchTask(\PDO $db, int $id): ?array
     {
         $stmt = $db->prepare("
             SELECT bt.*, cs.title as server_name

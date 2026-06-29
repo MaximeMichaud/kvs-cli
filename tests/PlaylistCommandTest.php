@@ -244,6 +244,19 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame('2', trim($this->tester->getDisplay()));
     }
 
+    public function testPlaylistListRejectsConflictingPrivacyFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--public' => true,
+            '--private' => true,
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $this->tester->getDisplay());
+    }
+
     public function testPlaylistShow(): void
     {
         $this->tester->execute([
@@ -286,6 +299,18 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(['practice', 'training'], $rows[0]['tags']);
         $this->assertSame('100', $rows[0]['videos_top'][0]['video_id']);
         $this->assertStringNotContainsString('Playlist #30', $output);
+    }
+
+    public function testPlaylistShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Playlist ID', $this->tester->getDisplay());
     }
 
     public function testPlaylistShowNotFound(): void

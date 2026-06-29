@@ -223,6 +223,30 @@ class CategoryCommandTest extends TestCase
         $this->assertStringNotContainsString('Category: Action', $output);
     }
 
+    public function testCategoryShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Category ID', $this->tester->getDisplay());
+    }
+
+    public function testCategoryUpdateRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'update',
+            'id' => '10abc',
+            '--title' => 'Renamed',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Category ID', $this->tester->getDisplay());
+    }
+
     public function testCategoryTreeSupportsJsonFormat(): void
     {
         $this->tester->execute([

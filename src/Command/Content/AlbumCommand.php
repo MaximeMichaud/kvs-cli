@@ -324,8 +324,8 @@ HELP
 
     private function showAlbum(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Album ID is required');
+        $albumId = $this->getRequiredPositiveId($id, 'Album');
+        if ($albumId === null) {
             return self::FAILURE;
         }
 
@@ -341,12 +341,12 @@ HELP
                 LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
                 WHERE a.album_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $albumId]);
             /** @var array<string, mixed>|false $album */
             $album = $stmt->fetch();
 
             if ($album === false) {
-                $this->io()->error("Album not found: $id");
+                $this->io()->error("Album not found: $albumId");
                 return self::FAILURE;
             }
 
@@ -380,10 +380,10 @@ HELP
             ];
 
             if (!$this->isTableFormat($input)) {
-                return $this->displayDetailRows($input, $info, ['album_id' => $id]);
+                return $this->displayDetailRows($input, $info, ['album_id' => (string) $albumId]);
             }
 
-            $this->io()->section("Album #$id");
+            $this->io()->section("Album #$albumId");
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch album: ' . $e->getMessage());

@@ -208,6 +208,19 @@ class CommentCommandTest extends TestCase
         }
     }
 
+    public function testListCommentsRejectsConflictingApprovalFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--approved' => true,
+            '--pending' => true,
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $this->tester->getDisplay());
+    }
+
     public function testListCommentsExposesKvsAdminFields(): void
     {
         $this->tester->execute([
@@ -371,6 +384,18 @@ class CommentCommandTest extends TestCase
         $this->assertSame('Approved', $rows[0]['status']);
         $this->assertSame('Great test video', $rows[0]['comment']);
         $this->assertStringNotContainsString('Comment #30', $output);
+    }
+
+    public function testShowCommentRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Comment ID', $this->tester->getDisplay());
     }
 
     public function testShowCommentUsesAnonymousUsernameForAnonymousUser(): void

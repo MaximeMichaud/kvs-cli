@@ -399,7 +399,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('Category not found: not_a_number', $output);
+        $this->assertStringContainsString('Invalid Category ID', $output);
     }
 
     public function testCommandIntegrationWithHermeticDb(): void

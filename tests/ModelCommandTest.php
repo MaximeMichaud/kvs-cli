@@ -337,6 +337,18 @@ class ModelCommandTest extends TestCase
         $this->assertStringNotContainsString('Model: Test Model', $output);
     }
 
+    public function testShowModelRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Model ID', $this->tester->getDisplay());
+    }
+
     public function testShowModelNotFound(): void
     {
         $this->tester->execute([

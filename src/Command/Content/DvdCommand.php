@@ -248,8 +248,8 @@ HELP
 
     private function showDvd(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('DVD ID is required');
+        $dvdId = $this->getRequiredPositiveId($id, 'DVD');
+        if ($dvdId === null) {
             return self::FAILURE;
         }
 
@@ -284,11 +284,11 @@ HELP
                          d.subscribers_count,
                          d.description
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $dvdId]);
             $dvd = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($dvd)) {
-                $this->io()->error("DVD not found: $id");
+                $this->io()->error("DVD not found: $dvdId");
                 return self::FAILURE;
             }
 

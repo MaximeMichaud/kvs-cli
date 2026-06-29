@@ -105,6 +105,10 @@ HELP
 
     private function listPlaylists(InputInterface $input): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['public', 'private'])) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -302,8 +306,8 @@ HELP
 
     private function showPlaylist(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Playlist ID is required');
+        $playlistId = $this->getRequiredPositiveId($id, 'Playlist');
+        if ($playlistId === null) {
             return self::FAILURE;
         }
 
@@ -321,12 +325,12 @@ HELP
                 LEFT JOIN {$this->table('users')} u ON p.user_id = u.user_id
                 WHERE p.playlist_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var array<string, mixed>|false $playlist */
             $playlist = $stmt->fetch();
 
             if ($playlist === false) {
-                $this->io()->error("Playlist not found: $id");
+                $this->io()->error("Playlist not found: $playlistId");
                 return self::FAILURE;
             }
 
@@ -391,7 +395,7 @@ HELP
                 ORDER BY f.playlist_sort_id ASC
                 LIMIT 10
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var list<array{video_id: int, title: string}> $videos */
             $videos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -403,7 +407,7 @@ HELP
                 WHERE cp.playlist_id = :id
                 ORDER BY cp.id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var list<array{title: string}> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -415,7 +419,7 @@ HELP
                 WHERE tp.playlist_id = :id
                 ORDER BY tp.id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var list<array{tag: string}> $tags */
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -431,7 +435,7 @@ HELP
 
             if (!$this->isTableFormat($input)) {
                 return $this->displayDetailRows($input, $info, [
-                    'playlist_id' => $id,
+                    'playlist_id' => (string) $playlistId,
                     'description' => $description,
                     'videos_top' => $videoList,
                     'categories' => $categoryTitles,
@@ -439,7 +443,7 @@ HELP
                 ]);
             }
 
-            $this->io()->section("Playlist #$id");
+            $this->io()->section("Playlist #$playlistId");
             $this->renderTable(['Property', 'Value'], $info);
 
             if ($description !== '') {

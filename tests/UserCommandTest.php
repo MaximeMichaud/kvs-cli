@@ -154,6 +154,46 @@ class UserCommandTest extends TestCase
         $this->assertStringNotContainsString('User: alice', $output);
     }
 
+    public function testUserShowByUsernameStillWorks(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => 'alice',
+            '--format' => 'json',
+            '--fields' => 'user_id,username',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('1', $rows[0]['user_id']);
+        $this->assertSame('alice', $rows[0]['username']);
+    }
+
+    public function testUserShowDoesNotCoerceNumericPrefixUsernameToId(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('User not found: 1abc', $this->tester->getDisplay());
+    }
+
+    public function testUserDeleteDoesNotCoerceNumericPrefixUsernameToId(): void
+    {
+        $this->tester->execute([
+            'action' => 'delete',
+            'id' => '1abc',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('User not found: 1abc', $this->tester->getDisplay());
+        $this->assertStringNotContainsString('This will delete user', $this->tester->getDisplay());
+    }
+
     public function testTrustedFilterReturnsOnlyTrustedUsers(): void
     {
         $this->tester->execute([

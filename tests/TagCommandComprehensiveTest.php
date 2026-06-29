@@ -315,6 +315,30 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringNotContainsString('Tag: 4K', $output);
     }
 
+    public function testShowTagRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Tag ID', $this->tester->getDisplay());
+    }
+
+    public function testUpdateTagRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '10abc',
+            '--name' => 'Renamed',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Tag ID', $this->tester->getDisplay());
+    }
+
     public function testCreateWithoutName(): void
     {
         $exitCode = $this->tester->execute(['action' => 'create']);

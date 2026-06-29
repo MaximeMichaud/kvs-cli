@@ -108,6 +108,10 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['approved', 'pending'])) {
+            return self::FAILURE;
+        }
+
         $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
@@ -372,6 +376,11 @@ HELP
             return self::FAILURE;
         }
 
+        $commentId = $this->getRequiredPositiveId($id, 'Comment');
+        if ($commentId === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -387,11 +396,11 @@ HELP
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $commentId]);
             $comment = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($comment)) {
-                $this->io()->error("Comment not found: $id");
+                $this->io()->error("Comment not found: $commentId");
                 return self::FAILURE;
             }
 
@@ -425,7 +434,7 @@ HELP
                 return $this->displayDetailRows($input, $info, ['comment' => $commentText]);
             }
 
-            $this->io()->title("Comment #$id");
+            $this->io()->title("Comment #$commentId");
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->io()->section('Comment Text');

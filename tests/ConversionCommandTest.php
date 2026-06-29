@@ -308,6 +308,19 @@ class ConversionCommandTest extends TestCase
         $this->assertStringNotContainsString('Conversion Server #1', $output);
     }
 
+    public function testConversionShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
+    }
+
     public function testConversionShowParsesSerializedTaskTypes(): void
     {
         $this->tester->execute([
@@ -503,6 +516,19 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testConversionLogRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
+    }
+
     public function testConversionLogJsonReportsMissingFileAsStructuredPayload(): void
     {
         $serverPath = $this->kvsPath . '/conversion-server-missing-log';
@@ -576,6 +602,19 @@ class ConversionCommandTest extends TestCase
 
         $this->assertStringContainsString('Config viewing only available for Local/Mount servers', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionConfigRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
     }
 
     public function testConversionConfigJsonReportsMissingFileAsStructuredPayload(): void

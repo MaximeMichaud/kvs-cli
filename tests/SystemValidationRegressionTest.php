@@ -513,6 +513,21 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
     }
 
+    public function testVideoFormatShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1abc',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Format ID', $tester->getDisplay());
+    }
+
     public function testVideoFormatShowUsesKvsHotlinkProtectionFlag(): void
     {
         $this->createVideoFormatTables();

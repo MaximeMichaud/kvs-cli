@@ -359,8 +359,8 @@ HELP
 
     private function showVideo(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Video ID is required');
+        $videoId = $this->getRequiredPositiveId($id, 'Video');
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -371,12 +371,12 @@ HELP
 
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $videoId]);
             /** @var array{title: string, status_id: int, resolution_type: int, is_private: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
             $video = $stmt->fetch();
 
             if ($video === false) {
-                $this->io()->error("Video not found: $id");
+                $this->io()->error("Video not found: $videoId");
                 return self::FAILURE;
             }
 
@@ -404,7 +404,7 @@ HELP
                 WHERE cv.video_id = :id
                 ORDER BY cv.id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $videoId]);
             $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             $stmt = $db->prepare("
@@ -413,7 +413,7 @@ HELP
                 WHERE tv.video_id = :id
                 ORDER BY tv.id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $videoId]);
             $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             $categoryValues = array_map(
@@ -427,14 +427,14 @@ HELP
 
             if (!$this->isTableFormat($input)) {
                 return $this->displayDetailRows($input, $info, [
-                    'video_id' => $id,
+                    'video_id' => (string) $videoId,
                     'description' => $video['description'],
                     'categories' => $categoryValues,
                     'tags' => $tagValues,
                 ]);
             }
 
-            $this->io()->section("Video #$id");
+            $this->io()->section("Video #$videoId");
             $this->renderTable(['Property', 'Value'], $info);
 
             if ($video['description'] !== '') {

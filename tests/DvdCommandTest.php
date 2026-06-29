@@ -368,6 +368,18 @@ class DvdCommandTest extends TestCase
         $this->assertStringNotContainsString('DVD: Test Series', $output);
     }
 
+    public function testShowDvdRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid DVD ID', $this->tester->getDisplay());
+    }
+
     public function testShowDvdOmitsZeroReleaseYearLikeKvsAdmin(): void
     {
         $this->db->exec('UPDATE ' . TestHelper::table('dvds') . ' SET release_year = 0 WHERE dvd_id = 10');

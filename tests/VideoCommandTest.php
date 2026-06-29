@@ -162,6 +162,18 @@ class VideoCommandTest extends TestCase
         $this->assertStringNotContainsString('Video #10', $output);
     }
 
+    public function testVideoShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Video ID', $this->tester->getDisplay());
+    }
+
     public function testVideoListFormatsKvsResolutionTypesAboveFhd(): void
     {
         $this->db->exec(

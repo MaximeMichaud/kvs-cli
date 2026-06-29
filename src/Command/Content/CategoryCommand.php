@@ -325,10 +325,11 @@ HELP
 
     private function showCategory(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Category ID is required');
+        $categoryId = $this->getRequiredPositiveId($id, 'Category');
+        if ($categoryId === null) {
             return self::FAILURE;
         }
+        $categoryIdString = (string) $categoryId;
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -342,19 +343,19 @@ HELP
                 LEFT JOIN {$this->table('categories_groups')} cg ON c.category_group_id = cg.category_group_id
                 WHERE c.category_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $categoryId]);
             /** @var array<string, mixed>|false $category */
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if ($category === false) {
-                $this->io()->error("Category not found: $id");
+                $this->io()->error("Category not found: $categoryId");
                 return self::FAILURE;
             }
 
             $titleValue = $category['title'] ?? '';
             $categoryTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
 
-            $usage = $this->getCategoryUsageCounts($db, $id);
+            $usage = $this->getCategoryUsageCounts($db, $categoryIdString);
             $videoCount = $usage['videos'] ?? 0;
             $albumCount = $usage['albums'] ?? 0;
             $postCount = $usage['posts'] ?? 0;
@@ -1130,9 +1131,8 @@ HELP
 
     private function updateCategory(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Category ID is required');
-            $this->io()->text('Usage: kvs content:category update <category_id> --title="New Title" --description="..." --status=inactive');
+        $categoryId = $this->getRequiredPositiveId($id, 'Category');
+        if ($categoryId === null) {
             return self::FAILURE;
         }
 
@@ -1144,16 +1144,16 @@ HELP
         try {
             // Get current category
             $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $categoryId]);
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($category)) {
-                $this->io()->error("Category not found: $id");
+                $this->io()->error("Category not found: $categoryId");
                 return self::FAILURE;
             }
 
             $updates = [];
-            $params = ['id' => $id];
+            $params = ['id' => $categoryId];
 
             // Title
             $title = $this->getStringOption($input, 'title');
@@ -1183,9 +1183,13 @@ HELP
             // Category group
             $groupId = $this->getCategoryGroupInput($input);
             if ($groupId !== null) {
+                if ($groupId !== '' && preg_match('/^\d+$/', $groupId) !== 1) {
+                    $this->io()->error('Invalid Category group ID (use: integer >= 0)');
+                    return self::FAILURE;
+                }
                 if ($groupId !== '') {
                     $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
-                    $stmt->execute(['id' => $groupId]);
+                    $stmt->execute(['id' => (int) $groupId]);
                     if ($stmt->fetch() === false) {
                         $this->io()->error("Category group not found: $groupId");
                         return self::FAILURE;
@@ -1227,7 +1231,7 @@ HELP
             $this->io()->success("Category updated successfully!");
 
             // Show updated category
-            return $this->showCategory($id, $input);
+            return $this->showCategory((string) $categoryId, $input);
         } catch (\Exception $e) {
             $this->io()->error('Failed to update category: ' . $e->getMessage());
             return self::FAILURE;

@@ -43,6 +43,11 @@ trait ToggleStatusTrait
             $this->io()->text("Usage: kvs {$commandName} {$action} <{$idColumn}>");
             return self::FAILURE;
         }
+        if (preg_match('/^[1-9]\d*$/', $id) !== 1) {
+            $this->io()->error("Invalid {$entityName} ID (use: integer >= 1)");
+            return self::FAILURE;
+        }
+        $entityId = (int) $id;
 
         // Get database connection
         $db = $this->getDatabaseConnection();
@@ -54,7 +59,7 @@ trait ToggleStatusTrait
             // Check if entity exists
             $sql = "SELECT {$nameColumn}, status_id FROM {$tableName} WHERE {$idColumn} = :id";
             $stmt = $db->prepare($sql);
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $entityId]);
             /** @var array<string, mixed>|false $entity */
             $entity = $stmt->fetch();
 
@@ -74,7 +79,7 @@ trait ToggleStatusTrait
             // Update status
             $sql = "UPDATE {$tableName} SET status_id = :status WHERE {$idColumn} = :id";
             $stmt = $db->prepare($sql);
-            $stmt->execute(['status' => $status, 'id' => $id]);
+            $stmt->execute(['status' => $status, 'id' => $entityId]);
 
             // Success message
             $newStatus = $status !== 0 ? 'enabled' : 'disabled';

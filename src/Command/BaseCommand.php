@@ -531,6 +531,46 @@ abstract class BaseCommand extends Command
         return (int) $value;
     }
 
+    protected function getRequiredPositiveId(?string $value, string $label): ?int
+    {
+        if ($value === null || $value === '') {
+            $this->io()->error(sprintf('%s ID is required', $label));
+            return null;
+        }
+
+        if (preg_match('/^[1-9]\d*$/', $value) !== 1) {
+            $this->io()->error(sprintf('Invalid %s ID (use: integer >= 1)', $label));
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * @param list<string> $optionNames
+     */
+    protected function hasConflictingBoolOptions(InputInterface $input, array $optionNames): bool
+    {
+        $enabled = [];
+        foreach ($optionNames as $name) {
+            if ($this->getBoolOption($input, $name)) {
+                $enabled[] = '--' . $name;
+            }
+        }
+
+        if (count($enabled) < 2) {
+            return false;
+        }
+
+        $last = array_pop($enabled);
+        $this->io()->error(sprintf(
+            'Options %s and %s cannot be used together',
+            implode(', ', $enabled),
+            $last
+        ));
+        return true;
+    }
+
     /**
      * Render a table with consistent box style
      *

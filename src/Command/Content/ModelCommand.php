@@ -248,8 +248,8 @@ HELP
 
     private function showModel(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Model ID is required');
+        $modelId = $this->getRequiredPositiveId($id, 'Model');
+        if ($modelId === null) {
             return self::FAILURE;
         }
 
@@ -268,11 +268,11 @@ HELP
                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
                 WHERE m.model_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $modelId]);
             $model = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($model)) {
-                $this->io()->error("Model not found: $id");
+                $this->io()->error("Model not found: $modelId");
                 return self::FAILURE;
             }
 

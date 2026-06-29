@@ -278,6 +278,18 @@ class AlbumCommandTest extends TestCase
         $this->assertStringNotContainsString('Album #10', $output);
     }
 
+    public function testAlbumShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Album ID', $this->tester->getDisplay());
+    }
+
     public function testAlbumCommandMetadata(): void
     {
         $this->assertEquals('content:album', $this->command->getName());

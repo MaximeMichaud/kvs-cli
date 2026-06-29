@@ -369,6 +369,30 @@ class QueueCommandTest extends TestCase
         $this->assertStringNotContainsString('Task #30', $output);
     }
 
+    public function testQueueShowRejectsNonIntegerActiveTaskIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Task ID', $this->tester->getDisplay());
+    }
+
+    public function testQueueShowRejectsNonIntegerHistoryTaskIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '301abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Task ID', $this->tester->getDisplay());
+    }
+
     public function testQueueHelpAction(): void
     {
         $this->tester->execute([
