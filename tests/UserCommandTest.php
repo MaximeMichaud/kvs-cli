@@ -233,6 +233,113 @@ class UserCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testUntrustedFilterReturnsOnlyUntrustedUsersLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--untrusted' => true,
+            '--format' => 'json',
+            '--fields' => 'user_id,username,is_trusted',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([3, 2], array_map(static fn (array $row): int => (int) $row['user_id'], $rows));
+        $this->assertSame([0, 0], array_map(static fn (array $row): int => (int) $row['is_trusted'], $rows));
+    }
+
+    public function testUserListSearchesDisplayNameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Alice Example',
+            '--format' => 'json',
+            '--fields' => 'user_id,display_name',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['user_id']);
+        $this->assertSame('Alice Example', $rows[0]['display_name']);
+    }
+
+    public function testUserListSearchesAdditionalFieldsLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'synthetic account',
+            '--format' => 'json',
+            '--fields' => 'user_id,username,about_me',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(2, (int) $rows[0]['user_id']);
+        $this->assertSame('remove_me', $rows[0]['username']);
+        $this->assertSame('Synthetic account used for admin search.', $rows[0]['about_me']);
+    }
+
+    public function testUserListFiltersByIpLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--ip' => '127.0.0.1',
+            '--format' => 'json',
+            '--fields' => 'user_id,username,ip',
+            '--limit' => 10,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['user_id']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
+    }
+
+    public function testUserListFiltersByActivityLikeKvsAdmin(): void
+    {
+        $loginTester = new CommandTester($this->command);
+        $loginTester->execute([
+            'action' => 'list',
+            '--activity' => 'have/logins',
+            '--format' => 'ids',
+            '--limit' => 10,
+        ]);
+
+        $videoTester = new CommandTester($this->command);
+        $videoTester->execute([
+            'action' => 'list',
+            '--activity' => 'have/videos',
+            '--format' => 'ids',
+            '--limit' => 10,
+        ]);
+
+        $friendsTester = new CommandTester($this->command);
+        $friendsTester->execute([
+            'action' => 'list',
+            '--activity' => 'no/friends',
+            '--format' => 'ids',
+            '--limit' => 10,
+        ]);
+
+        $this->assertEquals(0, $loginTester->getStatusCode(), $loginTester->getDisplay());
+        $this->assertSame('3 1', trim($loginTester->getDisplay()));
+        $this->assertEquals(0, $videoTester->getStatusCode(), $videoTester->getDisplay());
+        $this->assertSame('2 1', trim($videoTester->getDisplay()));
+        $this->assertEquals(0, $friendsTester->getStatusCode(), $friendsTester->getDisplay());
+        $this->assertSame('3 2', trim($friendsTester->getDisplay()));
+    }
+
     public function testUserListExposesKvsAdminCountFields(): void
     {
         $this->tester->execute([
@@ -315,11 +422,12 @@ class UserCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
             'user_id INTEGER, username TEXT, display_name TEXT, email TEXT, status_id INTEGER, ' .
-            'gender_id INTEGER, country_id TEXT, birth_date TEXT, ip TEXT, added_date TEXT, last_login_date TEXT, ' .
-            'profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, tokens_available INTEGER, ' .
+            'gender_id INTEGER, country_id TEXT, city TEXT, birth_date TEXT, ip TEXT, added_date TEXT, ' .
+            'last_login_date TEXT, profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, tokens_available INTEGER, ' .
             'tokens_required INTEGER, total_videos_count INTEGER, total_albums_count INTEGER, is_trusted INTEGER, ' .
             'is_removal_requested INTEGER, removal_reason TEXT, favourite_category_id INTEGER, avatar TEXT, ' .
-            'is_trial INTEGER)'
+            'is_trial INTEGER, friends_count INTEGER, website TEXT, education TEXT, occupation TEXT, about_me TEXT, ' .
+            'interests TEXT, favourite_movies TEXT, favourite_music TEXT, favourite_books TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('bill_transactions') . ' (' .
@@ -336,19 +444,20 @@ class UserCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('users') .
-            " (user_id, username, display_name, email, status_id, gender_id, country_id, birth_date, ip, " .
+            " (user_id, username, display_name, email, status_id, gender_id, country_id, city, birth_date, ip, " .
             "added_date, last_login_date, profile_viewed, logins_count, activity, tokens_available, tokens_required, " .
             "total_videos_count, total_albums_count, is_trusted, is_removal_requested, removal_reason, " .
-            "favourite_category_id, avatar, is_trial) VALUES " .
-            "(1, 'alice', 'Alice Example', 'alice@example.com', 2, 2, 'CA', '1990-01-02', 2130706433, " .
+            "favourite_category_id, avatar, is_trial, friends_count, website, education, occupation, about_me, " .
+            "interests, favourite_movies, favourite_music, favourite_books) VALUES " .
+            "(1, 'alice', 'Alice Example', 'alice@example.com', 2, 2, 'CA', 'Montreal', '1990-01-02', 2130706433, " .
             "'2026-05-26 10:00:00', '2026-05-26 11:00:00', 1000, 4, 42, 50, 10, 2, 1, 1, 0, '', " .
-            "10, '1/1.jpg', 0), " .
-            "(2, 'remove_me', 'Remove Me', 'remove@example.com', 0, 0, '', '0000-00-00', '', " .
+            "10, '1/1.jpg', 0, 2, '', '', '', '', '', '', '', ''), " .
+            "(2, 'remove_me', 'Remove Me', 'remove@example.com', 0, 0, '', '', '0000-00-00', '', " .
             "'2026-05-25 10:00:00', '0000-00-00 00:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 1, " .
-            "'Delete my account', 0, '', 0), " .
-            "(3, 'premium', 'Premium User', 'premium@example.com', 3, 1, 'US', '1985-03-04', '127.0.0.2', " .
+            "'Delete my account', 0, '', 0, 0, '', '', '', 'Synthetic account used for admin search.', '', '', '', ''), " .
+            "(3, 'premium', 'Premium User', 'premium@example.com', 3, 1, 'US', '', '1985-03-04', '127.0.0.2', " .
             "'2026-05-24 10:00:00', '2026-05-24 12:00:00', 50, 2, 10, 100, 0, 0, 0, 0, 0, '', " .
-            "0, '', 1)"
+            "0, '', 1, 0, '', '', '', '', '', '', '', '')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('bill_transactions') .

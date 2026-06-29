@@ -28,6 +28,7 @@ class DvdCommand extends BaseCommand
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in DVD titles, directories, descriptions, and synonyms')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -94,7 +95,7 @@ HELP
 
         $params = [];
 
-        if (!$this->applyDvdListFilters($input, $whereClause, $params)) {
+        if (!$this->applyDvdListFilters($db, $input, $whereClause, $params)) {
             return self::FAILURE;
         }
 
@@ -213,8 +214,12 @@ HELP
     /**
      * @param array<string, int|string> $params
      */
-    private function applyDvdListFilters(InputInterface $input, string &$whereClause, array &$params): bool
-    {
+    private function applyDvdListFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
             $statusId = $this->parseStatusFilterOrFail($input, [
@@ -239,6 +244,15 @@ HELP
                 . " OR d.description LIKE :search" . $searchEscape
                 . " OR d.synonyms LIKE :search" . $searchEscape . ")";
             $params['search'] = $this->containsLikePattern($search);
+        }
+
+        $user = $this->resolveUserIdOption($db, $input);
+        if ($user === false) {
+            return false;
+        }
+        if ($user !== null) {
+            $whereClause .= ' AND d.user_id = :user';
+            $params['user'] = $user;
         }
 
         return true;

@@ -319,6 +319,25 @@ class DvdCommandTest extends TestCase
         $this->assertSame('Long running series', $rows[0]['description']);
     }
 
+    public function testListDvdsFiltersByUserLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'channel-owner',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,title,user',
+            '--limit' => '10',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame('channel-owner', $rows[0]['user']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListDvdsFormats(string $format): void
     {

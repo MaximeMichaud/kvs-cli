@@ -21,6 +21,39 @@ use function KVS\CLI\Utils\truncate;
 )]
 class UserCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const ACTIVITY_FILTERS = [
+        'new_today',
+        'new_yesterday',
+        'new_week',
+        'new_month',
+        'new_year',
+        'have/logins',
+        'have/logins_today',
+        'have/logins_yesterday',
+        'have/logins_week',
+        'have/logins_month',
+        'have/logins_year',
+        'have/videos',
+        'have/albums',
+        'have/dvds',
+        'have/playlists',
+        'have/comments',
+        'have/friends',
+        'no/logins',
+        'no/logins_today',
+        'no/logins_yesterday',
+        'no/logins_week',
+        'no/logins_month',
+        'no/logins_year',
+        'no/videos',
+        'no/albums',
+        'no/dvds',
+        'no/playlists',
+        'no/comments',
+        'no/friends',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -62,6 +95,9 @@ Manage KVS users.
   <comment>kvs user list --removal-requested --fields=id,username,email,removal_reason</comment>
   <comment>kvs user list --removal-requested --field=removal_reason</comment>
   <comment>kvs user list --trusted</comment>
+  <comment>kvs user list --untrusted</comment>
+  <comment>kvs user list --ip=127.0.0.1</comment>
+  <comment>kvs user list --activity=have/logins</comment>
   <comment>kvs user list --format=count</comment>
   <comment>kvs user list --format=ids</comment>
 HELP
@@ -75,9 +111,12 @@ HELP
                 'Filter by status (active|disabled|premium|not-confirmed|unconfirmed|anonymous|generated|webmaster|0-6)'
             )
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in usernames and emails')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in user admin text fields')
+            ->addOption('ip', null, InputOption::VALUE_REQUIRED, 'Filter by IP address')
+            ->addOption('activity', null, InputOption::VALUE_REQUIRED, 'Filter by KVS admin activity bucket')
             ->addOption('removal-requested', null, InputOption::VALUE_NONE, 'Filter users who requested account deletion')
             ->addOption('trusted', null, InputOption::VALUE_NONE, 'Filter trusted users only')
+            ->addOption('untrusted', null, InputOption::VALUE_NONE, 'Filter untrusted users only')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields in table view')
@@ -101,6 +140,10 @@ HELP
 
     private function listUsers(InputInterface $input): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['trusted', 'untrusted'])) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -136,9 +179,31 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= " AND (u.username LIKE :search" . $this->likeEscapeSql()
-                . " OR u.email LIKE :search" . $this->likeEscapeSql() . ")";
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (u.username LIKE :search" . $searchEscape
+                . " OR u.display_name LIKE :search" . $searchEscape
+                . " OR u.email LIKE :search" . $searchEscape
+                . " OR u.city LIKE :search" . $searchEscape
+                . " OR u.website LIKE :search" . $searchEscape
+                . " OR u.education LIKE :search" . $searchEscape
+                . " OR u.occupation LIKE :search" . $searchEscape
+                . " OR u.about_me LIKE :search" . $searchEscape
+                . " OR u.interests LIKE :search" . $searchEscape
+                . " OR u.favourite_movies LIKE :search" . $searchEscape
+                . " OR u.favourite_music LIKE :search" . $searchEscape
+                . " OR u.favourite_books LIKE :search" . $searchEscape . ")";
             $params['search'] = $this->containsLikePattern($search);
+        }
+
+        $ip = $this->getStringOption($input, 'ip');
+        if ($ip !== null) {
+            $ipNumber = $this->parseIpv4Option($ip);
+            if ($ipNumber === null) {
+                return self::FAILURE;
+            }
+            $whereClause .= ' AND (u.ip = :ip OR u.ip = :ip_raw)';
+            $params['ip'] = $ipNumber;
+            $params['ip_raw'] = $ip;
         }
 
         // Removal requested filter
@@ -149,6 +214,13 @@ HELP
         // Trusted users filter
         if ($this->getBoolOption($input, 'trusted')) {
             $whereClause .= " AND u.is_trusted = 1";
+        }
+        if ($this->getBoolOption($input, 'untrusted')) {
+            $whereClause .= " AND u.is_trusted = 0";
+        }
+
+        if (!$this->applyUserActivityFilter($input, $whereClause, $params)) {
+            return self::FAILURE;
         }
 
         try {
@@ -219,6 +291,154 @@ HELP
             $this->io()->error('Failed to fetch users: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function parseIpv4Option(string $ip): ?string
+    {
+        if (preg_match('/^\d+$/', $ip) === 1) {
+            return $ip;
+        }
+
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            $this->io()->error('Invalid value for --ip (use: IPv4 address)');
+            return null;
+        }
+
+        $ipLong = ip2long($ip);
+        if ($ipLong === false) {
+            $this->io()->error('Invalid value for --ip (use: IPv4 address)');
+            return null;
+        }
+
+        return sprintf('%u', $ipLong);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyUserActivityFilter(InputInterface $input, string &$whereClause, array &$params): bool
+    {
+        $activity = $this->getStringOption($input, 'activity');
+        if ($activity === null) {
+            return true;
+        }
+
+        if (!in_array($activity, self::ACTIVITY_FILTERS, true)) {
+            $this->io()->error(sprintf(
+                'Invalid value for --activity. Valid values: %s',
+                implode(', ', self::ACTIVITY_FILTERS)
+            ));
+            return false;
+        }
+
+        $today = date('Y-m-d 00:00:00');
+        $yesterday = date('Y-m-d 00:00:00', time() - 86400);
+        $lastWeek = date('Y-m-d H:i:s', time() - 7 * 86400);
+        $lastMonth = date('Y-m-d H:i:s', time() - 30 * 86400);
+        $lastYear = date('Y-m-d H:i:s', time() - 365 * 86400);
+
+        switch ($activity) {
+            case 'new_today':
+                $whereClause .= ' AND u.added_date > :activity_date';
+                $params['activity_date'] = $today;
+                break;
+            case 'new_yesterday':
+                $whereClause .= ' AND u.added_date > :activity_date';
+                $params['activity_date'] = $yesterday;
+                break;
+            case 'new_week':
+                $whereClause .= ' AND u.added_date > :activity_date';
+                $params['activity_date'] = $lastWeek;
+                break;
+            case 'new_month':
+                $whereClause .= ' AND u.added_date > :activity_date';
+                $params['activity_date'] = $lastMonth;
+                break;
+            case 'new_year':
+                $whereClause .= ' AND u.added_date > :activity_date';
+                $params['activity_date'] = $lastYear;
+                break;
+            case 'have/logins':
+                $whereClause .= ' AND u.logins_count > 0';
+                break;
+            case 'have/logins_today':
+                $whereClause .= ' AND u.last_login_date > :activity_date';
+                $params['activity_date'] = $today;
+                break;
+            case 'have/logins_yesterday':
+                $whereClause .= ' AND u.last_login_date > :activity_date';
+                $params['activity_date'] = $yesterday;
+                break;
+            case 'have/logins_week':
+                $whereClause .= ' AND u.last_login_date > :activity_date';
+                $params['activity_date'] = $lastWeek;
+                break;
+            case 'have/logins_month':
+                $whereClause .= ' AND u.last_login_date > :activity_date';
+                $params['activity_date'] = $lastMonth;
+                break;
+            case 'have/logins_year':
+                $whereClause .= ' AND u.last_login_date > :activity_date';
+                $params['activity_date'] = $lastYear;
+                break;
+            case 'no/logins':
+                $whereClause .= ' AND u.logins_count = 0';
+                break;
+            case 'no/logins_today':
+                $whereClause .= ' AND u.last_login_date <= :activity_date';
+                $params['activity_date'] = $today;
+                break;
+            case 'no/logins_yesterday':
+                $whereClause .= ' AND u.last_login_date <= :activity_date';
+                $params['activity_date'] = $yesterday;
+                break;
+            case 'no/logins_week':
+                $whereClause .= ' AND u.last_login_date <= :activity_date';
+                $params['activity_date'] = $lastWeek;
+                break;
+            case 'no/logins_month':
+                $whereClause .= ' AND u.last_login_date <= :activity_date';
+                $params['activity_date'] = $lastMonth;
+                break;
+            case 'no/logins_year':
+                $whereClause .= ' AND u.last_login_date <= :activity_date';
+                $params['activity_date'] = $lastYear;
+                break;
+            default:
+                $this->applyUserRelationActivityFilter($activity, $whereClause);
+                break;
+        }
+
+        return true;
+    }
+
+    private function applyUserRelationActivityFilter(string $activity, string &$whereClause): void
+    {
+        $relationMap = [
+            'videos' => ['videos', 'video_id'],
+            'albums' => ['albums', 'album_id'],
+            'dvds' => ['dvds', 'dvd_id'],
+            'playlists' => ['playlists', 'playlist_id'],
+            'comments' => ['comments', 'comment_id'],
+        ];
+
+        if ($activity === 'have/friends') {
+            $whereClause .= ' AND u.friends_count > 0';
+            return;
+        }
+        if ($activity === 'no/friends') {
+            $whereClause .= ' AND u.friends_count = 0';
+            return;
+        }
+
+        [$mode, $relation] = explode('/', $activity, 2);
+        [$table] = $relationMap[$relation];
+        $exists = sprintf(
+            'EXISTS (SELECT 1 FROM %s related WHERE related.user_id = u.user_id)',
+            $this->table($table)
+        );
+
+        $whereClause .= $mode === 'have' ? " AND $exists" : " AND NOT $exists";
     }
 
     /**
