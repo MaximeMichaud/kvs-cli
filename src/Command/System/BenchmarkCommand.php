@@ -184,26 +184,42 @@ class BenchmarkCommand extends BaseCommand
             }
         }
 
-        $samplesOption = $input->getOption('samples');
-        $samples = is_numeric($samplesOption) ? max(1, (int)$samplesOption) : 5;
+        $samples = $this->getPositiveIntOptionOrDefault($input, 'samples', 5);
+        if ($samples === null) {
+            return self::FAILURE;
+        }
 
-        $dbIterOption = $input->getOption('db-iterations');
-        $dbIterations = is_numeric($dbIterOption) ? max(1, (int)$dbIterOption) : 10;
+        $dbIterations = $this->getPositiveIntOptionOrDefault($input, 'db-iterations', 10);
+        if ($dbIterations === null) {
+            return self::FAILURE;
+        }
 
-        $cacheIterOption = $input->getOption('cache-iterations');
-        $cacheIterations = is_numeric($cacheIterOption) ? max(1, (int)$cacheIterOption) : 100;
+        $cacheIterations = $this->getPositiveIntOptionOrDefault($input, 'cache-iterations', 100);
+        if ($cacheIterations === null) {
+            return self::FAILURE;
+        }
 
-        $fileIterOption = $input->getOption('file-iterations');
-        $fileIterations = is_numeric($fileIterOption) ? max(1, (int)$fileIterOption) : 100;
+        $fileIterations = $this->getPositiveIntOptionOrDefault($input, 'file-iterations', 100);
+        if ($fileIterations === null) {
+            return self::FAILURE;
+        }
 
-        $cpuIterOption = $input->getOption('cpu-iterations');
-        $cpuIterations = is_numeric($cpuIterOption) ? max(1, (int)$cpuIterOption) : 1000;
+        $cpuIterations = $this->getPositiveIntOptionOrDefault($input, 'cpu-iterations', 1000);
+        if ($cpuIterations === null) {
+            return self::FAILURE;
+        }
 
         $mcHostOption = $input->getOption('memcached-host');
         $mcHost = $mcHostOption;
 
-        $mcPortOption = $input->getOption('memcached-port');
-        $mcPort = is_numeric($mcPortOption) ? (int)$mcPortOption : Constants::DEFAULT_MEMCACHE_PORT;
+        $mcPort = $this->getPositiveIntOptionOrDefault($input, 'memcached-port', Constants::DEFAULT_MEMCACHE_PORT);
+        if ($mcPort === null) {
+            return self::FAILURE;
+        }
+        if ($mcPort > 65535) {
+            $this->io()->error('Invalid value for --memcached-port (use: integer between 1 and 65535)');
+            return self::FAILURE;
+        }
 
         $tagOption = $input->getOption('tag');
         $tag = is_string($tagOption) ? $tagOption : '';
@@ -211,8 +227,10 @@ class BenchmarkCommand extends BaseCommand
         $phpContainerOption = $input->getOption('php-container');
         $phpContainer = is_string($phpContainerOption) ? $phpContainerOption : '';
 
-        $runsOption = $input->getOption('runs');
-        $httpRuns = is_numeric($runsOption) ? max(1, (int)$runsOption) : 3;
+        $httpRuns = $this->getPositiveIntOptionOrDefault($input, 'runs', 3);
+        if ($httpRuns === null) {
+            return self::FAILURE;
+        }
 
         // --local or --localhost: test via 127.0.0.1 (bypass DNS/CDN)
         $useLocalhost = $input->getOption('local') === true || $input->getOption('localhost') === true;
@@ -251,8 +269,11 @@ class BenchmarkCommand extends BaseCommand
 
         // Check for remote execution options
         $forceCli = $input->getOption('cli') === true;
-        $remoteTimeoutOption = $input->getOption('remote-timeout');
-        $remoteTimeout = is_numeric($remoteTimeoutOption) ? max(30, (int) $remoteTimeoutOption) : 120;
+        $remoteTimeoutInput = $this->getPositiveIntOptionOrDefault($input, 'remote-timeout', 120);
+        if ($remoteTimeoutInput === null) {
+            return self::FAILURE;
+        }
+        $remoteTimeout = max(30, $remoteTimeoutInput);
 
         // Run benchmarks
         $runner = new BenchmarkRunner(

@@ -211,6 +211,24 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('1x1', $output);
     }
 
+    public function testListScreenshotsRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $this->createScreenshotFixture('1234');
+
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testGenerateScreenshotsRequiresVideoId(): void
     {
         $this->tester->execute(['action' => 'generate']);

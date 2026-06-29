@@ -974,11 +974,16 @@ abstract class BaseCommand extends Command
     /**
      * @param list<array<string, mixed>> $rows
      * @param list<string> $defaultFields
+     * @param list<string>|null $knownFields
      */
-    protected function displayFormattedRows(InputInterface $input, array $rows, array $defaultFields): int
-    {
+    protected function displayFormattedRows(
+        InputInterface $input,
+        array $rows,
+        array $defaultFields,
+        ?array $knownFields = null
+    ): int {
         try {
-            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($rows, $this->io());
             return self::SUCCESS;
         } catch (\InvalidArgumentException $e) {

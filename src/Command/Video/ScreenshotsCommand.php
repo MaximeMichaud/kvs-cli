@@ -3,7 +3,6 @@
 namespace KVS\CLI\Command\Video;
 
 use KVS\CLI\Command\BaseCommand;
-use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -20,6 +19,8 @@ class ScreenshotsCommand extends BaseCommand
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
     private const GENERATE_UNSUPPORTED_OPTIONS = ['fields', 'format', 'no-truncate'];
+    private const LOGICAL_LIST_FIELDS = ['index', 'filename', 'formats', 'dimensions'];
+    private const FILE_LIST_FIELDS = ['filename', 'size', 'dimensions', 'path'];
 
     protected function configure(): void
     {
@@ -118,10 +119,12 @@ HELP
         $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
         $screenshots = $this->buildLogicalScreenshotRows($videoId, $screenshotsPath);
         if ($screenshots !== []) {
-            $formatter = new Formatter($input->getOptions(), ['index', 'filename', 'formats', 'dimensions']);
-            $formatter->display($screenshots, $this->io());
-
-            return self::SUCCESS;
+            return $this->displayFormattedRows(
+                $input,
+                $screenshots,
+                self::LOGICAL_LIST_FIELDS,
+                self::LOGICAL_LIST_FIELDS
+            );
         }
 
         if (!is_dir($screenshotsPath)) {
@@ -130,7 +133,7 @@ HELP
             }
 
             if (!$this->isTableFormat($input)) {
-                return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
+                return $this->displayFormattedRows($input, [], self::FILE_LIST_FIELDS, self::FILE_LIST_FIELDS);
             }
 
             $this->io()->warning("Screenshots directory not found: $screenshotsPath");
@@ -150,7 +153,7 @@ HELP
             }
 
             if (!$this->isTableFormat($input)) {
-                return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
+                return $this->displayFormattedRows($input, [], self::FILE_LIST_FIELDS, self::FILE_LIST_FIELDS);
             }
 
             $this->io()->warning('No screenshot files found in directory');
@@ -177,13 +180,7 @@ HELP
         // Sort by filename
         usort($screenshots, fn($a, $b) => strcmp($a['filename'], $b['filename']));
 
-        // Default fields for display
-        $defaultFields = ['filename', 'size', 'dimensions'];
-
-        $formatter = new Formatter($input->getOptions(), $defaultFields);
-        $formatter->display($screenshots, $this->io());
-
-        return self::SUCCESS;
+        return $this->displayFormattedRows($input, $screenshots, ['filename', 'size', 'dimensions'], self::FILE_LIST_FIELDS);
     }
 
     private function ensureVideoIsManageableInKvs(string $videoId): bool

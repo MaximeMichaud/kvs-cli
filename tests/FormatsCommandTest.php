@@ -126,6 +126,22 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('Unknown', $output);
     }
 
+    public function testListFormatsRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '10',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testCheckFormatsRequiresVideoId(): void
     {
         $this->tester->execute(['action' => 'check']);
@@ -296,6 +312,21 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('720p MP4', $output);
         $this->assertStringNotContainsString('Available Format Configurations', $output);
         $this->assertStringNotContainsString('These formats are configured', $output);
+    }
+
+    public function testAvailableFormatsRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $this->tester->execute([
+            'action' => 'available',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
     }
 
     public function testAvailableFormatsRejectsInvalidFormat(): void

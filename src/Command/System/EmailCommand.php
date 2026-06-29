@@ -449,9 +449,12 @@ HELP
                 $changes[] = "SMTP host: $smtpHost";
             }
 
-            $smtpPort = $this->getStringOption($input, 'smtp-port');
+            $smtpPort = $this->getOptionalPositiveIntOption($input, 'smtp-port');
+            if ($smtpPort === false) {
+                return self::FAILURE;
+            }
             if ($smtpPort !== null) {
-                $port = (int) $smtpPort;
+                $port = $smtpPort;
                 if ($port < 1 || $port > 65535) {
                     $this->io()->error('Invalid SMTP port (1-65535)');
                     return self::FAILURE;
@@ -482,9 +485,12 @@ HELP
                 $changes[] = "SMTP security: $smtpSecurity";
             }
 
-            $smtpTimeout = $this->getStringOption($input, 'smtp-timeout');
+            $smtpTimeout = $this->getOptionalPositiveIntOption($input, 'smtp-timeout');
+            if ($smtpTimeout === false) {
+                return self::FAILURE;
+            }
             if ($smtpTimeout !== null) {
-                $timeout = (int) $smtpTimeout;
+                $timeout = $smtpTimeout;
                 if ($timeout < 1 || $timeout > 3600) {
                     $this->io()->error('Invalid SMTP timeout (1-3600 seconds)');
                     return self::FAILURE;

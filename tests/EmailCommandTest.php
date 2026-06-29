@@ -284,6 +284,24 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testEmailSetRejectsMalformedSmtpPort(): void
+    {
+        foreach (['587abc', '587.5'] as $smtpPort) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'set',
+                '--smtp-port' => $smtpPort,
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $smtpPort . ': ' . $output);
+            $this->assertStringContainsString('Invalid value for --smtp-port', $output);
+            $this->assertStringNotContainsString('Email settings updated', $output);
+        }
+    }
+
     public function testEmailSetInvalidDebugLevel(): void
     {
         $this->tester->execute([
@@ -308,6 +326,24 @@ class EmailCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('invalid', strtolower($output));
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testEmailSetRejectsMalformedSmtpTimeout(): void
+    {
+        foreach (['20abc', '20.5'] as $smtpTimeout) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'set',
+                '--smtp-timeout' => $smtpTimeout,
+            ]);
+
+            $output = $tester->getDisplay();
+
+            $this->assertSame(1, $tester->getStatusCode(), $smtpTimeout . ': ' . $output);
+            $this->assertStringContainsString('Invalid value for --smtp-timeout', $output);
+            $this->assertStringNotContainsString('Email settings updated', $output);
+        }
     }
 
     public function testEmailLogAction(): void

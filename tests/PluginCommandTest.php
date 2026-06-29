@@ -311,6 +311,21 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Version', $output);
     }
 
+    public function testListRejectsUnknownFieldsWithoutRawFormatterException(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'definitely_bad',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertStringContainsString('Unknown field(s): definitely_bad', $output);
+        $this->assertStringNotContainsString('In Formatter.php line', $output);
+    }
+
     public function testListWithField(): void
     {
         $exitCode = $this->tester->execute([

@@ -19,6 +19,22 @@ class PluginCommand extends BaseCommand
     private const HIDDEN_PLUGIN_IDS = ['push_notifications', 'awe_black_label'];
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count', 'ids'];
     private const LIST_FILTER_OPTIONS = ['status', 'type'];
+    private const LIST_FIELDS = [
+        'id',
+        'name',
+        'title',
+        'author',
+        'version',
+        'kvs_version',
+        'status',
+        'types',
+        'files_ok',
+        'syntax_ok',
+        'compatible',
+        'valid',
+        'description',
+        'path',
+    ];
 
     protected function configure(): void
     {
@@ -103,11 +119,12 @@ HELP
             if ($this->isTableFormat($input)) {
                 $this->io()->info('No plugins found');
             } else {
-                $formatter = new Formatter(
-                    $input->getOptions(),
-                    ['id', 'name', 'version', 'status', 'types']
+                return $this->displayFormattedRows(
+                    $input,
+                    [],
+                    ['id', 'name', 'version', 'status', 'types'],
+                    self::LIST_FIELDS
                 );
-                $formatter->display([], $this->io());
             }
             return self::SUCCESS;
         }
@@ -143,14 +160,12 @@ HELP
             $plugins
         );
 
-        // Format and display output using centralized Formatter
-        $formatter = new Formatter(
-            $input->getOptions(),
-            ['id', 'name', 'version', 'status', 'types']
+        return $this->displayFormattedRows(
+            $input,
+            array_values($transformedPlugins),
+            ['id', 'name', 'version', 'status', 'types'],
+            self::LIST_FIELDS
         );
-        $formatter->display(array_values($transformedPlugins), $this->io());
-
-        return self::SUCCESS;
     }
 
     /**

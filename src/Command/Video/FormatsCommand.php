@@ -21,6 +21,7 @@ use function KVS\CLI\Utils\format_bytes;
 class FormatsCommand extends BaseCommand
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml'];
+    private const FILE_LIST_FIELDS = ['format', 'postfix', 'file', 'size', 'dimensions', 'path'];
 
     protected function configure(): void
     {
@@ -174,13 +175,7 @@ HELP
         // Sort by format name
         usort($formats, fn($a, $b) => strcmp($a['format'], $b['format']));
 
-        // Default fields for display
-        $defaultFields = ['format', 'file', 'size', 'dimensions'];
-
-        $formatter = new Formatter($input->getOptions(), $defaultFields);
-        $formatter->display($formats, $this->io());
-
-        return self::SUCCESS;
+        return $this->displayFormattedRows($input, $formats, ['format', 'file', 'size', 'dimensions'], self::FILE_LIST_FIELDS);
     }
 
     private function checkFormats(InputInterface $input): int
@@ -375,9 +370,16 @@ HELP
 
         $defaultFields = ['format_id', 'title', 'postfix', 'status', 'group_id', 'access'];
 
-        $formatter = new Formatter($input->getOptions(), $defaultFields);
         /** @var list<array<string, mixed>> $formats */
-        $formatter->display($formats, $this->io());
+        $status = $this->displayFormattedRows(
+            $input,
+            $formats,
+            $defaultFields,
+            array_keys($formats[0] ?? [])
+        );
+        if ($status !== self::SUCCESS) {
+            return $status;
+        }
 
         if ($format === 'table' && !$this->hasFieldSelection($input)) {
             $this->io()->newLine();
