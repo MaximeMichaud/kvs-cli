@@ -850,7 +850,11 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $this->createTagTables($db);
-        $db->exec("INSERT INTO ktvs_tags VALUES (34, 'review', 'review', 1, '2024-01-01 00:00:00')");
+        $db->exec(
+            "INSERT INTO ktvs_tags (tag_id, tag, tag_dir, status_id, added_date, " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) " .
+            "VALUES (34, 'review', 'review', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
+        );
         $db->exec('INSERT INTO ktvs_tags_videos VALUES (34), (34), (34), (34)');
         $db->exec('INSERT INTO ktvs_tags_albums VALUES (34)');
         $db->exec('INSERT INTO ktvs_tags_posts VALUES (34)');
@@ -868,7 +872,11 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $this->createTagTables($db);
-        $db->exec("INSERT INTO ktvs_tags VALUES (39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00')");
+        $db->exec(
+            "INSERT INTO ktvs_tags (tag_id, tag, tag_dir, status_id, added_date, " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) " .
+            "VALUES (39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
+        );
 
         $tester = new CommandTester($this->createTagCommand($db));
         $tester->execute([
@@ -890,9 +898,10 @@ class ContentOutputRegressionTest extends TestCase
         $db = $this->createSqliteConnection();
         $this->createTagTables($db);
         $db->exec(
-            "INSERT INTO ktvs_tags VALUES " .
-            "(39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00'), " .
-            "(62, 'audio', 'audio', 1, '2024-01-01 00:00:00')"
+            "INSERT INTO ktvs_tags (tag_id, tag, tag_dir, status_id, added_date, " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES " .
+            "(39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0), " .
+            "(62, 'audio', 'audio', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
         );
 
         $tester = new CommandTester($this->createTagCommand($db));
@@ -915,8 +924,8 @@ class ContentOutputRegressionTest extends TestCase
         $this->createTagTables($db);
         $db->exec(
             "INSERT INTO ktvs_tags VALUES " .
-            "(34, 'review', 'review', 1, '2024-01-01 00:00:00'), " .
-            "(35, 'post only', 'post-only', 1, '2024-01-01 00:00:00')"
+            "(34, 'review', 'review', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0), " .
+            "(35, 'post only', 'post-only', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
         );
         $db->exec('INSERT INTO ktvs_tags_videos VALUES (34)');
         $db->exec('INSERT INTO ktvs_tags_posts VALUES (35)');
@@ -943,7 +952,9 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db->exec(
             'CREATE TABLE ktvs_tags ' .
-            '(tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, added_date TEXT)'
+            '(tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, added_date TEXT, ' .
+            'total_content_sources INTEGER, total_playlists INTEGER, total_models INTEGER, ' .
+            'total_dvds INTEGER, total_dvd_groups INTEGER)'
         );
         $tagRelations = ['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'];
         foreach ($tagRelations as $suffix) {

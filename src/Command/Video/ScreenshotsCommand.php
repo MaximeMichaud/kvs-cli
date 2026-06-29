@@ -93,13 +93,13 @@ HELP
             return self::FAILURE;
         }
 
-        $screenshotsBasePath = $this->config->getVideoSourcesPath();
+        $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($screenshotsBasePath === '') {
             $this->io()->error('Screenshots path not configured');
             return self::FAILURE;
         }
 
-        $screenshotsPath = $this->getVideoSourceScreenshotsDir($screenshotsBasePath, $videoId);
+        $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
 
         if (!is_dir($screenshotsPath)) {
             $this->io()->warning("Screenshots directory not found: $screenshotsPath");
@@ -345,11 +345,6 @@ HELP
     private function getVideoContentDir(string $basePath, string $videoId): string
     {
         return $basePath . '/' . $this->getDirById($videoId) . '/' . $videoId;
-    }
-
-    private function getVideoSourceScreenshotsDir(string $basePath, string $videoId): string
-    {
-        return $this->getVideoContentDir($basePath, $videoId) . '/screenshots';
     }
 
     private function getDirById(string $id): int

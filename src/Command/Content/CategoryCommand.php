@@ -317,7 +317,12 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
+            $stmt = $db->prepare("
+                SELECT c.*, cg.title as category_group
+                FROM {$this->table('categories')} c
+                LEFT JOIN {$this->table('categories_groups')} cg ON c.category_group_id = cg.category_group_id
+                WHERE c.category_id = :id
+            ");
             $stmt->execute(['id' => $id]);
             /** @var array<string, mixed>|false $category */
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -331,19 +336,20 @@ HELP
             $categoryTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
             $this->io()->section("Category: $categoryTitle");
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
-            $videoCountRaw = $stmt->fetchColumn();
-            $videoCount = is_numeric($videoCountRaw) ? (int) $videoCountRaw : 0;
-
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
-            $albumCountRaw = $stmt->fetchColumn();
-            $albumCount = is_numeric($albumCountRaw) ? (int) $albumCountRaw : 0;
+            $usage = $this->getCategoryUsageCounts($db, $id);
+            $videoCount = $usage['videos'] ?? 0;
+            $albumCount = $usage['albums'] ?? 0;
+            $postCount = $usage['posts'] ?? 0;
+            $otherCount = $this->getCategoryStoredOtherAmount($category);
+            $totalUsage = $videoCount + $albumCount + $postCount + $otherCount;
 
             $groupId = $category['category_group_id'] ?? 0;
             $groupIdInt = is_numeric($groupId) ? (int) $groupId : 0;
             $groupIdStr = $groupIdInt > 0 ? (string) $groupIdInt : 'None (Root)';
+            $groupTitle = $category['category_group'] ?? null;
+            $groupDisplay = $groupIdInt > 0
+                ? ((is_scalar($groupTitle) && (string) $groupTitle !== '') ? (string) $groupTitle . " (#$groupIdInt)" : "#$groupIdInt")
+                : 'None (Root)';
             $addedDate = $category['added_date'] ?? null;
             $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
 
@@ -353,10 +359,14 @@ HELP
             $info = [
                 ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
                 ['Title', $categoryTitle],
+                ['Group', $groupDisplay],
                 ['Group ID', $groupIdStr],
                 ['Status', StatusFormatter::category($statusId)],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
+                ['Posts', (string) $postCount],
+                ['Other', (string) $otherCount],
+                ['Total Usage', (string) $totalUsage],
                 ['Added', $addedDateStr],
             ];
 

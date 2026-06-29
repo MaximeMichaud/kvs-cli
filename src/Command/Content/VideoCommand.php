@@ -27,7 +27,7 @@ class VideoCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete|update)')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete|stats)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Video ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
@@ -89,9 +89,8 @@ HELP
             'list' => $this->listVideos($input),
             'show' => $this->showVideo($this->getStringArgument($input, 'id')),
             'delete' => $this->deleteVideo($this->getStringArgument($input, 'id'), $input),
-            'update' => $this->updateVideo($this->getStringArgument($input, 'id'), $input),
             'stats' => $this->showStats(),
-            default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'update', 'stats']),
+            default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'stats']),
         };
     }
 
@@ -619,19 +618,6 @@ HELP
                 throw new \RuntimeException("KVS refused to delete video #$videoId");
             }
         }, ['functions_servers.php', 'functions_admin.php']);
-    }
-
-    private function updateVideo(?string $id, InputInterface $input): int
-    {
-        if ($id === null || $id === '') {
-            $this->io()->error('Video ID is required');
-            return self::FAILURE;
-        }
-
-        $this->io()->error('Update functionality is not yet implemented');
-        $this->io()->note('Use the KVS admin panel to update videos for now.');
-
-        return self::FAILURE;
     }
 
     private function showStats(): int

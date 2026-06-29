@@ -422,9 +422,20 @@ HELP
         return $this->getRelationUsageSelectors('tags', 't', 'tag_id', self::TAG_RELATION_TABLES);
     }
 
-    private function getTagTotalUsageExpression(): string
+    private function getTagAdminTotalUsageExpression(): string
     {
-        return $this->getRelationTotalUsageAliasExpression(self::TAG_RELATION_TABLES);
+        $tagsTable = $this->table('tags');
+        return sprintf(
+            '((SELECT COUNT(*) FROM %1$s_videos WHERE tag_id = t.tag_id) +
+              (SELECT COUNT(*) FROM %1$s_albums WHERE tag_id = t.tag_id) +
+              (SELECT COUNT(*) FROM %1$s_posts WHERE tag_id = t.tag_id) +
+              COALESCE(t.total_content_sources, 0) +
+              COALESCE(t.total_playlists, 0) +
+              COALESCE(t.total_models, 0) +
+              COALESCE(t.total_dvds, 0) +
+              COALESCE(t.total_dvd_groups, 0))',
+            $tagsTable
+        );
     }
 
     private function getTagUsageAggregateSelectors(): string
@@ -688,15 +699,11 @@ HELP
             }
 
             // Usage stats
-            $usedTagSelects = [];
-            foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
-                $usedTagSelects[] = "SELECT tag_id FROM {$this->table('tags')}_{$suffix}";
-            }
-
-            $stmt = $db->query(sprintf(
-                "SELECT COUNT(DISTINCT tag_id) as used_tags FROM (%s) as used",
-                implode(' UNION ', $usedTagSelects)
-            ));
+            $totalUsageExpression = $this->getTagAdminTotalUsageExpression();
+            $stmt = $db->query("
+                SELECT SUM(CASE WHEN {$totalUsageExpression} > 0 THEN 1 ELSE 0 END) as used_tags
+                FROM {$this->table('tags')} t
+            ");
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to execute usage stats query');
             }
@@ -712,10 +719,9 @@ HELP
 
             // Top tags
             $usageSelectors = $this->getTagUsageSelectors();
-            $totalUsageExpression = $this->getTagTotalUsageExpression();
 
             $stmt = $db->query("
-                SELECT t.tag,
+                SELECT t.*,
                        {$usageSelectors}
                 FROM {$this->table('tags')} t
                 ORDER BY {$totalUsageExpression} DESC
@@ -756,8 +762,8 @@ HELP
                     $counts = $this->extractTagUsageCounts($tag);
                     $videoCount = $counts['videos'];
                     $albumCount = $counts['albums'];
-                    $total = array_sum($counts);
-                    $otherCount = $total - $videoCount - $albumCount;
+                    $otherCount = $counts['posts'] + $this->getTagStoredOtherAmount($tag);
+                    $total = $videoCount + $albumCount + $otherCount;
                     $rows[] = [
                         is_scalar($tagName) ? (string) $tagName : '',
                         $videoCount,

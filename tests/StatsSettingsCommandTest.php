@@ -162,6 +162,16 @@ PHP
         $this->assertStringContainsString('Unknown stats-settings action "unknown_action"', $display);
     }
 
+    public function testExperimentalPromptRefusalFails(): void
+    {
+        $this->tester->setInputs(['no']);
+        $this->tester->execute(['action' => 'show']);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Command aborted.', $display);
+    }
+
     /**
      * @param array<string, mixed> $params
      */

@@ -16,7 +16,7 @@ use function KVS\CLI\Utils\format_bytes;
 
 #[AsCommand(
     name: 'system:backup',
-    description: 'Create and restore KVS backups',
+    description: 'Create and list KVS backups',
     aliases: ['backup']
 )]
 class BackupCommand extends BaseCommand
@@ -29,18 +29,16 @@ class BackupCommand extends BaseCommand
     {
         $this
             ->setHelp(<<<'HELP'
-Create, list, and restore KVS backups.
+Create and list KVS backups.
 
 <info>EXAMPLES:</info>
   <comment>kvs system:backup --list</comment>
   <comment>kvs system:backup --list --format=json</comment>
   <comment>kvs system:backup --create --type=db</comment>
   <comment>kvs system:backup --create --type=files --output=/var/backups/kvs</comment>
-  <comment>kvs system:backup --restore=/var/backups/kvs/kvs_backup_full_2026-05-26_12-00-00_full.tar.gz</comment>
 HELP
             )
             ->addOption('create', null, InputOption::VALUE_NONE, 'Create a new backup')
-            ->addOption('restore', null, InputOption::VALUE_REQUIRED, 'Restore from backup file')
             ->addOption('list', null, InputOption::VALUE_NONE, 'List available backups')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Backup type (full|db|files)', 'full')
             ->addOption('output', null, InputOption::VALUE_REQUIRED, 'Output directory for backup')
@@ -56,11 +54,6 @@ HELP
             );
         }
 
-        $restoreOpt = $this->getStringOption($input, 'restore');
-        if ($restoreOpt !== null) {
-            return $this->restoreBackup($restoreOpt);
-        }
-
         if ($this->getBoolOption($input, 'list')) {
             return $this->listBackups(
                 $this->getStringOption($input, 'output'),
@@ -73,7 +66,6 @@ HELP
             '--create : Create a new backup',
             '--create --type=db : Create database backup only',
             '--create --type=files : Create files backup only',
-            '--restore=backup.tar.gz : Restore from backup',
             '--list : List available backups',
             '--list --output=/var/backups/kvs : List backups in a custom directory',
             '--list --format=json : List backups as JSON',
@@ -335,25 +327,6 @@ HELP
 
         $this->io()->error('Full backup archive failed: database or files backup is missing');
         return false;
-    }
-
-    private function restoreBackup(string $backupFile): int
-    {
-        if (!file_exists($backupFile)) {
-            $this->io()->error("Backup file not found: $backupFile");
-            return self::FAILURE;
-        }
-
-        $this->io()->warning('Restore operation will overwrite existing data!');
-
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
-            return self::SUCCESS;
-        }
-
-        $this->io()->info('Restoring from backup: ' . basename($backupFile));
-        $this->io()->error('Backup restore is not implemented yet.');
-
-        return self::FAILURE;
     }
 
     private function listBackups(?string $outputDir = null, string $format = 'table'): int

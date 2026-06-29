@@ -43,16 +43,16 @@ class ScreenshotsPathTest extends TestCase
 
         $output = $tester->getDisplay();
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('1.jpg', $output);
-        $this->assertStringNotContainsString('preview.jpg', $output);
-        $this->assertStringNotContainsString('320x180/0.jpg', $output);
+        $this->assertStringContainsString('preview.jpg', $output);
+        $this->assertStringContainsString('320x180/0.jpg', $output);
+        $this->assertStringNotContainsString('1.jpg', $output);
     }
 
     public function testNumericFirstArgumentListsScreenshots(): void
     {
-        $screenshotsDir = $this->tempDir . '/contents/videos_sources/1000/1234/screenshots';
+        $screenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
         mkdir($screenshotsDir, 0755, true);
-        file_put_contents($screenshotsDir . '/1.jpg', 'source');
+        file_put_contents($screenshotsDir . '/preview.jpg', 'preview');
 
         $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
         $tester = new CommandTester($command);
@@ -62,7 +62,7 @@ class ScreenshotsPathTest extends TestCase
 
         $output = $tester->getDisplay();
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('1.jpg', $output);
+        $this->assertStringContainsString('preview.jpg', $output);
     }
 
     public function testListFallsBackWhenConfiguredSourcesPathIsStale(): void
@@ -71,9 +71,9 @@ class ScreenshotsPathTest extends TestCase
             'content_path_videos_sources' => '/stale/videos_sources',
         ]);
 
-        $screenshotsDir = $this->tempDir . '/contents/videos_sources/1000/1234/screenshots';
+        $screenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
         mkdir($screenshotsDir, 0755, true);
-        file_put_contents($screenshotsDir . '/1.jpg', 'source');
+        file_put_contents($screenshotsDir . '/preview.jpg', 'preview');
 
         $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
         $tester = new CommandTester($command);
@@ -88,9 +88,9 @@ class ScreenshotsPathTest extends TestCase
         $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('1.jpg', $output);
+        $this->assertStringContainsString('preview.jpg', $output);
         $this->assertSame(
-            $this->tempDir . '/contents/videos_sources/1000/1234/screenshots/1.jpg',
+            $this->tempDir . '/contents/videos_screenshots/1000/1234/preview.jpg',
             $rows[0]['path'] ?? null
         );
         $this->assertStringNotContainsString('/stale/videos_sources', $output);

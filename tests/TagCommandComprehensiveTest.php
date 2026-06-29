@@ -494,6 +494,7 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Top 10 Most Used Tags', $output);
         $this->assertStringContainsString('4K', $output);
         $this->assertStringContainsString('tagged', $output);
+        $this->assertMatchesRegularExpression('/4K\W+2\W+1\W+10\W+13/', $output);
     }
 
     public function testInvalidAction(): void

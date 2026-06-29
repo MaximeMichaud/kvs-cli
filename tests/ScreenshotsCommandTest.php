@@ -64,9 +64,9 @@ class ScreenshotsCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('1.jpg', $output);
-        $this->assertStringNotContainsString('preview.png', $output);
-        $this->assertStringNotContainsString('320x180/001.jpg', $output);
+        $this->assertStringContainsString('preview.png', $output);
+        $this->assertStringContainsString('320x180/001.jpg', $output);
+        $this->assertStringNotContainsString('source-only.jpg', $output);
         $this->assertStringContainsString('1x1', $output);
     }
 
@@ -128,17 +128,17 @@ class ScreenshotsCommandTest extends TestCase
 
         if ($format === 'json') {
             $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertCount(1, $rows);
-            $this->assertSame(['1.jpg'], array_column($rows, 'filename'));
+            $this->assertCount(2, $rows);
+            $this->assertSame(['320x180/001.jpg', 'preview.png'], array_column($rows, 'filename'));
             return;
         }
 
         if ($format === 'count') {
-            $this->assertSame('1', trim($output));
+            $this->assertSame('2', trim($output));
             return;
         }
 
-        $this->assertStringContainsString('1.jpg', $output);
+        $this->assertStringContainsString('preview.png', $output);
     }
 
     public static function provideOutputFormats(): array
@@ -159,7 +159,7 @@ class ScreenshotsCommandTest extends TestCase
         ]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('1.jpg', $this->tester->getDisplay());
+        $this->assertStringContainsString('preview.png', $this->tester->getDisplay());
     }
 
     public function testUnknownActionFailsEvenWithVideoId(): void
@@ -174,7 +174,7 @@ class ScreenshotsCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertSame(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('Unknown screenshots action "unknown_action"', $output);
-        $this->assertStringNotContainsString('1.jpg', $output);
+        $this->assertStringNotContainsString('preview.png', $output);
     }
 
     public function testCommandHasExpectedOptions(): void
@@ -213,7 +213,7 @@ class ScreenshotsCommandTest extends TestCase
         );
         $this->assertIsString($image);
 
-        file_put_contents($sourceScreenshotsDir . '/1.jpg', $image);
+        file_put_contents($sourceScreenshotsDir . '/source-only.jpg', $image);
         file_put_contents($sourceScreenshotsDir . '/info.dat', serialize([1 => ['type' => 'uploaded']]));
         file_put_contents($generatedScreenshotsDir . '/preview.png', $image);
         file_put_contents($generatedScreenshotsDir . '/320x180/001.jpg', $image);

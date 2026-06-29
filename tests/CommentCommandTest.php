@@ -209,6 +209,17 @@ class CommentCommandTest extends TestCase
         $this->assertSame('GuestUser', $rows[0]['user']);
     }
 
+    public function testStatsUsesAnonymousUsernameForTopCommenters(): void
+    {
+        $this->tester->execute(['action' => 'stats']);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('GuestUser', $output);
+        $this->assertStringNotContainsString('Unknown', $output);
+    }
+
     public function testListCommentsSearch(): void
     {
         $this->tester->execute([
@@ -289,6 +300,20 @@ class CommentCommandTest extends TestCase
         $this->assertStringContainsString('Great test video', $output);
     }
 
+    public function testShowCommentUsesAnonymousUsernameForAnonymousUser(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('GuestUser', $output);
+        $this->assertStringNotContainsString('Guest                             ', $output);
+    }
+
     public function testShowCommentNotFound(): void
     {
         $this->tester->execute([
@@ -332,7 +357,7 @@ class CommentCommandTest extends TestCase
         $this->assertStringContainsString('Top 10 Commenters', $output);
         $this->assertStringContainsString('alice', $output);
         $this->assertStringContainsString('bob', $output);
-        $this->assertStringContainsString('Unknown', $output);
+        $this->assertStringContainsString('GuestUser', $output);
     }
 
     public function testPendingActionListsReviewNeededComments(): void

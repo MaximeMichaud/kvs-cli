@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\StatusCommand;
 use KVS\CLI\Config\Configuration;
+use KVS\CLI\Docker\DockerDetector;
 use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
@@ -96,6 +97,100 @@ class StatusCommandTest extends TestCase
         $this->assertStringContainsString('Version', $output);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testStatusMapsDockerStoragePathBeforeMeasuringContent(): void
+    {
+        $contentPath = $this->config->getContentPath();
+        mkdir($contentPath . '/videos_sources', 0755, true);
+
+        $docker = new class extends DockerDetector {
+            public function isKvsInDocker(): bool
+            {
+                return true;
+            }
+
+            public function mapHostPathToContainer(string $hostPath, string $service = 'php'): ?string
+            {
+                return '/container/contents';
+            }
+
+            public function exec(string $service, string $command, int $timeout = 10): ?string
+            {
+                if (str_contains($command, "test -d '/container/contents'")) {
+                    return "EXISTS\n";
+                }
+                if (str_contains($command, "du -sb '/container/contents/videos_sources'")) {
+                    return "123\n";
+                }
+                if (str_contains($command, "find '/container/contents/videos_sources'")) {
+                    return "2\n";
+                }
+
+                return null;
+            }
+
+            public function getPhpVersion(): ?string
+            {
+                return '8.1.0';
+            }
+
+            public function getPhpIni(string $setting): ?string
+            {
+                return match ($setting) {
+                    'memory_limit' => '256M',
+                    'max_execution_time' => '300',
+                    'upload_max_filesize', 'post_max_size' => '128M',
+                    default => '0',
+                };
+            }
+
+            public function isPhpExtensionLoaded(string $extension): ?bool
+            {
+                return true;
+            }
+
+            public function getPhpInfo(array $settings = [], array $extensions = []): array
+            {
+                return [
+                    'settings' => array_fill_keys($settings, '0'),
+                    'extensions' => array_fill_keys($extensions, true),
+                    'version' => '8.1.0',
+                ];
+            }
+
+            public function checkCache(): array
+            {
+                return ['available' => false, 'type' => null, 'memory_mb' => null];
+            }
+        };
+
+        $command = new class ($this->config, $docker) extends StatusCommand {
+            public function __construct(Configuration $config, private DockerDetector $fakeDocker)
+            {
+                parent::__construct($config);
+            }
+
+            protected function docker(): DockerDetector
+            {
+                return $this->fakeDocker;
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute([]);
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('(Docker: /container/contents)', $output);
+        $this->assertStringContainsString('123.00 B', $output);
+        $this->assertStringContainsString('2 files', $output);
+        $this->assertStringNotContainsString('Directory not accessible from PHP container', $output);
     }
 
     public function testStatusReadsKvsVersionFromVersionFile(): void

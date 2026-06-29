@@ -190,6 +190,21 @@ HELP
         return in_array($field, $fields, true);
     }
 
+    /**
+     * @param array<array-key, mixed> $comment
+     */
+    private function getCommentUsername(array $comment, string $fallback = 'Guest'): string
+    {
+        foreach (['username', 'anonymous_username'] as $field) {
+            $value = $comment[$field] ?? null;
+            if (is_scalar($value) && (string) $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        return $fallback;
+    }
+
     private function listComments(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
@@ -294,14 +309,9 @@ HELP
 
             // Transform comments to use standardized field names
             $transformedComments = array_map(function (array $comment): array {
-                $username = $comment['username'] ?? null;
-                if (!is_scalar($username) || (string) $username === '') {
-                    $username = $comment['anonymous_username'] ?? '';
-                }
-
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
-                    'username' => $username,
+                    'username' => $this->getCommentUsername($comment, ''),
                     'object_id' => $comment['object_id'] ?? 0,
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
@@ -369,7 +379,7 @@ HELP
 
             // Safe type extraction
             $commentIdVal = $comment['comment_id'] ?? 0;
-            $usernameVal = $comment['username'] ?? 'Guest';
+            $username = $this->getCommentUsername($comment);
             $emailVal = $comment['email'] ?? 'N/A';
             $objectTypeVal = $comment['object_type'] ?? '';
             $objectIdVal = $comment['object_id'] ?? 0;
@@ -379,7 +389,7 @@ HELP
 
             $info = [
                 ['ID', is_scalar($commentIdVal) ? (string) $commentIdVal : '0'],
-                ['User', is_scalar($usernameVal) ? (string) $usernameVal : 'Guest'],
+                ['User', $username],
                 ['User Email', is_scalar($emailVal) ? (string) $emailVal : 'N/A'],
                 ['Status', $approvalStatus],
                 ['Content Type', is_scalar($objectTypeVal) ? (string) $objectTypeVal : ''],
@@ -437,12 +447,12 @@ HELP
 
             // Top commenters
             $stmt = $db->query("
-                SELECT u.username,
+                SELECT COALESCE(NULLIF(u.username, ''), NULLIF(c.anonymous_username, ''), 'Unknown') as username,
                        COUNT(*) as comment_count
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.user_id IS NOT NULL
-                GROUP BY c.user_id
+                GROUP BY COALESCE(NULLIF(u.username, ''), NULLIF(c.anonymous_username, ''), 'Unknown')
                 ORDER BY comment_count DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
@@ -647,7 +657,7 @@ HELP
             $transformedComments = array_map(function (array $comment): array {
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
-                    'username' => $comment['username'] ?? $comment['anonymous_username'] ?? 'Guest',
+                    'username' => $this->getCommentUsername($comment),
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
@@ -701,8 +711,7 @@ HELP
             // Get comment details for confirmation
             $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
             $stmt = $db->prepare("
-                SELECT c.comment_id, c.object_id, c.object_type_id, c.user_id, c.comment,
-                       c.is_approved, c.is_review_needed,
+                SELECT c.*,
                        u.username,
                        {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
@@ -727,11 +736,11 @@ HELP
             foreach ($comments as $comment) {
                 $commentText = is_string($comment['comment']) ? $comment['comment'] : '';
                 $commentIdVal = $comment['comment_id'] ?? '';
-                $usernameVal = $comment['username'] ?? 'Guest';
+                $username = $this->getCommentUsername($comment);
                 $objectTypeVal = $comment['object_type'] ?? '';
                 $rows[] = [
                     is_scalar($commentIdVal) ? (string) $commentIdVal : '',
-                    is_scalar($usernameVal) ? (string) $usernameVal : 'Guest',
+                    $username,
                     is_scalar($objectTypeVal) ? (string) $objectTypeVal : '',
                     truncate($commentText, Constants::COMMENT_TRUNCATE_LENGTH),
                 ];
@@ -948,7 +957,7 @@ HELP
             // Get comment details for confirmation
             $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
             $stmt = $db->prepare("
-                SELECT c.comment_id, c.object_id, c.object_type_id, c.user_id, c.comment,
+                SELECT c.*,
                        u.username,
                        {$this->getCommentObjectSelectSql()}
                 FROM {$this->table('comments')} c
@@ -972,11 +981,11 @@ HELP
             foreach ($comments as $comment) {
                 $commentText = is_string($comment['comment']) ? $comment['comment'] : '';
                 $commentIdVal = $comment['comment_id'] ?? '';
-                $usernameVal = $comment['username'] ?? 'Guest';
+                $username = $this->getCommentUsername($comment);
                 $objectTypeVal = $comment['object_type'] ?? '';
                 $rows[] = [
                     is_scalar($commentIdVal) ? (string) $commentIdVal : '',
-                    is_scalar($usernameVal) ? (string) $usernameVal : 'Guest',
+                    $username,
                     is_scalar($objectTypeVal) ? (string) $objectTypeVal : '',
                     truncate($commentText, Constants::COMMENT_TRUNCATE_LENGTH),
                 ];

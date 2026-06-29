@@ -460,7 +460,12 @@ EOT
         }
 
         $docker = $this->targetDocker;
-        $useDocker = $docker !== null && $docker->isKvsInDocker();
+        $useDocker = false;
+        $dockerContentPath = $contentPath;
+        if ($docker !== null && $docker->isKvsInDocker()) {
+            $useDocker = true;
+            $dockerContentPath = $docker->mapHostPathToContainer($contentPath) ?? $contentPath;
+        }
 
         // Expected KVS directories with their labels
         $expectedDirs = [
@@ -492,7 +497,7 @@ EOT
             $label = $expectedDirs[$dir] ?? ucfirst(str_replace('_', ' ', $dir));
 
             if ($useDocker) {
-                $info = $this->getDirectorySizeDocker($path);
+                $info = $this->getDirectorySizeDocker(rtrim($dockerContentPath, '/') . '/' . $dir);
             } else {
                 $info = $this->getDirectorySizeLocal($path);
             }

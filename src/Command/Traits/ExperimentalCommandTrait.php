@@ -53,7 +53,7 @@ trait ExperimentalCommandTrait
 
         if (!$io->confirm('Do you understand and wish to continue?', false)) {
             $io->text('Command aborted.');
-            return Command::SUCCESS;
+            return Command::FAILURE;
         }
 
         return null;

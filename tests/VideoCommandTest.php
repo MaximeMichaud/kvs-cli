@@ -247,6 +247,19 @@ class VideoCommandTest extends TestCase
         $this->assertContains('video', $aliases);
     }
 
+    public function testVideoUpdateIsNotAdvertisedAsSupportedAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown video action "update"', $output);
+        $this->assertMatchesRegularExpression('/Available actions: list, show, delete,\s+stats/', $output);
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');

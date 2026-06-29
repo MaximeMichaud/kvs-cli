@@ -813,16 +813,7 @@ HELP
         $storage = [];
         $totalSize = 0;
 
-        // Define content directories to check (KVS naming convention)
-        $directories = [
-            'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
-            'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
-            'Albums' => Constants::CONTENT_ALBUMS_SOURCES,
-            'Categories' => Constants::CONTENT_CATEGORIES,
-            'Models' => Constants::CONTENT_MODELS,
-            'DVDs' => Constants::CONTENT_DVDS,
-            'Avatars' => Constants::CONTENT_AVATARS,
-        ];
+        $directories = $this->getContentStorageDirectories($contentPath);
 
         foreach ($directories as $label => $dir) {
             $path = $contentPath . '/' . $dir;
@@ -860,10 +851,15 @@ HELP
             return;
         }
 
+        $containerContentPath = $this->docker()->mapHostPathToContainer($contentPath) ?? $contentPath;
+
         // Check if path exists inside container
-        $checkResult = $this->docker()->exec('php', 'test -d ' . escapeshellarg($contentPath) . ' && echo "EXISTS" || echo "MISSING"');
+        $checkResult = $this->docker()->exec('php', 'test -d ' . escapeshellarg($containerContentPath) . ' && echo "EXISTS" || echo "MISSING"');
         if ($checkResult === null || trim($checkResult) !== 'EXISTS') {
             $this->io()->text("Content path: $contentPath (inside container)");
+            if ($containerContentPath !== $contentPath) {
+                $this->io()->text("Container path: $containerContentPath");
+            }
             $this->io()->text('Directory not accessible from PHP container.');
             return;
         }
@@ -871,18 +867,12 @@ HELP
         $storage = [];
         $totalSize = 0;
 
-        $directories = [
-            'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
-            'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
-            'Albums' => Constants::CONTENT_ALBUMS_SOURCES,
-            'Categories' => Constants::CONTENT_CATEGORIES,
-            'Models' => Constants::CONTENT_MODELS,
-            'DVDs' => Constants::CONTENT_DVDS,
-            'Avatars' => Constants::CONTENT_AVATARS,
-        ];
+        $directories = is_dir($contentPath)
+            ? $this->getContentStorageDirectories($contentPath)
+            : $this->getDockerContentStorageDirectories($containerContentPath);
 
         foreach ($directories as $label => $dir) {
-            $path = $contentPath . '/' . $dir;
+            $path = $containerContentPath . '/' . $dir;
 
             // Get size via du command in container
             $sizeResult = $this->docker()->exec('php', "du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
@@ -907,8 +897,97 @@ HELP
         $storage[] = ['---', '---', '---'];
         $storage[] = ['Total Content', format_bytes($totalSize), ''];
 
-        $this->io()->text("Content path: $contentPath (Docker)");
+        $pathLabel = $containerContentPath === $contentPath
+            ? "Content path: $contentPath (Docker)"
+            : "Content path: $contentPath (Docker: $containerContentPath)";
+        $this->io()->text($pathLabel);
         $this->renderTable(['Type', 'Size', 'Files'], $storage);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getContentStorageDirectories(string $contentPath): array
+    {
+        $directories = [];
+        $handle = opendir($contentPath);
+        if ($handle === false) {
+            return $this->getDefaultContentStorageDirectories();
+        }
+
+        while (($entry = readdir($handle)) !== false) {
+            if ($entry !== '.' && $entry !== '..' && is_dir($contentPath . '/' . $entry)) {
+                $directories[$this->getContentStorageLabel($entry)] = $entry;
+            }
+        }
+        closedir($handle);
+        ksort($directories, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $directories !== [] ? $directories : $this->getDefaultContentStorageDirectories();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getDockerContentStorageDirectories(string $containerContentPath): array
+    {
+        $listResult = $this->docker()->exec(
+            'php',
+            "find " . escapeshellarg($containerContentPath) . " -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null"
+        );
+        if ($listResult === null || trim($listResult) === '') {
+            return $this->getDefaultContentStorageDirectories();
+        }
+
+        $directories = [];
+        foreach (explode("\n", trim($listResult)) as $dir) {
+            $dir = trim($dir);
+            if ($dir !== '') {
+                $directories[$this->getContentStorageLabel($dir)] = $dir;
+            }
+        }
+        ksort($directories, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $directories !== [] ? $directories : $this->getDefaultContentStorageDirectories();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getDefaultContentStorageDirectories(): array
+    {
+        return [
+            'Videos' => Constants::CONTENT_VIDEOS,
+            'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
+            'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
+            'Albums' => Constants::CONTENT_ALBUMS_SOURCES,
+            'Categories' => Constants::CONTENT_CATEGORIES,
+            'Content sources' => 'content_sources',
+            'Models' => Constants::CONTENT_MODELS,
+            'DVDs' => Constants::CONTENT_DVDS,
+            'Posts' => 'posts',
+            'Avatars' => Constants::CONTENT_AVATARS,
+            'Referers' => 'referers',
+        ];
+    }
+
+    private function getContentStorageLabel(string $dir): string
+    {
+        $labels = [
+            Constants::CONTENT_VIDEOS => 'Videos',
+            Constants::CONTENT_VIDEOS_SOURCES => 'Videos Sources',
+            Constants::CONTENT_VIDEOS_SCREENSHOTS => 'Screenshots',
+            Constants::CONTENT_ALBUMS_SOURCES => 'Albums',
+            Constants::CONTENT_CATEGORIES => 'Categories',
+            'content_sources' => 'Content sources',
+            Constants::CONTENT_MODELS => 'Models',
+            Constants::CONTENT_DVDS => 'DVDs',
+            'posts' => 'Posts',
+            Constants::CONTENT_AVATARS => 'Avatars',
+            'referers' => 'Referers',
+        ];
+
+        return $labels[$dir] ?? ucfirst(str_replace('_', ' ', $dir));
     }
 
     private function getDirectorySize(string $path): int
