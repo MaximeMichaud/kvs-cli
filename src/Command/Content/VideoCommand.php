@@ -24,6 +24,20 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class VideoCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'search',
+        'category',
+        'category-group',
+        'tag',
+        'model',
+        'content-source',
+        'dvd',
+        'playlist',
+        'user',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -479,6 +493,10 @@ HELP
     {
         $videoId = $this->getRequiredPositiveId($id, 'Video');
         if ($videoId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

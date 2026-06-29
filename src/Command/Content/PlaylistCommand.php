@@ -22,6 +22,21 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class PlaylistCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'user',
+        'public',
+        'private',
+        'search',
+        'category',
+        'tag',
+        'title',
+        'description',
+        'dir',
+        'video',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -360,6 +375,10 @@ HELP
     {
         $playlistId = $this->getRequiredPositiveId($id, 'Playlist');
         if ($playlistId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

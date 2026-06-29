@@ -24,6 +24,14 @@ class TagCommand extends BaseCommand
     use RelationUsageTrait;
     use ToggleStatusTrait;
 
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'name',
+        'status',
+        'search',
+        'unused',
+    ];
+
     /** @var array<string, string> */
     private const TAG_RELATION_TABLES = [
         'videos' => 'video_id',
@@ -246,6 +254,10 @@ HELP
     {
         if ($id === null || $id === '') {
             $this->io()->error('Tag ID or name is required');
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

@@ -20,6 +20,19 @@ use function KVS\CLI\Utils\truncate;
 )]
 class CommentCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'video',
+        'album',
+        'user',
+        'search',
+        'oldest',
+        'approved',
+        'pending',
+        'all',
+        'yes',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -439,6 +452,10 @@ HELP
 
         $commentId = $this->getRequiredPositiveId($id, 'Comment');
         if ($commentId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

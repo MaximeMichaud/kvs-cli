@@ -22,6 +22,17 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class AlbumCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'user',
+        'category',
+        'tag',
+        'model',
+        'content-source',
+        'search',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -428,6 +439,10 @@ HELP
     {
         $albumId = $this->getRequiredPositiveId($id, 'Album');
         if ($albumId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

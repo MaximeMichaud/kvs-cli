@@ -20,6 +20,12 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class DvdCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'search',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -257,6 +263,10 @@ HELP
     {
         $dvdId = $this->getRequiredPositiveId($id, 'DVD');
         if ($dvdId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 

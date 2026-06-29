@@ -20,6 +20,12 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class ModelCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const SHOW_UNSUPPORTED_OPTIONS = [
+        'status',
+        'search',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -258,6 +264,10 @@ HELP
     {
         $modelId = $this->getRequiredPositiveId($id, 'Model');
         if ($modelId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
             return self::FAILURE;
         }
 
