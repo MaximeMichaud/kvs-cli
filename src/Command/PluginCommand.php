@@ -18,6 +18,7 @@ class PluginCommand extends BaseCommand
 {
     private const HIDDEN_PLUGIN_IDS = ['push_notifications', 'awe_black_label'];
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count', 'ids'];
+    private const LIST_FILTER_OPTIONS = ['status', 'type'];
 
     protected function configure(): void
     {
@@ -261,6 +262,10 @@ HELP
 
     private function showPlugin(?string $id, InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'show', self::LIST_FILTER_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         if ($id === null || $id === "") {
             $this->io()->error('Plugin ID is required');
             $this->io()->text('Usage: kvs plugin show <plugin_id>');
@@ -359,6 +364,10 @@ HELP
 
     private function showPluginPath(?string $id, InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'path', self::LIST_FILTER_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         if ($id === null || $id === "") {
             $this->io()->error('Plugin ID is required');
             return self::FAILURE;
@@ -388,6 +397,10 @@ HELP
 
     private function showStatus(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'status', self::LIST_FILTER_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $plugins = $this->getAllPlugins();
 
         $total = count($plugins);

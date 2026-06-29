@@ -81,6 +81,57 @@ class OptionsCommandTest extends TestCase
         $this->assertStringContainsString('Dimension (WxH)', $display);
     }
 
+    public function testListRejectsSetOnlyYesOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('list action does not support --yes', $display);
+    }
+
+    public function testGetRejectsSetOnlyYesOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('get action does not support --yes', $display);
+        $this->assertStringNotContainsString('ENABLE_DVD_FIELD_1', $display);
+    }
+
+    public function testSetRejectsListOnlyFiltersBeforeUpdatingOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            'value' => '0',
+            '--prefix' => 'ENABLE',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $value = $this->db->query(
+            'SELECT value FROM ' . TestHelper::table('options') . " WHERE variable = 'ENABLE_DVD_FIELD_1'"
+        )->fetchColumn();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('set action does not support --prefix', $display);
+        $this->assertSame('1', $value);
+    }
+
     public function testListRejectsConflictingEnabledDisabledFilters(): void
     {
         $this->tester->execute([

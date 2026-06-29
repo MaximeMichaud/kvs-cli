@@ -22,6 +22,7 @@ class OptionsCommand extends BaseCommand
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
     private const LIST_ONLY_OPTIONS = ['prefix', 'category', 'search', 'with-value', 'enabled', 'disabled'];
+    private const SET_ONLY_OPTIONS = ['yes'];
 
     /**
      * Serialized KVS settings files that duplicate selected ktvs_options values.
@@ -139,6 +140,9 @@ HELP
 
     private function listOptions(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'list', self::SET_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
         if ($this->hasConflictingBoolOptions($input, ['enabled', 'disabled'])) {
             return self::FAILURE;
         }
@@ -257,6 +261,9 @@ HELP
 
     private function getOption(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'get', self::SET_ONLY_OPTIONS)) {
+            return self::FAILURE;
+        }
         if ($this->rejectListOnlyOptions($input, 'get')) {
             return self::FAILURE;
         }
@@ -372,6 +379,10 @@ HELP
 
     private function setOption(InputInterface $input): int
     {
+        if ($this->rejectListOnlyOptions($input, 'set')) {
+            return self::FAILURE;
+        }
+
         $name = $this->getStringArgument($input, 'name');
         $value = $this->getStringArgument($input, 'value');
 

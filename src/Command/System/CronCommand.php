@@ -61,15 +61,30 @@ HELP
             return self::FAILURE;
         }
 
+        $task = $this->getStringArgument($input, 'task');
+
         if ($this->getBoolOption($input, 'list')) {
+            if ($task !== null && $task !== '') {
+                $this->io()->error(
+                    'The list action does not support a task argument. Remove the task or run it without --list.'
+                );
+                return self::FAILURE;
+            }
+
             return $this->listCronTasks();
         }
 
         if ($this->getBoolOption($input, 'status')) {
+            if ($task !== null && $task !== '') {
+                $this->io()->error(
+                    'The status action does not support a task argument. Remove the task or run it without --status.'
+                );
+                return self::FAILURE;
+            }
+
             return $this->showCronStatus();
         }
 
-        $task = $this->getStringArgument($input, 'task');
         if ($task !== null) {
             return $this->runSpecificTask($task);
         }

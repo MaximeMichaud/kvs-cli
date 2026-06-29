@@ -43,11 +43,19 @@ HELP
         }
 
         if ($this->getBoolOption($input, 'stats')) {
+            if ($this->rejectUnsupportedOptions($input, 'stats', ['type'])) {
+                return self::FAILURE;
+            }
+
             return $this->showStats();
         }
 
         if ($this->getBoolOption($input, 'clear')) {
             return $this->clearCache($this->getStringOption($input, 'type'));
+        }
+
+        if ($this->rejectUnsupportedOptions($input, 'default', ['type'])) {
+            return self::FAILURE;
         }
 
         $this->io()->info('Available options:');

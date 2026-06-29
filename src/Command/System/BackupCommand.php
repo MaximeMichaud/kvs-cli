@@ -48,7 +48,15 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['create', 'list'])) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'create')) {
+            if ($this->rejectUnsupportedOptions($input, 'create', ['format'])) {
+                return self::FAILURE;
+            }
+
             return $this->createBackup(
                 $this->getStringOptionOrDefault($input, 'type', 'full'),
                 $this->getStringOption($input, 'output')
@@ -56,6 +64,10 @@ HELP
         }
 
         if ($this->getBoolOption($input, 'list')) {
+            if ($this->rejectUnsupportedOptions($input, 'list', ['type'])) {
+                return self::FAILURE;
+            }
+
             return $this->listBackups(
                 $this->getStringOption($input, 'output'),
                 $this->getStringOptionOrDefault($input, 'format', 'table')

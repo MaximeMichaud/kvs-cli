@@ -111,6 +111,40 @@ SH
         $this->assertDirectoryDoesNotExist($outputDir);
     }
 
+    public function testBackupCreateAndListCannotBeCombined(): void
+    {
+        $outputDir = $this->rootDir . '/conflicting-mode-output';
+
+        $this->tester->execute([
+            '--create' => true,
+            '--list' => true,
+            '--output' => $outputDir,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Options --create and --list cannot be used together', $output);
+        $this->assertDirectoryDoesNotExist($outputDir);
+    }
+
+    public function testBackupCreateRejectsListOnlyFormatBeforeCreatingOutputDirectory(): void
+    {
+        $outputDir = $this->rootDir . '/create-format-output';
+
+        $this->tester->execute([
+            '--create' => true,
+            '--format' => 'json',
+            '--output' => $outputDir,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('create action does not support --format', $output);
+        $this->assertDirectoryDoesNotExist($outputDir);
+    }
+
     public function testDatabaseBackupSplitsHostPortForDumpCommand(): void
     {
         $previousHost = getenv('KVS_DB_HOST');
@@ -507,6 +541,26 @@ SH
         $output = $this->tester->getDisplay();
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
         $this->assertSame("2\n", $output);
+    }
+
+    public function testBackupListRejectsCreateOnlyType(): void
+    {
+        $customBackupsDir = $this->rootDir . '/custom-backups-type';
+        mkdir($customBackupsDir, 0755, true);
+        file_put_contents($customBackupsDir . '/kvs_backup_db_2026-05-27.sql.gz', 'test');
+
+        $this->tester->execute([
+            '--list' => true,
+            '--output' => $customBackupsDir,
+            '--type' => 'db',
+            '--format' => 'count',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support --type', $output);
+        $this->assertNotSame("1\n", $output);
     }
 
     public function testBackupListRejectsUnknownFormat(): void

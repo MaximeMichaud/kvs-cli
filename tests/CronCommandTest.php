@@ -120,6 +120,20 @@ SH
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testCronListRejectsTaskArgument(): void
+    {
+        $this->tester->execute([
+            'task' => 'main',
+            '--list' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('list action does not support a task argument', $output);
+        $this->assertStringNotContainsString('cron.php', $output);
+    }
+
     public function testCronRunSupportsScriptBasenameAliases(): void
     {
         $this->tester->execute(['task' => 'cron_plugins']);
@@ -152,6 +166,20 @@ SH
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Database configuration missing', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testCronStatusRejectsTaskArgumentBeforeDatabaseLookup(): void
+    {
+        $this->tester->execute([
+            'task' => 'main',
+            '--status' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('status action does not support a task argument', $output);
+        $this->assertStringNotContainsString('Database configuration missing', $output);
     }
 
     public function testCronListAndStatusCannotBeCombined(): void

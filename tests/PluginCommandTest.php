@@ -453,6 +453,22 @@ class PluginCommandTest extends TestCase
         $this->assertSame('Active', $rows[0]['status'] ?? null);
     }
 
+    public function testShowRejectsListFilters(): void
+    {
+        foreach (['status' => 'active', 'type' => 'api'] as $option => $value) {
+            $exitCode = $this->tester->execute([
+                'action' => 'show',
+                'id' => 'backup',
+                '--' . $option => $value,
+            ]);
+            $output = $this->tester->getDisplay();
+
+            $this->assertEquals(1, $exitCode, $output);
+            $this->assertStringContainsString("show action does not support --$option", $output);
+            $this->assertStringNotContainsString('"id": "backup"', $output);
+        }
+    }
+
     public function testShowWithoutId(): void
     {
         $exitCode = $this->tester->execute(['action' => 'show']);
@@ -511,6 +527,22 @@ class PluginCommandTest extends TestCase
         $this->assertSame('backup', $rows[0]['id'] ?? null);
         $this->assertStringContainsString('/admin/plugins/backup', $rows[0]['path'] ?? '');
         $this->assertStringNotContainsString('Plugin directory:', $output);
+    }
+
+    public function testPathRejectsListFilters(): void
+    {
+        foreach (['status' => 'active', 'type' => 'api'] as $option => $value) {
+            $exitCode = $this->tester->execute([
+                'action' => 'path',
+                'id' => 'backup',
+                '--' . $option => $value,
+            ]);
+            $output = $this->tester->getDisplay();
+
+            $this->assertEquals(1, $exitCode, $output);
+            $this->assertStringContainsString("path action does not support --$option", $output);
+            $this->assertStringNotContainsString('/admin/plugins/backup', $output);
+        }
     }
 
     public function testPathWithoutId(): void
@@ -584,6 +616,21 @@ class PluginCommandTest extends TestCase
         $this->assertSame('overall', $rowsByMetric['Total Plugins']['section'] ?? null);
         $this->assertSame(4, (int) ($rowsByMetric['Total Plugins']['value'] ?? 0));
         $this->assertStringNotContainsString('Plugin Statistics', $this->tester->getDisplay());
+    }
+
+    public function testStatusRejectsListFilters(): void
+    {
+        foreach (['status' => 'active', 'type' => 'api'] as $option => $value) {
+            $exitCode = $this->tester->execute([
+                'action' => 'status',
+                '--' . $option => $value,
+            ]);
+            $output = $this->tester->getDisplay();
+
+            $this->assertEquals(1, $exitCode, $output);
+            $this->assertStringContainsString("status action does not support --$option", $output);
+            $this->assertStringNotContainsString('Total Plugins', $output);
+        }
     }
 
     public function testTypeFilterIsValidatedBeforeStatusFilterCanEmptyResults(): void

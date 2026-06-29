@@ -150,6 +150,20 @@ class CacheCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testCacheStatsRejectsClearOnlyType(): void
+    {
+        $this->tester->execute([
+            '--stats' => true,
+            '--type' => 'db',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('stats action does not support --type', $output);
+        $this->assertStringNotContainsString('Engine cache', $output);
+    }
+
     public function testCacheStatsAndClearCannotBeCombined(): void
     {
         $this->tester->execute([
@@ -174,5 +188,16 @@ class CacheCommandTest extends TestCase
         $this->assertStringContainsString('--clear', $output);
         $this->assertStringContainsString('--stats', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testCacheNoActionRejectsClearOnlyType(): void
+    {
+        $this->tester->execute(['--type' => 'db']);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('default action does not support --type', $output);
+        $this->assertStringNotContainsString('Available options', $output);
     }
 }
