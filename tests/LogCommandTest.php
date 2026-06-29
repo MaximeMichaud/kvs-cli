@@ -90,6 +90,30 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogListIncludesNestedKvsLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/logs/plugins', 0755, true);
+        file_put_contents($this->tempDir . '/admin/logs/plugins/backup.txt', "[2024-01-01] INFO: Backup done\n");
+
+        $this->tester->execute(['--list' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertMatchesRegularExpression('/│\s*plugins\/backup\s*│\s*plugins\/backup\.txt\s*│/', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogListIncludesConversionServerLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/data/conversion', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/conversion/cron_log.txt', "[2024-01-01] INFO: Conversion cron\n");
+
+        $this->tester->execute(['--list' => true]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertMatchesRegularExpression('/│\s*conversion\/cron_log\s*│\s*conversion\/cron_log\.txt\s*│/', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
     public function testLogViewSpecificType(): void
     {
         $this->tester->execute(['type' => 'system']);
@@ -119,8 +143,59 @@ class LogCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Email sent', $output);
         $this->assertStringContainsString('data', $output);
-        $this->assertStringContainsString('/logs/email.txt', $output);
+        $this->assertOutputContainsWrappedPath('/logs/email.txt', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewReadsNestedKvsLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/logs/plugins', 0755, true);
+        file_put_contents($this->tempDir . '/admin/logs/plugins/backup.txt', "[2024-01-01] INFO: Backup done\n");
+
+        $this->tester->execute(['type' => 'plugins/backup']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Backup done', $output);
+        $this->assertOutputContainsWrappedPath('plugins/backup.txt', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewReadsConversionServerLogs(): void
+    {
+        mkdir($this->tempDir . '/admin/data/conversion', 0755, true);
+        file_put_contents($this->tempDir . '/admin/data/conversion/cron_log.txt', "[2024-01-01] INFO: Conversion cron\n");
+
+        $this->tester->execute(['type' => 'conversion/cron_log']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Conversion cron', $output);
+        $this->assertOutputContainsWrappedPath('conversion/cron_log.txt', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewAcceptsListedNestedLogFile(): void
+    {
+        mkdir($this->tempDir . '/admin/logs/plugins', 0755, true);
+        file_put_contents($this->tempDir . '/admin/logs/plugins/backup.txt', "[2024-01-01] INFO: Backup done\n");
+
+        $this->tester->execute(['type' => 'plugins/backup.txt']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('Backup done', $output);
+        $this->assertStringContainsString('plugins/backup.txt', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogViewRejectsParentDirectorySegments(): void
+    {
+        file_put_contents($this->tempDir . '/admin/include/private.txt', "SECRET-CONTENT\n");
+
+        $this->tester->execute(['type' => '../include/private']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringNotContainsString('SECRET-CONTENT', $output);
+        $this->assertStringContainsString('not found', strtolower($output));
+        $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
     public function testLogTail(): void
@@ -134,6 +209,21 @@ class LogCommandTest extends TestCase
         // Shows the log content
         $this->assertStringContainsString('Log: system', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testLogTailRejectsInvalidLineCounts(): void
+    {
+        foreach (['-1', '0', 'abc', '1.5'] as $tail) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'type' => 'system',
+                '--tail' => $tail,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tail . ': ' . $tester->getDisplay());
+            $this->assertStringContainsString('Invalid value for --tail', $tester->getDisplay(), $tail);
+            $this->assertStringNotContainsString('System started', $tester->getDisplay(), $tail);
+        }
     }
 
     public function testLogClear(): void
@@ -168,6 +258,21 @@ class LogCommandTest extends TestCase
         $this->assertSame($originalContent, file_get_contents($logFile));
     }
 
+    public function testLogListAndClearCannotBeCombined(): void
+    {
+        $this->tester->execute([
+            '--list' => true,
+            '--clear' => true,
+            '--no-interaction' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $output);
+        $this->assertStringNotContainsString('system.log', $output);
+    }
+
     public function testFollowReadsReplacementLogFromBeginning(): void
     {
         $logFile = $this->tempDir . '/admin/logs/system.log';
@@ -194,5 +299,12 @@ class LogCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('not found', strtolower($output));
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    private function assertOutputContainsWrappedPath(string $expectedPath, string $output): void
+    {
+        $normalizedOutput = preg_replace('/\s+/', '', $output) ?? '';
+
+        $this->assertStringContainsString($expectedPath, $normalizedOutput);
     }
 }

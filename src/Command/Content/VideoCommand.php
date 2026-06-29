@@ -27,13 +27,19 @@ class VideoCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete|update)')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete|stats)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Video ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error)')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error|processing|deleting|deleted)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles')
-            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID')
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles, directories, and descriptions')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('category-group', null, InputOption::VALUE_REQUIRED, 'Filter by category group ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
+            ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
+            ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID or title')
+            ->addOption('dvd', null, InputOption::VALUE_REQUIRED, 'Filter by DVD ID or title')
+            ->addOption('playlist', null, InputOption::VALUE_REQUIRED, 'Filter by playlist ID or title')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
             ->addOption('stats', null, InputOption::VALUE_NONE, 'Show video statistics')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
@@ -53,7 +59,9 @@ Manage KVS videos.
   rating          Rating (out of 5)
   filesize        File size
   resolution      Resolution type (SD/HD/FHD/4K+)
-  is_private      Access level (Public/Private/Premium)
+  is_private      Access type (Public/Private/Premium)
+  type            Access type alias (Public/Private/Premium)
+  access          Access level (From access type/All users/Only members/Only premium members)
   favourites      Favourites count
 
 <fg=yellow>EXAMPLES:</>
@@ -78,7 +86,7 @@ HELP
         $action = $this->getStringArgument($input, 'action');
 
         if ($this->getBoolOption($input, 'stats')) {
-            return $this->showStats();
+            return $this->showStats($input);
         }
 
         if ($action === null || $action === '') {
@@ -87,11 +95,10 @@ HELP
 
         return match ($action) {
             'list' => $this->listVideos($input),
-            'show' => $this->showVideo($this->getStringArgument($input, 'id')),
+            'show' => $this->showVideo($this->getStringArgument($input, 'id'), $input),
             'delete' => $this->deleteVideo($this->getStringArgument($input, 'id'), $input),
-            'update' => $this->updateVideo($this->getStringArgument($input, 'id'), $input),
-            'stats' => $this->showStats(),
-            default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'update', 'stats']),
+            'stats' => $this->showStats($input),
+            default => $this->failUnknownAction('video', $action, ['list', 'show', 'delete', 'stats']),
         };
     }
 
@@ -108,39 +115,14 @@ HELP
 
         $params = [];
 
-        $status = $this->getStringOption($input, 'status');
-        if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
-                'active' => StatusFormatter::VIDEO_ACTIVE,
-                'disabled' => StatusFormatter::VIDEO_DISABLED,
-                'error' => StatusFormatter::VIDEO_ERROR,
-            ], [0, 1, 2, 3, 4, 5]);
-            if ($statusId !== null) {
-                $whereSql .= " AND v.status_id = :status";
-                $params['status'] = $statusId;
-            }
-        }
-
-        $search = $this->getStringOption($input, 'search');
-        if ($search !== null) {
-            $whereSql .= " AND v.title LIKE :search";
-            $params['search'] = "%$search%";
-        }
-
-        $category = $this->getIntOption($input, 'category');
-        if ($category !== null) {
-            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
-                . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
-            $params['category'] = $category;
-        }
-
-        $user = $this->getIntOption($input, 'user');
-        if ($user !== null) {
-            $whereSql .= " AND v.user_id = :user";
-            $params['user'] = $user;
+        if (!$this->applyVideoListFilters($db, $input, $whereSql, $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countVideos($db, "$fromSql $whereSql", $params);
         }
 
@@ -149,21 +131,16 @@ HELP
             'u.username',
             'v.video_viewed as views',
         ];
+        if ($this->isFieldRequested($input, 'user_status_id')) {
+            $selectFields[] = 'u.status_id as user_status_id';
+        }
         [$relationSelects, $relationJoinSql] = $this->buildVideoRelationSql($input);
         $selectFields = array_merge($selectFields, $relationSelects);
-        if ($this->isFieldRequested($input, 'comments_count')) {
-            $commentsTable = $this->table('comments');
-            $selectFields[] = "(
-                SELECT COUNT(*) FROM $commentsTable c
-                WHERE c.object_type_id = 1 AND c.object_id = v.video_id
-            ) as comments_count";
-        }
-
         $query = 'SELECT ' . implode(",\n                 ", $selectFields) . "
                  $fromSql
                  $relationJoinSql
                  $whereSql
-                 ORDER BY v.post_date DESC LIMIT :limit";
+                 ORDER BY v.video_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -179,18 +156,26 @@ HELP
 
             /** @var list<array<string, mixed>> $videos */
             $videos = $stmt->fetchAll();
-            $videos = $this->appendVideoListFields($db, $input, $videos);
+
+            $thumbFormat = $this->isFieldRequested($input, 'thumb') ? $this->getVideoThumbFormat($db) : null;
+            $thumbBaseUrl = $thumbFormat !== null ? $this->getVideoThumbBaseUrl() : null;
 
             // Transform data for display (field aliases and calculated values)
-            $videos = array_map(function (array $video): array {
+            $videos = array_map(function (array $video) use ($thumbFormat, $thumbBaseUrl): array {
                 // Add field aliases
                 $video['id'] = $video['video_id'];
                 $statusId = isset($video['status_id']) && is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
                 $video['status'] = StatusFormatter::video($statusId, false);
+                $video['is_error'] = $statusId === 2 ? 1 : 0;
                 $privacyId = isset($video['is_private']) && is_numeric($video['is_private']) ? (int) $video['is_private'] : 0;
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
+                $accessLevelId = isset($video['access_level_id']) && is_numeric($video['access_level_id'])
+                    ? (int) $video['access_level_id']
+                    : 0;
                 $video['is_private'] = $privacy;
-                $video['access'] = $privacy;
+                $video['type'] = $privacy;
+                $video['access_level_id'] = $accessLevelId;
+                $video['access'] = StatusFormatter::contentAccessLevel($accessLevelId, false);
                 $resolutionType = isset($video['resolution_type']) && is_numeric($video['resolution_type'])
                     ? (int) $video['resolution_type']
                     : 0;
@@ -209,7 +194,16 @@ HELP
                 if (array_key_exists('r_ctr', $video) && is_numeric($video['r_ctr'])) {
                     $video['r_ctr'] = round((float) $video['r_ctr'] * 100, 4);
                 }
+                if (array_key_exists('ip', $video)) {
+                    $video['ip'] = $this->formatKvsIp($video['ip']);
+                }
 
+                $video['thumb'] = $this->formatVideoThumb($video, $thumbFormat, $thumbBaseUrl);
+                $video['website_link'] = $this->buildKvsWebsiteLink(
+                    $video,
+                    'video_id',
+                    'WEBSITE_LINK_PATTERN'
+                );
                 $video['rating'] = format_kvs_rating($video['rating'] ?? 0, $video['rating_amount'] ?? 0);
 
                 return $video;
@@ -253,19 +247,25 @@ HELP
         $selects = [];
         $joins = [];
 
-        if ($this->isFieldRequested($input, 'content_source')) {
+        if (
+            $this->isFieldRequested($input, 'content_source')
+            || $this->isFieldRequested($input, 'content_source_status_id')
+        ) {
             $selects[] = 'cs.title as content_source';
             $selects[] = 'cs.status_id as content_source_status_id';
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = v.content_source_id";
         }
 
-        if ($this->isFieldRequested($input, 'admin_user')) {
+        if (
+            $this->isFieldRequested($input, 'admin_user')
+            || $this->isFieldRequested($input, 'admin_user_is_superadmin')
+        ) {
             $selects[] = 'au.login as admin_user';
             $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
             $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = v.admin_user_id";
         }
 
-        if ($this->isFieldRequested($input, 'dvd')) {
+        if ($this->isFieldRequested($input, 'dvd') || $this->isFieldRequested($input, 'dvd_status_id')) {
             $selects[] = 'd.title as dvd';
             $selects[] = 'd.status_id as dvd_status_id';
             $joins[] = "LEFT JOIN {$this->table('dvds')} d ON d.dvd_id = v.dvd_id";
@@ -276,7 +276,10 @@ HELP
             $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = v.admin_flag_id";
         }
 
-        if ($this->isFieldRequested($input, 'server_group')) {
+        if (
+            $this->isFieldRequested($input, 'server_group')
+            || $this->isFieldRequested($input, 'server_group_status_id')
+        ) {
             $selects[] = 'sg.title as server_group';
             $selects[] = 'sg.status_id as server_group_status_id';
             $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = v.server_group_id";
@@ -287,67 +290,169 @@ HELP
             $joins[] = "LEFT JOIN {$this->table('formats_videos_groups')} fvg "
                 . 'ON fvg.format_video_group_id = v.format_video_group_id';
         }
+        if ($this->isFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag ORDER BY tv.id ASC)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_videos')} tv ON tv.tag_id = t.tag_id
+                WHERE tv.video_id = v.video_id
+            ) as tags";
+        }
+        if ($this->isFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title ORDER BY cv.id ASC)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_videos')} cv ON cv.category_id = c.category_id
+                WHERE cv.video_id = v.video_id
+            ) as categories";
+        }
+        if ($this->isFieldRequested($input, 'models')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(m.title ORDER BY mv.id ASC)
+                FROM {$this->table('models')} m
+                INNER JOIN {$this->table('models_videos')} mv ON mv.model_id = m.model_id
+                WHERE mv.video_id = v.video_id
+            ) as models";
+        }
 
         return [$selects, implode("\n                 ", $joins)];
     }
 
     /**
-     * @param list<array<string, mixed>> $videos
-     * @return list<array<string, mixed>>
+     * @param array<string, int|string> $params
      */
-    private function appendVideoListFields(\PDO $db, InputInterface $input, array $videos): array
-    {
-        $fieldMaps = [
-            'categories' => ['categories', 'categories_videos', 'category_id', 'video_id', 'title'],
-            'tags' => ['tags', 'tags_videos', 'tag_id', 'video_id', 'tag'],
-            'models' => ['models', 'models_videos', 'model_id', 'video_id', 'title'],
-        ];
-
-        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $videoIdColumn, $titleColumn]) {
-            if (!$this->isFieldRequested($input, $field)) {
-                continue;
+    private function applyVideoListFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereSql,
+        array &$params
+    ): bool {
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::VIDEO_ACTIVE,
+                'disabled' => StatusFormatter::VIDEO_DISABLED,
+                'error' => StatusFormatter::VIDEO_ERROR,
+                'processing' => StatusFormatter::VIDEO_PROCESSING,
+                'in_process' => StatusFormatter::VIDEO_PROCESSING,
+                'in-process' => StatusFormatter::VIDEO_PROCESSING,
+                'deleting' => StatusFormatter::VIDEO_DELETING,
+                'deleted' => StatusFormatter::VIDEO_DELETED,
+            ], [0, 1, 2, 3, 4, 5]);
+            if ($statusId === false) {
+                return false;
             }
-
-            foreach ($videos as $index => $video) {
-                $videoId = $video['video_id'] ?? null;
-                $videos[$index][$field] = is_numeric($videoId)
-                    ? $this->fetchVideoListTitles(
-                        $db,
-                        $itemTable,
-                        $linkTable,
-                        $itemIdColumn,
-                        $videoIdColumn,
-                        $titleColumn,
-                        (int) $videoId
-                    )
-                    : '';
+            if ($statusId !== null) {
+                $whereSql .= " AND v.status_id = :status";
+                $params['status'] = $statusId;
             }
         }
 
-        return $videos;
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
+            $searchEscape = $this->likeEscapeSql();
+            $whereSql .= " AND (v.title LIKE :search" . $searchEscape
+                . " OR v.dir LIKE :search" . $searchEscape
+                . " OR v.description LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
+        }
+
+        if (!$this->applyVideoRelationFilters($db, $input, $whereSql, $params)) {
+            return false;
+        }
+
+        $user = $this->resolveUserIdOption($db, $input);
+        if ($user === false) {
+            return false;
+        }
+        if ($user !== null) {
+            $whereSql .= " AND v.user_id = :user";
+            $params['user'] = $user;
+        }
+
+        return true;
     }
 
-    private function fetchVideoListTitles(
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyVideoRelationFilters(
         \PDO $db,
-        string $itemTable,
-        string $linkTable,
-        string $itemIdColumn,
-        string $videoIdColumn,
-        string $titleColumn,
-        int $videoId
-    ): string {
-        $query = "SELECT i.$titleColumn
-                  FROM {$this->table($itemTable)} i
-                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
-                  WHERE l.$videoIdColumn = :video_id
-                  ORDER BY l.id ASC";
-        $stmt = $db->prepare($query);
-        $stmt->execute(['video_id' => $videoId]);
+        InputInterface $input,
+        string &$whereSql,
+        array &$params
+    ): bool {
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cv "
+                . "WHERE cv.video_id = v.video_id AND cv.category_id = :category)";
+            $params['category'] = $category;
+        }
 
-        return implode(', ', array_map(
-            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
-            $stmt->fetchAll(\PDO::FETCH_COLUMN)
-        ));
+        $categoryGroup = $this->resolveCategoryGroupIdOption($db, $input);
+        if ($categoryGroup === false) {
+            return false;
+        }
+        if ($categoryGroup !== null) {
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_videos')} cvg "
+                . "WHERE cvg.video_id = v.video_id AND cvg.category_id IN ("
+                . "SELECT cg.category_id FROM {$this->table('categories')} cg "
+                . "WHERE cg.category_group_id = :category_group))";
+            $params['category_group'] = $categoryGroup;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_videos')} tv "
+                . "WHERE tv.video_id = v.video_id AND tv.tag_id = :tag)";
+            $params['tag'] = $tag;
+        }
+
+        $model = $this->resolveModelIdOption($db, $input);
+        if ($model === false) {
+            return false;
+        }
+        if ($model !== null) {
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('models_videos')} mv "
+                . "WHERE mv.video_id = v.video_id AND mv.model_id = :model)";
+            $params['model'] = $model;
+        }
+
+        $contentSource = $this->resolveContentSourceIdOption($db, $input);
+        if ($contentSource === false) {
+            return false;
+        }
+        if ($contentSource !== null) {
+            $whereSql .= " AND v.content_source_id = :content_source";
+            $params['content_source'] = $contentSource;
+        }
+
+        $dvd = $this->resolveDvdIdOption($db, $input);
+        if ($dvd === false) {
+            return false;
+        }
+        if ($dvd !== null) {
+            $whereSql .= " AND v.dvd_id = :dvd";
+            $params['dvd'] = $dvd;
+        }
+
+        $playlist = $this->resolvePlaylistIdOption($db, $input);
+        if ($playlist === false) {
+            return false;
+        }
+        if ($playlist !== null) {
+            $whereSql .= " AND EXISTS (SELECT 1 FROM {$this->table('fav_videos')} fv "
+                . "WHERE fv.video_id = v.video_id AND fv.playlist_id = :playlist)";
+            $params['playlist'] = $playlist;
+        }
+
+        return true;
     }
 
     /**
@@ -370,10 +475,10 @@ HELP
         }
     }
 
-    private function showVideo(?string $id): int
+    private function showVideo(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Video ID is required');
+        $videoId = $this->getRequiredPositiveId($id, 'Video');
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -384,23 +489,23 @@ HELP
 
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
-            $stmt->execute(['id' => $id]);
-            /** @var array{title: string, status_id: int, resolution_type: int, is_private: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
+            $stmt->execute(['id' => $videoId]);
+            /** @var array{title: string, status_id: int, resolution_type: int, is_private: int, access_level_id?: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
             $video = $stmt->fetch();
 
             if ($video === false) {
-                $this->io()->error("Video not found: $id");
+                $this->io()->error("Video not found: $videoId");
                 return self::FAILURE;
             }
 
-            $this->io()->section("Video #$id");
-
             $postTimestamp = strtotime($video['post_date']);
+            $accessLevelId = $video['access_level_id'] ?? 0;
             $info = [
                 ['Title', $video['title']],
                 ['Status', StatusFormatter::video($video['status_id'])],
                 ['Resolution', $this->formatResolutionType($video['resolution_type'])],
-                ['Access', StatusFormatter::contentPrivacy($video['is_private'])],
+                ['Type', StatusFormatter::contentPrivacy($video['is_private'])],
+                ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
                 ['Duration', $this->formatDuration($video['duration'])],
                 ['File Size', format_bytes($video['file_size'])],
                 ['Dimensions', $video['file_dimensions']],
@@ -413,6 +518,43 @@ HELP
                 ['Favourites', number_format($video['favourites_count'])],
             ];
 
+            $stmt = $db->prepare("
+                SELECT c.title FROM {$this->table('categories')} c
+                JOIN {$this->table('categories_videos')} cv ON c.category_id = cv.category_id
+                WHERE cv.video_id = :id
+                ORDER BY cv.id ASC
+            ");
+            $stmt->execute(['id' => $videoId]);
+            $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+            $stmt = $db->prepare("
+                SELECT t.tag FROM {$this->table('tags')} t
+                JOIN {$this->table('tags_videos')} tv ON t.tag_id = tv.tag_id
+                WHERE tv.video_id = :id
+                ORDER BY tv.id ASC
+            ");
+            $stmt->execute(['id' => $videoId]);
+            $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+            $categoryValues = array_map(
+                static fn (mixed $v): string => is_scalar($v) ? (string) $v : '',
+                $categories
+            );
+            $tagValues = array_map(
+                static fn (mixed $v): string => is_scalar($v) ? (string) $v : '',
+                $tags
+            );
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'video_id' => (string) $videoId,
+                    'description' => $video['description'],
+                    'categories' => $categoryValues,
+                    'tags' => $tagValues,
+                ]);
+            }
+
+            $this->io()->section("Video #$videoId");
             $this->renderTable(['Property', 'Value'], $info);
 
             if ($video['description'] !== '') {
@@ -420,30 +562,14 @@ HELP
                 $this->io()->text($video['description']);
             }
 
-            $stmt = $db->prepare("
-                SELECT c.title FROM {$this->table('categories')} c
-                JOIN {$this->table('categories_videos')} cv ON c.category_id = cv.category_id
-                WHERE cv.video_id = :id
-            ");
-            $stmt->execute(['id' => $id]);
-            $categories = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-
             if ($categories !== []) {
                 $this->io()->section('Categories');
-                $this->io()->listing($categories);
+                $this->io()->listing($categoryValues);
             }
-
-            $stmt = $db->prepare("
-                SELECT t.tag FROM {$this->table('tags')} t
-                JOIN {$this->table('tags_videos')} tv ON t.tag_id = tv.tag_id
-                WHERE tv.video_id = :id
-            ");
-            $stmt->execute(['id' => $id]);
-            $tags = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
             if ($tags !== []) {
                 $this->io()->section('Tags');
-                $this->io()->text(implode(', ', array_map(static fn (mixed $v): string => is_scalar($v) ? (string) $v : '', $tags)));
+                $this->io()->text(implode(', ', $tagValues));
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch video: ' . $e->getMessage());
@@ -451,6 +577,119 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    private function getVideoThumbFormat(\PDO $db): ?string
+    {
+        try {
+            $stmt = $db->query("
+                SELECT size
+                FROM {$this->table('formats_screenshots')}
+                WHERE status_id = 1 AND group_id = 1
+            ");
+        } catch (\PDOException) {
+            return null;
+        }
+
+        if ($stmt === false) {
+            return null;
+        }
+
+        $targetWidth = $this->getVideoThumbTargetWidth();
+        $bestFormat = null;
+        $bestDistance = PHP_INT_MAX;
+
+        while (($size = $stmt->fetchColumn()) !== false) {
+            if (!is_string($size) || $size === '' || $size === 'source') {
+                continue;
+            }
+
+            $width = $this->parseSizeWidth($size);
+            if ($width === null) {
+                continue;
+            }
+
+            $distance = abs($targetWidth - $width);
+            if ($bestFormat === null || $distance < $bestDistance) {
+                $bestFormat = $size;
+                $bestDistance = $distance;
+            }
+        }
+
+        return $bestFormat;
+    }
+
+    private function getVideoThumbTargetWidth(): int
+    {
+        $config = $this->getKvsRuntimeConfig();
+        $configuredSize = $config['maximum_thumb_size'] ?? '150x150';
+        if (!is_scalar($configuredSize)) {
+            return 150;
+        }
+
+        return $this->parseSizeWidth((string) $configuredSize) ?? 150;
+    }
+
+    private function parseSizeWidth(string $size): ?int
+    {
+        $parts = explode('x', $size, 2);
+        if ($parts[0] === '' || !ctype_digit($parts[0])) {
+            return null;
+        }
+
+        $width = (int) $parts[0];
+        return $width > 0 ? $width : null;
+    }
+
+    private function getVideoThumbBaseUrl(): ?string
+    {
+        $config = $this->getKvsRuntimeConfig();
+        foreach (['content_url_videos_screenshots_admin_panel', 'content_url_videos_screenshots'] as $key) {
+            $value = $config[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return rtrim($value, '/');
+            }
+        }
+
+        $projectUrl = $config['project_url'] ?? null;
+        if (is_string($projectUrl) && trim($projectUrl) !== '') {
+            return rtrim($projectUrl, '/') . '/contents/videos_screenshots';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function formatVideoThumb(array $video, ?string $thumbFormat, ?string $thumbBaseUrl): string
+    {
+        $screenMain = $video['screen_main'] ?? null;
+        $videoId = $video['video_id'] ?? null;
+        $statusId = $video['status_id'] ?? null;
+
+        if (
+            $thumbFormat === null
+            || $thumbBaseUrl === null
+            || !is_numeric($screenMain)
+            || !is_numeric($videoId)
+            || !is_numeric($statusId)
+            || !in_array((int) $statusId, [StatusFormatter::VIDEO_DISABLED, StatusFormatter::VIDEO_ACTIVE], true)
+        ) {
+            return '';
+        }
+
+        $videoIdInt = (int) $videoId;
+        $dirPath = (int) (floor($videoIdInt / 1000) * 1000);
+
+        return sprintf(
+            '%s/%d/%d/%s/%d.jpg',
+            $thumbBaseUrl,
+            $dirPath,
+            $videoIdInt,
+            $thumbFormat,
+            (int) $screenMain
+        );
     }
 
     private function deleteVideo(?string $id, InputInterface $input): int
@@ -531,20 +770,7 @@ HELP
         }, ['functions_servers.php', 'functions_admin.php']);
     }
 
-    private function updateVideo(?string $id, InputInterface $input): int
-    {
-        if ($id === null || $id === '') {
-            $this->io()->error('Video ID is required');
-            return self::FAILURE;
-        }
-
-        $this->io()->error('Update functionality is not yet implemented');
-        $this->io()->note('Use the KVS admin panel to update videos for now.');
-
-        return self::FAILURE;
-    }
-
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -554,6 +780,8 @@ HELP
         try {
             /** @var list<list<string>> $stats */
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
 
             $queries = [
                 'Total Videos' => "SELECT COUNT(*) FROM {$this->table('videos')}",
@@ -572,21 +800,25 @@ HELP
                 if ($label === 'Total Duration') {
                     $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
                     $displayValue = $this->formatDuration($intVal);
+                    $metricRows[] = $this->metricRow('overall', $label, $intVal, $displayValue);
                 } elseif ($label === 'Average Rating') {
-                    $displayValue = is_numeric($rawValue)
-                        ? sprintf('%.1f/%d', calculate_kvs_rating($rawValue, 1), Constants::RATING_SCALE)
+                    $ratingValue = is_numeric($rawValue) ? calculate_kvs_rating($rawValue, 1) : null;
+                    $displayValue = $ratingValue !== null
+                        ? sprintf('%.1f/%d', $ratingValue, Constants::RATING_SCALE)
                         : 'N/A';
+                    $metricRows[] = $this->metricRow('overall', $label, $ratingValue, $displayValue);
                 } elseif ($label === 'Total Size') {
                     $intVal = is_numeric($rawValue) ? (int) $rawValue : 0;
                     $displayValue = format_bytes($intVal);
+                    $metricRows[] = $this->metricRow('overall', $label, $intVal, $displayValue);
                 } elseif (is_numeric($rawValue)) {
-                    $displayValue = number_format((int) $rawValue);
+                    $intVal = (int) $rawValue;
+                    $displayValue = number_format($intVal);
+                    $metricRows[] = $this->metricRow('overall', $label, $intVal, $displayValue);
                 }
 
                 $stats[] = [$label, $displayValue];
             }
-
-            $this->renderTable(['Metric', 'Value'], $stats);
 
             $stmt = $db->query("
                 SELECT v.title, v.video_viewed as views
@@ -597,9 +829,9 @@ HELP
             ");
             $topVideos = $stmt !== false ? $stmt->fetchAll() : [];
 
+            /** @var list<list<int|string>> $topRows */
+            $topRows = [];
             if ($topVideos !== []) {
-                $this->io()->section('Top 10 Most Viewed Videos');
-                $rows = [];
                 foreach ($topVideos as $i => $video) {
                     if (!is_array($video)) {
                         continue;
@@ -608,13 +840,31 @@ HELP
                     $title = is_string($titleVal) ? $titleVal : (is_scalar($titleVal) ? (string) $titleVal : '');
                     $viewsVal = $video['views'] ?? 0;
                     $views = is_numeric($viewsVal) ? (float) $viewsVal : 0.0;
-                    $rows[] = [
+                    $metricRows[] = $this->metricRow(
+                        'top_videos',
+                        (string) ($i + 1),
+                        (int) $views,
+                        number_format($views),
+                        $title
+                    );
+                    $topRows[] = [
                         $i + 1,
                         substr($title, 0, Constants::DEFAULT_TRUNCATE_LENGTH),
                         number_format($views),
                     ];
                 }
-                $this->renderTable(['#', 'Title', 'Views'], $rows);
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->renderTable(['Metric', 'Value'], $stats);
+
+            if ($topVideos !== []) {
+                $this->io()->section('Top 10 Most Viewed Videos');
+                $this->renderTable(['#', 'Title', 'Views'], $topRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());

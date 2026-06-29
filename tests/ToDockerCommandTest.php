@@ -182,6 +182,23 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringNotContainsString('rsync -av', $output);
     }
 
+    public function testToDockerNoInteractionFailsWithoutConfirmation(): void
+    {
+        $this->tester->execute([
+            '--domain' => 'test.local',
+            '--email' => 'test@test.com',
+            '--target' => $this->tempDir . '/target',
+            '--no-content' => true,
+            '--force' => true,
+        ], ['interactive' => false]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('confirmation was not provided', $output);
+        $this->assertDirectoryDoesNotExist($this->tempDir . '/target');
+    }
+
     public function testToDockerCommandShowsMigrationPlan(): void
     {
         $this->tester->execute([

@@ -28,10 +28,12 @@ class PlaylistCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|create|add|remove|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Playlist ID, or title for create')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
             ->addOption('public', null, InputOption::VALUE_NONE, 'Show only public playlists')
             ->addOption('private', null, InputOption::VALUE_NONE, 'Show only private playlists')
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles and descriptions')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in titles, directories, and descriptions')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Playlist title for create action')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Playlist description for create action')
             ->addOption('dir', null, InputOption::VALUE_REQUIRED, 'Playlist directory slug for create action')
@@ -58,7 +60,7 @@ Manage KVS playlists.
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs playlist list</>
   <fg=green>kvs playlist list --public</>
-  <fg=green>kvs playlist list --private --user=5</>
+  <fg=green>kvs playlist list --private --user=alice</>
   <fg=green>kvs playlist list --status=active --limit=50</>
   <fg=green>kvs playlist list --search="favorites"</>
 	  <fg=green>kvs playlist list --field=title</>
@@ -88,15 +90,15 @@ HELP
 
         return match ($action) {
             'list' => $this->listPlaylists($input),
-            'show' => $this->showPlaylist($this->getStringArgument($input, 'id')),
+            'show' => $this->showPlaylist($this->getStringArgument($input, 'id'), $input),
             'create' => $this->createPlaylist($input),
             'add' => $this->addVideoToPlaylist(
                 $this->getStringArgument($input, 'id'),
-                $this->getIntOption($input, 'video')
+                $this->getStringOption($input, 'video')
             ),
             'remove' => $this->removeVideoFromPlaylist(
                 $this->getStringArgument($input, 'id'),
-                $this->getIntOption($input, 'video')
+                $this->getStringOption($input, 'video')
             ),
             'delete' => $this->deletePlaylist($this->getStringArgument($input, 'id'), $input),
             default => $this->failUnknownAction('playlist', $action, ['list', 'show', 'create', 'add', 'remove', 'delete']),
@@ -105,6 +107,10 @@ HELP
 
     private function listPlaylists(InputInterface $input): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['public', 'private'])) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -116,56 +122,32 @@ HELP
 
         $params = [];
 
-        // Status filter
-        $status = $this->getStringOption($input, 'status');
-        if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
-                'active' => StatusFormatter::PLAYLIST_ACTIVE,
-                'disabled' => StatusFormatter::PLAYLIST_DISABLED,
-                'inactive' => StatusFormatter::PLAYLIST_DISABLED,
-            ]);
-            if ($statusId !== null) {
-                $fromClause .= " AND p.status_id = :status";
-                $params['status'] = $statusId;
-            }
-        }
-
-        // User filter
-        $user = $this->getIntOption($input, 'user');
-        if ($user !== null) {
-            $fromClause .= " AND p.user_id = :user";
-            $params['user'] = $user;
-        }
-
-        // Public/Private filter
-        if ($input->getOption('public')) {
-            $fromClause .= " AND p.is_private = 0";
-        } elseif ($input->getOption('private')) {
-            $fromClause .= " AND p.is_private = 1";
-        }
-
-        // Search filter
-        $search = $input->getOption('search');
-        if (is_string($search) && $search !== '') {
-            $fromClause .= " AND (p.title LIKE :search OR p.description LIKE :search)";
-            $params['search'] = '%' . $search . '%';
+        if (!$this->applyPlaylistListFilters($db, $input, $fromClause, $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countPlaylists($db, $fromClause, $params);
         }
 
         $commentsTable = $this->table('comments');
         $favVideosTable = $this->table('fav_videos');
+        $userStatusSelect = $this->isPlaylistFieldRequested($input, 'user_status_id')
+            ? ', u.status_id as user_status_id'
+            : '';
+        $relationSelect = $this->buildPlaylistRelationSelectSql($input);
 
-        $query = "SELECT p.*, u.username,
+        $query = "SELECT p.*, u.username$userStatusSelect$relationSelect,
                         (SELECT COUNT(*) FROM $favVideosTable f WHERE f.playlist_id = p.playlist_id) as video_count,
                         (
                             SELECT COUNT(*) FROM $commentsTable c
                             WHERE c.object_type_id = 13 AND c.object_id = p.playlist_id
                         ) as comments_amount
                  $fromClause
-                 ORDER BY p.added_date DESC LIMIT :limit";
+                 ORDER BY p.playlist_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -181,7 +163,6 @@ HELP
 
             /** @var list<array<string, mixed>> $playlists */
             $playlists = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $playlists = $this->appendPlaylistListFields($db, $input, $playlists);
 
             // Transform playlists for display
             $transformedPlaylists = array_map(function (array $playlist): array {
@@ -194,6 +175,7 @@ HELP
                 $isPrivate = is_numeric($isPrivateVal) ? (int) $isPrivateVal : 0;
 
                 return [
+                    ...$playlist,
                     'playlist_id' => $playlist['playlist_id'] ?? 0,
                     'id' => $playlist['playlist_id'] ?? 0,  // Alias
                     'title' => $playlist['title'] ?? '',
@@ -212,8 +194,6 @@ HELP
                     'rating' => $calculatedRating,
                     'added_date' => $playlist['added_date'] ?? '',
                     'date' => $playlist['added_date'] ?? '',  // Alias
-                    'tags' => $playlist['tags'] ?? '',
-                    'categories' => $playlist['categories'] ?? '',
                 ];
             }, $playlists);
 
@@ -232,38 +212,87 @@ HELP
     }
 
     /**
-     * @param list<array<string, mixed>> $playlists
-     * @return list<array<string, mixed>>
+     * @param array<string, int|string> $params
      */
-    private function appendPlaylistListFields(\PDO $db, InputInterface $input, array $playlists): array
-    {
-        $fieldMaps = [
-            'categories' => ['categories', 'categories_playlists', 'category_id', 'playlist_id', 'title'],
-            'tags' => ['tags', 'tags_playlists', 'tag_id', 'playlist_id', 'tag'],
-        ];
-
-        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $playlistIdColumn, $titleColumn]) {
-            if (!$this->isPlaylistFieldRequested($input, $field)) {
-                continue;
+    private function applyPlaylistListFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$fromClause,
+        array &$params
+    ): bool {
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::PLAYLIST_ACTIVE,
+                'disabled' => StatusFormatter::PLAYLIST_DISABLED,
+                'inactive' => StatusFormatter::PLAYLIST_DISABLED,
+            ]);
+            if ($statusId === false) {
+                return false;
             }
-
-            foreach ($playlists as $index => $playlist) {
-                $playlistId = $playlist['playlist_id'] ?? null;
-                $playlists[$index][$field] = is_numeric($playlistId)
-                    ? $this->fetchPlaylistListTitles(
-                        $db,
-                        $itemTable,
-                        $linkTable,
-                        $itemIdColumn,
-                        $playlistIdColumn,
-                        $titleColumn,
-                        (int) $playlistId
-                    )
-                    : '';
+            if ($statusId !== null) {
+                $fromClause .= " AND p.status_id = :status";
+                $params['status'] = $statusId;
             }
         }
 
-        return $playlists;
+        $user = $this->resolveUserIdOption($db, $input);
+        if ($user === false) {
+            return false;
+        }
+        if ($user !== null) {
+            $fromClause .= " AND p.user_id = :user";
+            $params['user'] = $user;
+        }
+
+        if ($input->getOption('public')) {
+            $fromClause .= " AND p.is_private = 0";
+        } elseif ($input->getOption('private')) {
+            $fromClause .= " AND p.is_private = 1";
+        }
+
+        $search = $input->getOption('search');
+        if (is_string($search) && $search !== '') {
+            $searchEscape = $this->likeEscapeSql();
+            $fromClause .= " AND (p.title LIKE :search" . $searchEscape
+                . " OR p.dir LIKE :search" . $searchEscape
+                . " OR p.description LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
+        }
+
+        return $this->applyPlaylistRelationFilters($db, $input, $fromClause, $params);
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyPlaylistRelationFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$fromClause,
+        array &$params
+    ): bool {
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $fromClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_playlists')} cp "
+                . "WHERE cp.playlist_id = p.playlist_id AND cp.category_id = :category)";
+            $params['category'] = $category;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $fromClause .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_playlists')} tp "
+                . "WHERE tp.playlist_id = p.playlist_id AND tp.tag_id = :tag)";
+            $params['tag'] = $tag;
+        }
+
+        return true;
     }
 
     private function isPlaylistFieldRequested(InputInterface $input, string $field): bool
@@ -281,27 +310,28 @@ HELP
         return in_array($field, array_map('trim', explode(',', $fieldsOption)), true);
     }
 
-    private function fetchPlaylistListTitles(
-        \PDO $db,
-        string $itemTable,
-        string $linkTable,
-        string $itemIdColumn,
-        string $playlistIdColumn,
-        string $titleColumn,
-        int $playlistId
-    ): string {
-        $query = "SELECT i.$titleColumn
-                  FROM {$this->table($itemTable)} i
-                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
-                  WHERE l.$playlistIdColumn = :playlist_id
-                  ORDER BY l.id ASC";
-        $stmt = $db->prepare($query);
-        $stmt->execute(['playlist_id' => $playlistId]);
+    private function buildPlaylistRelationSelectSql(InputInterface $input): string
+    {
+        $selects = [];
 
-        return implode(', ', array_map(
-            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
-            $stmt->fetchAll(\PDO::FETCH_COLUMN)
-        ));
+        if ($this->isPlaylistFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag ORDER BY tp.id ASC)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_playlists')} tp ON tp.tag_id = t.tag_id
+                WHERE tp.playlist_id = p.playlist_id
+            ) as tags";
+        }
+        if ($this->isPlaylistFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title ORDER BY cp.id ASC)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_playlists')} cp ON cp.category_id = c.category_id
+                WHERE cp.playlist_id = p.playlist_id
+            ) as categories";
+        }
+
+        return $selects === [] ? '' : ",\n                        " . implode(",\n                        ", $selects);
     }
 
     /**
@@ -326,10 +356,10 @@ HELP
         }
     }
 
-    private function showPlaylist(?string $id): int
+    private function showPlaylist(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Playlist ID is required');
+        $playlistId = $this->getRequiredPositiveId($id, 'Playlist');
+        if ($playlistId === null) {
             return self::FAILURE;
         }
 
@@ -347,16 +377,14 @@ HELP
                 LEFT JOIN {$this->table('users')} u ON p.user_id = u.user_id
                 WHERE p.playlist_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var array<string, mixed>|false $playlist */
             $playlist = $stmt->fetch();
 
             if ($playlist === false) {
-                $this->io()->error("Playlist not found: $id");
+                $this->io()->error("Playlist not found: $playlistId");
                 return self::FAILURE;
             }
-
-            $this->io()->section("Playlist #$id");
 
             // Type calculation
             $isPrivate = isset($playlist['is_private']) && is_numeric($playlist['is_private'])
@@ -407,15 +435,8 @@ HELP
                 ['Last Updated', $lastContentTimestamp !== false ? date('Y-m-d H:i:s', $lastContentTimestamp) : 'Never'],
             ];
 
-            $this->renderTable(['Property', 'Value'], $info);
-
             // Description section
             $description = isset($playlist['description']) && is_string($playlist['description']) ? $playlist['description'] : '';
-            if ($description !== '') {
-                $this->io()->newLine();
-                $this->io()->section('Description');
-                $this->io()->text($description);
-            }
 
             // Videos in playlist (top 10)
             $stmt = $db->prepare("
@@ -426,19 +447,9 @@ HELP
                 ORDER BY f.playlist_sort_id ASC
                 LIMIT 10
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var list<array{video_id: int, title: string}> $videos */
             $videos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if (count($videos) > 0) {
-                $this->io()->newLine();
-                $this->io()->section('Videos (Top 10)');
-                $videoList = [];
-                foreach ($videos as $video) {
-                    $videoList[] = sprintf('#%d: %s', $video['video_id'], $video['title']);
-                }
-                $this->io()->listing($videoList);
-            }
 
             // Categories
             $stmt = $db->prepare("
@@ -446,17 +457,11 @@ HELP
                 FROM {$this->table('categories')} c
                 INNER JOIN {$this->table('categories')}_playlists cp ON c.category_id = cp.category_id
                 WHERE cp.playlist_id = :id
+                ORDER BY cp.id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var list<array{title: string}> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if (count($categories) > 0) {
-                $this->io()->newLine();
-                $this->io()->section('Categories');
-                $categoryTitles = array_map(fn($c) => $c['title'], $categories);
-                $this->io()->text(implode(', ', $categoryTitles));
-            }
 
             // Tags
             $stmt = $db->prepare("
@@ -464,15 +469,59 @@ HELP
                 FROM {$this->table('tags')} t
                 INNER JOIN {$this->table('tags')}_playlists tp ON t.tag_id = tp.tag_id
                 WHERE tp.playlist_id = :id
+                ORDER BY tp.id ASC
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $playlistId]);
             /** @var list<array{tag: string}> $tags */
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $videoList = [];
+            foreach ($videos as $video) {
+                $videoList[] = [
+                    'video_id' => $video['video_id'],
+                    'title' => $video['title'],
+                ];
+            }
+            $categoryTitles = array_map(fn($c) => $c['title'], $categories);
+            $tagNames = array_map(fn($t) => $t['tag'], $tags);
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'playlist_id' => (string) $playlistId,
+                    'description' => $description,
+                    'videos_top' => $videoList,
+                    'categories' => $categoryTitles,
+                    'tags' => $tagNames,
+                ]);
+            }
+
+            $this->io()->section("Playlist #$playlistId");
+            $this->renderTable(['Property', 'Value'], $info);
+
+            if ($description !== '') {
+                $this->io()->newLine();
+                $this->io()->section('Description');
+                $this->io()->text($description);
+            }
+
+            if (count($videos) > 0) {
+                $this->io()->newLine();
+                $this->io()->section('Videos (Top 10)');
+                $this->io()->listing(array_map(
+                    static fn (array $video): string => sprintf('#%d: %s', $video['video_id'], $video['title']),
+                    $videos
+                ));
+            }
+
+            if (count($categories) > 0) {
+                $this->io()->newLine();
+                $this->io()->section('Categories');
+                $this->io()->text(implode(', ', $categoryTitles));
+            }
 
             if (count($tags) > 0) {
                 $this->io()->newLine();
                 $this->io()->section('Tags');
-                $tagNames = array_map(fn($t) => $t['tag'], $tags);
                 $this->io()->text(implode(', ', $tagNames));
             }
 
@@ -516,9 +565,8 @@ HELP
         }
         $title = trim($title);
 
-        $userId = $this->getIntOption($input, 'user');
-        if ($userId === null || $userId <= 0) {
-            $this->io()->error('User ID is required (use --user=<id>)');
+        $userId = $this->parsePositivePlaylistIdOption($this->getStringOption($input, 'user'), 'User', 'User ID is required (use --user=<id>)');
+        if ($userId === null) {
             return self::FAILURE;
         }
 
@@ -716,17 +764,17 @@ HELP
         $stmt->execute(['id' => $ownerUserId]);
     }
 
-    private function addVideoToPlaylist(?string $id, ?int $videoId): int
+    private function addVideoToPlaylist(?string $id, ?string $videoIdInput): int
     {
-        if ($id === null || $id === '' || !is_numeric($id)) {
-            $this->io()->error('Playlist ID is required');
+        $playlistId = $this->parsePositivePlaylistIdOption($id, 'Playlist', 'Playlist ID is required');
+        if ($playlistId === null) {
             return self::FAILURE;
         }
-        if ($videoId === null || $videoId <= 0) {
-            $this->io()->error('Video ID is required (use --video=<id>)');
+
+        $videoId = $this->parsePositivePlaylistIdOption($videoIdInput, 'Video', 'Video ID is required (use --video=<id>)');
+        if ($videoId === null) {
             return self::FAILURE;
         }
-        $playlistId = (int) $id;
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -808,17 +856,17 @@ HELP
         }
     }
 
-    private function removeVideoFromPlaylist(?string $id, ?int $videoId): int
+    private function removeVideoFromPlaylist(?string $id, ?string $videoIdInput): int
     {
-        if ($id === null || $id === '' || !is_numeric($id)) {
-            $this->io()->error('Playlist ID is required');
+        $playlistId = $this->parsePositivePlaylistIdOption($id, 'Playlist', 'Playlist ID is required');
+        if ($playlistId === null) {
             return self::FAILURE;
         }
-        if ($videoId === null || $videoId <= 0) {
-            $this->io()->error('Video ID is required (use --video=<id>)');
+
+        $videoId = $this->parsePositivePlaylistIdOption($videoIdInput, 'Video', 'Video ID is required (use --video=<id>)');
+        if ($videoId === null) {
             return self::FAILURE;
         }
-        $playlistId = (int) $id;
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -886,6 +934,21 @@ HELP
             $this->io()->error('Failed to remove video from playlist: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function parsePositivePlaylistIdOption(?string $value, string $label, string $missingMessage): ?int
+    {
+        if ($value === null || $value === '') {
+            $this->io()->error($missingMessage);
+            return null;
+        }
+
+        if (preg_match('/^[1-9]\d*$/', $value) !== 1) {
+            $this->io()->error(sprintf('Invalid %s ID (use: integer >= 1)', $label));
+            return null;
+        }
+
+        return (int) $value;
     }
 
     private function deletePlaylist(?string $id, InputInterface $input): int

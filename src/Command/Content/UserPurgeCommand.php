@@ -67,8 +67,14 @@ HELP
     {
         $removalRequested = $this->getBoolOption($input, 'removal-requested');
         $noContent = $this->getBoolOption($input, 'no-content');
-        $inactiveDays = $this->getIntOption($input, 'inactive-days');
-        $minAge = $this->getIntOption($input, 'min-age');
+        $inactiveDays = $this->getOptionalPositiveIntOption($input, 'inactive-days');
+        if ($inactiveDays === false) {
+            return self::FAILURE;
+        }
+        $minAge = $this->getOptionalPositiveIntOption($input, 'min-age');
+        if ($minAge === false) {
+            return self::FAILURE;
+        }
         $confirm = $this->getBoolOption($input, 'confirm');
         $yes = $this->getBoolOption($input, 'yes');
         $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', 1000);
@@ -127,7 +133,7 @@ HELP
             }
             $stmt->bindValue('limit', $limit, \PDO::PARAM_INT);
             $stmt->execute();
-            $users = $stmt->fetchAll();
+            $users = array_values($stmt->fetchAll());
         } catch (\Exception $e) {
             $this->io()->error('Failed to query users: ' . $e->getMessage());
             return self::FAILURE;
@@ -140,59 +146,7 @@ HELP
             return self::SUCCESS;
         }
 
-        // Display users
-        $this->io()->title($confirm ? 'Users to Delete' : 'Users Matching Criteria (Dry-Run)');
-
-        $headers = ['ID', 'Username', 'Email', 'Last Login', 'Created'];
-        if ($removalRequested) {
-            $headers[] = 'Removal Reason';
-        }
-
-        /** @var list<list<string>> $rows */
-        $rows = [];
-        foreach ($users as $user) {
-            if (!is_array($user)) {
-                continue;
-            }
-            $lastLogin = $user['last_login_date'] ?? null;
-            $lastLoginStr = 'Never';
-            if (is_string($lastLogin) && $lastLogin !== '' && $lastLogin !== '0000-00-00 00:00:00') {
-                $timestamp = strtotime($lastLogin);
-                if ($timestamp !== false && $timestamp > 0) {
-                    $lastLoginStr = date('Y-m-d', $timestamp);
-                }
-            }
-
-            $userIdVal = $user['user_id'] ?? '';
-            $usernameVal = $user['username'] ?? '';
-            $emailVal = $user['email'] ?? '';
-            $removalReasonVal = $user['removal_reason'] ?? '';
-            $addedDateVal = $user['added_date'] ?? '';
-            $addedDateStr = 'Unknown';
-            if (is_string($addedDateVal) && $addedDateVal !== '') {
-                $timestamp = strtotime($addedDateVal);
-                if ($timestamp !== false) {
-                    $addedDateStr = date('Y-m-d', $timestamp);
-                }
-            }
-
-            $row = [
-                is_scalar($userIdVal) ? (string) $userIdVal : '',
-                is_scalar($usernameVal) ? (string) $usernameVal : '',
-                is_scalar($emailVal) ? (string) $emailVal : '',
-                $lastLoginStr,
-                $addedDateStr,
-            ];
-            if ($removalRequested) {
-                $removalReason = is_scalar($removalReasonVal) ? (string) $removalReasonVal : '';
-                $row[] = $removalReason !== '' ? $removalReason : 'N/A';
-            }
-
-            $rows[] = $row;
-        }
-
-        $this->renderTable($headers, $rows);
-
+        $this->renderMatchedUsers($users, $removalRequested, $confirm);
         $this->io()->newLine();
         $this->io()->text(sprintf('<info>Total:</info> %s', $this->formatUserCount($count)));
 
@@ -202,15 +156,9 @@ HELP
             return self::SUCCESS;
         }
 
-        // Confirmation
-        if ($yes === false) {
-            $this->io()->newLine();
-            $this->io()->warning(sprintf('You are about to DELETE %s permanently!', $this->formatUserCount($count)));
-
-            if ($this->io()->confirm('Are you sure you want to continue?', false) !== true) {
-                $this->io()->text('Operation cancelled.');
-                return self::SUCCESS;
-            }
+        $confirmationResult = $this->confirmDeletion($input, $yes, $count);
+        if ($confirmationResult !== null) {
+            return $confirmationResult;
         }
 
         // Load KVS admin context and delete
@@ -244,6 +192,80 @@ HELP
             }
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<mixed> $users
+     */
+    private function renderMatchedUsers(array $users, bool $removalRequested, bool $confirm): void
+    {
+        $this->io()->title($confirm ? 'Users to Delete' : 'Users Matching Criteria (Dry-Run)');
+
+        $headers = ['ID', 'Username', 'Email', 'Last Login', 'Created'];
+        if ($removalRequested) {
+            $headers[] = 'Removal Reason';
+        }
+
+        /** @var list<list<string>> $rows */
+        $rows = [];
+        foreach ($users as $user) {
+            if (!is_array($user)) {
+                continue;
+            }
+
+            $row = [
+                $this->scalarToString($user['user_id'] ?? ''),
+                $this->scalarToString($user['username'] ?? ''),
+                $this->scalarToString($user['email'] ?? ''),
+                $this->formatDateField($user['last_login_date'] ?? null, 'Never'),
+                $this->formatDateField($user['added_date'] ?? null, 'Unknown'),
+            ];
+            if ($removalRequested) {
+                $removalReason = $this->scalarToString($user['removal_reason'] ?? '');
+                $row[] = $removalReason !== '' ? $removalReason : 'N/A';
+            }
+
+            $rows[] = $row;
+        }
+
+        $this->renderTable($headers, $rows);
+    }
+
+    private function confirmDeletion(InputInterface $input, bool $yes, int $count): ?int
+    {
+        if ($yes) {
+            return null;
+        }
+
+        $this->io()->newLine();
+        $this->io()->warning(sprintf('You are about to DELETE %s permanently!', $this->formatUserCount($count)));
+
+        if ($this->io()->confirm('Are you sure you want to continue?', false) === true) {
+            return null;
+        }
+
+        if (!$input->isInteractive()) {
+            $this->io()->error('User purge cancelled because confirmation was not provided.');
+            return self::FAILURE;
+        }
+
+        $this->io()->text('Operation cancelled.');
+        return self::SUCCESS;
+    }
+
+    private function formatDateField(mixed $value, string $fallback): string
+    {
+        if (!is_string($value) || $value === '' || $value === '0000-00-00 00:00:00') {
+            return $fallback;
+        }
+
+        $timestamp = strtotime($value);
+        return $timestamp !== false && $timestamp > 0 ? date('Y-m-d', $timestamp) : $fallback;
+    }
+
+    private function scalarToString(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**

@@ -18,10 +18,10 @@ class StatusFormatterTest extends TestCase
      */
     public function testVideoStatusWithColor(): void
     {
-        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::video(0));
+        $this->assertEquals('<fg=yellow>Inactive</>', StatusFormatter::video(0));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::video(1));
         $this->assertEquals('<fg=red>Error</>', StatusFormatter::video(2));
-        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::video(3));
+        $this->assertEquals('<fg=cyan>In process</>', StatusFormatter::video(3));
         $this->assertEquals('<fg=red>Deleting</>', StatusFormatter::video(4));
         $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::video(5));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::video(999));
@@ -32,10 +32,10 @@ class StatusFormatterTest extends TestCase
      */
     public function testVideoStatusWithoutColor(): void
     {
-        $this->assertEquals('Disabled', StatusFormatter::video(0, false));
+        $this->assertEquals('Inactive', StatusFormatter::video(0, false));
         $this->assertEquals('Active', StatusFormatter::video(1, false));
         $this->assertEquals('Error', StatusFormatter::video(2, false));
-        $this->assertEquals('Processing', StatusFormatter::video(3, false));
+        $this->assertEquals('In process', StatusFormatter::video(3, false));
         $this->assertEquals('Deleting', StatusFormatter::video(4, false));
         $this->assertEquals('Deleted', StatusFormatter::video(5, false));
         $this->assertEquals('Unknown', StatusFormatter::video(999, false));
@@ -46,8 +46,8 @@ class StatusFormatterTest extends TestCase
      */
     public function testUserStatusWithColor(): void
     {
-        $this->assertEquals('<fg=red>Disabled</>', StatusFormatter::user(0));
-        $this->assertEquals('<fg=yellow>Not Confirmed</>', StatusFormatter::user(1));
+        $this->assertEquals('<fg=red>Inactive</>', StatusFormatter::user(0));
+        $this->assertEquals('<fg=yellow>Not confirmed</>', StatusFormatter::user(1));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::user(2));
         $this->assertEquals('<fg=cyan>Premium</>', StatusFormatter::user(3));
         $this->assertEquals('<fg=gray>Anonymous</>', StatusFormatter::user(4));
@@ -61,8 +61,8 @@ class StatusFormatterTest extends TestCase
      */
     public function testUserStatusWithoutColor(): void
     {
-        $this->assertEquals('Disabled', StatusFormatter::user(0, false));
-        $this->assertEquals('Not Confirmed', StatusFormatter::user(1, false));
+        $this->assertEquals('Inactive', StatusFormatter::user(0, false));
+        $this->assertEquals('Not confirmed', StatusFormatter::user(1, false));
         $this->assertEquals('Active', StatusFormatter::user(2, false));
         $this->assertEquals('Premium', StatusFormatter::user(3, false));
         $this->assertEquals('Anonymous', StatusFormatter::user(4, false));
@@ -76,10 +76,10 @@ class StatusFormatterTest extends TestCase
      */
     public function testAlbumStatusWithColor(): void
     {
-        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::album(0));
+        $this->assertEquals('<fg=yellow>Inactive</>', StatusFormatter::album(0));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::album(1));
         $this->assertEquals('<fg=red>Error</>', StatusFormatter::album(2));
-        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::album(3));
+        $this->assertEquals('<fg=cyan>In process</>', StatusFormatter::album(3));
         $this->assertEquals('<fg=red>Deleting</>', StatusFormatter::album(4));
         $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::album(5));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::album(999));
@@ -90,10 +90,10 @@ class StatusFormatterTest extends TestCase
      */
     public function testAlbumStatusWithoutColor(): void
     {
-        $this->assertEquals('Disabled', StatusFormatter::album(0, false));
+        $this->assertEquals('Inactive', StatusFormatter::album(0, false));
         $this->assertEquals('Active', StatusFormatter::album(1, false));
         $this->assertEquals('Error', StatusFormatter::album(2, false));
-        $this->assertEquals('Processing', StatusFormatter::album(3, false));
+        $this->assertEquals('In process', StatusFormatter::album(3, false));
         $this->assertEquals('Deleting', StatusFormatter::album(4, false));
         $this->assertEquals('Deleted', StatusFormatter::album(5, false));
         $this->assertEquals('Unknown', StatusFormatter::album(999, false));
@@ -248,13 +248,40 @@ class StatusFormatterTest extends TestCase
      */
     public function testModelStatus(): void
     {
-        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::model(0));
+        $this->assertEquals('<fg=yellow>Inactive</>', StatusFormatter::model(0));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::model(1));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::model(999));
 
         // Without color
-        $this->assertEquals('Disabled', StatusFormatter::model(0, false));
+        $this->assertEquals('Inactive', StatusFormatter::model(0, false));
         $this->assertEquals('Active', StatusFormatter::model(1, false));
+    }
+
+    public function testServerStreamingUsesKvsAdminLabels(): void
+    {
+        $this->assertEquals('Nginx (x-accel-redirect)', StatusFormatter::serverStreaming(0, false));
+        $this->assertEquals('Direct URL (no protection)', StatusFormatter::serverStreaming(1, false));
+        $this->assertEquals('CDN', StatusFormatter::serverStreaming(4, false));
+        $this->assertEquals('No public access (backup server)', StatusFormatter::serverStreaming(5, false));
+        $this->assertEquals('Unknown', StatusFormatter::serverStreaming(999, false));
+    }
+
+    public function testServerStatusUsesKvsAdminLabels(): void
+    {
+        $this->assertEquals('<fg=yellow>Inactive</>', StatusFormatter::server(0));
+        $this->assertEquals('<fg=green>Active</>', StatusFormatter::server(1));
+        $this->assertEquals('Inactive', StatusFormatter::server(0, false));
+        $this->assertEquals('Active', StatusFormatter::server(1, false));
+    }
+
+    public function testConversionStatusUsesKvsAdminLabels(): void
+    {
+        $this->assertEquals('<fg=yellow>Inactive</>', StatusFormatter::conversion(0));
+        $this->assertEquals('<fg=green>Active</>', StatusFormatter::conversion(1));
+        $this->assertEquals('<fg=cyan>Initializing</>', StatusFormatter::conversion(2));
+        $this->assertEquals('Inactive', StatusFormatter::conversion(0, false));
+        $this->assertEquals('Active', StatusFormatter::conversion(1, false));
+        $this->assertEquals('Initializing', StatusFormatter::conversion(2, false));
     }
 
     /**
@@ -262,12 +289,12 @@ class StatusFormatterTest extends TestCase
      */
     public function testDvdStatus(): void
     {
-        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::dvd(0));
+        $this->assertEquals('<fg=yellow>Inactive</>', StatusFormatter::dvd(0));
         $this->assertEquals('<fg=green>Active</>', StatusFormatter::dvd(1));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::dvd(999));
 
         // Without color
-        $this->assertEquals('Disabled', StatusFormatter::dvd(0, false));
+        $this->assertEquals('Inactive', StatusFormatter::dvd(0, false));
         $this->assertEquals('Active', StatusFormatter::dvd(1, false));
     }
 
@@ -276,21 +303,21 @@ class StatusFormatterTest extends TestCase
      */
     public function testVideoFormatStatus(): void
     {
-        $this->assertEquals('<fg=yellow>Disabled</>', StatusFormatter::videoFormat(0));
+        $this->assertEquals('<fg=yellow>Deactivated</>', StatusFormatter::videoFormat(0));
         $this->assertEquals('<fg=green>Required</>', StatusFormatter::videoFormat(1));
         $this->assertEquals('<fg=cyan>Optional</>', StatusFormatter::videoFormat(2));
-        $this->assertEquals('<fg=red>Deleting</>', StatusFormatter::videoFormat(3));
+        $this->assertEquals('<fg=red>Removing files</>', StatusFormatter::videoFormat(3));
         $this->assertEquals('<fg=red>Error</>', StatusFormatter::videoFormat(4));
-        $this->assertEquals('<fg=magenta>Conditional</>', StatusFormatter::videoFormat(9));
+        $this->assertEquals('<fg=magenta>Cond. required</>', StatusFormatter::videoFormat(9));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::videoFormat(999));
 
         // Without color
-        $this->assertEquals('Disabled', StatusFormatter::videoFormat(0, false));
+        $this->assertEquals('Deactivated', StatusFormatter::videoFormat(0, false));
         $this->assertEquals('Required', StatusFormatter::videoFormat(1, false));
         $this->assertEquals('Optional', StatusFormatter::videoFormat(2, false));
-        $this->assertEquals('Deleting', StatusFormatter::videoFormat(3, false));
+        $this->assertEquals('Removing files', StatusFormatter::videoFormat(3, false));
         $this->assertEquals('Error', StatusFormatter::videoFormat(4, false));
-        $this->assertEquals('Conditional', StatusFormatter::videoFormat(9, false));
+        $this->assertEquals('Cond. required', StatusFormatter::videoFormat(9, false));
     }
 
     /**
@@ -298,15 +325,29 @@ class StatusFormatterTest extends TestCase
      */
     public function testFormatAccessLevel(): void
     {
-        $this->assertEquals('<fg=green>Any</>', StatusFormatter::formatAccessLevel(0));
-        $this->assertEquals('<fg=cyan>Member</>', StatusFormatter::formatAccessLevel(1));
+        $this->assertEquals('<fg=green>Any users</>', StatusFormatter::formatAccessLevel(0));
+        $this->assertEquals('<fg=cyan>Active / Premium</>', StatusFormatter::formatAccessLevel(1));
         $this->assertEquals('<fg=magenta>Premium</>', StatusFormatter::formatAccessLevel(2));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::formatAccessLevel(999));
 
         // Without color
-        $this->assertEquals('Any', StatusFormatter::formatAccessLevel(0, false));
-        $this->assertEquals('Member', StatusFormatter::formatAccessLevel(1, false));
+        $this->assertEquals('Any users', StatusFormatter::formatAccessLevel(0, false));
+        $this->assertEquals('Active / Premium', StatusFormatter::formatAccessLevel(1, false));
         $this->assertEquals('Premium', StatusFormatter::formatAccessLevel(2, false));
+    }
+
+    public function testContentAccessLevel(): void
+    {
+        $this->assertEquals('<fg=green>From access type</>', StatusFormatter::contentAccessLevel(0));
+        $this->assertEquals('<fg=cyan>All users</>', StatusFormatter::contentAccessLevel(1));
+        $this->assertEquals('<fg=yellow>Only members</>', StatusFormatter::contentAccessLevel(2));
+        $this->assertEquals('<fg=magenta>Only premium members</>', StatusFormatter::contentAccessLevel(3));
+        $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::contentAccessLevel(999));
+
+        $this->assertEquals('From access type', StatusFormatter::contentAccessLevel(0, false));
+        $this->assertEquals('All users', StatusFormatter::contentAccessLevel(1, false));
+        $this->assertEquals('Only members', StatusFormatter::contentAccessLevel(2, false));
+        $this->assertEquals('Only premium members', StatusFormatter::contentAccessLevel(3, false));
     }
 
     /**
@@ -314,17 +355,17 @@ class StatusFormatterTest extends TestCase
      */
     public function testTaskStatus(): void
     {
-        $this->assertEquals('<fg=yellow>Pending</>', StatusFormatter::task(0));
-        $this->assertEquals('<fg=cyan>Processing</>', StatusFormatter::task(1));
-        $this->assertEquals('<fg=red>Failed</>', StatusFormatter::task(2));
+        $this->assertEquals('<fg=yellow>Scheduled</>', StatusFormatter::task(0));
+        $this->assertEquals('<fg=cyan>In process</>', StatusFormatter::task(1));
+        $this->assertEquals('<fg=red>Error</>', StatusFormatter::task(2));
         $this->assertEquals('<fg=green>Completed</>', StatusFormatter::task(3));
         $this->assertEquals('<fg=gray>Deleted</>', StatusFormatter::task(4));
         $this->assertEquals('<fg=gray>Unknown</>', StatusFormatter::task(999));
 
         // Without color
-        $this->assertEquals('Pending', StatusFormatter::task(0, false));
-        $this->assertEquals('Processing', StatusFormatter::task(1, false));
-        $this->assertEquals('Failed', StatusFormatter::task(2, false));
+        $this->assertEquals('Scheduled', StatusFormatter::task(0, false));
+        $this->assertEquals('In process', StatusFormatter::task(1, false));
+        $this->assertEquals('Error', StatusFormatter::task(2, false));
         $this->assertEquals('Completed', StatusFormatter::task(3, false));
         $this->assertEquals('Deleted', StatusFormatter::task(4, false));
     }

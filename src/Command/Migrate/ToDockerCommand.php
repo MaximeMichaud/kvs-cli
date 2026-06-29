@@ -219,6 +219,11 @@ EOT
             $question = new ConfirmationQuestion('Proceed with migration? [y/N] ', false);
             $confirmed = $helper->ask($input, $output, $question);
             if ($confirmed !== true) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Migration cancelled because confirmation was not provided. Use --yes to run non-interactively.');
+                    return self::FAILURE;
+                }
+
                 $this->io()->warning('Migration cancelled');
                 return self::SUCCESS;
             }

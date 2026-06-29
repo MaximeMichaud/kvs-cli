@@ -57,6 +57,10 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['list', 'status'])) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'list')) {
             return $this->listCronTasks();
         }

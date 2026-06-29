@@ -59,9 +59,9 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Background Tasks Queue', $output);
         $this->assertStringContainsString('Showing 2 tasks', $output);
-        $this->assertStringContainsString('Create Video Format', $output);
-        $this->assertStringContainsString('New Album', $output);
-        $this->assertStringNotContainsString('New Video', $output);
+        $this->assertStringContainsString('Video files creation', $output);
+        $this->assertStringContainsString('New album', $output);
+        $this->assertStringNotContainsString('New video', $output);
     }
 
     public function testQueueListWithStatusFilter(): void
@@ -76,7 +76,7 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $pendingRows);
         $this->assertSame(10, (int) $pendingRows[0]['task_id']);
-        $this->assertSame('Pending', $pendingRows[0]['status']);
+        $this->assertSame('Scheduled', $pendingRows[0]['status']);
 
         $this->tester->execute([
             'action' => 'list',
@@ -114,11 +114,120 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(30, (int) $rows[0]['task_id']);
-        $this->assertSame('Failed', $rows[0]['status']);
-        $this->assertSame('Create Video Format', $rows[0]['type']);
+        $this->assertSame('Error', $rows[0]['status']);
+        $this->assertSame('Video files creation', $rows[0]['type']);
         $this->assertSame('Video #101', $rows[0]['content_id']);
         $this->assertSame('Backup Worker', $rows[0]['server']);
-        $this->assertSame('Conversion Failed', $rows[0]['error']);
+        $this->assertSame('03 - Unexpected error', $rows[0]['error']);
+    }
+
+    public function testQueueListUsesKvsAdminErrorCodeLabels(): void
+    {
+        $this->insertTask($this->db, [
+            'task_id' => 40,
+            'status_id' => 2,
+            'type_id' => 4,
+            'video_id' => 102,
+            'album_id' => 0,
+            'server_id' => 1,
+            'error_code' => 8,
+            'priority' => 60,
+            'message' => 'Screenshot generation failed',
+            'data' => '',
+            'times_restarted' => 0,
+            'added_date' => '2026-05-26 11:00:00',
+            'start_date' => '2026-05-26 11:05:00',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'failed',
+            '--format' => 'json',
+            '--fields' => 'task_id,error_code,error',
+            '--limit' => '1',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(40, (int) $rows[0]['task_id']);
+        $this->assertSame(8, (int) $rows[0]['error_code']);
+        $this->assertSame('08 - Screenshots error', $rows[0]['error']);
+        $this->assertStringNotContainsString('Plugin Error', $this->tester->getDisplay());
+    }
+
+    public function testQueueListExposesKvsAdminObjectFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'task_id',
+                'status_id',
+                'error_code',
+                'message',
+                'type_id',
+                'server',
+                'object',
+                'object_id',
+                'object_type_id',
+                'priority',
+                'added_date',
+                'start_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['task_id']);
+        $this->assertSame(2, (int) $rows[0]['status_id']);
+        $this->assertSame(3, (int) $rows[0]['error_code']);
+        $this->assertSame('Converter returned exit code 1', $rows[0]['message']);
+        $this->assertSame(4, (int) $rows[0]['type_id']);
+        $this->assertSame('Backup Worker', $rows[0]['server']);
+        $this->assertSame(101, (int) $rows[0]['object']);
+        $this->assertSame(101, (int) $rows[0]['object_id']);
+        $this->assertSame(1, (int) $rows[0]['object_type_id']);
+        $this->assertSame(50, (int) $rows[0]['priority']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+        $this->assertSame('2026-05-26 10:05:00', $rows[0]['start_date']);
+    }
+
+    public function testQueueListExposesKvsAdminAppendFields(): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE ' . TestHelper::table('background_tasks') . ' SET data = :data WHERE task_id = 30'
+        );
+        $stmt->execute([
+            'data' => serialize([
+                'format_postfix' => '.mp4',
+                'format_size' => '720p',
+            ]),
+        ]);
+
+        $progressDir = $this->kvsPath . '/admin/data/engine/tasks';
+        self::assertTrue(is_dir($progressDir) || mkdir($progressDir, 0777, true));
+        file_put_contents($progressDir . '/30.dat', '42');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'task_id,format_postfix,format_size,pc_complete,is_error',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['task_id']);
+        $this->assertSame('.mp4', $rows[0]['format_postfix']);
+        $this->assertSame('720p', $rows[0]['format_size']);
+        $this->assertSame('42%', $rows[0]['pc_complete']);
+        $this->assertSame(1, (int) $rows[0]['is_error']);
     }
 
     public function testQueueListCountFormatIgnoresLimitButAppliesFilters(): void
@@ -157,13 +266,30 @@ class QueueCommandTest extends TestCase
         $this->assertStringContainsString('Tasks by Type', $output);
         $this->assertStringContainsString('Failed Tasks by Error', $output);
         $this->assertStringContainsString('Last 24 Hours', $output);
-        $this->assertStringContainsString('New Video', $output);
-        $this->assertStringContainsString('Conversion Failed', $output);
-        $this->assertMatchesRegularExpression('/Pending\W+1/', $output);
-        $this->assertMatchesRegularExpression('/Processing\W+1/', $output);
-        $this->assertMatchesRegularExpression('/Failed\W+1/', $output);
+        $this->assertStringContainsString('New video', $output);
+        $this->assertStringContainsString('03 - Unexpected error', $output);
+        $this->assertMatchesRegularExpression('/Scheduled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/In process\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Error\W+1/', $output);
         $this->assertMatchesRegularExpression('/Completed\W+1/', $output);
         $this->assertMatchesRegularExpression('/Deleted\W+1/', $output);
+    }
+
+    public function testQueueStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('queue_status', $rowsByMetric['Scheduled']['section'] ?? null);
+        $this->assertSame(1, (int) ($rowsByMetric['Scheduled']['value'] ?? 0));
+        $this->assertStringNotContainsString('Queue Statistics', $this->tester->getDisplay());
     }
 
     public function testQueueHistory(): void
@@ -178,9 +304,52 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Task History', $output);
         $this->assertStringContainsString('Showing 2 tasks', $output);
-        $this->assertStringContainsString('New Video', $output);
-        $this->assertStringContainsString('New Album', $output);
-        $this->assertStringNotContainsString('Create Video Format', $output);
+        $this->assertStringContainsString('Video files creation', $output);
+        $this->assertStringContainsString('New album', $output);
+        $this->assertStringNotContainsString('New video', $output);
+    }
+
+    public function testQueueHistoryExposesKvsAdminObjectFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--server' => '1',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'task_id',
+                'status_id',
+                'error_code',
+                'message',
+                'type_id',
+                'server',
+                'object',
+                'object_id',
+                'object_type_id',
+                'start_date',
+                'end_date',
+                'effective_duration',
+                'duration',
+                'effective_duration_seconds',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(301, (int) $rows[0]['task_id']);
+        $this->assertSame(3, (int) $rows[0]['status_id']);
+        $this->assertSame(0, (int) $rows[0]['error_code']);
+        $this->assertSame('Finished conversion', $rows[0]['message']);
+        $this->assertSame(1, (int) $rows[0]['type_id']);
+        $this->assertSame('Local Worker', $rows[0]['server']);
+        $this->assertSame(100, (int) $rows[0]['object']);
+        $this->assertSame(100, (int) $rows[0]['object_id']);
+        $this->assertSame(1, (int) $rows[0]['object_type_id']);
+        $this->assertSame('1:01:01', $rows[0]['effective_duration']);
+        $this->assertSame('1:01:01', $rows[0]['duration']);
+        $this->assertSame(3661, (int) $rows[0]['effective_duration_seconds']);
     }
 
     public function testQueueHistoryCountFormatIgnoresLimitButAppliesFilters(): void
@@ -241,13 +410,56 @@ class QueueCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Task #30', $output);
-        $this->assertStringContainsString('Failed', $output);
-        $this->assertStringContainsString('Create Video Format', $output);
+        $this->assertStringContainsString('Error', $output);
+        $this->assertStringContainsString('Video files creation', $output);
         $this->assertStringContainsString('Video ID', $output);
         $this->assertStringContainsString('101', $output);
         $this->assertStringContainsString('Backup Worker', $output);
-        $this->assertStringContainsString('Conversion Failed', $output);
+        $this->assertStringContainsString('03 - Unexpected error', $output);
         $this->assertStringContainsString('Converter returned exit code 1', $output);
+    }
+
+    public function testQueueShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['task_id']);
+        $this->assertSame('Error', $rows[0]['status']);
+        $this->assertSame('Video files creation', $rows[0]['type']);
+        $this->assertFalse($rows[0]['is_history']);
+        $this->assertStringNotContainsString('Task #30', $output);
+    }
+
+    public function testQueueShowRejectsNonIntegerActiveTaskIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Task ID', $this->tester->getDisplay());
+    }
+
+    public function testQueueShowRejectsNonIntegerHistoryTaskIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '301abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Task ID', $this->tester->getDisplay());
     }
 
     public function testQueueHelpAction(): void
@@ -309,7 +521,7 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(10, (int) $rows[0]['task_id']);
-        $this->assertSame('New Video', $rows[0]['type']);
+        $this->assertSame('New video', $rows[0]['type']);
     }
 
     public function testQueueListNamesDeleteTimelineScreenshotsTaskType(): void
@@ -342,7 +554,7 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(40, (int) $rows[0]['task_id']);
-        $this->assertSame('Delete Timeline Screenshots', $rows[0]['type']);
+        $this->assertSame('Timeline screenshots deletion', $rows[0]['type']);
     }
 
     public function testQueueHistoryWithStatusFilter(): void
@@ -356,7 +568,7 @@ class QueueCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(2, $completedRows);
-        $this->assertSame([301, 303], array_map(static fn (array $row): int => (int) $row['task_id'], $completedRows));
+        $this->assertSame([303, 301], array_map(static fn (array $row): int => (int) $row['task_id'], $completedRows));
         $this->assertSame(['Completed', 'Completed'], array_column($completedRows, 'status'));
 
         $this->tester->execute([
@@ -387,7 +599,7 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(304, (int) $rows[0]['task_id']);
-        $this->assertSame('Failed', $rows[0]['status']);
+        $this->assertSame('Error', $rows[0]['status']);
     }
 
     public function testQueueHistoryWithFailedStatusFilter(): void
@@ -405,7 +617,7 @@ class QueueCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(304, (int) $rows[0]['task_id']);
-        $this->assertSame('Failed', $rows[0]['status']);
+        $this->assertSame('Error', $rows[0]['status']);
     }
 
     public function testQueueHistoryWithAlbumFilter(): void

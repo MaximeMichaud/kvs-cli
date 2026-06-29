@@ -81,6 +81,54 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(['alice', 'alice'], array_column($rows, 'user'));
     }
 
+    public function testPlaylistListFiltersUserByUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'alice',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,title,user',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30, 20], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame(['alice', 'alice'], array_column($rows, 'user'));
+    }
+
+    public function testPlaylistListFiltersTagByNameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--tag' => 'practice',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,tags',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('practice,training', $rows[0]['tags']);
+    }
+
+    public function testPlaylistListFiltersCategoryByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--category' => 'Archive',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,categories',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('Archive,Featured', $rows[0]['categories']);
+    }
+
     public function testPlaylistListPublicFilter(): void
     {
         $this->tester->execute([
@@ -131,6 +179,22 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringNotContainsString('Disabled Playlist', $output);
     }
 
+    public function testPlaylistListSearchesDirectoryLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'private-playlist',
+            '--format' => 'json',
+            '--fields' => 'playlist_id,dir',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20], array_map(static fn (array $row): int => (int) $row['playlist_id'], $rows));
+        $this->assertSame('private-playlist', $rows[0]['dir']);
+    }
+
     public function testPlaylistListJsonFormat(): void
     {
         $this->tester->execute([
@@ -167,22 +231,43 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['comments_amount']);
     }
 
-    public function testPlaylistListExposesKvsAdminListFields(): void
+    public function testPlaylistListExposesKvsAdminRawScalarAndUserStatusFields(): void
     {
         $this->tester->execute([
             'action' => 'list',
             '--limit' => 1,
             '--format' => 'json',
-            '--fields' => 'playlist_id,title,tags,categories',
+            '--fields' => 'playlist_id,dir,description,user,user_status_id,status_id,is_private,last_content_date',
         ]);
 
-        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertEquals(0, $this->tester->getStatusCode());
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(30, (int) $rows[0]['playlist_id']);
-        $this->assertSame('Test Playlist', $rows[0]['title']);
-        $this->assertSame('training, featured', $rows[0]['tags']);
-        $this->assertSame('Featured', $rows[0]['categories']);
+        $this->assertSame('test-playlist', $rows[0]['dir']);
+        $this->assertSame('A test playlist', $rows[0]['description']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame(1, (int) $rows[0]['user_status_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(0, (int) $rows[0]['is_private']);
+        $this->assertSame('2026-05-26 11:00:00', $rows[0]['last_content_date']);
+    }
+
+    public function testPlaylistListExposesKvsAdminRelationFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,tags,categories',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('practice,training', $rows[0]['tags']);
+        $this->assertSame('Archive,Featured', $rows[0]['categories']);
     }
 
     public function testPlaylistListCsvFormat(): void
@@ -223,6 +308,19 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame('2', trim($this->tester->getDisplay()));
     }
 
+    public function testPlaylistListRejectsConflictingPrivacyFilters(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--public' => true,
+            '--private' => true,
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('cannot be used together', $this->tester->getDisplay());
+    }
+
     public function testPlaylistShow(): void
     {
         $this->tester->execute([
@@ -242,8 +340,41 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('A test playlist', $output);
         $this->assertStringContainsString('#100: Intro Video', $output);
         $this->assertStringContainsString('#101: Second Video', $output);
-        $this->assertStringContainsString('Featured', $output);
-        $this->assertStringContainsString('training', $output);
+        $this->assertStringContainsString('Archive, Featured', $output);
+        $this->assertStringContainsString('practice, training', $output);
+    }
+
+    public function testPlaylistShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame('A test playlist', $rows[0]['description']);
+        $this->assertSame(['Archive', 'Featured'], $rows[0]['categories']);
+        $this->assertSame(['practice', 'training'], $rows[0]['tags']);
+        $this->assertSame('100', $rows[0]['videos_top'][0]['video_id']);
+        $this->assertStringNotContainsString('Playlist #30', $output);
+    }
+
+    public function testPlaylistShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Playlist ID', $this->tester->getDisplay());
     }
 
     public function testPlaylistShowNotFound(): void
@@ -320,6 +451,30 @@ class PlaylistCommandTest extends TestCase
 
         $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('Video ID is required (use --video=<id>)', $output);
+    }
+
+    public function testPlaylistAddRejectsScientificNotationPlaylistId(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => '30e0',
+            '--video' => 999999,
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Playlist ID', $this->tester->getDisplay());
+    }
+
+    public function testPlaylistAddRejectsDecimalVideoId(): void
+    {
+        $this->tester->execute([
+            'action' => 'add',
+            'id' => 30,
+            '--video' => '999999.5',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Video ID', $this->tester->getDisplay());
     }
 
     public function testPlaylistAddPlaylistNotFound(): void
@@ -440,6 +595,30 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringContainsString('Video ID is required (use --video=<id>)', $output);
     }
 
+    public function testPlaylistRemoveRejectsScientificNotationPlaylistId(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => '30e0',
+            '--video' => 999999,
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Playlist ID', $this->tester->getDisplay());
+    }
+
+    public function testPlaylistRemoveRejectsScientificNotationVideoId(): void
+    {
+        $this->tester->execute([
+            'action' => 'remove',
+            'id' => 30,
+            '--video' => '999999e0',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Video ID', $this->tester->getDisplay());
+    }
+
     public function testPlaylistRemovePlaylistNotFound(): void
     {
         $this->tester->execute([
@@ -548,7 +727,7 @@ class PlaylistCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
-            'user_id INTEGER, username TEXT, favourite_videos_count INTEGER)'
+            'user_id INTEGER, username TEXT, status_id INTEGER, favourite_videos_count INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('playlists') . ' (' .
@@ -589,7 +768,7 @@ class PlaylistCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('users') .
-            " (user_id, username, favourite_videos_count) VALUES (1, 'alice', 2), (2, 'bob', 0)"
+            " (user_id, username, status_id, favourite_videos_count) VALUES (1, 'alice', 1, 2), (2, 'bob', 0, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('playlists') .
@@ -622,19 +801,19 @@ class PlaylistCommandTest extends TestCase
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories') .
-            " (category_id, title) VALUES (1, 'Featured')"
+            " (category_id, title) VALUES (1, 'Featured'), (2, 'Archive')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories_playlists') .
-            ' (id, category_id, playlist_id) VALUES (1, 1, 30)'
+            ' (id, category_id, playlist_id) VALUES (1, 2, 30), (2, 1, 30)'
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
-            " (tag_id, tag) VALUES (1, 'training'), (2, 'featured')"
+            " (tag_id, tag) VALUES (1, 'training'), (2, 'practice')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_playlists') .
-            ' (id, tag_id, playlist_id) VALUES (1, 1, 30), (2, 2, 30)'
+            ' (id, tag_id, playlist_id) VALUES (1, 2, 30), (2, 1, 30)'
         );
 
         return $db;

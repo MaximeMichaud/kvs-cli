@@ -257,9 +257,9 @@ class ContentOutputRegressionTest extends TestCase
             'rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (id INTEGER, category_id INTEGER, video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ktvs_tags_videos (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags_videos (id INTEGER, tag_id INTEGER, video_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
             "(20, 'Daily news', 1, 2, 0, 120, 5050, '1280x720', '2024-01-02 00:00:00', 20, 5, 15, 7, '')"
@@ -274,7 +274,7 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertStringContainsString('Dimensions', $output);
     }
 
-    public function testVideoShowDisplaysPremiumPrivacyLabel(): void
+    public function testVideoShowDisplaysPremiumPrivacyAsTypeLabel(): void
     {
         $db = $this->createSqliteConnection();
         $db->exec(
@@ -284,9 +284,9 @@ class ContentOutputRegressionTest extends TestCase
             'rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
         );
         $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ktvs_categories_videos (category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (id INTEGER, category_id INTEGER, video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ktvs_tags_videos (tag_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags_videos (id INTEGER, tag_id INTEGER, video_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
             "(20, 'Premium news', 1, 2, 2, 120, 5050, '1280x720', '2024-01-02 00:00:00', 20, 5, 15, 7, '')"
@@ -297,7 +297,8 @@ class ContentOutputRegressionTest extends TestCase
         $output = $tester->getDisplay();
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertMatchesRegularExpression('/Access\W+Premium/', $output);
+        $this->assertMatchesRegularExpression('/Type\W+Premium/', $output);
+        $this->assertMatchesRegularExpression('/Access\W+From access type/', $output);
         $this->assertStringNotContainsString('Private    │ Yes', $output);
     }
 
@@ -379,8 +380,9 @@ class ContentOutputRegressionTest extends TestCase
         $db = $this->createSqliteConnection();
         $db->exec(
             'CREATE TABLE ktvs_albums (' .
-            'album_id INTEGER, user_id INTEGER, title TEXT, status_id INTEGER, is_private INTEGER, ' .
-            'post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, photos_amount INTEGER)'
+            'album_id INTEGER, user_id INTEGER, title TEXT, dir TEXT, description TEXT, status_id INTEGER, ' .
+            'is_private INTEGER, post_date TEXT, album_viewed INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'photos_amount INTEGER)'
         );
         $db->exec('CREATE TABLE ktvs_albums_images (album_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_comments (object_type_id INTEGER, object_id INTEGER)');
@@ -388,8 +390,10 @@ class ContentOutputRegressionTest extends TestCase
         $db->exec("INSERT INTO ktvs_users VALUES (1, 'author')");
         $db->exec(
             "INSERT INTO ktvs_albums VALUES " .
-            "(4, 1, 'Outdoor Set', 1, 0, '2024-01-02 00:00:00', 15, 20, 5, 0), " .
-            "(5, 1, 'Indoor Set', 1, 0, '2024-01-03 00:00:00', 20, 20, 5, 0)"
+            "(4, 1, 'Outdoor Set', 'outdoor-set', 'Outdoor album description', 1, 0, " .
+            "'2024-01-02 00:00:00', 15, 20, 5, 0), " .
+            "(5, 1, 'Indoor Set', 'indoor-set', 'Indoor album description', 1, 0, " .
+            "'2024-01-03 00:00:00', 20, 20, 5, 0)"
         );
 
         $searchTester = new CommandTester($this->createAlbumCommand($db));
@@ -850,7 +854,11 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $this->createTagTables($db);
-        $db->exec("INSERT INTO ktvs_tags VALUES (34, 'review', 'review', 1, '2024-01-01 00:00:00')");
+        $db->exec(
+            "INSERT INTO ktvs_tags (tag_id, tag, tag_dir, status_id, added_date, " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) " .
+            "VALUES (34, 'review', 'review', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
+        );
         $db->exec('INSERT INTO ktvs_tags_videos VALUES (34), (34), (34), (34)');
         $db->exec('INSERT INTO ktvs_tags_albums VALUES (34)');
         $db->exec('INSERT INTO ktvs_tags_posts VALUES (34)');
@@ -868,7 +876,11 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db = $this->createSqliteConnection();
         $this->createTagTables($db);
-        $db->exec("INSERT INTO ktvs_tags VALUES (39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00')");
+        $db->exec(
+            "INSERT INTO ktvs_tags (tag_id, tag, tag_dir, status_id, added_date, " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) " .
+            "VALUES (39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
+        );
 
         $tester = new CommandTester($this->createTagCommand($db));
         $tester->execute([
@@ -885,14 +897,39 @@ class ContentOutputRegressionTest extends TestCase
         $this->assertSame('Active', $rows[0]['status']);
     }
 
+    public function testTagListUsesKvsAdminDefaultOrdering(): void
+    {
+        $db = $this->createSqliteConnection();
+        $this->createTagTables($db);
+        $db->exec(
+            "INSERT INTO ktvs_tags (tag_id, tag, tag_dir, status_id, added_date, " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES " .
+            "(39, 'advanced', 'advanced', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0), " .
+            "(62, 'audio', 'audio', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
+        );
+
+        $tester = new CommandTester($this->createTagCommand($db));
+        $tester->execute([
+            'action' => 'list',
+            '--fields' => 'tag_id,tag',
+            '--format' => 'json',
+            '--limit' => '2',
+        ]);
+
+        $rows = $this->decodeJsonRows($tester->getDisplay());
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame([62, 39], array_map(static fn (array $row): int => (int) $row['tag_id'], $rows));
+    }
+
     public function testTagStatsCountsTagsUsedOutsideVideosAndAlbums(): void
     {
         $db = $this->createSqliteConnection();
         $this->createTagTables($db);
         $db->exec(
             "INSERT INTO ktvs_tags VALUES " .
-            "(34, 'review', 'review', 1, '2024-01-01 00:00:00'), " .
-            "(35, 'post only', 'post-only', 1, '2024-01-01 00:00:00')"
+            "(34, 'review', 'review', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0), " .
+            "(35, 'post only', 'post-only', 1, '2024-01-01 00:00:00', 0, 0, 0, 0, 0)"
         );
         $db->exec('INSERT INTO ktvs_tags_videos VALUES (34)');
         $db->exec('INSERT INTO ktvs_tags_posts VALUES (35)');
@@ -919,7 +956,9 @@ class ContentOutputRegressionTest extends TestCase
     {
         $db->exec(
             'CREATE TABLE ktvs_tags ' .
-            '(tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, added_date TEXT)'
+            '(tag_id INTEGER, tag TEXT, tag_dir TEXT, status_id INTEGER, added_date TEXT, ' .
+            'total_content_sources INTEGER, total_playlists INTEGER, total_models INTEGER, ' .
+            'total_dvds INTEGER, total_dvd_groups INTEGER)'
         );
         $tagRelations = ['videos', 'albums', 'posts', 'playlists', 'content_sources', 'models', 'dvds', 'dvds_groups'];
         foreach ($tagRelations as $suffix) {

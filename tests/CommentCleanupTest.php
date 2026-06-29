@@ -500,6 +500,7 @@ class CommentCleanupTest extends TestCase
                 object_type_id INTEGER,
                 user_id INTEGER,
                 comment TEXT,
+                anonymous_username TEXT,
                 is_approved INTEGER,
                 is_review_needed INTEGER,
                 added_date TEXT DEFAULT "2026-01-01 00:00:00"

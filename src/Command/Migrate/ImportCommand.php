@@ -284,6 +284,10 @@ EOT
             $confirmed = $helper->ask($input, $output, $question);
             if ($confirmed !== true) {
                 $this->cleanup($extractDir);
+                if (!$input->isInteractive()) {
+                    $this->io()->error('Import cancelled because confirmation was not provided. Use --yes to run non-interactively.');
+                    return Command::FAILURE;
+                }
                 $this->io()->warning('Import cancelled');
                 return Command::SUCCESS;
             }

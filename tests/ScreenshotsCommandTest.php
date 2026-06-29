@@ -53,6 +53,36 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('999999999', $output);
     }
 
+    public function testListScreenshotsMissingDirectoryJsonReturnsEmptyList(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame([], $rows);
+        $this->assertStringNotContainsString('Screenshots directory not found', $output);
+    }
+
+    public function testListScreenshotsRejectsInvalidFormatBeforeMissingDirectory(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'xml',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        $this->assertStringNotContainsString('Screenshots directory not found', $output);
+    }
+
     public function testListScreenshotsWithExistingVideo(): void
     {
         $this->createScreenshotFixture('1234');
@@ -64,8 +94,10 @@ class ScreenshotsCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('preview.png', $output);
-        $this->assertStringContainsString('320x180/001.jpg', $output);
+        $this->assertStringContainsString('1.jpg', $output);
+        $this->assertStringContainsString('1', $output);
+        $this->assertStringNotContainsString('source-only.jpg', $output);
+        $this->assertStringNotContainsString('preview.png', $output);
         $this->assertStringContainsString('1x1', $output);
     }
 
@@ -127,17 +159,18 @@ class ScreenshotsCommandTest extends TestCase
 
         if ($format === 'json') {
             $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
-            $this->assertCount(2, $rows);
-            $this->assertSame(['320x180/001.jpg', 'preview.png'], array_column($rows, 'filename'));
+            $this->assertCount(1, $rows);
+            $this->assertSame(['1.jpg'], array_column($rows, 'filename'));
+            $this->assertSame(1, (int) $rows[0]['index']);
             return;
         }
 
         if ($format === 'count') {
-            $this->assertSame('2', trim($output));
+            $this->assertSame('1', trim($output));
             return;
         }
 
-        $this->assertStringContainsString('preview.png', $output);
+        $this->assertStringContainsString('1.jpg', $output);
     }
 
     public static function provideOutputFormats(): array
@@ -158,7 +191,34 @@ class ScreenshotsCommandTest extends TestCase
         ]);
 
         $this->assertEquals(0, $this->tester->getStatusCode());
-        $this->assertStringContainsString('preview.png', $this->tester->getDisplay());
+        $this->assertStringContainsString('1.jpg', $this->tester->getDisplay());
+    }
+
+    public function testListScreenshotsIgnoresDerivedPreviewsAndTimelinesInCount(): void
+    {
+        $this->createScreenshotFixture('1234');
+        $generatedScreenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket('1234') . '/1234';
+        mkdir($generatedScreenshotsDir . '/timelines/default/320x180', 0755, true);
+
+        $image = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+            true
+        );
+        $this->assertIsString($image);
+        file_put_contents($generatedScreenshotsDir . '/preview.jpg', $image);
+        file_put_contents($generatedScreenshotsDir . '/preview_720p.mp4.jpg', $image);
+        for ($i = 1; $i <= 5; $i++) {
+            file_put_contents($generatedScreenshotsDir . "/timelines/default/320x180/$i.jpg", $image);
+        }
+
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertSame('1', trim($this->tester->getDisplay()));
     }
 
     public function testUnknownActionFailsEvenWithVideoId(): void
@@ -201,8 +261,10 @@ class ScreenshotsCommandTest extends TestCase
 
     private function createScreenshotFixture(string $videoId): void
     {
-        $screenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket($videoId) . '/' . $videoId;
-        mkdir($screenshotsDir . '/320x180', 0755, true);
+        $sourceScreenshotsDir = $this->kvsPath . '/contents/videos_sources/' . $this->getBucket($videoId) . '/' . $videoId . '/screenshots';
+        $generatedScreenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket($videoId) . '/' . $videoId;
+        mkdir($sourceScreenshotsDir, 0755, true);
+        mkdir($generatedScreenshotsDir . '/320x180', 0755, true);
 
         $image = base64_decode(
             'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
@@ -210,9 +272,10 @@ class ScreenshotsCommandTest extends TestCase
         );
         $this->assertIsString($image);
 
-        file_put_contents($screenshotsDir . '/preview.png', $image);
-        file_put_contents($screenshotsDir . '/320x180/001.jpg', $image);
-        file_put_contents($screenshotsDir . '/ignore.txt', 'not an image');
+        file_put_contents($sourceScreenshotsDir . '/source-only.jpg', $image);
+        file_put_contents($sourceScreenshotsDir . '/info.dat', serialize([1 => ['type' => 'uploaded']]));
+        file_put_contents($generatedScreenshotsDir . '/preview.png', $image);
+        file_put_contents($generatedScreenshotsDir . '/320x180/001.jpg', $image);
     }
 
     private function getBucket(string $videoId): int

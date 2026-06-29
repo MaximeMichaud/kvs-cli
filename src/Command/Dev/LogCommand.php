@@ -8,6 +8,9 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 use function KVS\CLI\Utils\format_bytes;
 
@@ -18,6 +21,8 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class LogCommand extends BaseCommand
 {
+    private const LOG_EXTENSIONS = ['log', 'txt'];
+
     protected function configure(): void
     {
         $this
@@ -30,6 +35,10 @@ class LogCommand extends BaseCommand
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['list', 'clear', 'follow'])) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'list')) {
             return $this->listLogs();
         }
@@ -49,44 +58,25 @@ class LogCommand extends BaseCommand
             return $this->followLog($type);
         }
 
-        $tail = $this->getIntOptionOrDefault($input, 'tail', 50);
+        $tail = $this->getPositiveIntOptionOrDefault($input, 'tail', 50);
+        if ($tail === null) {
+            return self::FAILURE;
+        }
+
         return $this->showLog($type, $tail);
     }
 
     private function listLogs(): int
     {
-        $logDirs = [
-            $this->config->getAdminPath() . '/logs',
-            $this->config->getAdminPath() . '/data/logs',
-        ];
-
         $logs = [];
 
-        foreach ($logDirs as $dir) {
-            if (!is_dir($dir)) {
-                continue;
-            }
-
-            $files = glob($dir . '/*.{log,txt}', GLOB_BRACE);
-            if ($files === false) {
-                continue;
-            }
-
-            foreach ($files as $file) {
-                $fileSize = filesize($file);
-                $fileMtime = filemtime($file);
-
-                if ($fileSize === false || $fileMtime === false) {
-                    continue;
-                }
-
-                $logs[] = [
-                    pathinfo($file, PATHINFO_FILENAME),
-                    basename($file),
-                    format_bytes($fileSize),
-                    date('Y-m-d H:i:s', $fileMtime),
-                ];
-            }
+        foreach ($this->getLogFiles() as $file) {
+            $logs[] = [
+                $file['type'],
+                $file['file'],
+                format_bytes($file['size']),
+                date('Y-m-d H:i:s', $file['mtime']),
+            ];
         }
 
         if ($logs === []) {
@@ -263,28 +253,119 @@ class LogCommand extends BaseCommand
 
     private function findLogFile(string $type): ?string
     {
-        $possibleFiles = [
-            $this->config->getAdminPath() . "/logs/$type.log",
-            $this->config->getAdminPath() . "/logs/$type.txt",
-            $this->config->getAdminPath() . "/data/logs/$type.log",
-            $this->config->getAdminPath() . "/data/logs/$type.txt",
-        ];
+        $type = trim(str_replace('\\', '/', $type), '/');
 
-        foreach ($possibleFiles as $file) {
-            if (file_exists($file)) {
-                return $file;
+        if (!$this->isSafeLogType($type)) {
+            return null;
+        }
+
+        $types = [$type];
+        if (preg_match('/\.(?:log|txt)\z/i', $type) !== 1) {
+            foreach (self::LOG_EXTENSIONS as $extension) {
+                $types[] = "$type.$extension";
             }
         }
 
-        $dir = $this->config->getAdminPath() . '/logs';
-        if (is_dir($dir)) {
-            $files = glob("$dir/*$type*");
-            if ($files !== false && $files !== []) {
-                return $files[0];
+        foreach ($this->getLogFiles() as $file) {
+            if (in_array($file['type'], $types, true) || in_array($file['file'], $types, true)) {
+                return $file['path'];
+            }
+        }
+
+        if (!str_contains($type, '/')) {
+            foreach ($this->getLogFiles() as $file) {
+                if (str_contains($file['type'], $type)) {
+                    return $file['path'];
+                }
             }
         }
 
         return null;
+    }
+
+    /**
+     * @return list<array{type: string, file: string, path: string, size: int, mtime: int}>
+     */
+    private function getLogFiles(): array
+    {
+        $logDirs = [
+            ['prefix' => '', 'dir' => $this->config->getAdminPath() . '/logs'],
+            ['prefix' => '', 'dir' => $this->config->getAdminPath() . '/data/logs'],
+            ['prefix' => 'conversion', 'dir' => $this->config->getAdminPath() . '/data/conversion'],
+        ];
+
+        $files = [];
+
+        foreach ($logDirs as $logDir) {
+            $prefix = $logDir['prefix'];
+            $dir = $logDir['dir'];
+            $root = realpath($dir);
+            if ($root === false || !is_dir($root)) {
+                continue;
+            }
+
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
+            foreach ($iterator as $file) {
+                if (!$file instanceof SplFileInfo || !$file->isFile()) {
+                    continue;
+                }
+
+                $extension = strtolower($file->getExtension());
+                if (!in_array($extension, self::LOG_EXTENSIONS, true)) {
+                    continue;
+                }
+
+                $path = $file->getPathname();
+                $relativePath = $this->getRelativeLogPath($root, $path);
+                if ($relativePath === null) {
+                    continue;
+                }
+                $displayPath = $prefix === '' ? $relativePath : $prefix . '/' . $relativePath;
+
+                $fileSize = filesize($path);
+                $fileMtime = filemtime($path);
+                if ($fileSize === false || $fileMtime === false) {
+                    continue;
+                }
+
+                $files[] = [
+                    'type' => preg_replace('/\.(?:log|txt)\z/i', '', $displayPath) ?? $displayPath,
+                    'file' => $displayPath,
+                    'path' => $path,
+                    'size' => $fileSize,
+                    'mtime' => $fileMtime,
+                ];
+            }
+        }
+
+        usort($files, static fn (array $left, array $right): int => strcmp($left['type'], $right['type']));
+
+        return $files;
+    }
+
+    private function getRelativeLogPath(string $root, string $path): ?string
+    {
+        $realPath = realpath($path);
+        if ($realPath === false || !str_starts_with($realPath, $root . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+
+        return str_replace(DIRECTORY_SEPARATOR, '/', substr($realPath, strlen($root) + 1));
+    }
+
+    private function isSafeLogType(string $type): bool
+    {
+        if ($type === '' || str_contains($type, "\0")) {
+            return false;
+        }
+
+        foreach (explode('/', $type) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

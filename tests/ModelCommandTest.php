@@ -113,7 +113,7 @@ class ModelCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(20, (int) $rows[0]['model_id']);
         $this->assertSame('Disabled Model', $rows[0]['title']);
-        $this->assertSame('Disabled', $rows[0]['status']);
+        $this->assertSame('Inactive', $rows[0]['status']);
     }
 
     public function testHelpDocumentsInactiveStatusAlias(): void
@@ -136,6 +136,22 @@ class ModelCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Test Model', $output);
         $this->assertStringNotContainsString('Disabled Model', $output);
+    }
+
+    public function testListModelsSearchesDescriptionLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Main model profile',
+            '--format' => 'json',
+            '--fields' => 'model_id,description',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30], array_map(static fn (array $row): int => (int) $row['model_id'], $rows));
+        $this->assertSame('Main model profile', $rows[0]['description']);
     }
 
     public function testListModelsUsesKvsAdminRelationContentCounts(): void
@@ -184,6 +200,27 @@ class ModelCommandTest extends TestCase
         $this->assertSame(6, (int) $rows[0]['subscribers_amount']);
     }
 
+    public function testListModelsExposesKvsAdminThumbAndRelationFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,thumb,screenshot1,screenshot2,tags,categories',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame('model-1.jpg', $rows[0]['thumb']);
+        $this->assertSame('model-1.jpg', $rows[0]['screenshot1']);
+        $this->assertSame('model-2.jpg', $rows[0]['screenshot2']);
+        $this->assertSame('interview,featured', $rows[0]['tags']);
+        $this->assertSame('Guests,Performers', $rows[0]['categories']);
+    }
+
     public function testListModelsExposesKvsAdminGroupField(): void
     {
         $this->tester->execute([
@@ -217,8 +254,8 @@ class ModelCommandTest extends TestCase
 
         $this->assertSame(30, (int) $rows[0]['model_id']);
         $this->assertSame('Test Model', $rows[0]['title']);
-        $this->assertSame('model-tag, featured', $rows[0]['tags']);
-        $this->assertSame('Models Category', $rows[0]['categories']);
+        $this->assertSame('interview,featured', $rows[0]['tags']);
+        $this->assertSame('Guests,Performers', $rows[0]['categories']);
     }
 
     public function testListModelsExposesKvsAdminLocationAndDeathDateFields(): void
@@ -238,6 +275,33 @@ class ModelCommandTest extends TestCase
         $this->assertSame('Montreal', $rows[0]['city']);
         $this->assertSame('Quebec', $rows[0]['state']);
         $this->assertSame('2026-01-01', $rows[0]['death_date']);
+    }
+
+    public function testListModelsExposesKvsAdminRawScalarFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,dir,description,alias,access_level_id,gender_id,hair_id,eye_color_id,gallery_url,added_date,sort_id,rank',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame('test-model', $rows[0]['dir']);
+        $this->assertSame('Main model profile', $rows[0]['description']);
+        $this->assertSame('Test Alias', $rows[0]['alias']);
+        $this->assertSame(2, (int) $rows[0]['access_level_id']);
+        $this->assertSame(1, (int) $rows[0]['gender_id']);
+        $this->assertSame(2, (int) $rows[0]['hair_id']);
+        $this->assertSame(3, (int) $rows[0]['eye_color_id']);
+        $this->assertSame('https://example.test/model-gallery', $rows[0]['gallery_url']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame(11, (int) $rows[0]['sort_id']);
+        $this->assertSame('#7', $rows[0]['rank']);
     }
 
     #[DataProvider('provideOutputFormats')]
@@ -289,6 +353,37 @@ class ModelCommandTest extends TestCase
         $this->assertStringContainsString('Main model profile', $output);
     }
 
+    public function testShowModelSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('30', $rows[0]['model_id']);
+        $this->assertSame('Test Model', $rows[0]['name']);
+        $this->assertSame('2', $rows[0]['videos']);
+        $this->assertSame('Main model profile', $rows[0]['description']);
+        $this->assertStringNotContainsString('Model: Test Model', $output);
+    }
+
+    public function testShowModelRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Model ID', $this->tester->getDisplay());
+    }
+
     public function testShowModelNotFound(): void
     {
         $this->tester->execute([
@@ -321,9 +416,28 @@ class ModelCommandTest extends TestCase
         $this->assertStringContainsString('Model Statistics', $output);
         $this->assertMatchesRegularExpression('/Total Models\W+3/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Inactive\W+1/', $output);
         $this->assertMatchesRegularExpression('/Models with Videos\W+3/', $output);
         $this->assertMatchesRegularExpression('/Total Video Relations\W+4/', $output);
+    }
+
+    public function testStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Models']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Models']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
+        $this->assertStringNotContainsString('Model Statistics', $this->tester->getDisplay());
     }
 
     public function testDefaultActionIsList(): void
@@ -343,9 +457,11 @@ class ModelCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models') . ' (' .
-            'model_id INTEGER, title TEXT, status_id INTEGER, model_viewed INTEGER, country TEXT, ' .
-            'birth_date TEXT, age INTEGER, measurements TEXT, height TEXT, weight TEXT, rank INTEGER, ' .
-            'rating INTEGER, rating_amount INTEGER, description TEXT, total_videos INTEGER, total_albums INTEGER, ' .
+            'model_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, model_viewed INTEGER, access_level_id INTEGER, ' .
+            'screenshot1 TEXT, screenshot2 TEXT, ' .
+            'country TEXT, gender_id INTEGER, hair_id INTEGER, eye_color_id INTEGER, birth_date TEXT, age INTEGER, ' .
+            'measurements TEXT, height TEXT, weight TEXT, rank INTEGER, rating INTEGER, rating_amount INTEGER, ' .
+            'description TEXT, alias TEXT, gallery_url TEXT, added_date TEXT, sort_id INTEGER, total_videos INTEGER, total_albums INTEGER, ' .
             'total_dvds INTEGER, total_dvd_groups INTEGER, subscribers_count INTEGER, city TEXT, state TEXT, ' .
             'death_date TEXT, model_group_id INTEGER)'
         );
@@ -370,23 +486,41 @@ class ModelCommandTest extends TestCase
             'object_type_id INTEGER, object_id INTEGER)'
         );
         $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
+            'tag_id INTEGER, tag TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('tags_models') . ' (' .
+            'id INTEGER, tag_id INTEGER, model_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
+            'category_id INTEGER, title TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_models') . ' (' .
+            'id INTEGER, category_id INTEGER, model_id INTEGER)'
+        );
+        $db->exec(
             'CREATE TABLE ' . TestHelper::table('list_countries') . ' (' .
             'country_code TEXT, language_code TEXT, title TEXT)'
         );
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories_models') . ' (id INTEGER, category_id INTEGER, model_id INTEGER)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags_models') . ' (id INTEGER, tag_id INTEGER, model_id INTEGER)');
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
-            ' (model_id, title, status_id, model_viewed, country, birth_date, age, measurements, height, ' .
-            'weight, rank, rating, rating_amount, description, total_videos, total_albums, total_dvds, ' .
+            ' (model_id, title, dir, status_id, model_viewed, access_level_id, screenshot1, screenshot2, ' .
+            'country, gender_id, hair_id, eye_color_id, ' .
+            'birth_date, age, measurements, height, weight, rank, rating, rating_amount, description, alias, gallery_url, ' .
+            'added_date, sort_id, total_videos, total_albums, total_dvds, ' .
             'total_dvd_groups, subscribers_count, city, state, death_date, model_group_id) VALUES ' .
-            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', " .
-            "'55 kg', 7, 40, 10, 'Main model profile', 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3), " .
-            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1, 0, 0, 0, '', '', '0000-00-00', 4), " .
-            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0, 0, 0, 1, '', '', '0000-00-00', 0)"
+            "(30, 'Test Model', 'test-model', 1, 100, 2, 'model-1.jpg', 'model-2.jpg', " .
+            "'CA', 1, 2, 3, '2000-01-01', 26, '34-24-34', '170 cm', " .
+            "'55 kg', 7, 40, 10, 'Main model profile', 'Test Alias', 'https://example.test/model-gallery', " .
+            "'2026-05-25 10:00:00', 11, 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3), " .
+            "(20, 'Disabled Model', 'disabled-model', 0, 8, 0, '', '', '', 0, 0, 0, '', 0, '', '', '', 0, 0, 0, '', '', '', " .
+            "'2026-05-26 10:00:00', 12, 1, 1, 0, 0, 0, '', '', '0000-00-00', 4), " .
+            "(10, 'Other Performer', 'other-performer', 1, 25, 0, '', '', 'US', 0, 0, 0, '1999-02-03', 27, '', '', '', 0, 20, 5, '', '', '', " .
+            "'2026-05-27 10:00:00', 13, 1, 0, 0, 0, 1, '', '', '0000-00-00', 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models_groups') .
@@ -403,13 +537,19 @@ class ModelCommandTest extends TestCase
             ' VALUES (4, 30), (4, 30), (4, 20), (5, 30)'
         );
         $db->exec(
+            'INSERT INTO ' . TestHelper::table('tags') .
+            " VALUES (1, 'featured'), (2, 'interview')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('tags_models') . ' VALUES (1, 2, 30), (2, 1, 30)');
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories') .
+            " VALUES (1, 'Performers'), (2, 'Guests')"
+        );
+        $db->exec('INSERT INTO ' . TestHelper::table('categories_models') . ' VALUES (1, 2, 30), (2, 1, 30)');
+        $db->exec(
             'INSERT INTO ' . TestHelper::table('list_countries') .
             " VALUES ('CA', 'en', 'Canada'), ('US', 'en', 'United States')"
         );
-        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Models Category')");
-        $db->exec("INSERT INTO " . TestHelper::table('categories_models') . " VALUES (1, 1, 30)");
-        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'model-tag'), (2, 'featured')");
-        $db->exec("INSERT INTO " . TestHelper::table('tags_models') . " VALUES (1, 1, 30), (2, 2, 30)");
 
         return $db;
     }

@@ -24,6 +24,38 @@ class UserPurgeCommandTest extends TestCase
         TestHelper::removeDir($this->kvsPath);
     }
 
+    public function testRejectsInvalidPositiveIntegerFiltersBeforeSql(): void
+    {
+        $config = TestHelper::createTestConfiguration($this->kvsPath);
+        $db = new PDO('sqlite::memory:');
+        $command = new class ($config, $db) extends UserPurgeCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+
+        foreach (['inactive-days', 'min-age'] as $option) {
+            foreach (['abc', '1.5', '0', '-1'] as $value) {
+                $tester = new CommandTester($command);
+                $tester->execute([
+                    '--no-content' => true,
+                    '--' . $option => $value,
+                ]);
+
+                $display = $tester->getDisplay();
+                $this->assertSame(1, $tester->getStatusCode(), "$option=$value: $display");
+                $this->assertStringContainsString("Invalid value for --$option", $display, "$option=$value");
+                $this->assertStringNotContainsString('no such table', strtolower($display), "$option=$value");
+            }
+        }
+    }
+
     public function testDryRunExcludesSystemAccounts(): void
     {
         $db = new PDO('sqlite::memory:');
@@ -255,6 +287,73 @@ class UserPurgeCommandTest extends TestCase
         $this->assertStringContainsString('Total: 1 user', $display);
         $this->assertStringContainsString('Deleting 1 user...', $display);
         $this->assertStringContainsString('KVS did not delete 1 selected user.', $display);
+        $this->assertSame(1, (int) $db->query('SELECT COUNT(*) FROM ktvs_users')->fetchColumn());
+    }
+
+    public function testConfirmNoInteractionFailsWithoutConfirmation(): void
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec(
+            'CREATE TABLE ktvs_users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
+                status_id INTEGER NOT NULL,
+                is_removal_requested INTEGER NOT NULL DEFAULT 0,
+                total_videos_count INTEGER NOT NULL DEFAULT 0,
+                comments_total_count INTEGER NOT NULL DEFAULT 0,
+                last_login_date TEXT NOT NULL,
+                added_date TEXT NOT NULL,
+                removal_reason TEXT NOT NULL DEFAULT \'\'
+            )'
+        );
+
+        $stmt = $db->prepare(
+            'INSERT INTO ktvs_users (
+                user_id, username, email, status_id, is_removal_requested,
+                total_videos_count, comments_total_count, last_login_date,
+                added_date, removal_reason
+            ) VALUES (?, ?, ?, 2, 1, 0, 0, ?, ?, ?)'
+        );
+        $stmt->execute([
+            3,
+            'removal-user',
+            'removal@example.test',
+            '2026-01-01 00:00:00',
+            '2026-01-01 00:00:00',
+            'Please delete my account',
+        ]);
+
+        $config = TestHelper::createTestConfiguration($this->kvsPath);
+        $command = new class ($config, $db) extends UserPurgeCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+
+            protected function deleteUsersWithKvs(array $userIds): void
+            {
+                throw new \RuntimeException('delete should not run');
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute([
+            '--removal-requested' => true,
+            '--no-content' => true,
+            '--confirm' => true,
+        ], ['interactive' => false]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $display);
+        $this->assertStringContainsString('confirmation was not provided', $display);
         $this->assertSame(1, (int) $db->query('SELECT COUNT(*) FROM ktvs_users')->fetchColumn());
     }
 

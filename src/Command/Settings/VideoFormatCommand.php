@@ -22,6 +22,8 @@ class VideoFormatCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     protected function configure(): void
     {
         $this
@@ -92,25 +94,19 @@ HELP
 
     private function listFormats(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
         }
 
         $query = "SELECT
-                f.format_video_id,
-                f.title,
-                f.postfix,
-                f.status_id,
+                f.*,
                 CASE WHEN f.status_id = 2 AND f.is_conditional = 1 THEN 9 ELSE f.status_id END as display_status_id,
-                f.size,
-                f.access_level_id,
-                f.is_download_enabled,
-                f.is_timeline_enabled,
-                f.timeline_option,
-                f.timeline_amount,
-                f.timeline_interval,
-                f.format_video_group_id,
+                CASE WHEN f.is_hotlink_protection_disabled = 1 THEN 0 ELSE 1 END as is_hotlink_protection_enabled,
                 g.title as group_title
             FROM {$this->table('formats_videos')} f
             LEFT JOIN {$this->table('formats_videos_groups')} g
@@ -158,13 +154,16 @@ HELP
             }
         }
 
-        $groupId = $this->getIntOption($input, 'group');
+        $groupId = $this->getOptionalNonNegativeIntOption($input, 'group');
+        if ($groupId === false) {
+            return self::FAILURE;
+        }
         if ($groupId !== null) {
             $query .= " AND f.format_video_group_id = :group_id";
             $params['group_id'] = $groupId;
         }
 
-        $query .= " ORDER BY f.format_video_group_id ASC, f.format_video_id ASC";
+        $query .= " ORDER BY f.format_video_id DESC";
 
         try {
             $stmt = $db->prepare($query);
@@ -172,17 +171,28 @@ HELP
 
             /** @var list<array<string, mixed>> $formats */
             $formats = $stmt->fetchAll();
+            $formats = $this->addVideoCounts($db, $formats);
+            $deletingProgressByPostfix = $this->getDeletingFormatProgressByPostfix($db);
+            $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
 
             if ($formats === []) {
-                $this->io()->warning('No video formats found');
+                if ($this->isTableFormat($input)) {
+                    $this->io()->warning('No video formats found');
+                } else {
+                    $formatter = new Formatter($input->getOptions(), $defaultFields);
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
             // Transform data for display
-            $formats = array_map(function (array $format): array {
+            $formats = array_map(function (array $format) use ($deletingProgressByPostfix): array {
+                $format = $this->addKvsAdminListComputedFields($format, $deletingProgressByPostfix);
+                $format = $this->addKvsFileBackedFields($format);
                 $format['id'] = $format['format_video_id'];
                 $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
+                $format['status_id'] = $statusId;
                 $format['status'] = StatusFormatter::videoFormat($statusId, false);
 
                 $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id']) ? (int) $format['access_level_id'] : 0;
@@ -192,11 +202,25 @@ HELP
                 $format['download'] = $isDownload ? 'Yes' : 'No';
                 $isTimeline = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
                 $format['timeline'] = $isTimeline ? $this->formatKvsTimelineValue($format) : 'No';
+                $format['size'] = $this->formatKvsVideoSize($format);
+                $format['limit_total_duration'] = $this->formatKvsDurationLimit($format);
+                $format['limit_offset_start'] = $this->formatKvsLimitValue(
+                    $format,
+                    'limit_offset_start',
+                    'limit_offset_start_unit_id',
+                    ''
+                );
+                $format['limit_offset_end'] = $this->formatKvsLimitValue(
+                    $format,
+                    'limit_offset_end',
+                    'limit_offset_end_unit_id',
+                    ''
+                );
+                $format['limit_speed_value'] = $this->formatKvsSpeedLimit($format);
+                $format['is_timeline_enabled'] = $isTimeline ? $this->formatKvsTimelineValue($format) : '';
 
                 return $format;
             }, $formats);
-
-            $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
 
             $formatter = new Formatter($input->getOptions(), $defaultFields);
             $formatter->display($formats, $this->io());
@@ -208,17 +232,246 @@ HELP
         }
     }
 
+    /**
+     * @param array<string, string> $deletingProgressByPostfix
+     * @param array<string, mixed> $format
+     * @return array<string, mixed>
+     */
+    private function addKvsAdminListComputedFields(array $format, array $deletingProgressByPostfix): array
+    {
+        $format['pc_complete'] = '';
+        $format['is_error'] = 0;
+        $format['source_text'] = '';
+        $format['watermark_position_offset'] = '';
+        $format['watermark_position_scrolling'] = '';
+        $format['watermark2_position_offset'] = '';
+        $format['watermark2_position_scrolling'] = '';
+
+        $rawStatusId = $this->getIntField($format, 'status_id');
+        if ($rawStatusId === StatusFormatter::FORMAT_DELETING) {
+            $postfix = isset($format['postfix']) && is_scalar($format['postfix']) ? (string) $format['postfix'] : '';
+            if ($postfix !== '' && array_key_exists($postfix, $deletingProgressByPostfix)) {
+                $format['pc_complete'] = $deletingProgressByPostfix[$postfix];
+            } else {
+                $format['display_status_id'] = StatusFormatter::FORMAT_ERROR;
+                $format['is_error'] = 1;
+            }
+        } elseif ($rawStatusId === StatusFormatter::FORMAT_ERROR) {
+            $format['is_error'] = 1;
+        }
+
+        if ($this->getIntField($format, 'is_use_as_source') === 1) {
+            $format['source_text'] = '(Use as source)';
+        }
+
+        $format = $this->addKvsWatermarkAppendFields(
+            $format,
+            'watermark_position_id',
+            'watermark_offset_random',
+            'watermark_scrolling_times',
+            'watermark_scrolling_duration',
+            'watermark_position_offset',
+            'watermark_position_scrolling'
+        );
+
+        return $this->addKvsWatermarkAppendFields(
+            $format,
+            'watermark2_position_id',
+            'watermark2_offset_random',
+            'watermark2_scrolling_times',
+            'watermark2_scrolling_duration',
+            'watermark2_position_offset',
+            'watermark2_position_scrolling'
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     * @return array<string, mixed>
+     */
+    private function addKvsWatermarkAppendFields(
+        array $format,
+        string $positionKey,
+        string $randomOffsetKey,
+        string $scrollingTimesKey,
+        string $scrollingDurationKey,
+        string $offsetOutputKey,
+        string $scrollingOutputKey
+    ): array {
+        $randomOffset = $format[$randomOffsetKey] ?? '';
+        $randomOffset = is_scalar($randomOffset) ? (string) $randomOffset : '';
+
+        if (in_array($this->getIntField($format, $positionKey), [5, 6, 7], true)) {
+            $format[$scrollingOutputKey] = $this->getIntField($format, $scrollingTimesKey)
+                . ' x ' . $this->getIntField($format, $scrollingDurationKey) . 's';
+            if ($randomOffset !== '') {
+                $format[$scrollingOutputKey] .= " ±{$randomOffset}";
+            }
+            return $format;
+        }
+
+        if ($randomOffset !== '') {
+            $format[$offsetOutputKey] = "±{$randomOffset}";
+        }
+
+        return $format;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getDeletingFormatProgressByPostfix(\PDO $db): array
+    {
+        try {
+            $stmt = $db->query("
+                SELECT task_id, data
+                FROM {$this->table('background_tasks')}
+                WHERE type_id = 6
+            ");
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if ($stmt === false) {
+            return [];
+        }
+
+        /** @var list<array<string, mixed>> $tasks */
+        $tasks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $progressByPostfix = [];
+        foreach ($tasks as $task) {
+            $taskDataValue = $task['data'] ?? null;
+            if (!is_string($taskDataValue) || $taskDataValue === '') {
+                continue;
+            }
+            $taskData = @unserialize($taskDataValue, ['allowed_classes' => false]);
+            if (!is_array($taskData) || !isset($taskData['format_postfix']) || !is_scalar($taskData['format_postfix'])) {
+                continue;
+            }
+
+            $taskId = $this->getIntField($task, 'task_id');
+            $progressByPostfix[(string) $taskData['format_postfix']] = $this->readFormatDeletionProgress($taskId);
+        }
+
+        return $progressByPostfix;
+    }
+
+    private function readFormatDeletionProgress(int $taskId): string
+    {
+        $progressFile = $this->config->getKvsPath() . '/admin/data/engine/tasks/' . $taskId . '.dat';
+        $progress = @file_get_contents($progressFile);
+
+        return ((int) ($progress !== false ? $progress : 0)) . '%';
+    }
+
+    /**
+     * @param list<array<string, mixed>> $formats
+     * @return list<array<string, mixed>>
+     */
+    private function addVideoCounts(\PDO $db, array $formats): array
+    {
+        $postfixesByIndex = [];
+        foreach ($formats as $index => $format) {
+            $postfix = $format['postfix'] ?? '';
+            if (is_string($postfix) && $postfix !== '') {
+                $postfixesByIndex[$index] = $postfix;
+            }
+            $formats[$index]['videos_count'] = 0;
+        }
+
+        if ($postfixesByIndex === []) {
+            return $formats;
+        }
+
+        try {
+            $stmt = $db->query("
+                SELECT file_formats
+                FROM {$this->table('videos')}
+                WHERE load_type_id = 1 AND status_id IN (0, 1)
+            ");
+        } catch (\Throwable) {
+            return $formats;
+        }
+
+        if ($stmt === false) {
+            return $formats;
+        }
+
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $video) {
+            if (!is_array($video)) {
+                continue;
+            }
+            $fileFormats = $video['file_formats'] ?? '';
+            if (!is_string($fileFormats)) {
+                continue;
+            }
+
+            foreach ($postfixesByIndex as $index => $postfix) {
+                if (str_contains($fileFormats, "||{$postfix}|")) {
+                    $formats[$index]['videos_count']++;
+                }
+            }
+        }
+
+        return $formats;
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     * @return array<string, mixed>
+     */
+    private function addKvsFileBackedFields(array $format): array
+    {
+        $formatId = $this->getIntField($format, 'format_video_id');
+        $otherDataPath = $this->config->getKvsPath() . '/admin/data/other';
+
+        $format['watermark_image'] = '';
+        $format['watermark2_image'] = '';
+        $format['preroll_video'] = '';
+        $format['postroll_video'] = '';
+
+        if ($formatId <= 0) {
+            return $format;
+        }
+
+        if (is_file($otherDataPath . "/watermark_video_{$formatId}.png")) {
+            $format['watermark_image'] = "{$formatId}.png";
+            $format['watermark_image_url'] = "formats_videos.php?action=download_watermark&id={$formatId}";
+        } else {
+            $format['watermark_position_id'] = '';
+            $format['watermark_max_width'] = '';
+        }
+
+        if (is_file($otherDataPath . "/watermark2_video_{$formatId}.png")) {
+            $format['watermark2_image'] = "{$formatId}.png";
+            $format['watermark2_image_url'] = "formats_videos.php?action=download_watermark2&id={$formatId}";
+        } else {
+            $format['watermark2_position_id'] = '';
+            $format['watermark2_max_height'] = '';
+        }
+
+        if (is_file($otherDataPath . "/preroll_video_{$formatId}.mp4")) {
+            $format['preroll_video'] = "{$formatId}.mp4";
+            $format['preroll_video_url'] = "formats_videos.php?action=download_preroll&id={$formatId}";
+        }
+
+        if (is_file($otherDataPath . "/postroll_video_{$formatId}.mp4")) {
+            $format['postroll_video'] = "{$formatId}.mp4";
+            $format['postroll_video_url'] = "formats_videos.php?action=download_postroll&id={$formatId}";
+        }
+
+        return $format;
+    }
+
     private function showFormat(InputInterface $input, ?string $id): int
     {
-        $format = $this->getStringOptionOrDefault($input, 'format', 'table');
-        if ($format !== 'table') {
-            $this->io()->error('The show action only supports table output. Use list --format=' . $format . ' for machine-readable output.');
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
 
-        if ($id === null || $id === '') {
-            $this->io()->error('Format ID is required');
-            $this->io()->text('Usage: kvs video-format show <id>');
+        $formatId = $this->getRequiredPositiveId($id, 'Format');
+        if ($formatId === null) {
             return self::FAILURE;
         }
 
@@ -238,19 +491,17 @@ HELP
                     ON f.format_video_group_id = g.format_video_group_id
                 WHERE f.format_video_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $formatId]);
             /** @var array<string, mixed>|false $format */
             $format = $stmt->fetch();
 
             if ($format === false) {
-                $this->io()->error("Format not found: $id");
+                $this->io()->error("Format not found: $formatId");
                 return self::FAILURE;
             }
 
-            $this->io()->title("Video Format #$id");
+            $format = $this->addKvsFileBackedFields($format);
 
-            // Basic Info section
-            $this->io()->section('Basic Info');
             $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
             $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
             $groupId = isset($format['format_video_group_id']) && is_numeric($format['format_video_group_id'])
@@ -261,24 +512,58 @@ HELP
             $title = isset($format['title']) && is_string($format['title']) ? $format['title'] : '';
             $postfix = isset($format['postfix']) && is_string($format['postfix']) ? $format['postfix'] : '';
             $size = isset($format['size']) && is_string($format['size']) ? $format['size'] : '';
-
-            $basicInfo = [
-                ['Title', $title],
-                ['Postfix', $postfix],
-                ['Status', StatusFormatter::videoFormat($statusId)],
-                ['Size', $size],
-                ['Group', $groupId > 0 ? "$groupTitle (#$groupId)" : 'None'],
-            ];
-            $this->renderTable(['Property', 'Value'], $basicInfo);
-
-            // Access & Download section
-            $this->io()->section('Access & Download');
+            $formattedSize = $this->formatKvsVideoSize($format);
             $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id'])
                 ? (int) $format['access_level_id'] : 0;
             $downloadEnabled = isset($format['is_download_enabled']) && (bool) $format['is_download_enabled'];
             $hotlinkProtection = isset($format['is_hotlink_protection_enabled'])
                 && is_numeric($format['is_hotlink_protection_enabled'])
                 ? (int) $format['is_hotlink_protection_enabled'] : 0;
+            $timelineEnabled = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
+            $ffmpegOptions = isset($format['ffmpeg_options']) && is_string($format['ffmpeg_options'])
+                ? trim($format['ffmpeg_options'])
+                : '';
+
+            $formatRow = [
+                ...$format,
+                'format_video_id' => $format['format_video_id'] ?? $id,
+                'id' => $format['format_video_id'] ?? $id,
+                'title' => $title,
+                'postfix' => $postfix,
+                'status_id' => $statusId,
+                'status' => StatusFormatter::videoFormat($statusId, false),
+                'size' => $formattedSize,
+                'group' => $groupId > 0 ? "$groupTitle (#$groupId)" : 'None',
+                'access' => StatusFormatter::formatAccessLevel($accessId, false),
+                'download' => $downloadEnabled ? 'Yes' : 'No',
+                'hotlink_protection' => $hotlinkProtection > 0 ? 'Yes' : 'No',
+                'limit_total_duration' => $this->formatKvsDurationLimit($format),
+                'limit_offset_start' => $this->formatKvsLimitValue($format, 'limit_offset_start', 'limit_offset_start_unit_id', '0'),
+                'limit_offset_end' => $this->formatKvsLimitValue($format, 'limit_offset_end', 'limit_offset_end_unit_id', '0'),
+                'timeline' => $timelineEnabled ? $this->formatKvsTimelineValue($format) : 'Default',
+                'ffmpeg_options' => $ffmpegOptions,
+            ];
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [$formatRow], array_keys($formatRow));
+            }
+
+            $this->io()->title("Video Format #$id");
+
+            // Basic Info section
+            $this->io()->section('Basic Info');
+
+            $basicInfo = [
+                ['Title', $title],
+                ['Postfix', $postfix],
+                ['Status', StatusFormatter::videoFormat($statusId)],
+                ['Size', $formattedSize],
+                ['Group', $groupId > 0 ? "$groupTitle (#$groupId)" : 'None'],
+            ];
+            $this->renderTable(['Property', 'Value'], $basicInfo);
+
+            // Access & Download section
+            $this->io()->section('Access & Download');
 
             $accessInfo = [
                 ['Access Level', StatusFormatter::formatAccessLevel($accessId)],
@@ -304,7 +589,6 @@ HELP
 
             // Timeline Settings section
             $this->io()->section('Timeline Settings');
-            $timelineEnabled = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
 
             $timelineInfo = [
                 ['Timeline Enabled', $timelineEnabled ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
@@ -323,7 +607,6 @@ HELP
             }
 
             // FFmpeg Options section
-            $ffmpegOptions = isset($format['ffmpeg_options']) && is_string($format['ffmpeg_options']) ? trim($format['ffmpeg_options']) : '';
             if ($ffmpegOptions !== '') {
                 $this->io()->section('FFmpeg Options');
                 $this->io()->text($ffmpegOptions);
@@ -338,6 +621,10 @@ HELP
 
     private function listGroups(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         if ($this->getStringOption($input, 'status') !== null) {
             $this->io()->error('The groups action does not support --status. Use list --status to filter video formats.');
             return self::FAILURE;
@@ -355,16 +642,20 @@ HELP
 
         try {
             $stmt = $db->query("
-                SELECT
-                    g.format_video_group_id,
-                    g.title,
-                    g.is_default,
-                    g.is_premium,
-                    COUNT(f.format_video_id) as format_count
+                SELECT g.*,
+                    (
+                        SELECT COUNT(*)
+                        FROM {$this->table('formats_videos')} f
+                        WHERE f.format_video_group_id = g.format_video_group_id
+                    ) as format_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM {$this->table('videos')} v
+                        WHERE v.format_video_group_id = g.format_video_group_id
+                            AND v.load_type_id = 1
+                            AND v.status_id IN (0, 1)
+                    ) as videos_count
                 FROM {$this->table('formats_videos_groups')} g
-                LEFT JOIN {$this->table('formats_videos')} f
-                    ON g.format_video_group_id = f.format_video_group_id
-                GROUP BY g.format_video_group_id, g.title, g.is_default, g.is_premium
                 ORDER BY g.format_video_group_id ASC
             ");
 
@@ -410,9 +701,43 @@ HELP
      */
     private function formatKvsDurationLimit(array $format): string
     {
+        if ($this->getIntField($format, 'customize_duration_id') > 0) {
+            return 'Custom';
+        }
+
         $duration = $this->getIntField($format, 'limit_total_duration');
         if ($duration <= 0) {
-            return 'Source';
+            if (
+                $this->getIntField($format, 'customize_offset_start_id') > 0
+                || $this->getIntField($format, 'customize_offset_end_id') > 0
+            ) {
+                return 'Custom';
+            }
+
+            $durationLabel = 'As source';
+            if ($this->getIntField($format, 'limit_offset_start') > 0 || $this->getIntField($format, 'limit_offset_end') > 0) {
+                $durationLabel = '______';
+            }
+
+            $startOffset = $this->formatKvsSignedOffset(
+                $format,
+                'limit_offset_start',
+                'limit_offset_start_unit_id'
+            );
+            $endOffset = $this->formatKvsSignedOffset(
+                $format,
+                'limit_offset_end',
+                'limit_offset_end_unit_id'
+            );
+
+            if ($startOffset !== '') {
+                $durationLabel = "-{$startOffset} {$durationLabel}";
+            }
+            if ($endOffset !== '') {
+                $durationLabel = "{$durationLabel} -{$endOffset}";
+            }
+
+            return $durationLabel;
         }
 
         $unitId = $this->getIntField($format, 'limit_total_duration_unit_id');
@@ -445,12 +770,103 @@ HELP
      */
     private function formatKvsLimitValue(array $format, string $valueKey, string $unitKey, string $zeroLabel): string
     {
+        if ($valueKey === 'limit_offset_start' && $this->getIntField($format, 'customize_offset_start_id') > 0) {
+            return 'Custom';
+        }
+        if ($valueKey === 'limit_offset_end' && $this->getIntField($format, 'customize_offset_end_id') > 0) {
+            return 'Custom';
+        }
+
         $value = $this->getIntField($format, $valueKey);
         if ($value <= 0) {
             return $zeroLabel;
         }
 
         return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsVideoSize(array $format): string
+    {
+        $size = isset($format['size']) && is_scalar($format['size']) ? (string) $format['size'] : '';
+        if ($size === '') {
+            return 'As source';
+        }
+
+        return match ($this->getIntField($format, 'resize_option2')) {
+            0 => "{$size} (dynamic height)",
+            1 => "{$size} (fixed size)",
+            2 => "{$size} (dynamic width)",
+            default => $size,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsSignedOffset(array $format, string $valueKey, string $unitKey): string
+    {
+        $value = $this->getIntField($format, $valueKey);
+        if ($value <= 0) {
+            return '';
+        }
+
+        return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsSpeedLimit(array $format): string
+    {
+        $value = $this->formatKvsSpeedLimitOption(
+            $this->getIntField($format, 'limit_speed_option'),
+            $this->getIntField($format, 'limit_speed_value')
+        );
+
+        $overrides = [];
+        foreach (
+            [
+            ['limit_speed_guests_option', 'limit_speed_guests_value'],
+            ['limit_speed_standard_option', 'limit_speed_standard_value'],
+            ['limit_speed_premium_option', 'limit_speed_premium_value'],
+            ['limit_speed_embed_option', 'limit_speed_embed_value'],
+            ] as [$optionKey, $valueKey]
+        ) {
+            if (
+                $this->getIntField($format, $optionKey) !== $this->getIntField($format, 'limit_speed_option')
+                || $this->getIntField($format, $valueKey) !== $this->getIntField($format, 'limit_speed_value')
+            ) {
+                $overrides[] = $this->formatKvsSpeedLimitOption(
+                    $this->getIntField($format, $optionKey),
+                    $this->getIntField($format, $valueKey)
+                );
+            }
+        }
+
+        if ($this->getIntField($format, 'limit_speed_countries_option') > 0) {
+            $overrides[] = $this->formatKvsSpeedLimitOption(
+                $this->getIntField($format, 'limit_speed_countries_option'),
+                $this->getIntField($format, 'limit_speed_countries_value')
+            );
+        }
+
+        if ($overrides !== []) {
+            $value .= ' (' . implode(', ', $overrides) . ')';
+        }
+
+        return $value;
+    }
+
+    private function formatKvsSpeedLimitOption(int $option, int $value): string
+    {
+        return match ($option) {
+            1 => "{$value} kbit/s",
+            2 => "x{$value}",
+            default => 'N/A',
+        };
     }
 
     /**

@@ -118,6 +118,93 @@ class ImportCommandTest extends TestCase
         $this->assertStringContainsString('SSL options', $help);
     }
 
+    public function testImportNoInteractionFailsWithoutConfirmation(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-import-confirm-');
+        $toolsDir = $rootDir . '/tools';
+        $packageFile = $rootDir . '/package.tar.zst';
+        $targetDir = $rootDir . '/target';
+        mkdir($toolsDir, 0755, true);
+        touch($packageFile);
+
+        file_put_contents($toolsDir . '/docker', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/docker', 0755);
+        file_put_contents($toolsDir . '/git', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/git', 0755);
+        file_put_contents(
+            $toolsDir . '/zstd',
+            <<<'SH'
+#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+: > "$out"
+SH
+        );
+        chmod($toolsDir . '/zstd', 0755);
+        file_put_contents(
+            $toolsDir . '/tar',
+            <<<'SH'
+#!/bin/sh
+dest=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-C" ]; then
+    shift
+    dest="$1"
+  fi
+  shift
+done
+mkdir -p "$dest"
+cat > "$dest/metadata.json" <<'JSON'
+{
+  "created_at": "2026-06-29T00:00:00Z",
+  "kvs_version": "test",
+  "source_path": "/var/www/maximemichaud.ca",
+  "database": {"size": 41},
+  "content": {"included": false, "size": 0, "files": 0}
+}
+JSON
+printf 'compressed' > "$dest/database.sql.zst"
+SH
+        );
+        chmod($toolsDir . '/tar', 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute(
+                [
+                    'package' => $packageFile,
+                    '--domain' => 'example.test',
+                    '--email' => 'admin@example.test',
+                    '--target' => $targetDir,
+                    '--ssl' => '1',
+                    '--force' => true,
+                ],
+                ['interactive' => false]
+            );
+
+            $output = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Import cancelled because confirmation was not provided', $output);
+            $this->assertDirectoryDoesNotExist($targetDir);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
     public function testImportSetupDoesNotAutoStopExistingContainers(): void
     {
         $rootDir = TestHelper::createTempDir('kvs-import-setup-env-');

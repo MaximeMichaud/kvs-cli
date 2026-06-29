@@ -72,7 +72,7 @@ HELP
             ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Tag name (for update)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter/set status (active|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in tag names')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in tag names, directories, and synonyms')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused tags')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
@@ -88,14 +88,14 @@ HELP
 
         return match ($action) {
             'list' => $this->listTags($input),
-            'show' => $this->showTag($identifier),
+            'show' => $this->showTag($identifier, $input),
             'create' => $this->createTag($identifier),
             'delete' => $this->deleteTag($identifier, $input),
             'update' => $this->updateTag($identifier, $input),
             'enable' => $this->toggleStatus($identifier, 1),
             'disable' => $this->toggleStatus($identifier, 0),
             'merge' => $this->mergeTags($identifier, $target, $input),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'tag',
                 $action,
@@ -118,11 +118,14 @@ HELP
             // Status filter
             $status = $this->getStringOption($input, 'status');
             if ($status !== null) {
-                $statusId = $this->parseStatusFilter($input, [
+                $statusId = $this->parseStatusFilterOrFail($input, [
                     'active' => StatusFormatter::TAG_ACTIVE,
                     'inactive' => StatusFormatter::TAG_INACTIVE,
                     'disabled' => StatusFormatter::TAG_INACTIVE,
                 ]);
+                if ($statusId === false) {
+                    return self::FAILURE;
+                }
                 if ($statusId !== null) {
                     $conditions[] = 't.status_id = :status';
                     $params['status'] = $statusId;
@@ -132,8 +135,11 @@ HELP
             // Search filter
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $conditions[] = 't.tag LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $searchEscape = $this->likeEscapeSql();
+                $conditions[] = '(t.tag LIKE :search' . $searchEscape
+                    . ' OR t.tag_dir LIKE :search' . $searchEscape
+                    . ' OR t.synonyms LIKE :search' . $searchEscape . ')';
+                $params['search'] = $this->containsLikePattern($search);
             }
 
             $usageSelectors = $this->getTagUsageAggregateSelectors();
@@ -148,6 +154,9 @@ HELP
             $whereClause = implode(' AND ', $conditions);
 
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 $countJoins = $unusedOnly ? $usageJoins : '';
                 $stmt = $db->prepare("
                     SELECT COUNT(*)
@@ -179,7 +188,7 @@ HELP
                 WHERE $whereClause
             ";
 
-            $sql .= " ORDER BY t.tag LIMIT :limit";
+            $sql .= " ORDER BY t.tag_id DESC LIMIT :limit";
             $params['limit'] = $limit;
 
             $stmt = $db->prepare($sql);
@@ -198,18 +207,21 @@ HELP
                 $statusIdVal = $tag['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
                 $otherAmount = $this->getTagStoredOtherAmount($tag);
+                $allAmount = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
                 $transformedTags[] = [
+                    ...$tag,
                     'tag_id' => $tag['tag_id'] ?? 0,
                     'id' => $tag['tag_id'] ?? 0,
                     'tag' => $tag['tag'] ?? '',
+                    'tag_rename' => $tag['tag'] ?? '',
                     'video_count' => $counts['videos'],
                     'album_count' => $counts['albums'],
-                    'total_usage' => array_sum($counts),
+                    'total_usage' => $allAmount,
                     'videos_amount' => $counts['videos'],
                     'albums_amount' => $counts['albums'],
                     'posts_amount' => $counts['posts'],
                     'other_amount' => $otherAmount,
-                    'all_amount' => $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount,
+                    'all_amount' => $allAmount,
                     'status_id' => $statusId,
                     'status' => StatusFormatter::tag($statusId, false),
                     ...$counts,
@@ -230,11 +242,10 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showTag(?string $id): int
+    private function showTag(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
-            $this->io()->error('Tag ID is required');
-            $this->io()->text('Usage: kvs content:tag show <id>');
+            $this->io()->error('Tag ID or name is required');
             return self::FAILURE;
         }
 
@@ -244,13 +255,14 @@ HELP
         }
 
         try {
+            $whereClause = ctype_digit($id) ? 't.tag_id = :identifier_id' : 't.tag = :identifier_name';
             $stmt = $db->prepare("
                 SELECT t.*,
                        {$this->getTagUsageSelectors()}
                 FROM {$this->table('tags')} t
-                WHERE t.tag_id = :id
+                WHERE {$whereClause}
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(ctype_digit($id) ? ['identifier_id' => (int) $id] : ['identifier_name' => $id]);
             /** @var array<string, mixed>|false $tag */
             $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -260,7 +272,6 @@ HELP
             }
 
             $tagName = is_string($tag['tag'] ?? null) ? $tag['tag'] : '';
-            $this->io()->section("Tag: $tagName");
 
             $counts = $this->extractTagUsageCounts($tag);
             $statusIdRaw = $tag['status_id'] ?? 0;
@@ -281,9 +292,16 @@ HELP
                 $info[] = [$label, (string) ($counts[$suffix] ?? 0)];
             }
 
-            $info[] = ['Total Usage', (string) array_sum($counts)];
+            $otherAmount = $this->getTagStoredOtherAmount($tag);
+            $totalUsage = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
+            $info[] = ['Total Usage', (string) $totalUsage];
             $info[] = ['Added', $addedDate];
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info);
+            }
+
+            $this->io()->section("Tag: $tagName");
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch tag: ' . $e->getMessage());
@@ -417,9 +435,20 @@ HELP
         return $this->getRelationUsageSelectors('tags', 't', 'tag_id', self::TAG_RELATION_TABLES);
     }
 
-    private function getTagTotalUsageExpression(): string
+    private function getTagAdminTotalUsageExpression(): string
     {
-        return $this->getRelationTotalUsageAliasExpression(self::TAG_RELATION_TABLES);
+        $tagsTable = $this->table('tags');
+        return sprintf(
+            '((SELECT COUNT(*) FROM %1$s_videos WHERE tag_id = t.tag_id) +
+              (SELECT COUNT(*) FROM %1$s_albums WHERE tag_id = t.tag_id) +
+              (SELECT COUNT(*) FROM %1$s_posts WHERE tag_id = t.tag_id) +
+              COALESCE(t.total_content_sources, 0) +
+              COALESCE(t.total_playlists, 0) +
+              COALESCE(t.total_models, 0) +
+              COALESCE(t.total_dvds, 0) +
+              COALESCE(t.total_dvd_groups, 0))',
+            $tagsTable
+        );
     }
 
     private function getTagUsageAggregateSelectors(): string
@@ -657,7 +686,7 @@ HELP
         }
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -683,15 +712,11 @@ HELP
             }
 
             // Usage stats
-            $usedTagSelects = [];
-            foreach (array_keys(self::TAG_RELATION_TABLES) as $suffix) {
-                $usedTagSelects[] = "SELECT tag_id FROM {$this->table('tags')}_{$suffix}";
-            }
-
-            $stmt = $db->query(sprintf(
-                "SELECT COUNT(DISTINCT tag_id) as used_tags FROM (%s) as used",
-                implode(' UNION ', $usedTagSelects)
-            ));
+            $totalUsageExpression = $this->getTagAdminTotalUsageExpression();
+            $stmt = $db->query("
+                SELECT SUM(CASE WHEN {$totalUsageExpression} > 0 THEN 1 ELSE 0 END) as used_tags
+                FROM {$this->table('tags')} t
+            ");
             if ($stmt === false) {
                 throw new \RuntimeException('Failed to execute usage stats query');
             }
@@ -707,10 +732,9 @@ HELP
 
             // Top tags
             $usageSelectors = $this->getTagUsageSelectors();
-            $totalUsageExpression = $this->getTagTotalUsageExpression();
 
             $stmt = $db->query("
-                SELECT t.tag,
+                SELECT t.*,
                        {$usageSelectors}
                 FROM {$this->table('tags')} t
                 ORDER BY {$totalUsageExpression} DESC
@@ -721,12 +745,56 @@ HELP
             }
             $topTags = $stmt->fetchAll();
 
-            $this->io()->title('Tag Statistics');
-
-            $this->io()->section('Overall Statistics');
             $activeTags = is_numeric($overall['active_tags']) ? (int) $overall['active_tags'] : 0;
             $inactiveTags = is_numeric($overall['inactive_tags']) ? (int) $overall['inactive_tags'] : 0;
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('overall', 'Total Tags', $totalTags),
+                $this->metricRow('overall', 'Active Tags', $activeTags),
+                $this->metricRow('overall', 'Inactive Tags', $inactiveTags),
+                $this->metricRow('overall', 'Used Tags', $usedTags),
+                $this->metricRow('overall', 'Unused Tags', $unusedTags),
+            ];
+
+            /** @var list<list<int|string>> $topRows */
+            $topRows = [];
+            if ($topTags !== []) {
+                foreach ($topTags as $i => $tag) {
+                    if (!is_array($tag)) {
+                        continue;
+                    }
+                    /** @var array<string, mixed> $tag */
+                    $tagName = $tag['tag'] ?? '';
+                    $counts = $this->extractTagUsageCounts($tag);
+                    $videoCount = $counts['videos'];
+                    $albumCount = $counts['albums'];
+                    $otherCount = $counts['posts'] + $this->getTagStoredOtherAmount($tag);
+                    $total = $videoCount + $albumCount + $otherCount;
+                    $metricRows[] = $this->metricRow(
+                        'top_tags',
+                        (string) ($i + 1),
+                        $total,
+                        (string) $total,
+                        is_scalar($tagName) ? (string) $tagName : ''
+                    );
+                    $topRows[] = [
+                        is_scalar($tagName) ? (string) $tagName : '',
+                        $videoCount,
+                        $albumCount,
+                        $otherCount,
+                        $total,
+                    ];
+                }
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->title('Tag Statistics');
+            $this->io()->section('Overall Statistics');
             $this->renderTable(
                 ['Metric', 'Count'],
                 [
@@ -738,30 +806,9 @@ HELP
                 ]
             );
 
-            if ($topTags !== []) {
+            if ($topRows !== []) {
                 $this->io()->section('Top 10 Most Used Tags');
-                /** @var list<list<int|string>> $rows */
-                $rows = [];
-                foreach ($topTags as $tag) {
-                    if (!is_array($tag)) {
-                        continue;
-                    }
-                    /** @var array<string, mixed> $tag */
-                    $tagName = $tag['tag'] ?? '';
-                    $counts = $this->extractTagUsageCounts($tag);
-                    $videoCount = $counts['videos'];
-                    $albumCount = $counts['albums'];
-                    $total = array_sum($counts);
-                    $otherCount = $total - $videoCount - $albumCount;
-                    $rows[] = [
-                        is_scalar($tagName) ? (string) $tagName : '',
-                        $videoCount,
-                        $albumCount,
-                        $otherCount,
-                        $total,
-                    ];
-                }
-                $this->renderTable(['Tag', 'Videos', 'Albums', 'Other', 'Total'], $rows);
+                $this->renderTable(['Tag', 'Videos', 'Albums', 'Other', 'Total'], $topRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
@@ -773,9 +820,8 @@ HELP
 
     private function updateTag(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Tag ID is required');
-            $this->io()->text('Usage: kvs content:tag update <tag_id> --name="New Name" --status=inactive');
+        $tagId = $this->getRequiredPositiveId($id, 'Tag');
+        if ($tagId === null) {
             return self::FAILURE;
         }
 
@@ -787,16 +833,16 @@ HELP
         try {
             // Get current tag
             $stmt = $db->prepare("SELECT * FROM {$this->table('tags')} WHERE tag_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $tagId]);
             $tag = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($tag)) {
-                $this->io()->error("Tag not found: $id");
+                $this->io()->error("Tag not found: $tagId");
                 return self::FAILURE;
             }
 
             $updates = [];
-            $params = ['id' => $id];
+            $params = ['id' => $tagId];
 
             // Name
             $name = $this->getStringOption($input, 'name');
@@ -813,9 +859,9 @@ HELP
                     }
 
                     $db->beginTransaction();
-                    $this->mergeTagRelations($db, $id, $targetId);
+                    $this->mergeTagRelations($db, (string) $tagId, $targetId);
                     $deleteStmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
-                    $deleteStmt->execute(['id' => $id]);
+                    $deleteStmt->execute(['id' => $tagId]);
                     $db->commit();
 
                     $tagValue = $tag['tag'] ?? '';
@@ -831,7 +877,7 @@ HELP
                 $updates[] = 'tag = :tag';
                 $params['tag'] = $name;
                 // Also update tag_dir (URL slug)
-                $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), $id);
+                $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), (string) $tagId);
                 $updates[] = 'tag_dir = :tag_dir';
                 $params['tag_dir'] = $tagDir;
             }
@@ -871,7 +917,7 @@ HELP
             $this->renderTable(
                 ['Property', 'Value'],
                 [
-                    ['ID', $id],
+                    ['ID', (string) $tagId],
                     ['New Name', $newName],
                     ['Status', $statusLabel],
                 ]

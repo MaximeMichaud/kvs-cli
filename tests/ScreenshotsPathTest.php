@@ -26,22 +26,30 @@ class ScreenshotsPathTest extends TestCase
 
     public function testListUsesKvsDirectoryBucket(): void
     {
-        $screenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
-        mkdir($screenshotsDir . '/320x180', 0755, true);
-        file_put_contents($screenshotsDir . '/preview.jpg', 'preview');
-        file_put_contents($screenshotsDir . '/320x180/0.jpg', 'format');
+        $sourceScreenshotsDir = $this->tempDir . '/contents/videos_sources/1000/1234/screenshots';
+        $generatedScreenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
+        mkdir($sourceScreenshotsDir, 0755, true);
+        mkdir($generatedScreenshotsDir . '/320x180', 0755, true);
+        file_put_contents($sourceScreenshotsDir . '/1.jpg', 'source');
+        file_put_contents($generatedScreenshotsDir . '/preview.jpg', 'preview');
+        file_put_contents($generatedScreenshotsDir . '/320x180/1.jpg', 'format');
 
         $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
         $tester = new CommandTester($command);
         $tester->execute([
             'action' => 'list',
             'video_id' => '1234',
+            '--fields' => 'filename,path',
+            '--format' => 'json',
         ]);
 
         $output = $tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertStringContainsString('preview.jpg', $output);
-        $this->assertStringContainsString('320x180/0.jpg', $output);
+        $this->assertSame('1.jpg', $rows[0]['filename'] ?? null);
+        $this->assertStringContainsString('/contents/videos_screenshots/1000/1234/320x180/1.jpg', $rows[0]['path'] ?? '');
+        $this->assertStringNotContainsString('preview.jpg', $output);
     }
 
     public function testNumericFirstArgumentListsScreenshots(): void
@@ -61,10 +69,30 @@ class ScreenshotsPathTest extends TestCase
         $this->assertStringContainsString('preview.jpg', $output);
     }
 
-    public function testListFallsBackWhenConfiguredScreenshotsPathIsStale(): void
+    public function testListRejectsPathTraversalVideoIdBeforeScanningFiles(): void
+    {
+        $outsideDir = $this->tempDir . '/static/images';
+        mkdir($outsideDir, 0755, true);
+        file_put_contents($outsideDir . '/logo.png', 'image');
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '../../../static/images',
+            '--format' => 'json',
+        ]);
+
+        $output = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid video ID', $output);
+        $this->assertStringNotContainsString('logo.png', $output);
+    }
+
+    public function testListFallsBackWhenConfiguredSourcesPathIsStale(): void
     {
         TestHelper::createMockSetupConfig($this->tempDir, [
-            'content_path_videos_screenshots' => '/stale/videos_screenshots',
+            'content_path_videos_sources' => '/stale/videos_sources',
         ]);
 
         $screenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
@@ -89,7 +117,7 @@ class ScreenshotsPathTest extends TestCase
             $this->tempDir . '/contents/videos_screenshots/1000/1234/preview.jpg',
             $rows[0]['path'] ?? null
         );
-        $this->assertStringNotContainsString('/stale/videos_screenshots', $output);
+        $this->assertStringNotContainsString('/stale/videos_sources', $output);
     }
 
     public function testGenerateUsesConfiguredFfmpegAndFfprobePaths(): void

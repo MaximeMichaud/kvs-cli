@@ -45,6 +45,7 @@ class StatsCommandTest extends TestCase
             'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'comments_count INTEGER, favourites_count INTEGER, duration INTEGER)'
         );
+        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_videos VALUES " .
             "(1, 'Many Votes Lower Average', 'many', 1, 0, 100, 10, 80, 20, 0, 0, 60), " .
@@ -71,6 +72,39 @@ class StatsCommandTest extends TestCase
         $this->assertIsInt($betterAveragePosition);
         $this->assertIsInt($manyVotesPosition);
         $this->assertLessThan($manyVotesPosition, $betterAveragePosition);
+    }
+
+    public function testVideoStatsUseKvsAdminCommentCounters(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, has_errors INTEGER, ' .
+            'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
+            'comments_count INTEGER, favourites_count INTEGER, duration INTEGER, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ktvs_comments (' .
+            'comment_id INTEGER, object_id INTEGER, object_type_id INTEGER, is_approved INTEGER)'
+        );
+        $db->exec(
+            "INSERT INTO ktvs_videos VALUES " .
+            "(1, 'Reviewed Comments', 'reviewed', 1, 0, 100, 10, 45, 5, 2, 0, 60, '2026-01-01 00:00:00'), " .
+            "(2, 'Other Video', 'other', 1, 0, 50, 5, 45, 5, 0, 0, 60, '2026-01-01 00:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ktvs_comments VALUES ' .
+            '(1, 1, 1, 1), (2, 1, 1, 1), (3, 1, 1, 0), (4, 2, 2, 1)'
+        );
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--videos' => true, '--top' => '1']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertMatchesRegularExpression('/Total Comments\W+2/', $output);
+        $this->assertDoesNotMatchRegularExpression('/Total Comments\W+3/', $output);
     }
 
     public function testAlbumStatsUseKvsRatingPercent(): void
@@ -117,10 +151,12 @@ class StatsCommandTest extends TestCase
             'dvd_id INTEGER, title TEXT, status_id INTEGER, total_videos INTEGER, dvd_viewed INTEGER, ' .
             'rating REAL, rating_amount INTEGER)'
         );
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, dvd_id INTEGER)');
         $db->exec(
             "INSERT INTO ktvs_dvds VALUES " .
             "(1, 'DVD One', 1, 4, 90, 45, 5)"
         );
+        $db->exec('INSERT INTO ktvs_videos VALUES (1, 1), (2, 1), (3, 1), (4, 1)');
 
         $modelTester = new CommandTester($this->createStatsCommand($db));
         $modelTester->execute(['--models' => true, '--top' => '1']);
@@ -139,6 +175,73 @@ class StatsCommandTest extends TestCase
         $this->assertStringNotContainsString('180.0% (5)', $dvdTester->getDisplay());
     }
 
+    public function testDvdStatsUseKvsAdminVideoRelationCounts(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_dvds (' .
+            'dvd_id INTEGER, title TEXT, status_id INTEGER, total_videos INTEGER, dvd_viewed INTEGER, ' .
+            'rating REAL, rating_amount INTEGER)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, dvd_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_dvds VALUES " .
+            "(1, 'Stored Counter Winner', 1, 50, 10, 45, 5), " .
+            "(2, 'Relation Winner', 1, 1, 20, 45, 5)"
+        );
+        $db->exec('INSERT INTO ktvs_videos VALUES (1, 1), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 2)');
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--dvds' => true, '--top' => '1']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Total Videos in DVDs', $output);
+        $this->assertStringContainsString('Relation Winner', $output);
+        $this->assertStringNotContainsString('Stored Counter Winner', $output);
+        $this->assertMatchesRegularExpression('/Total Videos in DVDs\W+7/', $output);
+        $this->assertMatchesRegularExpression('/Relation Winner\W+6\W+20/', $output);
+    }
+
+    public function testUserStatsUseKvsAdminRelationCounts(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_users (' .
+            'user_id INTEGER, username TEXT, status_id INTEGER, total_videos_count INTEGER, ' .
+            'total_albums_count INTEGER, comments_total_count INTEGER, profile_viewed INTEGER, ' .
+            'logins_count INTEGER, added_date TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, user_id INTEGER, status_id INTEGER, video_viewed INTEGER)');
+        $db->exec('CREATE TABLE ktvs_albums (album_id INTEGER, user_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, user_id INTEGER)');
+        $db->exec(
+            "INSERT INTO ktvs_users VALUES " .
+            "(1, 'Stored Counter Winner', 2, 50, 0, 90, 5, 1, '2026-01-01 00:00:00'), " .
+            "(2, 'Relation Winner', 2, 1, 0, 0, 10, 3, '2026-01-02 00:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ktvs_videos VALUES ' .
+            '(1, 2, 1, 100), (2, 2, 1, 200), (3, 2, 1, 300)'
+        );
+        $db->exec('INSERT INTO ktvs_albums VALUES (1, 2)');
+        $db->exec('INSERT INTO ktvs_comments VALUES (1, 2), (2, 2)');
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--users' => true, '--top' => '1']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Relation Winner', $output);
+        $this->assertStringNotContainsString('Stored Counter Winner', $output);
+        $this->assertMatchesRegularExpression('/User Videos\W+3/', $output);
+        $this->assertMatchesRegularExpression('/User Albums\W+1/', $output);
+        $this->assertMatchesRegularExpression('/User Comments\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Relation Winner\W+3 videos\W+1 albums/', $output);
+    }
+
     public function testVideoStatsPeriodFiltersByAddedDate(): void
     {
         $db = $this->createSqliteConnection();
@@ -148,6 +251,7 @@ class StatsCommandTest extends TestCase
             'video_viewed INTEGER, video_viewed_unique INTEGER, rating REAL, rating_amount INTEGER, ' .
             'comments_count INTEGER, favourites_count INTEGER, duration INTEGER, added_date TEXT)'
         );
+        $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
 
         $today = date('Y-m-d H:i:s');
         $old = date('Y-m-d H:i:s', strtotime('-40 days'));
@@ -218,6 +322,81 @@ class StatsCommandTest extends TestCase
         $this->assertStringContainsString('+0 comments', $output);
     }
 
+    public function testCategoryStatsOrderByKvsAdminTotalUsage(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_categories (' .
+            'category_id INTEGER, title TEXT, status_id INTEGER, today_videos INTEGER, today_albums INTEGER, ' .
+            'total_content_sources INTEGER, total_playlists INTEGER, total_models INTEGER, total_dvds INTEGER, ' .
+            'total_dvd_groups INTEGER, added_date TEXT)'
+        );
+        foreach (['videos' => 'video_id', 'albums' => 'album_id', 'posts' => 'post_id'] as $suffix => $column) {
+            $db->exec("CREATE TABLE ktvs_categories_{$suffix} (category_id INTEGER, {$column} INTEGER)");
+        }
+        $db->exec(
+            "INSERT INTO ktvs_categories VALUES " .
+            "(1, 'Video Category', 1, 0, 0, 0, 0, 0, 0, 0, '2026-01-01 00:00:00'), " .
+            "(2, 'Post Category', 1, 0, 0, 0, 0, 0, 0, 0, '2026-01-01 00:00:00')"
+        );
+        $db->exec(
+            'INSERT INTO ktvs_categories_videos VALUES ' .
+            '(1, 1), (1, 2), (1, 3), (1, 4), (1, 5)'
+        );
+        $db->exec(
+            'INSERT INTO ktvs_categories_posts VALUES ' .
+            '(2, 1), (2, 2), (2, 3), (2, 4), (2, 5), (2, 6)'
+        );
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--categories' => true, '--top' => '1']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Post Category', $output);
+        $this->assertStringNotContainsString('Video Category', $output);
+        $this->assertMatchesRegularExpression('/Post Category\W+0\W+\\+0\W+0\W+6\W+0\W+6/', $output);
+    }
+
+    public function testTagStatsOrderByKvsAdminTotalUsage(): void
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_tags (' .
+            'tag_id INTEGER, tag TEXT, status_id INTEGER, added_date TEXT, total_content_sources INTEGER, ' .
+            'total_playlists INTEGER, total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
+        );
+        foreach (['videos' => 'video_id', 'albums' => 'album_id', 'posts' => 'post_id'] as $suffix => $column) {
+            $db->exec("CREATE TABLE ktvs_tags_{$suffix} (tag_id INTEGER, {$column} INTEGER)");
+        }
+        $db->exec(
+            "INSERT INTO ktvs_tags VALUES " .
+            "(1, 'audio', 1, '2026-01-01 00:00:00', 0, 0, 0, 0, 0), " .
+            "(2, 'English', 1, '2026-01-01 00:00:00', 0, 0, 0, 0, 0)"
+        );
+        $db->exec(
+            'INSERT INTO ktvs_tags_videos VALUES ' .
+            '(1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9), (1, 10), (1, 11), (1, 12), ' .
+            '(2, 1), (2, 2), (2, 3), (2, 4), (2, 5), (2, 6)'
+        );
+        $db->exec(
+            'INSERT INTO ktvs_tags_posts VALUES ' .
+            '(2, 1), (2, 2), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9), (2, 10), ' .
+            '(2, 11), (2, 12), (2, 13), (2, 14), (2, 15), (2, 16), (2, 17), (2, 18), (2, 19)'
+        );
+
+        $tester = new CommandTester($this->createStatsCommand($db));
+        $tester->execute(['--tags' => true, '--top' => '1']);
+
+        $output = $tester->getDisplay();
+
+        $this->assertSame(0, $tester->getStatusCode(), $output);
+        $this->assertStringContainsString('English', $output);
+        $this->assertStringNotContainsString('audio', $output);
+        $this->assertMatchesRegularExpression('/English\W+6\W+0\W+19\W+0\W+25/', $output);
+    }
+
     public function testStatsRejectsInvalidPeriod(): void
     {
         $tester = new CommandTester($this->createStatsCommand($this->createSqliteConnection()));
@@ -225,6 +404,15 @@ class StatsCommandTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode());
         $this->assertStringContainsString('Invalid period', $tester->getDisplay());
+    }
+
+    public function testStatsRejectsInvalidTopBeforeSql(): void
+    {
+        $tester = new CommandTester($this->createStatsCommand($this->createSqliteConnection()));
+        $tester->execute(['--videos' => true, '--top' => '-1']);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --top', $tester->getDisplay());
     }
 
     public function testStatsHelpDocumentsPeriodCreationDateSemantics(): void

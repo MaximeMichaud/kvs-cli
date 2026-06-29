@@ -23,6 +23,20 @@ class ConversionCommand extends BaseCommand
     use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
+    private const TASK_TYPE_LABELS = [
+        'video_admins' => 'New videos from admins',
+        'video_feeds' => 'New videos from feeds',
+        'video_grabbers' => 'New videos from grabbers',
+        'video_users' => 'New videos from users',
+        'video_update' => 'Updating video files',
+        'album_admins' => 'New albums from admins',
+        'album_grabbers' => 'New albums from grabbers',
+        'album_users' => 'New albums from users',
+        'album_update' => 'Updating album files',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -97,14 +111,14 @@ HELP
 
         return match ($action) {
             'list' => $this->listServers($input),
-            'show' => $this->showServer($id),
+            'show' => $this->showServer($id, $input),
             'enable', 'activate' => $this->enableServer($id),
             'disable', 'deactivate' => $this->disableServer($id),
             'debug-on' => $this->toggleDebug($id, true),
             'debug-off' => $this->toggleDebug($id, false),
-            'log' => $this->showLog($id),
-            'config' => $this->showConfig($id),
-            'stats' => $this->showStats(),
+            'log' => $this->showLog($id, $input),
+            'config' => $this->showConfig($id, $input),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'conversion',
                 $action,
@@ -122,9 +136,9 @@ HELP
 
         $query = "SELECT s.*,
                     (SELECT COUNT(*) FROM {$this->table('background_tasks')}
-                     WHERE status_id IN (0,1) AND server_id = s.server_id) as tasks_pending,
+                     WHERE status_id IN (0,1) AND server_id = s.server_id) as tasks_amount,
                     (SELECT COUNT(*) FROM {$this->table('background_tasks_history')}
-                     WHERE server_id = s.server_id) as tasks_completed
+                     WHERE server_id = s.server_id) as finished_tasks_amount
                  FROM {$this->table('admin_conversion_servers')} s
                  WHERE 1=1";
 
@@ -156,7 +170,7 @@ HELP
             $query .= " AND s.status_id != 0 AND s.error_iteration > 1";
         }
 
-        $query .= " ORDER BY s.server_id ASC LIMIT :limit";
+        $query .= " ORDER BY s.server_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -172,8 +186,9 @@ HELP
 
             /** @var list<array<string, mixed>> $servers */
             $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $latestApiVersion = $this->getLatestConversionApiVersion($db);
 
-            $transformed = array_map(function (array $server): array {
+            $transformed = array_map(function (array $server) use ($latestApiVersion): array {
                 $statusId = $this->getNumericField($server, 'status_id');
                 $priority = $this->getNumericField($server, 'process_priority');
                 $totalSpace = $this->getNumericField($server, 'total_space');
@@ -183,8 +198,20 @@ HELP
                 $isDebug = $this->getNumericField($server, 'is_debug_enabled');
                 $maxTasks = $this->getNumericField($server, 'max_tasks');
                 $isMaxTasksPriority = $this->getNumericField($server, 'max_tasks_priority') === 1;
+                $tasksAmount = $this->getNumericField($server, 'tasks_amount');
+                $finishedTasksAmount = $this->getNumericField($server, 'finished_tasks_amount');
+                $taskTypes = $this->formatTaskTypesForList($this->getStringField($server, 'task_types'));
+                $computedAdminFields = $this->buildKvsAdminConversionComputedFields(
+                    $server,
+                    $totalSpace,
+                    $freeSpace,
+                    $latestApiVersion
+                );
+                $apiVersion = $computedAdminFields['api_version'];
 
                 return [
+                    ...$server,
+                    ...$computedAdminFields,
                     'server_id' => $server['server_id'] ?? 0,
                     'id' => $server['server_id'] ?? 0,
                     'title' => $server['title'] ?? '',
@@ -192,11 +219,14 @@ HELP
                     'status' => StatusFormatter::conversion($statusId, false),
                     'priority' => StatusFormatter::conversionPriority($priority, false),
                     'max_tasks' => $isMaxTasksPriority ? "{$maxTasks} (prioritize)" : $maxTasks,
-                    'tasks_pending' => $server['tasks_pending'] ?? 0,
-                    'tasks_completed' => $server['tasks_completed'] ?? 0,
+                    'tasks_amount' => $tasksAmount,
+                    'finished_tasks_amount' => $finishedTasksAmount,
+                    'task_types' => $taskTypes,
+                    'tasks_pending' => $tasksAmount,
+                    'tasks_completed' => $finishedTasksAmount,
                     'free_space' => $this->formatBytes($freeSpace),
                     'load' => number_format($load, 2),
-                    'api_version' => $server['api_version'] ?? '',
+                    'api_version' => $apiVersion,
                     'heartbeat' => $this->formatHeartbeat($this->getStringField($server, 'heartbeat_date')),
                     'has_error' => $statusId !== 0 && $errorIter > 1 ? 'Yes' : 'No',
                     'debug' => $isDebug === 1 ? 'On' : 'Off',
@@ -217,10 +247,94 @@ HELP
         }
     }
 
-    private function showServer(?string $id): int
+    /**
+     * @param array<string, mixed> $server
+     * @return array{api_version: string, error_text: string, free_space_percent: string, has_debug_log: int, has_old_api: int, is_error: int}
+     */
+    private function buildKvsAdminConversionComputedFields(
+        array $server,
+        int $totalSpace,
+        int $freeSpace,
+        string $latestApiVersion
+    ): array {
+        $serverId = $this->getNumericField($server, 'server_id');
+        $statusId = $this->getNumericField($server, 'status_id');
+        $errorIteration = $this->getNumericField($server, 'error_iteration');
+        $errorId = $this->getNumericField($server, 'error_id');
+        $isDebug = $this->getNumericField($server, 'is_debug_enabled');
+        $apiVersion = $this->getStringField($server, 'api_version');
+        $hasOldApi = 0;
+
+        if ($this->isConversionApiVersionObsolete($apiVersion, $latestApiVersion)) {
+            $apiVersion .= ' (obsolete)';
+            $hasOldApi = 1;
+        }
+
+        $isError = 0;
+        $errorText = '';
+        if ($statusId !== StatusFormatter::CONVERSION_DISABLED && $errorIteration > 1) {
+            $isError = 1;
+            $errorText = $this->formatConversionServerErrorText($errorId);
+        } elseif ($isDebug === 1) {
+            $errorText = '(This server has debug log enabled)';
+        }
+
+        return [
+            'api_version' => $apiVersion,
+            'error_text' => $errorText,
+            'free_space_percent' => $totalSpace > 0 ? '(' . round(($freeSpace / $totalSpace) * 100, 2) . '%)' : '',
+            'has_debug_log' => is_file(
+                $this->config->getKvsPath() . '/admin/logs/debug_conversion_server_' . $serverId . '.txt'
+            ) ? 1 : 0,
+            'has_old_api' => $hasOldApi,
+            'is_error' => $isError,
+        ];
+    }
+
+    private function formatConversionServerErrorText(int $errorId): string
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
+        return match ($errorId) {
+            1 => '(Conversion path is not writable)',
+            2 => '(Conversion script is not working)',
+            3 => '(Conversion script executed more than 15 minutes ago)',
+            4 => '(Some libraries are not configured correctly on this server)',
+            5 => '(This server has obsolete API version)',
+            6 => "(This server didn't report any activity for the last 2 hours)",
+            default => '',
+        };
+    }
+
+    private function isConversionApiVersionObsolete(string $apiVersion, string $latestApiVersion): bool
+    {
+        if ($apiVersion === '' || $latestApiVersion === '') {
+            return false;
+        }
+
+        return (int) str_replace('.', '', $apiVersion) < (int) str_replace('.', '', $latestApiVersion);
+    }
+
+    private function getLatestConversionApiVersion(\PDO $db): string
+    {
+        try {
+            $stmt = $db->prepare("
+                SELECT value
+                FROM {$this->table('options')}
+                WHERE variable = 'SYSTEM_CONVERSION_API_VERSION'
+                LIMIT 1
+            ");
+            $stmt->execute();
+            $value = $stmt->fetchColumn();
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    private function showServer(?string $id, InputInterface $input): int
+    {
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -239,20 +353,27 @@ HELP
                 FROM {$this->table('admin_conversion_servers')} s
                 WHERE s.server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: $id");
+                $this->io()->error("Conversion server not found: $serverId");
                 return self::FAILURE;
             }
-
-            $this->io()->section("Conversion Server #$id");
 
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, [
+                    'server_id' => (string) $serverId,
+                    'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
+                    'allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks') === 1,
+                ]);
+            }
+
+            $this->io()->section("Conversion Server #$serverId");
             $this->renderTable(['Property', 'Value'], $info);
 
             // Display task types
@@ -393,18 +514,6 @@ HELP
         $taskTypesStr = $this->getStringField($server, 'task_types');
         $isAllowAny = $this->getNumericField($server, 'is_allow_any_tasks') === 1;
 
-        $taskTypeLabels = [
-            'video_admins' => 'New videos from admins',
-            'video_feeds' => 'New videos from feeds',
-            'video_grabbers' => 'New videos from grabbers',
-            'video_users' => 'New videos from users',
-            'video_update' => 'Updating video files',
-            'album_admins' => 'New albums from admins',
-            'album_grabbers' => 'New albums from grabbers',
-            'album_users' => 'New albums from users',
-            'album_update' => 'Updating album files',
-        ];
-
         $enabledTypes = $this->parseTaskTypes($taskTypesStr);
 
         $this->io()->newLine();
@@ -413,7 +522,7 @@ HELP
         if ($enabledTypes === []) {
             $this->io()->text('<fg=yellow>No specific task types assigned (processes all types)</>');
         } else {
-            foreach ($taskTypeLabels as $type => $label) {
+            foreach (self::TASK_TYPE_LABELS as $type => $label) {
                 $enabled = in_array($type, $enabledTypes, true);
                 $icon = $enabled ? '<fg=green>✓</>' : '<fg=gray>-</>';
                 $text = $enabled ? $label : "<fg=gray>$label</>";
@@ -425,6 +534,34 @@ HELP
             $this->io()->newLine();
             $this->io()->text('<fg=cyan>✓ Process any available task when free</>');
         }
+    }
+
+    private function formatTaskTypesForList(string $taskTypes): string
+    {
+        $enabledTypes = $this->parseTaskTypes($taskTypes);
+        $allTypes = array_keys(self::TASK_TYPE_LABELS);
+
+        if ($enabledTypes === [] || count($enabledTypes) === count($allTypes)) {
+            return 'All';
+        }
+
+        if (count($enabledTypes) < count($allTypes) / 2) {
+            $values = [];
+            foreach ($enabledTypes as $type) {
+                $values[] = '+' . (self::TASK_TYPE_LABELS[$type] ?? $type);
+            }
+
+            return implode(', ', $values);
+        }
+
+        $values = [];
+        foreach ($allTypes as $type) {
+            if (!in_array($type, $enabledTypes, true)) {
+                $values[] = '-' . self::TASK_TYPE_LABELS[$type];
+            }
+        }
+
+        return implode(', ', $values);
     }
 
     /**
@@ -483,11 +620,14 @@ HELP
     /**
      * Show server conversion log.
      */
-    private function showLog(?string $id): int
+    private function showLog(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
-            $this->io()->text('Usage: kvs system:conversion log <server_id>');
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
 
@@ -502,16 +642,16 @@ HELP
                 FROM {$this->table('admin_conversion_servers')}
                 WHERE server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: $id");
+                $this->io()->error("Conversion server not found: $serverId");
                 return self::FAILURE;
             }
 
-            $path = $this->getStringField($server, 'path');
+            $path = $this->resolveConversionServerPath($this->getStringField($server, 'path'));
             $connType = $this->getNumericField($server, 'connection_type_id');
 
             // Only local and mount servers have readable logs
@@ -520,21 +660,66 @@ HELP
                 return self::FAILURE;
             }
 
-            $logFile = rtrim($path, '/') . '/log.txt';
+            $logFile = $this->getConversionLogFile($path);
 
             if (!file_exists($logFile)) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => (string) $serverId,
+                        'title' => $this->getStringField($server, 'title'),
+                        'file' => $logFile,
+                        'exists' => false,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'line_count' => 0,
+                        'content' => null,
+                        'message' => 'Log file not found',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->warning("Log file not found: $logFile");
                 return self::FAILURE;
             }
 
-            $title = $this->getStringField($server, 'title');
-            $this->io()->section("Conversion Log - $title");
-
             $content = file_get_contents($logFile);
             if ($content === false) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => (string) $serverId,
+                        'title' => $this->getStringField($server, 'title'),
+                        'file' => $logFile,
+                        'exists' => true,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'line_count' => 0,
+                        'content' => null,
+                        'message' => 'Cannot read log file',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->error("Cannot read log file: $logFile");
                 return self::FAILURE;
             }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayConversionFileRows($input, [[
+                    'server_id' => (string) $serverId,
+                    'title' => $this->getStringField($server, 'title'),
+                    'file' => $logFile,
+                    'exists' => true,
+                    'readable' => true,
+                    'size_bytes' => strlen($content),
+                    'line_count' => $this->countLines($content),
+                    'content' => $content,
+                    'message' => trim($content) === '' ? 'Log file is empty' : '',
+                ]]);
+                return self::SUCCESS;
+            }
+
+            $title = $this->getStringField($server, 'title');
+            $this->io()->section("Conversion Log - $title");
 
             if (trim($content) === '') {
                 $this->io()->info('Log file is empty');
@@ -552,11 +737,14 @@ HELP
     /**
      * Show server configuration.
      */
-    private function showConfig(?string $id): int
+    private function showConfig(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
-            $this->io()->text('Usage: kvs system:conversion config <server_id>');
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
+            return self::FAILURE;
+        }
+
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
 
@@ -571,16 +759,16 @@ HELP
                 FROM {$this->table('admin_conversion_servers')}
                 WHERE server_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: $id");
+                $this->io()->error("Conversion server not found: $serverId");
                 return self::FAILURE;
             }
 
-            $path = $this->getStringField($server, 'path');
+            $path = $this->resolveConversionServerPath($this->getStringField($server, 'path'));
             $connType = $this->getNumericField($server, 'connection_type_id');
 
             // Only local and mount servers have readable config
@@ -590,49 +778,95 @@ HELP
             }
 
             $title = $this->getStringField($server, 'title');
-            $this->io()->section("Configuration - $title");
 
             // Read config.properties
             $configFile = rtrim($path, '/') . '/config.properties';
 
             if (!file_exists($configFile)) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => (string) $serverId,
+                        'title' => $title,
+                        'file' => $configFile,
+                        'exists' => false,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'content' => null,
+                        'heartbeat_file' => rtrim($path, '/') . '/heartbeat.dat',
+                        'heartbeat_exists' => false,
+                        'libraries' => [],
+                        'message' => 'Config file not found',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->warning("Config file not found: $configFile");
                 return self::FAILURE;
             }
 
             $content = file_get_contents($configFile);
             if ($content === false) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => (string) $serverId,
+                        'title' => $title,
+                        'file' => $configFile,
+                        'exists' => true,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'content' => null,
+                        'heartbeat_file' => rtrim($path, '/') . '/heartbeat.dat',
+                        'heartbeat_exists' => file_exists(rtrim($path, '/') . '/heartbeat.dat'),
+                        'libraries' => [],
+                        'message' => 'Cannot read config file',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->error("Cannot read config file: $configFile");
                 return self::FAILURE;
             }
+
+            $heartbeatFile = rtrim($path, '/') . '/heartbeat.dat';
+            $libraries = $this->readConversionLibraries($heartbeatFile);
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayConversionFileRows($input, [[
+                    'server_id' => (string) $serverId,
+                    'title' => $title,
+                    'file' => $configFile,
+                    'exists' => true,
+                    'readable' => true,
+                    'size_bytes' => strlen($content),
+                    'content' => $content,
+                    'heartbeat_file' => $heartbeatFile,
+                    'heartbeat_exists' => file_exists($heartbeatFile),
+                    'libraries' => $libraries,
+                    'message' => '',
+                ]]);
+                return self::SUCCESS;
+            }
+
+            $this->io()->section("Configuration - $title");
 
             // Parse and display config
             $this->io()->text('<fg=cyan>Configuration File:</>');
             $this->io()->text($content);
 
             // Read heartbeat.dat for library versions
-            $heartbeatFile = rtrim($path, '/') . '/heartbeat.dat';
-            if (file_exists($heartbeatFile)) {
-                $heartbeatContent = file_get_contents($heartbeatFile);
-                if ($heartbeatContent !== false) {
-                    $heartbeat = @unserialize($heartbeatContent, ['allowed_classes' => false]);
-                    if (is_array($heartbeat) && isset($heartbeat['libraries'])) {
-                        $this->io()->newLine();
-                        $this->io()->text('<fg=cyan>Conversion Libraries:</>');
+            if ($libraries !== []) {
+                $this->io()->newLine();
+                $this->io()->text('<fg=cyan>Conversion Libraries:</>');
 
-                        /** @var array<string, array{path?: string, message?: string}> $libraries */
-                        $libraries = $heartbeat['libraries'];
-                        $rows = [];
-                        foreach ($libraries as $name => $info) {
-                            $command = isset($info['path']) && $info['path'] !== '' ? $info['path'] : 'N/A';
-                            $message = $info['message'] ?? '';
-                            // Get first line of message
-                            $firstLine = explode("\n", $message)[0];
-                            $rows[] = [$name, $command, $firstLine];
-                        }
-                        $this->renderTable(['Library', 'Command', 'Version'], $rows);
-                    }
-                }
+                $rows = array_map(
+                    static fn (array $library): array => [
+                        $library['name'],
+                        $library['command'],
+                        $library['version'],
+                    ],
+                    $libraries
+                );
+                $this->renderTable(['Library', 'Command', 'Version'], $rows);
             }
 
             return self::SUCCESS;
@@ -640,6 +874,37 @@ HELP
             $this->io()->error('Failed to read config: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function resolveConversionServerPath(string $path): string
+    {
+        $path = rtrim($path, '/');
+        if ($path !== '' && is_dir($path)) {
+            return $path;
+        }
+
+        $normalized = str_replace('\\', '/', $path);
+        if (str_ends_with($normalized, '/admin/data/conversion')) {
+            $candidate = $this->config->getAdminPath() . '/data/conversion';
+            if (is_dir($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $path;
+    }
+
+    private function getConversionLogFile(string $path): string
+    {
+        $basePath = rtrim($path, '/');
+        foreach (['cron_log.txt', 'log.txt'] as $filename) {
+            $candidate = $basePath . '/' . $filename;
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $basePath . '/cron_log.txt';
     }
 
     private function enableServer(?string $id): int
@@ -670,10 +935,8 @@ HELP
 
     private function toggleDebug(?string $id, bool $enable): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Server ID is required');
-            $action = $enable ? 'debug-on' : 'debug-off';
-            $this->io()->text("Usage: kvs system:conversion {$action} <server_id>");
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
             return self::FAILURE;
         }
 
@@ -685,12 +948,12 @@ HELP
         try {
             // Check if server exists
             $stmt = $db->prepare("SELECT title, is_debug_enabled FROM {$this->table('admin_conversion_servers')} WHERE server_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $serverId]);
             /** @var array<string, mixed>|false $server */
             $server = $stmt->fetch();
 
             if ($server === false) {
-                $this->io()->error("Conversion server not found: {$id}");
+                $this->io()->error("Conversion server not found: {$serverId}");
                 return self::FAILURE;
             }
 
@@ -705,7 +968,7 @@ HELP
 
             // Update debug status
             $stmt = $db->prepare("UPDATE {$this->table('admin_conversion_servers')} SET is_debug_enabled = :debug WHERE server_id = :id");
-            $stmt->execute(['debug' => $targetDebug, 'id' => $id]);
+            $stmt->execute(['debug' => $targetDebug, 'id' => $serverId]);
 
             $title = $this->getStringField($server, 'title');
             $action = $enable ? 'enabled' : 'disabled';
@@ -718,7 +981,7 @@ HELP
         }
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -726,8 +989,6 @@ HELP
         }
 
         try {
-            $this->io()->section('Conversion Statistics');
-
             // Overall stats
             $stmtStats = $db->query("
                 SELECT
@@ -769,10 +1030,25 @@ HELP
             $usedSpace = $totalSpace - $freeSpace;
             $usedPercent = $totalSpace > 0 ? round(($usedSpace / $totalSpace) * 100, 1) : 0;
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('overall', 'Total Servers', $totalServers),
+                $this->metricRow('overall', 'Active', $activeServers),
+                $this->metricRow('overall', 'Inactive', $disabledServers),
+                $this->metricRow('overall', 'Initializing', $initServers),
+                $this->metricRow('overall', 'With Errors', $serversWithErrors),
+                $this->metricRow('overall', 'Debug Enabled', $debugEnabled),
+                $this->metricRow('overall', 'Total Capacity', $totalCapacity, "{$totalCapacity} concurrent tasks"),
+                $this->metricRow('overall', 'Total Space', $totalSpace, $this->formatBytes($totalSpace)),
+                $this->metricRow('overall', 'Used Space', $usedSpace, $this->formatBytes($usedSpace) . " ({$usedPercent}%)"),
+                $this->metricRow('overall', 'Free Space', $freeSpace, $this->formatBytes($freeSpace)),
+                $this->metricRow('overall', 'Avg Load', $avgLoad, number_format($avgLoad, 2)),
+            ];
+
             $overallInfo = [
                 ['Total Servers', (string) $totalServers],
                 ['Active', (string) $activeServers],
-                ['Disabled', (string) $disabledServers],
+                ['Inactive', (string) $disabledServers],
                 ['Initializing', (string) $initServers],
                 ['With Errors', $serversWithErrors > 0 ? "<fg=red>{$serversWithErrors}</>" : '0'],
                 ['Debug Enabled', $debugEnabled > 0 ? "<fg=yellow>{$debugEnabled}</>" : '0'],
@@ -783,16 +1059,12 @@ HELP
                 ['Avg Load', number_format($avgLoad, 2)],
             ];
 
-            $this->renderTable(['Metric', 'Value'], $overallInfo);
-
             // Task stats
-            $this->io()->newLine();
-            $this->io()->section('Task Queue');
-
             $stmtTasks = $db->query("
                 SELECT
                     SUM(CASE WHEN status_id = 0 THEN 1 ELSE 0 END) as pending,
-                    SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as processing
+                    SUM(CASE WHEN status_id = 1 THEN 1 ELSE 0 END) as processing,
+                    SUM(CASE WHEN status_id = 2 THEN 1 ELSE 0 END) as failed
                 FROM {$this->table('background_tasks')}
             ");
             $taskResult = $stmtTasks !== false ? $stmtTasks->fetch() : false;
@@ -806,14 +1078,30 @@ HELP
 
             $pending = $this->getNumericField($taskStats, 'pending');
             $processing = $this->getNumericField($taskStats, 'processing');
+            $failed = $this->getNumericField($taskStats, 'failed');
             $completed = $this->getNumericField($historyStats, 'total');
 
             $taskInfo = [
                 ['Pending', (string) $pending],
                 ['Processing', (string) $processing],
+                ['Failed', (string) $failed],
                 ['Completed (history)', number_format($completed)],
             ];
+            $metricRows[] = $this->metricRow('task_queue', 'Pending', $pending);
+            $metricRows[] = $this->metricRow('task_queue', 'Processing', $processing);
+            $metricRows[] = $this->metricRow('task_queue', 'Failed', $failed);
+            $metricRows[] = $this->metricRow('task_queue', 'Completed (history)', $completed, number_format($completed));
 
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->section('Conversion Statistics');
+            $this->renderTable(['Metric', 'Value'], $overallInfo);
+
+            $this->io()->newLine();
+            $this->io()->section('Task Queue');
             $this->renderTable(['Status', 'Count'], $taskInfo);
 
             return self::SUCCESS;
@@ -821,6 +1109,60 @@ HELP
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     */
+    private function displayConversionFileRows(InputInterface $input, array $rows): void
+    {
+        $this->displayFormattedRows($input, $rows, array_keys($rows[0] ?? []));
+    }
+
+    private function countLines(string $content): int
+    {
+        if ($content === '') {
+            return 0;
+        }
+
+        return substr_count($content, "\n") + (str_ends_with($content, "\n") ? 0 : 1);
+    }
+
+    /**
+     * @return list<array{name: string, command: string, version: string}>
+     */
+    private function readConversionLibraries(string $heartbeatFile): array
+    {
+        if (!file_exists($heartbeatFile)) {
+            return [];
+        }
+
+        $heartbeatContent = file_get_contents($heartbeatFile);
+        if ($heartbeatContent === false) {
+            return [];
+        }
+
+        $heartbeat = @unserialize($heartbeatContent, ['allowed_classes' => false]);
+        if (!is_array($heartbeat) || !isset($heartbeat['libraries']) || !is_array($heartbeat['libraries'])) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($heartbeat['libraries'] as $name => $info) {
+            if (!is_array($info)) {
+                continue;
+            }
+
+            $command = isset($info['path']) && is_string($info['path']) && $info['path'] !== '' ? $info['path'] : 'N/A';
+            $message = isset($info['message']) && is_string($info['message']) ? $info['message'] : '';
+            $rows[] = [
+                'name' => (string) $name,
+                'command' => $command,
+                'version' => explode("\n", $message)[0],
+            ];
+        }
+
+        return $rows;
     }
 
     private function formatBytes(int $bytes): string

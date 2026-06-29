@@ -157,24 +157,8 @@ class DockerDetector
         );
 
         foreach ($phpContainers as $containerName) {
-            // Inspect container for volume mounts
-            $inspectCmd = sprintf(
-                'docker inspect %s --format "{{range .Mounts}}{{.Source}}:{{.Destination}}{{\"\\n\"}}{{end}}" 2>/dev/null',
-                escapeshellarg($containerName)
-            );
-            $mounts = @shell_exec($inspectCmd);
-
-            if ($mounts === null || $mounts === false) {
-                continue;
-            }
-
-            // Check if any mount matches our KVS path
-            $mountLines = array_filter(
-                array_map('trim', explode("\n", $mounts)),
-                static fn(string $line): bool => $line !== ''
-            );
-            foreach ($mountLines as $mount) {
-                [$source] = explode(':', $mount, 2);
+            foreach ($this->getContainerMounts($containerName) as $mount) {
+                $source = $mount['source'];
                 // Normalize paths with realpath for symlink support
                 $realSource = realpath($source);
                 $normalizedSource = $realSource !== false ? $realSource : $source;
@@ -189,6 +173,76 @@ class DockerDetector
         }
 
         return null;
+    }
+
+    /**
+     * @return list<array{source: string, destination: string}>
+     */
+    protected function getContainerMounts(string $containerName): array
+    {
+        $inspectCmd = sprintf(
+            'docker inspect %s --format "{{range .Mounts}}{{.Source}}:{{.Destination}}{{\"\\n\"}}{{end}}" 2>/dev/null',
+            escapeshellarg($containerName)
+        );
+        $mounts = @shell_exec($inspectCmd);
+
+        if ($mounts === null || $mounts === false) {
+            return [];
+        }
+
+        $result = [];
+        $mountLines = array_filter(
+            array_map('trim', explode("\n", $mounts)),
+            static fn(string $line): bool => $line !== ''
+        );
+
+        foreach ($mountLines as $mount) {
+            [$source, $destination] = array_pad(explode(':', $mount, 2), 2, '');
+            if ($source === '' || $destination === '') {
+                continue;
+            }
+            $result[] = [
+                'source' => $source,
+                'destination' => $destination,
+            ];
+        }
+
+        return $result;
+    }
+
+    public function mapHostPathToContainer(string $hostPath, string $service = 'php'): ?string
+    {
+        $this->detect();
+
+        $containerName = $this->containerNames[$service] ?? null;
+        if ($containerName === null || !$this->isRunning($service)) {
+            return null;
+        }
+
+        $realHostPath = realpath($hostPath);
+        $normalizedHostPath = rtrim($realHostPath !== false ? $realHostPath : $hostPath, '/');
+
+        $bestSource = null;
+        $bestDestination = null;
+        foreach ($this->getContainerMounts($containerName) as $mount) {
+            $realSource = realpath($mount['source']);
+            $normalizedSource = rtrim($realSource !== false ? $realSource : $mount['source'], '/');
+            if (
+                $normalizedSource !== ''
+                && ($normalizedHostPath === $normalizedSource || str_starts_with($normalizedHostPath, $normalizedSource . '/'))
+                && ($bestSource === null || strlen($normalizedSource) > strlen($bestSource))
+            ) {
+                $bestSource = $normalizedSource;
+                $bestDestination = rtrim($mount['destination'], '/');
+            }
+        }
+
+        if ($bestSource === null || $bestDestination === null) {
+            return null;
+        }
+
+        $relativePath = substr($normalizedHostPath, strlen($bestSource));
+        return $bestDestination . $relativePath;
     }
 
     /**

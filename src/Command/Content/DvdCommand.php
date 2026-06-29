@@ -27,7 +27,7 @@ class DvdCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'DVD ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in DVD titles')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in DVD titles, directories, descriptions, and synonyms')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -66,8 +66,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listDvds($input),
-            'show' => $this->showDvd($id),
-            'stats' => $this->showStats(),
+            'show' => $this->showDvd($id, $input),
+            'stats' => $this->showStats($input),
             default => $this->unknownAction($action),
         };
     }
@@ -94,28 +94,14 @@ HELP
 
         $params = [];
 
-        // Status filter
-        $status = $this->getStringOption($input, 'status');
-        if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
-                'active' => StatusFormatter::DVD_ACTIVE,
-                'disabled' => StatusFormatter::DVD_DISABLED,
-                'inactive' => StatusFormatter::DVD_DISABLED,
-            ]);
-            if ($statusId !== null) {
-                $whereClause .= " AND d.status_id = :status";
-                $params['status'] = $statusId;
-            }
-        }
-
-        // Search filter
-        $search = $this->getStringOption($input, 'search');
-        if ($search !== null) {
-            $whereClause .= " AND d.title LIKE :search";
-            $params['search'] = "%$search%";
+        if (!$this->applyDvdListFilters($input, $whereClause, $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countDvds($db, $fromClause, $whereClause, $params);
         }
 
@@ -125,6 +111,7 @@ HELP
                         (SELECT COUNT(*) FROM {$this->table('comments')} c
                          WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id) as comments_amount";
         }
+        $relationSelect = $this->buildDvdRelationSelectSql($input);
         $includeGroupFields = $this->isDvdFieldRequested($input, 'dvd_group')
             || $this->isDvdFieldRequested($input, 'dvd_group_status_id');
         $groupSelect = $includeGroupFields ? ",
@@ -134,26 +121,14 @@ HELP
             ? "LEFT JOIN {$this->table('dvds_groups')} dg ON dg.dvd_group_id = d.dvd_group_id"
             : '';
 
-        $dvdFields = [
-            'dvd_id',
-            'title',
-            'status_id',
-            'release_year',
-            'dvd_viewed',
-            'subscribers_count',
-            'rating',
-            'rating_amount',
-        ];
-        if ($includeGroupFields) {
-            $dvdFields[] = 'dvd_group_id';
-        }
+        $dvdFields = $this->getDvdListFields($input, $includeGroupFields);
         $fieldList = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         $groupBy = implode(', ', array_map(static fn (string $field): string => "d.$field", $dvdFields));
         if ($includeGroupFields) {
             $groupBy .= ', dg.title, dg.status_id';
         }
 
-        $query = "SELECT d.*$commentsSelect$groupSelect,
+        $query = "SELECT d.*$commentsSelect$groupSelect$relationSelect,
                         COUNT(v.dvd_id) as video_count,
                         COALESCE(SUM(v.duration), 0) as video_duration
                  FROM (
@@ -181,7 +156,6 @@ HELP
 
             /** @var list<array<string, mixed>> $dvds */
             $dvds = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $dvds = $this->appendDvdListFields($db, $input, $dvds);
 
             // Transform DVDs for display (field aliases)
             $transformedDvds = array_map(function (array $dvd): array {
@@ -192,9 +166,11 @@ HELP
                 $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
 
                 return [
+                    ...$dvd,
                     'dvd_id' => $dvd['dvd_id'] ?? 0,
                     'id' => $dvd['dvd_id'] ?? 0,
                     'title' => $dvd['title'] ?? '',
+                    'thumb' => $dvd['cover1_front'] ?? $dvd['cover2_front'] ?? '',
                     'status_id' => $statusId,
                     'status' => StatusFormatter::dvd($statusId, false),
                     'total_videos' => $dvd['video_count'] ?? 0,
@@ -208,6 +184,7 @@ HELP
                     'views' => $dvd['dvd_viewed'] ?? 0,
                     'dvd_group' => $dvd['dvd_group'] ?? '',
                     'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
+                    'user' => $dvd['user'] ?? '',
                     'comments_amount' => $dvd['comments_amount'] ?? 0,
                     'subscribers_count' => $dvd['subscribers_count'] ?? 0,
                     'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
@@ -234,62 +211,37 @@ HELP
     }
 
     /**
-     * @param list<array<string, mixed>> $dvds
-     * @return list<array<string, mixed>>
+     * @param array<string, int|string> $params
      */
-    private function appendDvdListFields(\PDO $db, InputInterface $input, array $dvds): array
+    private function applyDvdListFilters(InputInterface $input, string &$whereClause, array &$params): bool
     {
-        $fieldMaps = [
-            'categories' => ['categories', 'categories_dvds', 'category_id', 'dvd_id', 'title'],
-            'tags' => ['tags', 'tags_dvds', 'tag_id', 'dvd_id', 'tag'],
-            'models' => ['models', 'models_dvds', 'model_id', 'dvd_id', 'title'],
-        ];
-
-        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $dvdIdColumn, $titleColumn]) {
-            if (!$this->isDvdFieldRequested($input, $field)) {
-                continue;
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::DVD_ACTIVE,
+                'disabled' => StatusFormatter::DVD_DISABLED,
+                'inactive' => StatusFormatter::DVD_DISABLED,
+            ]);
+            if ($statusId === false) {
+                return false;
             }
-
-            foreach ($dvds as $index => $dvd) {
-                $dvdId = $dvd['dvd_id'] ?? null;
-                $dvds[$index][$field] = is_numeric($dvdId)
-                    ? $this->fetchDvdListTitles(
-                        $db,
-                        $itemTable,
-                        $linkTable,
-                        $itemIdColumn,
-                        $dvdIdColumn,
-                        $titleColumn,
-                        (int) $dvdId
-                    )
-                    : '';
+            if ($statusId !== null) {
+                $whereClause .= " AND d.status_id = :status";
+                $params['status'] = $statusId;
             }
         }
 
-        return $dvds;
-    }
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (d.title LIKE :search" . $searchEscape
+                . " OR d.dir LIKE :search" . $searchEscape
+                . " OR d.description LIKE :search" . $searchEscape
+                . " OR d.synonyms LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
+        }
 
-    private function fetchDvdListTitles(
-        \PDO $db,
-        string $itemTable,
-        string $linkTable,
-        string $itemIdColumn,
-        string $dvdIdColumn,
-        string $titleColumn,
-        int $dvdId
-    ): string {
-        $query = "SELECT i.$titleColumn
-                  FROM {$this->table($itemTable)} i
-                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
-                  WHERE l.$dvdIdColumn = :dvd_id
-                  ORDER BY l.id ASC";
-        $stmt = $db->prepare($query);
-        $stmt->execute(['dvd_id' => $dvdId]);
-
-        return implode(', ', array_map(
-            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
-            $stmt->fetchAll(\PDO::FETCH_COLUMN)
-        ));
+        return true;
     }
 
     /**
@@ -314,10 +266,10 @@ HELP
         }
     }
 
-    private function showDvd(?string $id): int
+    private function showDvd(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('DVD ID is required');
+        $dvdId = $this->getRequiredPositiveId($id, 'DVD');
+        if ($dvdId === null) {
             return self::FAILURE;
         }
 
@@ -352,18 +304,17 @@ HELP
                          d.subscribers_count,
                          d.description
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $dvdId]);
             $dvd = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($dvd)) {
-                $this->io()->error("DVD not found: $id");
+                $this->io()->error("DVD not found: $dvdId");
                 return self::FAILURE;
             }
 
             // Display DVD details
             $titleValue = $dvd['title'] ?? '';
             $dvdTitle = is_scalar($titleValue) ? (string) $titleValue : '';
-            $this->io()->title("DVD: $dvdTitle");
 
             $totalVideosVal = $dvd['video_count'] ?? 0;
             $dvdViewedVal = $dvd['dvd_viewed'] ?? 0;
@@ -415,6 +366,11 @@ HELP
                 $info[] = ['Description', is_scalar($description) ? (string) $description : ''];
             }
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info);
+            }
+
+            $this->io()->title("DVD: $dvdTitle");
             $this->renderTable(['Field', 'Value'], $info);
 
             return self::SUCCESS;
@@ -443,6 +399,114 @@ HELP
         }
 
         return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getDvdListFields(InputInterface $input, bool $includeGroupFields): array
+    {
+        $fields = [
+            'dvd_id',
+            'title',
+            'status_id',
+            'release_year',
+            'dvd_viewed',
+            'subscribers_count',
+            'rating',
+            'rating_amount',
+        ];
+
+        $optionalFields = [
+            'dir',
+            'description',
+            'synonyms',
+            'cover1_front',
+            'cover1_back',
+            'cover2_front',
+            'cover2_back',
+            'is_video_upload_allowed',
+            'tokens_required',
+            'avg_videos_rating',
+            'avg_videos_popularity',
+            'added_date',
+            'sort_id',
+        ];
+        foreach ($optionalFields as $field) {
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $fields[] = $field;
+            }
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $field = "custom{$i}";
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $fields[] = $field;
+            }
+        }
+        for ($i = 1; $i <= 5; $i++) {
+            $field = "custom_file{$i}";
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $fields[] = $field;
+            }
+        }
+
+        if ($this->isDvdFieldRequested($input, 'thumb')) {
+            $fields[] = 'cover1_front';
+        }
+        if ($this->isDvdFieldRequested($input, 'user') || $this->isDvdFieldRequested($input, 'user_status_id')) {
+            $fields[] = 'user_id';
+        }
+        if ($includeGroupFields) {
+            $fields[] = 'dvd_group_id';
+        }
+
+        return array_values(array_unique($fields));
+    }
+
+    private function buildDvdRelationSelectSql(InputInterface $input): string
+    {
+        $selects = [];
+
+        if ($this->isDvdFieldRequested($input, 'user')) {
+            $selects[] = "(
+                SELECT u.username
+                FROM {$this->table('users')} u
+                WHERE u.user_id = d.user_id
+            ) as user";
+        }
+        if ($this->isDvdFieldRequested($input, 'user_status_id')) {
+            $selects[] = "(
+                SELECT u.status_id
+                FROM {$this->table('users')} u
+                WHERE u.user_id = d.user_id
+            ) as user_status_id";
+        }
+        if ($this->isDvdFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag ORDER BY td.id ASC)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_dvds')} td ON td.tag_id = t.tag_id
+                WHERE td.dvd_id = d.dvd_id
+            ) as tags";
+        }
+        if ($this->isDvdFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title ORDER BY cd.id ASC)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_dvds')} cd ON cd.category_id = c.category_id
+                WHERE cd.dvd_id = d.dvd_id
+            ) as categories";
+        }
+        if ($this->isDvdFieldRequested($input, 'models')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(m.title ORDER BY md.id ASC)
+                FROM {$this->table('models')} m
+                INNER JOIN {$this->table('models_dvds')} md ON md.model_id = m.model_id
+                WHERE md.dvd_id = d.dvd_id
+            ) as models";
+        }
+
+        return $selects === [] ? '' : ",\n                        " . implode(",\n                        ", $selects);
     }
 
     private function formatDvdReleaseYear(mixed $releaseYear): int|string
@@ -482,7 +546,7 @@ HELP
         return sprintf('%d:%02d', $minutes, $remainingSeconds);
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -491,23 +555,36 @@ HELP
 
         try {
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
 
             // Total DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')}");
             if ($stmt !== false) {
-                $stats[] = ['Total DVDs', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Total DVDs', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Total DVDs', $value, number_format($value));
             }
 
             // Active DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_ACTIVE);
             if ($stmt !== false) {
-                $stats[] = ['Active', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Active', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Active', $value, number_format($value));
             }
 
-            // Disabled DVDs
+            // Inactive DVDs
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('dvds')} WHERE status_id = " . StatusFormatter::DVD_DISABLED);
             if ($stmt !== false) {
-                $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Inactive', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Inactive', $value, number_format($value));
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
             }
 
             $this->io()->title('DVD Statistics');

@@ -50,6 +50,7 @@ The <info>eval</info> command executes PHP code with the KVS context pre-loaded.
   $kvsConfig - KVS CLI configuration object
   $kvsPath   - KVS installation path
   $db        - Database connection
+  $kvs_db    - KVS-style mysqli connection
 
 <comment>Available classes:</comment>
   Video, User, Album, Category, Tag, DVD, Model_
@@ -96,6 +97,7 @@ HELP
             if ($db === null) {
                 $this->io()->warning('Database connection not available');
             }
+            $kvs_db = $db;
 
             $dbConfig = $this->config->getDatabaseConfig();
 
@@ -115,8 +117,8 @@ HELP
             }
 
             // IMPORTANT: Extract variables into current scope so eval() can access them
-            // This makes $kvsPath, $kvsConfig, $db, $config, $dbConfig available in user's eval()
-            extract(compact('kvsPath', 'kvsConfig', 'db', 'config', 'dbConfig'));
+            // This makes KVS context variables available in user's eval().
+            extract(compact('kvsPath', 'kvsConfig', 'db', 'kvs_db', 'config', 'dbConfig'));
         }
 
         // Execute the user code

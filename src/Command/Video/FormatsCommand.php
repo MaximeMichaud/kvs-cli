@@ -20,6 +20,8 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class FormatsCommand extends BaseCommand
 {
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml'];
+
     protected function configure(): void
     {
         $this
@@ -79,6 +81,15 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
+            return self::FAILURE;
+        }
+
         $videoPaths = $this->getVideoStorageDirs($videoId);
         if ($videoPaths === []) {
             $this->io()->error('Video storage path not configured');
@@ -87,6 +98,16 @@ HELP
 
         $existingVideoPaths = $this->filterExistingDirs($videoPaths);
         if ($existingVideoPaths === []) {
+            if (!$this->isTableFormat($input)) {
+                $this->displayFormattedRows($input, [[
+                    'video_id' => $videoId,
+                    'path' => $videoPaths[0],
+                    'exists' => false,
+                    'message' => 'Video directory not found',
+                ]], ['video_id', 'path', 'exists', 'message']);
+                return self::FAILURE;
+            }
+
             $this->io()->error("Video directory not found: {$videoPaths[0]}");
             $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
@@ -106,6 +127,10 @@ HELP
         }
 
         if ($files === []) {
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [], ['format', 'file', 'size', 'dimensions']);
+            }
+
             $this->io()->warning('No video files found in directory');
             $this->io()->text('Directory: ' . implode(', ', $existingVideoPaths));
             return self::SUCCESS;
@@ -161,11 +186,19 @@ HELP
     private function checkFormats(InputInterface $input): int
     {
         $videoId = $this->getStringArgument($input, 'video_id');
-        $outputFormat = $this->getStringOptionOrDefault($input, 'format', 'table');
+        $outputFormat = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($outputFormat === null) {
+            return self::FAILURE;
+        }
 
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:formats check <video_id>');
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -177,6 +210,16 @@ HELP
 
         $existingVideoPaths = $this->filterExistingDirs($videoPaths);
         if ($existingVideoPaths === []) {
+            if (!$this->isTableFormat($input)) {
+                $this->displayFormattedRows($input, [[
+                    'video_id' => $videoId,
+                    'path' => $videoPaths[0],
+                    'exists' => false,
+                    'message' => 'Video directory not found',
+                ]], ['video_id', 'path', 'exists', 'message']);
+                return self::FAILURE;
+            }
+
             $this->io()->error("Video directory not found for video ID: $videoId");
             $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
@@ -190,6 +233,11 @@ HELP
         $configuredFormats = $this->getFormatsFromDatabase();
 
         if ($configuredFormats === []) {
+            if ($outputFormat !== 'table') {
+                $this->displayFormattedRows($input, [], ['format', 'postfix', 'status', 'file', 'size', 'dimensions']);
+                return self::FAILURE;
+            }
+
             $this->io()->warning('No formats configured in database');
             $this->io()->text('Cannot check formats without KVS format configuration.');
             $this->io()->text('Use "kvs video:formats list <video_id>" to see actual files.');
@@ -198,12 +246,22 @@ HELP
 
         $available = [];
         $missing = [];
+        $missingRequired = [];
         $formatRows = [];
 
         // Check each configured format
         foreach ($configuredFormats as $format) {
             $formatName = isset($format['title']) && is_string($format['title']) ? $format['title'] : '';
             $postfix = isset($format['postfix']) && is_string($format['postfix']) ? $format['postfix'] : '';
+            $statusId = isset($format['raw_status_id']) && is_numeric($format['raw_status_id'])
+                ? (int) $format['raw_status_id']
+                : (isset($format['status_id']) && is_numeric($format['status_id'])
+                ? (int) $format['status_id']
+                : StatusFormatter::FORMAT_DISABLED);
+
+            if (!in_array($statusId, [StatusFormatter::FORMAT_REQUIRED, StatusFormatter::FORMAT_OPTIONAL], true)) {
+                continue;
+            }
 
             // KVS stores converted video files as {video_id}{postfix}, e.g. 123_720p.mp4.
             $filename = $videoId . $postfix;
@@ -229,6 +287,9 @@ HELP
                 ];
             } else {
                 $missing[] = sprintf('%s (%s)', $formatName, $postfix);
+                if ($statusId === StatusFormatter::FORMAT_REQUIRED) {
+                    $missingRequired[] = sprintf('%s (%s)', $formatName, $postfix);
+                }
                 $formatRows[] = [
                     'format' => $formatName,
                     'postfix' => $postfix,
@@ -247,7 +308,7 @@ HELP
                 ['format', 'postfix', 'status', 'file', 'size', 'dimensions']
             );
             $formatter->display($formatRows, $this->io());
-            return $missing === [] ? self::SUCCESS : self::FAILURE;
+            return $missingRequired === [] ? self::SUCCESS : self::FAILURE;
         }
 
         if ($available !== []) {
@@ -265,12 +326,16 @@ HELP
             $this->io()->warning('No standard formats found in directory');
         }
 
-        return $missing === [] ? self::SUCCESS : self::FAILURE;
+        return $missingRequired === [] ? self::SUCCESS : self::FAILURE;
     }
 
     private function showAvailableFormats(InputInterface $input): int
     {
-        $format = $this->getStringOption($input, 'format') ?? 'table';
+        $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($format === null) {
+            return self::FAILURE;
+        }
+
         if ($format === 'table') {
             $this->io()->title('Available Format Configurations');
         }
@@ -279,6 +344,11 @@ HELP
         $formats = $this->getFormatsFromDatabase();
 
         if ($formats === []) {
+            if ($format !== 'table') {
+                $this->displayFormattedRows($input, [], ['format_id', 'title', 'postfix', 'status', 'group_id', 'access']);
+                return self::FAILURE;
+            }
+
             // Fallback: scan filesystem to see what formats actually exist
             $this->io()->warning('No formats configured in database');
             $this->io()->text('Reading format configuration from KVS database failed.');
@@ -322,22 +392,7 @@ HELP
 
         try {
             $stmt = $db->query("
-                SELECT
-                    format_video_id as format_id,
-                    title,
-                    postfix,
-                    CASE
-                        WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " AND COALESCE(is_conditional, 0) = 1 THEN 'Conditional'
-                        WHEN status_id = " . StatusFormatter::FORMAT_DISABLED . " THEN 'Disabled'
-                        WHEN status_id = " . StatusFormatter::FORMAT_REQUIRED . " THEN 'Required'
-                        WHEN status_id = " . StatusFormatter::FORMAT_OPTIONAL . " THEN 'Optional'
-                        WHEN status_id = " . StatusFormatter::FORMAT_DELETING . " THEN 'Deleting'
-                        WHEN status_id = " . StatusFormatter::FORMAT_ERROR . " THEN 'Error'
-                        WHEN status_id = " . StatusFormatter::FORMAT_CONDITIONAL . " THEN 'Conditional'
-                        ELSE 'Unknown'
-                    END as status,
-                    format_video_group_id as group_id,
-                    access_level_id
+                SELECT *
                 FROM " . $this->table('formats_videos') . "
                 ORDER BY format_video_group_id ASC, title ASC
             ");
@@ -354,14 +409,306 @@ HELP
             foreach ($result as $row) {
                 if (is_array($row)) {
                     /** @var array<string, mixed> $row */
+                    $formatId = isset($row['format_video_id']) && is_numeric($row['format_video_id'])
+                        ? (int) $row['format_video_id'] : 0;
+                    $groupId = isset($row['format_video_group_id']) && is_numeric($row['format_video_group_id'])
+                        ? (int) $row['format_video_group_id'] : 0;
+                    $statusId = isset($row['status_id']) && is_numeric($row['status_id'])
+                        ? (int) $row['status_id'] : 0;
+                    $isConditional = isset($row['is_conditional'])
+                        && is_numeric($row['is_conditional'])
+                        && (int) $row['is_conditional'] === 1;
+                    $hotlinkDisabled = isset($row['is_hotlink_protection_disabled'])
+                        && is_numeric($row['is_hotlink_protection_disabled'])
+                        && (int) $row['is_hotlink_protection_disabled'] === 1;
+
+                    $displayStatusId = $statusId === StatusFormatter::FORMAT_OPTIONAL && $isConditional
+                        ? StatusFormatter::FORMAT_CONDITIONAL
+                        : $statusId;
+
+                    $row['format_id'] = $formatId;
+                    $row['group_id'] = $groupId;
+                    $row['raw_status_id'] = $statusId;
+                    $row['status_id'] = $displayStatusId;
+                    $row['status'] = StatusFormatter::videoFormat($displayStatusId, false);
+                    $row['is_hotlink_protection_enabled'] = $hotlinkDisabled ? 0 : 1;
+                    $row['size'] = $this->formatKvsVideoSize($row);
+                    $row['limit_total_duration'] = $this->formatKvsDurationLimit($row);
+                    $row['limit_offset_start'] = $this->formatKvsLimitValue(
+                        $row,
+                        'limit_offset_start',
+                        'limit_offset_start_unit_id',
+                        ''
+                    );
+                    $row['limit_offset_end'] = $this->formatKvsLimitValue(
+                        $row,
+                        'limit_offset_end',
+                        'limit_offset_end_unit_id',
+                        ''
+                    );
+                    $row['limit_speed_value'] = $this->formatKvsSpeedLimit($row);
+                    $row['is_timeline_enabled'] = $this->getIntField($row, 'is_timeline_enabled') === 1
+                        ? $this->formatKvsTimelineValue($row)
+                        : '';
                     $formats[] = $row;
                 }
             }
 
-            return $formats;
+            return $this->addConfiguredFormatVideoCounts($db, $formats);
         } catch (\Exception $e) {
             return [];
         }
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsVideoSize(array $format): string
+    {
+        $size = isset($format['size']) && is_scalar($format['size']) ? (string) $format['size'] : '';
+        if ($size === '') {
+            return 'As source';
+        }
+
+        return match ($this->getIntField($format, 'resize_option2')) {
+            0 => "{$size} (dynamic height)",
+            1 => "{$size} (fixed size)",
+            2 => "{$size} (dynamic width)",
+            default => $size,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsDurationLimit(array $format): string
+    {
+        if ($this->getIntField($format, 'customize_duration_id') > 0) {
+            return 'Custom';
+        }
+
+        $duration = $this->getIntField($format, 'limit_total_duration');
+        if ($duration <= 0) {
+            if (
+                $this->getIntField($format, 'customize_offset_start_id') > 0
+                || $this->getIntField($format, 'customize_offset_end_id') > 0
+            ) {
+                return 'Custom';
+            }
+
+            $durationLabel = 'As source';
+            if ($this->getIntField($format, 'limit_offset_start') > 0 || $this->getIntField($format, 'limit_offset_end') > 0) {
+                $durationLabel = '______';
+            }
+
+            $startOffset = $this->formatKvsSignedOffset(
+                $format,
+                'limit_offset_start',
+                'limit_offset_start_unit_id'
+            );
+            $endOffset = $this->formatKvsSignedOffset(
+                $format,
+                'limit_offset_end',
+                'limit_offset_end_unit_id'
+            );
+
+            if ($startOffset !== '') {
+                $durationLabel = "-{$startOffset} {$durationLabel}";
+            }
+            if ($endOffset !== '') {
+                $durationLabel = "{$durationLabel} -{$endOffset}";
+            }
+
+            return $durationLabel;
+        }
+
+        $unitId = $this->getIntField($format, 'limit_total_duration_unit_id');
+        if ($unitId === 1) {
+            $parts = [];
+            $minDuration = $this->getIntField($format, 'limit_total_min_duration_sec');
+            if ($minDuration > 0) {
+                $parts[] = "{$minDuration}s <=";
+            }
+            $parts[] = "{$duration}%";
+            $maxDuration = $this->getIntField($format, 'limit_total_max_duration_sec');
+            if ($maxDuration > 0) {
+                $parts[] = "<= {$maxDuration}s";
+            }
+            $durationLabel = implode(' ', $parts);
+        } else {
+            $durationLabel = "{$duration}s";
+        }
+
+        $numberParts = $this->getIntField($format, 'limit_number_parts');
+        if ($numberParts > 1) {
+            $durationLabel .= " / {$numberParts}";
+        }
+
+        return $durationLabel;
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsLimitValue(array $format, string $valueKey, string $unitKey, string $zeroLabel): string
+    {
+        if ($valueKey === 'limit_offset_start' && $this->getIntField($format, 'customize_offset_start_id') > 0) {
+            return 'Custom';
+        }
+        if ($valueKey === 'limit_offset_end' && $this->getIntField($format, 'customize_offset_end_id') > 0) {
+            return 'Custom';
+        }
+
+        $value = $this->getIntField($format, $valueKey);
+        if ($value <= 0) {
+            return $zeroLabel;
+        }
+
+        return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsSignedOffset(array $format, string $valueKey, string $unitKey): string
+    {
+        $value = $this->getIntField($format, $valueKey);
+        if ($value <= 0) {
+            return '';
+        }
+
+        return $this->getIntField($format, $unitKey) === 1 ? "{$value}%" : "{$value}s";
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsSpeedLimit(array $format): string
+    {
+        $value = $this->formatKvsSpeedLimitOption(
+            $this->getIntField($format, 'limit_speed_option'),
+            $this->getIntField($format, 'limit_speed_value')
+        );
+
+        $overrides = [];
+        foreach (
+            [
+            ['limit_speed_guests_option', 'limit_speed_guests_value'],
+            ['limit_speed_standard_option', 'limit_speed_standard_value'],
+            ['limit_speed_premium_option', 'limit_speed_premium_value'],
+            ['limit_speed_embed_option', 'limit_speed_embed_value'],
+            ] as [$optionKey, $valueKey]
+        ) {
+            if (
+                $this->getIntField($format, $optionKey) !== $this->getIntField($format, 'limit_speed_option')
+                || $this->getIntField($format, $valueKey) !== $this->getIntField($format, 'limit_speed_value')
+            ) {
+                $overrides[] = $this->formatKvsSpeedLimitOption(
+                    $this->getIntField($format, $optionKey),
+                    $this->getIntField($format, $valueKey)
+                );
+            }
+        }
+
+        if ($this->getIntField($format, 'limit_speed_countries_option') > 0) {
+            $overrides[] = $this->formatKvsSpeedLimitOption(
+                $this->getIntField($format, 'limit_speed_countries_option'),
+                $this->getIntField($format, 'limit_speed_countries_value')
+            );
+        }
+
+        if ($overrides !== []) {
+            $value .= ' (' . implode(', ', $overrides) . ')';
+        }
+
+        return $value;
+    }
+
+    private function formatKvsSpeedLimitOption(int $option, int $value): string
+    {
+        return match ($option) {
+            1 => "{$value} kbit/s",
+            2 => "x{$value}",
+            default => 'N/A',
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $format
+     */
+    private function formatKvsTimelineValue(array $format): string
+    {
+        if ($this->getIntField($format, 'timeline_option') === 1) {
+            $amount = $this->getIntField($format, 'timeline_amount');
+
+            return $amount > 0 ? "x{$amount}" : 'Default';
+        }
+
+        $interval = $this->getIntField($format, 'timeline_interval');
+
+        return $interval > 0 ? "{$interval}s" : 'Default';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function getIntField(array $row, string $key): int
+    {
+        $value = $row[$key] ?? 0;
+
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $formats
+     * @return list<array<string, mixed>>
+     */
+    private function addConfiguredFormatVideoCounts(\PDO $db, array $formats): array
+    {
+        $postfixesByIndex = [];
+        foreach ($formats as $index => $format) {
+            $postfix = $format['postfix'] ?? '';
+            if (is_string($postfix) && $postfix !== '') {
+                $postfixesByIndex[$index] = $postfix;
+            }
+            $formats[$index]['videos_count'] = 0;
+        }
+
+        if ($postfixesByIndex === []) {
+            return $formats;
+        }
+
+        try {
+            $stmt = $db->query("
+                SELECT file_formats
+                FROM " . $this->table('videos') . "
+                WHERE load_type_id = 1 AND status_id IN (0, 1)
+            ");
+        } catch (\Throwable) {
+            return $formats;
+        }
+
+        if ($stmt === false) {
+            return $formats;
+        }
+
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $video) {
+            if (!is_array($video)) {
+                continue;
+            }
+            $fileFormats = $video['file_formats'] ?? '';
+            if (!is_string($fileFormats)) {
+                continue;
+            }
+
+            foreach ($postfixesByIndex as $index => $postfix) {
+                if (str_contains($fileFormats, "||{$postfix}|")) {
+                    $formats[$index]['videos_count']++;
+                }
+            }
+        }
+
+        return $formats;
     }
 
     /**
@@ -486,6 +833,16 @@ HELP
     private function getDirById(string $id): int
     {
         return (int) floor((int) $id / 1000) * 1000;
+    }
+
+    private function normalizeVideoId(string $videoId): ?string
+    {
+        if (preg_match('/^[1-9]\d*$/', $videoId) !== 1) {
+            $this->io()->error('Invalid video ID (use: integer >= 1)');
+            return null;
+        }
+
+        return $videoId;
     }
 
     private function getFormatPostfixFromFilename(string $videoId, string $filename): ?string

@@ -17,6 +17,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 class CliInfoCommand extends Command
 {
+    private const OUTPUT_FORMATS = ['list', 'json'];
+
     protected function configure(): void
     {
         $this
@@ -52,6 +54,14 @@ HELP
     {
         $io = new SymfonyStyle($input, $output);
         $format = $input->getOption('format');
+        if (!in_array($format, self::OUTPUT_FORMATS, true)) {
+            $io->error(sprintf(
+                'Invalid value for --format "%s" (expected: %s)',
+                $format,
+                implode(', ', self::OUTPUT_FORMATS)
+            ));
+            return Command::FAILURE;
+        }
 
         $info = $this->gatherInfo();
 

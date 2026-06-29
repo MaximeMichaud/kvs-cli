@@ -6,6 +6,7 @@ use KVS\CLI\Command\Traits\InputHelperTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use KVS\CLI\Docker\DockerDetector;
+use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -485,6 +486,42 @@ abstract class BaseCommand extends Command
         ));
     }
 
+    /**
+     * Parse a status filter and render CLI-friendly validation errors.
+     *
+     * @param array<string, int> $aliases
+     * @param list<int> $numericStatuses
+     * @return int|false|null False means validation failed.
+     */
+    protected function parseStatusFilterOrFail(InputInterface $input, array $aliases, array $numericStatuses = []): int|false|null
+    {
+        try {
+            return $this->parseStatusFilter($input, $aliases, $numericStatuses);
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return false;
+        }
+    }
+
+    protected function containsLikePattern(string $value): string
+    {
+        return '%' . $this->escapeLikePattern($value) . '%';
+    }
+
+    protected function likeEscapeSql(): string
+    {
+        return " ESCAPE '!'";
+    }
+
+    private function escapeLikePattern(string $value): string
+    {
+        return str_replace(
+            ['!', '%', '_'],
+            ['!!', '!%', '!_'],
+            $value
+        );
+    }
+
     protected function getPositiveIntOptionOrDefault(InputInterface $input, string $name, int $default): ?int
     {
         $value = $this->getStringOption($input, $name);
@@ -500,6 +537,186 @@ abstract class BaseCommand extends Command
         return (int) $value;
     }
 
+    protected function getOptionalPositiveIntOption(InputInterface $input, string $name): int|false|null
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        if (preg_match('/^\d+$/', $value) !== 1 || (int) $value < 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 1)', $name));
+            return false;
+        }
+
+        return (int) $value;
+    }
+
+    protected function getOptionalNonNegativeIntOption(InputInterface $input, string $name): int|false|null
+    {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        if (preg_match('/^\d+$/', $value) !== 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0)', $name));
+            return false;
+        }
+
+        return (int) $value;
+    }
+
+    protected function resolveUserIdOption(\PDO $db, InputInterface $input, string $name = 'user'): int|false|null
+    {
+        return $this->resolveReferenceIdOption($db, $input, $name, 'users', 'user_id', 'username');
+    }
+
+    protected function resolveCategoryIdOption(\PDO $db, InputInterface $input, string $name = 'category'): int|false|null
+    {
+        return $this->resolveReferenceIdOption($db, $input, $name, 'categories', 'category_id', 'title');
+    }
+
+    protected function resolveCategoryGroupIdOption(
+        \PDO $db,
+        InputInterface $input,
+        string $name = 'category-group'
+    ): int|false|null {
+        return $this->resolveReferenceIdOption(
+            $db,
+            $input,
+            $name,
+            'categories_groups',
+            'category_group_id',
+            'title'
+        );
+    }
+
+    protected function resolveContentSourceIdOption(
+        \PDO $db,
+        InputInterface $input,
+        string $name = 'content-source'
+    ): int|false|null {
+        return $this->resolveReferenceIdOption(
+            $db,
+            $input,
+            $name,
+            'content_sources',
+            'content_source_id',
+            'title'
+        );
+    }
+
+    protected function resolveDvdIdOption(\PDO $db, InputInterface $input, string $name = 'dvd'): int|false|null
+    {
+        return $this->resolveReferenceIdOption($db, $input, $name, 'dvds', 'dvd_id', 'title');
+    }
+
+    protected function resolveModelIdOption(\PDO $db, InputInterface $input, string $name = 'model'): int|false|null
+    {
+        return $this->resolveReferenceIdOption($db, $input, $name, 'models', 'model_id', 'title');
+    }
+
+    protected function resolvePlaylistIdOption(\PDO $db, InputInterface $input, string $name = 'playlist'): int|false|null
+    {
+        return $this->resolveReferenceIdOption($db, $input, $name, 'playlists', 'playlist_id', 'title');
+    }
+
+    protected function resolveTagIdOption(\PDO $db, InputInterface $input, string $name = 'tag'): int|false|null
+    {
+        return $this->resolveReferenceIdOption($db, $input, $name, 'tags', 'tag_id', 'tag');
+    }
+
+    protected function findReferenceIdByText(
+        \PDO $db,
+        string $table,
+        string $idColumn,
+        string $textColumn,
+        string $value
+    ): ?int {
+        $stmt = $db->prepare(sprintf(
+            'SELECT %s FROM %s WHERE %s = :value LIMIT 1',
+            $idColumn,
+            $this->table($table),
+            $textColumn
+        ));
+        $stmt->execute(['value' => $value]);
+
+        $id = $stmt->fetchColumn();
+        return is_numeric($id) ? (int) $id : null;
+    }
+
+    private function resolveReferenceIdOption(
+        \PDO $db,
+        InputInterface $input,
+        string $name,
+        string $table,
+        string $idColumn,
+        string $textColumn
+    ): int|false|null {
+        $value = $this->getStringOption($input, $name);
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0 or name)', $name));
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $value) === 1) {
+            return (int) $value;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $value) === 1) {
+            $this->io()->error(sprintf('Invalid value for --%s (use: integer >= 0 or name)', $name));
+            return false;
+        }
+
+        return $this->findReferenceIdByText($db, $table, $idColumn, $textColumn, $value) ?? 0;
+    }
+
+    protected function getRequiredPositiveId(?string $value, string $label): ?int
+    {
+        if ($value === null || $value === '') {
+            $this->io()->error(sprintf('%s ID is required', $label));
+            return null;
+        }
+
+        if (preg_match('/^[1-9]\d*$/', $value) !== 1) {
+            $this->io()->error(sprintf('Invalid %s ID (use: integer >= 1)', $label));
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * @param list<string> $optionNames
+     */
+    protected function hasConflictingBoolOptions(InputInterface $input, array $optionNames): bool
+    {
+        $enabled = [];
+        foreach ($optionNames as $name) {
+            if ($this->getBoolOption($input, $name)) {
+                $enabled[] = '--' . $name;
+            }
+        }
+
+        if (count($enabled) < 2) {
+            return false;
+        }
+
+        $last = array_pop($enabled);
+        $this->io()->error(sprintf(
+            'Options %s and %s cannot be used together',
+            implode(', ', $enabled),
+            $last
+        ));
+        return true;
+    }
+
     /**
      * Render a table with consistent box style
      *
@@ -513,6 +730,225 @@ abstract class BaseCommand extends Command
         $table->setHeaders($headers);
         $table->setRows($rows);
         $table->render();
+    }
+
+    protected function isTableFormat(InputInterface $input): bool
+    {
+        return $this->getStringOptionOrDefault($input, 'format', 'table') === 'table';
+    }
+
+    /**
+     * @param list<string> $allowedFormats
+     */
+    protected function validateOutputFormat(InputInterface $input, array $allowedFormats): ?string
+    {
+        $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+        if (!in_array($format, $allowedFormats, true)) {
+            $this->io()->error(sprintf(
+                'Invalid value for --format "%s" (expected: %s)',
+                $format,
+                implode(', ', $allowedFormats)
+            ));
+            return null;
+        }
+
+        return $format;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @param list<string> $defaultFields
+     */
+    protected function displayFormattedRows(InputInterface $input, array $rows, array $defaultFields): int
+    {
+        try {
+            $formatter = new Formatter($input->getOptions(), $defaultFields);
+            $formatter->display($rows, $this->io());
+            return self::SUCCESS;
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param list<list<mixed>> $rows
+     * @param array<string, mixed> $extraFields
+     */
+    protected function displayDetailRows(InputInterface $input, array $rows, array $extraFields = []): int
+    {
+        $record = [];
+        foreach ($rows as $row) {
+            if (!isset($row[0])) {
+                continue;
+            }
+
+            $label = is_scalar($row[0]) ? (string) $row[0] : '';
+            $key = $this->detailLabelToKey($label);
+            if ($key === '') {
+                continue;
+            }
+
+            $record[$key] = $this->stripConsoleMarkup($row[1] ?? '');
+        }
+
+        foreach ($extraFields as $key => $value) {
+            $record[$key] = is_string($value) ? $this->stripConsoleMarkup($value) : $value;
+        }
+
+        return $this->displayFormattedRows($input, [$record], array_keys($record));
+    }
+
+    private function detailLabelToKey(string $label): string
+    {
+        $key = strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '_', trim($label)));
+        return trim($key, '_');
+    }
+
+    protected function stripConsoleMarkup(mixed $value): mixed
+    {
+        if (!is_scalar($value) && $value !== null) {
+            return $value;
+        }
+
+        $text = (string) $value;
+        return preg_replace('/<\\/?(?:fg|bg|options)(?:=[^>]*)?>|<\\/>/', '', $text) ?? $text;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    protected function buildKvsWebsiteLink(array $row, string $idField, string $patternKey): string
+    {
+        $dir = $row['dir'] ?? null;
+        if (!is_scalar($dir) || (string) $dir === '') {
+            return '';
+        }
+
+        $statusId = $row['status_id'] ?? null;
+        $statusId = is_numeric($statusId) ? (int) $statusId : 0;
+        $websiteUiParams = $this->loadKvsSystemSettingsFile('website_ui_params.dat');
+
+        $allowedStatuses = [0, 1, 5];
+        $disabledAvailability = $websiteUiParams['DISABLED_CONTENT_AVAILABILITY'] ?? null;
+        if (is_numeric($disabledAvailability) && (int) $disabledAvailability === 2) {
+            $allowedStatuses = [0, 1, 2, 3, 5];
+        }
+        if (!in_array($statusId, $allowedStatuses, true)) {
+            return '';
+        }
+
+        $id = $row[$idField] ?? null;
+        $pattern = $websiteUiParams[$patternKey] ?? null;
+        $projectUrl = $this->config->get('project_url', '');
+        if (!is_scalar($id) || !is_scalar($pattern) || (string) $pattern === '' || !is_scalar($projectUrl)) {
+            return '';
+        }
+
+        $path = str_replace(
+            ['%ID%', '%DIR%'],
+            [(string) $id, (string) $dir],
+            (string) $pattern
+        );
+
+        return (string) $projectUrl . '/' . $path;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function loadKvsSystemSettingsFile(string $filename): array
+    {
+        $file = $this->config->getKvsPath() . '/admin/data/system/' . $filename;
+        if (!is_file($file)) {
+            return [];
+        }
+
+        $content = file_get_contents($file);
+        if ($content === false || $content === '') {
+            return [];
+        }
+
+        $result = @unserialize($content, ['allowed_classes' => false]);
+        if (!is_array($result)) {
+            return [];
+        }
+
+        $settings = [];
+        foreach ($result as $key => $value) {
+            if (is_string($key)) {
+                $settings[$key] = $value;
+            }
+        }
+
+        return $settings;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     */
+    protected function displayMetricRows(InputInterface $input, array $rows): void
+    {
+        $formatter = new Formatter(
+            $input->getOptions(),
+            ['section', 'metric', 'value', 'display_value', 'label']
+        );
+        $formatter->display($rows, $this->io());
+    }
+
+    /**
+     * @return array{section: string, metric: string, value: mixed, display_value: string, label: string}
+     */
+    protected function metricRow(
+        string $section,
+        string $metric,
+        mixed $value,
+        ?string $displayValue = null,
+        string $label = ''
+    ): array {
+        return [
+            'section' => $section,
+            'metric' => $metric,
+            'value' => $value,
+            'display_value' => $displayValue ?? (is_scalar($value) || $value === null ? (string) $value : ''),
+            'label' => $label,
+        ];
+    }
+
+    protected function formatKvsIp(mixed $value): string
+    {
+        if (!is_scalar($value) || $value === '') {
+            return '';
+        }
+
+        if (is_string($value) && (str_contains($value, '.') || str_contains($value, ':'))) {
+            return $value;
+        }
+
+        if (!is_numeric($value)) {
+            return (string) $value;
+        }
+
+        $ip = (int) $value;
+        if ($ip > 4294967295) {
+            $parts = [];
+            $parts[0] = intdiv($ip, 65536 * 65536 * 65536);
+            $parts[1] = intdiv($ip - $parts[0] * 65536 * 65536 * 65536, 65536 * 65536);
+            $parts[2] = intdiv($ip - $parts[0] * 65536 * 65536 * 65536 - $parts[1] * 65536 * 65536, 65536);
+            $parts[3] = $ip - $parts[0] * 65536 * 65536 * 65536 - $parts[1] * 65536 * 65536 - $parts[2] * 65536;
+            $parts = array_map('dechex', $parts);
+            $parts[1] = str_pad($parts[1], 4, '0', STR_PAD_LEFT);
+            $parts[2] = str_pad($parts[2], 4, '0', STR_PAD_LEFT);
+
+            return "0:0:0:0:{$parts[0]}:{$parts[1]}:{$parts[2]}:{$parts[3]}";
+        }
+
+        $first = intdiv($ip, 256 * 256 * 256);
+        $second = intdiv($ip - $first * 256 * 256 * 256, 256 * 256);
+        $third = intdiv($ip - $first * 256 * 256 * 256 - $second * 256 * 256, 256);
+        $fourth = $ip - $first * 256 * 256 * 256 - $second * 256 * 256 - $third * 256;
+
+        return "$first.$second.$third.$fourth";
     }
 
     /**

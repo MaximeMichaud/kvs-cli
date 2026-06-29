@@ -75,6 +75,16 @@ class CliInfoCommandTest extends TestCase
         $this->assertStringContainsString('OS:', $output);
     }
 
+    public function testCliInfoRejectsInvalidFormat(): void
+    {
+        $this->tester->execute(['--format' => 'xml']);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        $this->assertStringNotContainsString('OS:', $output);
+    }
+
     public function testCliInfoJsonContainsExpectedKeys(): void
     {
         $this->tester->execute(['--format' => 'json']);

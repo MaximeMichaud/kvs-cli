@@ -38,6 +38,10 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['stats', 'clear'])) {
+            return self::FAILURE;
+        }
+
         if ($this->getBoolOption($input, 'stats')) {
             return $this->showStats();
         }
@@ -83,6 +87,7 @@ HELP
             $this->config->getAdminPath() . '/data/engine',
             $this->config->getAdminPath() . '/smarty/cache',
             $this->config->getAdminPath() . '/smarty/template-c',
+            $this->config->getAdminPath() . '/smarty/template-c-site',
             $this->config->getKvsPath() . '/blocks/cache',
         ];
 
@@ -163,6 +168,7 @@ HELP
             'Engine cache' => $this->config->getAdminPath() . '/data/engine',
             'Smarty cache' => $this->config->getAdminPath() . '/smarty/cache',
             'Template cache' => $this->config->getAdminPath() . '/smarty/template-c',
+            'Site template cache' => $this->config->getAdminPath() . '/smarty/template-c-site',
             'Blocks cache' => $this->config->getKvsPath() . '/blocks/cache',
         ];
 

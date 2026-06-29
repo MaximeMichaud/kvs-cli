@@ -27,10 +27,14 @@ class AlbumCommand extends BaseCommand
         $this
             ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|delete)')
             ->addArgument('id', InputArgument::OPTIONAL, 'Album ID')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
+            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|error|processing|deleting|deleted)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
+            ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
+            ->addOption('content-source', null, InputOption::VALUE_REQUIRED, 'Filter by content source ID or title')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in album titles, directories, and descriptions')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -43,7 +47,9 @@ Manage KVS photo albums.
   title           Album title
   images          Number of images
   status          Album status (Active/Disabled)
-  is_private      Access level (Public/Private/Premium)
+  is_private      Access type (Public/Private/Premium)
+  type            Access type alias (Public/Private/Premium)
+  access          Access level (From access type/All users/Only members/Only premium members)
   user, username  Username
   date, post_date Posted date
   views           View count
@@ -77,7 +83,7 @@ HELP
 
         return match ($action) {
             'list' => $this->listAlbums($input),
-            'show' => $this->showAlbum($this->getStringArgument($input, 'id')),
+            'show' => $this->showAlbum($this->getStringArgument($input, 'id'), $input),
             'delete' => $this->deleteAlbum($this->getStringArgument($input, 'id'), $input),
             default => $this->failUnknownAction('album', $action, ['list', 'show', 'delete']),
         };
@@ -96,33 +102,15 @@ HELP
 
         $params = [];
 
-        $status = $this->getStringOption($input, 'status');
-        if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
-                'active' => StatusFormatter::ALBUM_ACTIVE,
-                'disabled' => StatusFormatter::ALBUM_DISABLED,
-                'inactive' => StatusFormatter::ALBUM_DISABLED,
-            ], [0, 1, 2, 3, 4, 5]);
-            if ($statusId !== null) {
-                $whereClause .= " AND a.status_id = :status";
-                $params['status'] = $statusId;
-            }
-        }
-
-        $user = $this->getIntOption($input, 'user');
-        if ($user !== null) {
-            $whereClause .= " AND a.user_id = :user";
-            $params['user'] = $user;
-        }
-
-        $search = $this->getStringOption($input, 'search');
-        if ($search !== null) {
-            $whereClause .= " AND a.title LIKE :search";
-            $params['search'] = '%' . $search . '%';
+        if (!$this->applyAlbumListFilters($db, $input, $whereClause, $params)) {
+            return self::FAILURE;
         }
 
         try {
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
                 foreach ($params as $key => $value) {
                     $stmt->bindValue($key, $value);
@@ -137,8 +125,11 @@ HELP
 
             $commentsTable = $this->table('comments');
             [$relationSelectSql, $relationJoinSql] = $this->buildAlbumRelationSql($input);
+            $userStatusSelect = $this->isAlbumFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
 
-            $query = "SELECT a.*, u.username$relationSelectSql,
+            $query = "SELECT a.*, u.username$userStatusSelect$relationSelectSql,
                  a.photos_amount as image_count,
                  (
                      SELECT COUNT(*) FROM $commentsTable c
@@ -147,7 +138,7 @@ HELP
                  {$fromClause}
                  {$relationJoinSql}
                  {$whereClause}
-                 ORDER BY a.post_date DESC LIMIT :limit";
+                 ORDER BY a.album_id DESC LIMIT :limit";
 
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
@@ -162,7 +153,6 @@ HELP
 
             /** @var list<array<string, mixed>> $albums */
             $albums = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $albums = $this->appendAlbumListFields($db, $input, $albums);
 
             // Transform albums for display (field aliases and calculated values)
             $transformedAlbums = array_map(function (array $album): array {
@@ -173,8 +163,12 @@ HELP
                 $privacyIdVal = $album['is_private'] ?? 0;
                 $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
+                $accessLevelIdVal = $album['access_level_id'] ?? 0;
+                $accessLevelId = is_numeric($accessLevelIdVal) ? (int) $accessLevelIdVal : 0;
+                $albumIp = $album['ip'] ?? null;
 
                 return array_merge(
+                    $album,
                     [
                         'album_id' => $album['album_id'] ?? 0,
                         'id' => $album['album_id'] ?? 0,  // Alias
@@ -184,8 +178,11 @@ HELP
                         'images' => $album['image_count'] ?? 0,  // Alias
                         'status_id' => $statusId,
                         'status' => StatusFormatter::album($statusId, false),  // Alias
+                        'is_error' => $statusId === 2 ? 1 : 0,
                         'is_private' => $privacy,
-                        'access' => $privacy,
+                        'type' => $privacy,
+                        'access_level_id' => $accessLevelId,
+                        'access' => StatusFormatter::contentAccessLevel($accessLevelId, false),
                         'username' => $album['username'] ?? '',
                         'post_date' => $album['post_date'] ?? '',
                         'album_viewed' => $album['album_viewed'] ?? 0,
@@ -193,6 +190,13 @@ HELP
                         'comments_count' => $album['comments_count'] ?? 0,
                         'favourites_count' => $album['favourites_count'] ?? 0,
                         'purchases_count' => $album['purchases_count'] ?? 0,
+                        'website_link' => $this->buildKvsWebsiteLink(
+                            $album,
+                            'album_id',
+                            'WEBSITE_LINK_PATTERN_ALBUM'
+                        ),
+                        'ip' => array_key_exists('ip', $album) ? $this->formatKvsIp($albumIp) : '',
+                        'thumb' => '',
                         'rating' => $calculatedRating,
                     ],
                     $this->transformAlbumRelationFields($album)
@@ -214,6 +218,113 @@ HELP
     }
 
     /**
+     * @param array<string, int|string> $params
+     */
+    private function applyAlbumListFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $status = $this->getStringOption($input, 'status');
+        if ($status !== null) {
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::ALBUM_ACTIVE,
+                'disabled' => StatusFormatter::ALBUM_DISABLED,
+                'inactive' => StatusFormatter::ALBUM_DISABLED,
+                'error' => StatusFormatter::ALBUM_ERROR,
+                'processing' => StatusFormatter::ALBUM_PROCESSING,
+                'in_process' => StatusFormatter::ALBUM_PROCESSING,
+                'in-process' => StatusFormatter::ALBUM_PROCESSING,
+                'deleting' => StatusFormatter::ALBUM_DELETING,
+                'deleted' => StatusFormatter::ALBUM_DELETED,
+            ], [0, 1, 2, 3, 4, 5]);
+            if ($statusId === false) {
+                return false;
+            }
+            if ($statusId !== null) {
+                $whereClause .= " AND a.status_id = :status";
+                $params['status'] = $statusId;
+            }
+        }
+
+        $user = $this->resolveUserIdOption($db, $input);
+        if ($user === false) {
+            return false;
+        }
+        if ($user !== null) {
+            $whereClause .= " AND a.user_id = :user";
+            $params['user'] = $user;
+        }
+
+        if (!$this->applyAlbumRelationFilters($db, $input, $whereClause, $params)) {
+            return false;
+        }
+
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (a.title LIKE :search" . $searchEscape
+                . " OR a.dir LIKE :search" . $searchEscape
+                . " OR a.description LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyAlbumRelationFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_albums')} ca "
+                . "WHERE ca.album_id = a.album_id AND ca.category_id = :category)";
+            $params['category'] = $category;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_albums')} ta "
+                . "WHERE ta.album_id = a.album_id AND ta.tag_id = :tag)";
+            $params['tag'] = $tag;
+        }
+
+        $model = $this->resolveModelIdOption($db, $input);
+        if ($model === false) {
+            return false;
+        }
+        if ($model !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('models_albums')} ma "
+                . "WHERE ma.album_id = a.album_id AND ma.model_id = :model)";
+            $params['model'] = $model;
+        }
+
+        $contentSource = $this->resolveContentSourceIdOption($db, $input);
+        if ($contentSource === false) {
+            return false;
+        }
+        if ($contentSource !== null) {
+            $whereClause .= " AND a.content_source_id = :content_source";
+            $params['content_source'] = $contentSource;
+        }
+
+        return true;
+    }
+
+    /**
      * @return array{0: string, 1: string}
      */
     private function buildAlbumRelationSql(InputInterface $input): array
@@ -221,13 +332,19 @@ HELP
         $selects = [];
         $joins = [];
 
-        if ($this->isAlbumFieldRequested($input, 'content_source')) {
+        if (
+            $this->isAlbumFieldRequested($input, 'content_source')
+            || $this->isAlbumFieldRequested($input, 'content_source_status_id')
+        ) {
             $selects[] = 'cs.title as content_source';
             $selects[] = 'cs.status_id as content_source_status_id';
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = a.content_source_id";
         }
 
-        if ($this->isAlbumFieldRequested($input, 'admin_user')) {
+        if (
+            $this->isAlbumFieldRequested($input, 'admin_user')
+            || $this->isAlbumFieldRequested($input, 'admin_user_is_superadmin')
+        ) {
             $selects[] = 'au.login as admin_user';
             $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
             $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = a.admin_user_id";
@@ -238,10 +355,37 @@ HELP
             $joins[] = "LEFT JOIN {$this->table('flags')} f ON f.flag_id = a.admin_flag_id";
         }
 
-        if ($this->isAlbumFieldRequested($input, 'server_group')) {
+        if (
+            $this->isAlbumFieldRequested($input, 'server_group')
+            || $this->isAlbumFieldRequested($input, 'server_group_status_id')
+        ) {
             $selects[] = 'sg.title as server_group';
             $selects[] = 'sg.status_id as server_group_status_id';
             $joins[] = "LEFT JOIN {$this->table('admin_servers_groups')} sg ON sg.group_id = a.server_group_id";
+        }
+        if ($this->isAlbumFieldRequested($input, 'tags')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(t.tag ORDER BY ta.id ASC)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_albums')} ta ON ta.tag_id = t.tag_id
+                WHERE ta.album_id = a.album_id
+            ) as tags";
+        }
+        if ($this->isAlbumFieldRequested($input, 'categories')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(c.title ORDER BY ca.id ASC)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_albums')} ca ON ca.category_id = c.category_id
+                WHERE ca.album_id = a.album_id
+            ) as categories";
+        }
+        if ($this->isAlbumFieldRequested($input, 'models')) {
+            $selects[] = "(
+                SELECT GROUP_CONCAT(m.title ORDER BY ma.id ASC)
+                FROM {$this->table('models')} m
+                INNER JOIN {$this->table('models_albums')} ma ON ma.model_id = m.model_id
+                WHERE ma.album_id = a.album_id
+            ) as models";
         }
 
         return [
@@ -274,80 +418,16 @@ HELP
         return [
             'content_source' => $album['content_source'] ?? '',
             'content_source_status_id' => $album['content_source_status_id'] ?? '',
-            'admin_user' => $album['admin_user'] ?? '',
-            'admin_user_is_superadmin' => $album['admin_user_is_superadmin'] ?? '',
             'admin_flag' => $album['admin_flag'] ?? '',
             'server_group' => $album['server_group'] ?? '',
             'server_group_status_id' => $album['server_group_status_id'] ?? '',
-            'tags' => $album['tags'] ?? '',
-            'categories' => $album['categories'] ?? '',
-            'models' => $album['models'] ?? '',
         ];
     }
 
-    /**
-     * @param list<array<string, mixed>> $albums
-     * @return list<array<string, mixed>>
-     */
-    private function appendAlbumListFields(\PDO $db, InputInterface $input, array $albums): array
+    private function showAlbum(?string $id, InputInterface $input): int
     {
-        $fieldMaps = [
-            'categories' => ['categories', 'categories_albums', 'category_id', 'album_id', 'title'],
-            'tags' => ['tags', 'tags_albums', 'tag_id', 'album_id', 'tag'],
-            'models' => ['models', 'models_albums', 'model_id', 'album_id', 'title'],
-        ];
-
-        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $albumIdColumn, $titleColumn]) {
-            if (!$this->isAlbumFieldRequested($input, $field)) {
-                continue;
-            }
-
-            foreach ($albums as $index => $album) {
-                $albumId = $album['album_id'] ?? null;
-                $albums[$index][$field] = is_numeric($albumId)
-                    ? $this->fetchAlbumListTitles(
-                        $db,
-                        $itemTable,
-                        $linkTable,
-                        $itemIdColumn,
-                        $albumIdColumn,
-                        $titleColumn,
-                        (int) $albumId
-                    )
-                    : '';
-            }
-        }
-
-        return $albums;
-    }
-
-    private function fetchAlbumListTitles(
-        \PDO $db,
-        string $itemTable,
-        string $linkTable,
-        string $itemIdColumn,
-        string $albumIdColumn,
-        string $titleColumn,
-        int $albumId
-    ): string {
-        $query = "SELECT i.$titleColumn
-                  FROM {$this->table($itemTable)} i
-                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
-                  WHERE l.$albumIdColumn = :album_id
-                  ORDER BY l.id ASC";
-        $stmt = $db->prepare($query);
-        $stmt->execute(['album_id' => $albumId]);
-
-        return implode(', ', array_map(
-            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
-            $stmt->fetchAll(\PDO::FETCH_COLUMN)
-        ));
-    }
-
-    private function showAlbum(?string $id): int
-    {
-        if ($id === null || $id === '') {
-            $this->io()->error('Album ID is required');
+        $albumId = $this->getRequiredPositiveId($id, 'Album');
+        if ($albumId === null) {
             return self::FAILURE;
         }
 
@@ -363,16 +443,14 @@ HELP
                 LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
                 WHERE a.album_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $albumId]);
             /** @var array<string, mixed>|false $album */
             $album = $stmt->fetch();
 
             if ($album === false) {
-                $this->io()->error("Album not found: $id");
+                $this->io()->error("Album not found: $albumId");
                 return self::FAILURE;
             }
-
-            $this->io()->section("Album #$id");
 
             $title = isset($album['title']) && is_string($album['title']) ? $album['title'] : '';
             $statusIdVal = $album['status_id'] ?? 0;
@@ -381,6 +459,8 @@ HELP
             $postTimestamp = strtotime($postDate);
             $privacyIdVal = $album['is_private'] ?? 0;
             $privacyId = is_numeric($privacyIdVal) ? (int) $privacyIdVal : 0;
+            $accessLevelIdVal = $album['access_level_id'] ?? 0;
+            $accessLevelId = is_numeric($accessLevelIdVal) ? (int) $accessLevelIdVal : 0;
             $viewedVal = $album['album_viewed'] ?? 0;
             $views = is_numeric($viewedVal) ? (int) $viewedVal : 0;
             $photosAmountVal = $album['photos_amount'] ?? 0;
@@ -392,7 +472,8 @@ HELP
             $info = [
                 ['Title', $title],
                 ['Status', StatusFormatter::album($statusId)],
-                ['Access', StatusFormatter::contentPrivacy($privacyId)],
+                ['Type', StatusFormatter::contentPrivacy($privacyId)],
+                ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
                 ['User', $username],
                 ['Images', $imageCountValue],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
@@ -403,6 +484,11 @@ HELP
                 ],
             ];
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, ['album_id' => (string) $albumId]);
+            }
+
+            $this->io()->section("Album #$albumId");
             $this->renderTable(['Property', 'Value'], $info);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch album: ' . $e->getMessage());

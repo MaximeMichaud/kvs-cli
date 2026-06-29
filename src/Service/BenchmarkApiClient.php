@@ -42,7 +42,7 @@ final class BenchmarkApiClient
         }
 
         $payload = json_encode($result->toArray(), JSON_THROW_ON_ERROR);
-        $applicationVersion = Application::VERSION;
+        $applicationVersion = self::getApplicationVersion();
 
         $context = stream_context_create([
             'http' => [
@@ -50,7 +50,7 @@ final class BenchmarkApiClient
                 'header' => implode("\r\n", [
                     'Content-Type: application/json',
                     'Accept: application/json',
-                    'User-Agent: ' . Application::NAME . '/' . $applicationVersion,
+                    sprintf('User-Agent: %s/%s', Application::NAME, $applicationVersion),
                     'Content-Length: ' . strlen($payload),
                 ]),
                 'content' => $payload,
@@ -85,6 +85,23 @@ final class BenchmarkApiClient
         }
 
         return $this->parseSuccessResponse($response, $result->getId());
+    }
+
+    private static function getApplicationVersion(): string
+    {
+        $versionFile = dirname(__DIR__, 2) . '/VERSION';
+        if (!is_file($versionFile)) {
+            return 'unknown';
+        }
+
+        $version = file_get_contents($versionFile);
+        if (!is_string($version)) {
+            return 'unknown';
+        }
+
+        $version = trim($version);
+
+        return $version !== '' ? $version : 'unknown';
     }
 
     /**

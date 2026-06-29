@@ -20,6 +20,8 @@ class StatsSettingsCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'json'];
+
     /** @var list<string>|null */
     private ?array $knownCountryCodes = null;
     private bool $knownCountryCodesLoaded = false;
@@ -361,7 +363,10 @@ HELP
 
     private function showSettings(InputInterface $input): int
     {
-        $format = $this->getStringOption($input, 'format');
+        $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($format === null) {
+            return self::FAILURE;
+        }
 
         // Load params without compat warnings for JSON (to ensure valid JSON output)
         $params = $this->loadStatsParams($format !== 'json');

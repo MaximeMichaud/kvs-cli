@@ -95,6 +95,22 @@ SH
         }
     }
 
+    public function testBackupCreateRejectsInvalidTypeBeforeCreatingOutputDirectory(): void
+    {
+        $outputDir = $this->rootDir . '/invalid-type-output';
+
+        $this->tester->execute([
+            '--create' => true,
+            '--type' => 'bogus',
+            '--output' => $outputDir,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --type "bogus"', $output);
+        $this->assertDirectoryDoesNotExist($outputDir);
+    }
+
     public function testDatabaseBackupSplitsHostPortForDumpCommand(): void
     {
         $previousHost = getenv('KVS_DB_HOST');
@@ -430,6 +446,28 @@ SH
         $this->assertStringNotContainsString('No backups directory found', $output);
     }
 
+    public function testBackupListIncludesNativeKvsBackupDirectory(): void
+    {
+        $nativeBackupDir = $this->tempDir . '/admin/data/backup';
+        mkdir($nativeBackupDir, 0755, true);
+        file_put_contents(
+            $nativeBackupDir . '/example-site-backup-auto-dwpsc-2026-06-29-123456.tar.gz',
+            'test'
+        );
+
+        $this->tester->execute([
+            '--list' => true,
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+
+        $decoded = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $files = array_column($decoded, 'file');
+        $this->assertContains('example-site-backup-auto-dwpsc-2026-06-29-123456.tar.gz', $files);
+    }
+
     public function testBackupListSupportsJsonFormat(): void
     {
         $customBackupsDir = $this->rootDir . '/custom-backups-json';
@@ -483,35 +521,10 @@ SH
         $this->assertStringContainsString('Invalid value for --format "xml"', $output);
     }
 
-    public function testBackupRestore(): void
+    public function testBackupRestoreIsNotAdvertisedUntilImplemented(): void
     {
-        // Create a mock backup file
-        $backupFile = $this->tempDir . '/backups/test.tar.gz';
-        file_put_contents($backupFile, 'test');
-
-        try {
-            // Answer 'no' to the confirmation prompt
-            $this->tester->setInputs(['no']);
-            $this->tester->execute(['--restore' => $backupFile]);
-            $output = $this->tester->getDisplay();
-            $this->assertStringContainsString('restore', strtolower($output));
-        } catch (\Exception $e) {
-            // Expected if tar not available or backup invalid
-            $this->assertStringContainsString('restore', strtolower($e->getMessage()));
-        }
-    }
-
-    public function testBackupRestoreConfirmedFailsUntilImplemented(): void
-    {
-        $backupFile = $this->tempDir . '/backups/test.tar.gz';
-        file_put_contents($backupFile, 'test');
-
-        $this->tester->setInputs(['yes']);
-        $this->tester->execute(['--restore' => $backupFile]);
-
-        $output = $this->tester->getDisplay();
-        $this->assertSame(1, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('not implemented', strtolower($output));
+        $this->assertFalse($this->command->getDefinition()->hasOption('restore'));
+        $this->assertStringNotContainsString('restore', strtolower($this->command->getHelp()));
     }
 
     public function testBackupNoAction(): void
@@ -522,7 +535,7 @@ SH
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('--create', $output);
         $this->assertStringContainsString('--list', $output);
-        $this->assertStringContainsString('--restore', $output);
+        $this->assertStringNotContainsString('--restore', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 

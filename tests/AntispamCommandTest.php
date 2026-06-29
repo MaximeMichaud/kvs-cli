@@ -126,6 +126,22 @@ class AntispamCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testReadActionsRejectInvalidFormat(): void
+    {
+        foreach (['show', 'blacklist'] as $action) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => $action,
+                '--format' => 'xml',
+            ]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $action . ': ' . $output);
+            $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        }
+    }
+
     public function testAntispamCommandMetadata(): void
     {
         $this->assertEquals('system:antispam', $this->command->getName());

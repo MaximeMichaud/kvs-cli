@@ -60,6 +60,63 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --limit', $tester->getDisplay());
     }
 
+    public function testQueueRejectsInvalidPositiveIntegerFiltersBeforeSql(): void
+    {
+        foreach (['list', 'history'] as $action) {
+            foreach (['type', 'video', 'album', 'server'] as $option) {
+                foreach (['abc', '1.5', '-1'] as $value) {
+                    $tester = new CommandTester($this->createQueueCommand());
+                    $tester->execute([
+                        'action' => $action,
+                        '--format' => 'count',
+                        '--' . $option => $value,
+                    ]);
+
+                    $display = $tester->getDisplay();
+                    $this->assertSame(1, $tester->getStatusCode(), "$action --$option=$value: $display");
+                    $this->assertStringContainsString("Invalid value for --$option", $display, "$action --$option=$value");
+                    $this->assertStringNotContainsString('no such table', strtolower($display), "$action --$option=$value");
+                }
+            }
+        }
+    }
+
+    public function testQueueAllowsZeroSentinelFilters(): void
+    {
+        $this->createQueueTables();
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks " .
+            "(task_id, status_id, type_id, video_id, album_id, server_id, error_code, priority, added_date) " .
+            "VALUES (1, 0, 4, 10, 0, 0, 0, 0, '2026-06-01 00:00:00')"
+        );
+        $this->db->exec(
+            "INSERT INTO ktvs_background_tasks_history " .
+            "(task_id, status_id, type_id, video_id, album_id, server_id, error_code, priority, start_date, effective_duration, end_date) " .
+            "VALUES (2, 3, 52, 0, 0, 0, 0, 0, '2026-06-01 00:00:00', 1, '2026-06-01 00:00:01')"
+        );
+
+        $listTester = new CommandTester($this->createQueueCommand());
+        $listTester->execute([
+            'action' => 'list',
+            '--album' => '0',
+            '--server' => '0',
+            '--format' => 'count',
+        ]);
+        $this->assertSame(0, $listTester->getStatusCode(), $listTester->getDisplay());
+        $this->assertSame("1\n", $listTester->getDisplay());
+
+        $historyTester = new CommandTester($this->createQueueCommand());
+        $historyTester->execute([
+            'action' => 'history',
+            '--video' => '0',
+            '--album' => '0',
+            '--server' => '0',
+            '--format' => 'count',
+        ]);
+        $this->assertSame(0, $historyTester->getStatusCode(), $historyTester->getDisplay());
+        $this->assertSame("1\n", $historyTester->getDisplay());
+    }
+
     public function testQueueShowHistoryUsesConversionServerNameAndHistoryFields(): void
     {
         $this->createQueueTables();
@@ -221,6 +278,44 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString($longValue, $fullTester->getDisplay());
     }
 
+    public function testOptionsListJsonUsesFullValueByDefault(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $longValue = '%total_videos%*20 + %total_albums%*20 + %total_comments%*10 + %logins%';
+        $stmt = $this->db->prepare('INSERT INTO ktvs_options VALUES (:variable, :value)');
+        $stmt->execute(['variable' => 'ACTIVITY_INDEX_FORMULA', 'value' => $longValue]);
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--search' => 'ACTIVITY_INDEX_FORMULA',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($longValue, $rows[0]['value'] ?? null);
+        $this->assertArrayNotHasKey('display_value', $rows[0]);
+    }
+
+    public function testOptionsListEmptyCountFormatOutputsZero(): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('PROJECT_NAME', 'Demo')");
+
+        $tester = new CommandTester($this->createOptionsCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--search' => '__missing__',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame("0\n", $tester->getDisplay());
+    }
+
     public function testOptionsSetRequiresYesInNonInteractiveMode(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -319,6 +414,24 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('syntax error', strtolower($tester->getDisplay()));
     }
 
+    public function testServerRejectsInvalidGroupBeforeSql(): void
+    {
+        foreach (['abc', '1.5', '-1'] as $value) {
+            $tester = new CommandTester($this->createServerCommand());
+            $tester->execute([
+                'action' => 'list',
+                '--group' => $value,
+                '--format' => 'count',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "--group=$value: $display");
+            $this->assertStringContainsString('Invalid value for --group', $display, "--group=$value");
+            $this->assertStringNotContainsString('no such table', strtolower($display), "--group=$value");
+        }
+    }
+
     public function testConversionRejectsInvalidStatus(): void
     {
         $tester = new CommandTester($this->createConversionCommand());
@@ -346,6 +459,24 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Invalid value for --status: bogus', $tester->getDisplay());
     }
 
+    public function testVideoFormatRejectsInvalidGroupBeforeSql(): void
+    {
+        foreach (['abc', '1.5', '-1'] as $value) {
+            $tester = new CommandTester($this->createVideoFormatCommand());
+            $tester->execute([
+                'action' => 'list',
+                '--group' => $value,
+                '--format' => 'count',
+                '--force' => true,
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), "--group=$value: $display");
+            $this->assertStringContainsString('Invalid value for --group', $display, "--group=$value");
+            $this->assertStringNotContainsString('no such table', strtolower($display), "--group=$value");
+        }
+    }
+
     public function testVideoFormatRejectsUnknownAction(): void
     {
         $tester = new CommandTester($this->createVideoFormatCommand());
@@ -359,7 +490,7 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Unknown video-format action "unknown_action"', $tester->getDisplay());
     }
 
-    public function testVideoFormatShowRejectsNonTableFormat(): void
+    public function testVideoFormatShowSupportsJsonFormat(): void
     {
         $this->createVideoFormatTables();
         $tester = new CommandTester($this->createVideoFormatCommand());
@@ -370,9 +501,31 @@ class SystemValidationRegressionTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertSame(1, $tester->getStatusCode());
-        $this->assertStringContainsString('The show action only supports table output', $tester->getDisplay());
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['format_video_id']);
+        $this->assertSame('MP4 480p', $rows[0]['title']);
+        $this->assertSame('Required', $rows[0]['status']);
+        $this->assertSame('Default (#1)', $rows[0]['group']);
+        $this->assertSame('Yes', $rows[0]['hotlink_protection']);
+        $this->assertSame('-vcodec libx264', $rows[0]['ffmpeg_options']);
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
+    }
+
+    public function testVideoFormatShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1abc',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Format ID', $tester->getDisplay());
     }
 
     public function testVideoFormatShowUsesKvsHotlinkProtectionFlag(): void
@@ -403,7 +556,8 @@ class SystemValidationRegressionTest extends TestCase
         $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(0, $tester->getStatusCode());
-        $this->assertSame('Conditional', $rows[1]['status']);
+        $this->assertSame([2, 1], array_map(static fn (array $row): int => (int) $row['format_video_id'], $rows));
+        $this->assertSame('Cond. required', $rows[0]['status']);
     }
 
     public function testVideoFormatListFiltersConditionalStatusLikeKvsAdmin(): void
@@ -423,7 +577,7 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertCount(1, $rows);
         $this->assertSame(2, (int) $rows[0]['format_video_id']);
-        $this->assertSame('Conditional', $rows[0]['status']);
+        $this->assertSame('Cond. required', $rows[0]['status']);
     }
 
     public function testVideoFormatShowUsesKvsDurationAndOffsetColumns(): void
@@ -444,12 +598,27 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/End Offset\W+10s/', $output);
     }
 
+    public function testVideoFormatShowDisplaysFormattedKvsSize(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Size\W+848x480 \(dynamic height\)/', $tester->getDisplay());
+    }
+
     public function testVideoFormatListShowsKvsTimelineValue(): void
     {
         $this->createVideoFormatTables();
         $tester = new CommandTester($this->createVideoFormatCommand());
         $tester->execute([
             'action' => 'list',
+            '--status' => 'required',
             '--fields' => 'format_video_id,timeline',
             '--format' => 'json',
             '--force' => true,
@@ -459,6 +628,77 @@ class SystemValidationRegressionTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertSame('10s', $rows[0]['timeline']);
+    }
+
+    public function testVideoFormatListExposesKvsAdminFields(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'required',
+            '--fields' => implode(',', [
+                'format_video_id',
+                'title',
+                'postfix',
+                'status_id',
+                'size',
+                'limit_total_duration',
+                'limit_offset_start',
+                'limit_offset_end',
+                'watermark_image',
+                'watermark2_image',
+                'access_level_id',
+                'is_download_enabled',
+                'download_order',
+                'is_hotlink_protection_enabled',
+                'preroll_video',
+                'postroll_video',
+                'limit_speed_value',
+                'is_timeline_enabled',
+                'videos_count',
+            ]),
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['format_video_id']);
+        $this->assertSame('MP4 480p', $rows[0]['title']);
+        $this->assertSame('.mp4', $rows[0]['postfix']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('848x480 (dynamic height)', $rows[0]['size']);
+        $this->assertSame('20s', $rows[0]['limit_total_duration']);
+        $this->assertSame('5s', $rows[0]['limit_offset_start']);
+        $this->assertSame('10s', $rows[0]['limit_offset_end']);
+        $this->assertSame('1.png', $rows[0]['watermark_image']);
+        $this->assertSame('1.png', $rows[0]['watermark2_image']);
+        $this->assertSame(0, (int) $rows[0]['access_level_id']);
+        $this->assertSame(0, (int) $rows[0]['is_download_enabled']);
+        $this->assertSame(7, (int) $rows[0]['download_order']);
+        $this->assertSame(1, (int) $rows[0]['is_hotlink_protection_enabled']);
+        $this->assertSame('1.mp4', $rows[0]['preroll_video']);
+        $this->assertSame('1.mp4', $rows[0]['postroll_video']);
+        $this->assertSame('2048 kbit/s', $rows[0]['limit_speed_value']);
+        $this->assertSame('10s', $rows[0]['is_timeline_enabled']);
+        $this->assertSame(1, (int) $rows[0]['videos_count']);
+    }
+
+    public function testVideoFormatListEmptyCountFormatOutputsZero(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'list',
+            '--status' => 'disabled',
+            '--format' => 'count',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame("0\n", $tester->getDisplay());
     }
 
     public function testVideoFormatGroupsRejectsListFilters(): void
@@ -478,6 +718,29 @@ class SystemValidationRegressionTest extends TestCase
             $this->assertStringContainsString("The groups action does not support --$option", $tester->getDisplay());
             $this->assertStringNotContainsString('Default', $tester->getDisplay());
         }
+    }
+
+    public function testVideoFormatGroupsExposeKvsAdminFields(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'groups',
+            '--fields' => 'format_video_group_id,title,is_default,is_premium,set_duration_from,videos_count,format_count',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['format_video_group_id']);
+        $this->assertSame('Default', $rows[0]['title']);
+        $this->assertSame(1, (int) $rows[0]['is_default']);
+        $this->assertSame(0, (int) $rows[0]['is_premium']);
+        $this->assertSame('.mp4', $rows[0]['set_duration_from']);
+        $this->assertSame(1, (int) $rows[0]['videos_count']);
+        $this->assertSame(2, (int) $rows[0]['format_count']);
     }
 
     public function testConversionRejectsNegativeLimitBeforeSql(): void
@@ -600,29 +863,78 @@ class SystemValidationRegressionTest extends TestCase
             timeline_option INTEGER,
             timeline_amount INTEGER,
             timeline_interval INTEGER,
+            download_order INTEGER,
+            limit_speed_option INTEGER,
+            limit_speed_value INTEGER,
+            limit_speed_guests_option INTEGER,
+            limit_speed_guests_value INTEGER,
+            limit_speed_standard_option INTEGER,
+            limit_speed_standard_value INTEGER,
+            limit_speed_premium_option INTEGER,
+            limit_speed_premium_value INTEGER,
+            limit_speed_embed_option INTEGER,
+            limit_speed_embed_value INTEGER,
+            limit_speed_countries_option INTEGER,
+            limit_speed_countries_value INTEGER,
             ffmpeg_options TEXT
         )');
         $this->db->exec('CREATE TABLE ktvs_formats_videos_groups (
             format_video_group_id INTEGER,
             title TEXT,
             is_default INTEGER,
-            is_premium INTEGER
+            is_premium INTEGER,
+            set_duration_from TEXT
         )');
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos_groups " .
-            "(format_video_group_id, title, is_default, is_premium) VALUES (1, 'Default', 1, 0)"
+            "(format_video_group_id, title, is_default, is_premium, set_duration_from) " .
+            "VALUES (1, 'Default', 1, 0, '.mp4')"
         );
+        $formatRows = [
+            [
+                1, "'MP4 480p'", "'.mp4'", 1, 0, "'848x480'", 0, 0, 1, 1, 0, 20, 0, 0, 0, 1,
+                5, 0, 10, 0, 2, 0, 10, 7, 1, 2048, 1, 2048, 1, 2048, 1, 2048, 1, 2048, 0, 0,
+                "'-vcodec libx264'",
+            ],
+            [
+                2, "'MP4 Conditional'", "'_cond.mp4'", 2, 1, "'1280x720'", 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "''",
+            ],
+        ];
+        $formatValuesSql = implode(', ', array_map(
+            static fn (array $row): string => '(' . implode(', ', array_map('strval', $row)) . ')',
+            $formatRows
+        ));
+
         $this->db->exec(
             "INSERT INTO ktvs_formats_videos " .
             "(format_video_id, title, postfix, status_id, is_conditional, size, access_level_id, is_download_enabled, " .
             "is_timeline_enabled, format_video_group_id, is_hotlink_protection_disabled, limit_total_duration, " .
             "limit_total_duration_unit_id, limit_total_min_duration_sec, limit_total_max_duration_sec, " .
             "limit_number_parts, limit_offset_start, limit_offset_start_unit_id, limit_offset_end, " .
-            "limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, ffmpeg_options) " .
-            "VALUES " .
-            "(1, 'MP4 480p', '.mp4', 1, 0, '848x480', 0, 0, 1, 1, 0, 20, 0, 0, 0, 1, 5, 0, 10, 0, 2, 0, 10, '-vcodec libx264'), " .
-            "(2, 'MP4 Conditional', '_cond.mp4', 2, 1, '1280x720', 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, '')"
+            "limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, download_order, " .
+            "limit_speed_option, limit_speed_value, limit_speed_guests_option, limit_speed_guests_value, " .
+            "limit_speed_standard_option, limit_speed_standard_value, limit_speed_premium_option, " .
+            "limit_speed_premium_value, limit_speed_embed_option, limit_speed_embed_value, " .
+            "limit_speed_countries_option, limit_speed_countries_value, ffmpeg_options) " .
+            "VALUES {$formatValuesSql}"
         );
+        $this->db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, load_type_id INTEGER, status_id INTEGER, file_formats TEXT)');
+        $this->db->exec('ALTER TABLE ktvs_videos ADD COLUMN format_video_group_id INTEGER DEFAULT 1');
+        $this->db->exec(
+            "INSERT INTO ktvs_videos (video_id, load_type_id, status_id, file_formats, format_video_group_id) VALUES " .
+            "(1, 1, 1, '||.mp4|', 1), " .
+            "(2, 1, 2, '||.mp4|', 1), " .
+            "(3, 1, 1, '||_cond.mp4|', 2)"
+        );
+        $otherDataPath = $this->tempDir . '/admin/data/other';
+        if (!is_dir($otherDataPath)) {
+            mkdir($otherDataPath, 0777, true);
+        }
+        file_put_contents($otherDataPath . '/watermark_video_1.png', 'test');
+        file_put_contents($otherDataPath . '/watermark2_video_1.png', 'test');
+        file_put_contents($otherDataPath . '/preroll_video_1.mp4', 'test');
+        file_put_contents($otherDataPath . '/postroll_video_1.mp4', 'test');
     }
 
     private function createQueueCommand(): QueueCommand

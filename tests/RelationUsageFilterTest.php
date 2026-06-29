@@ -118,7 +118,8 @@ class RelationUsageFilterTest extends TestCase
     {
         $db->exec(
             'CREATE TABLE ktvs_categories ' .
-            '(category_id INTEGER, title TEXT, category_group_id INTEGER, status_id INTEGER)'
+            '(category_id INTEGER, title TEXT, dir TEXT, description TEXT, synonyms TEXT, ' .
+            'category_group_id INTEGER, status_id INTEGER)'
         );
         foreach ($this->relationSuffixes() as $suffix) {
             $db->exec("CREATE TABLE ktvs_categories_{$suffix} (category_id INTEGER)");

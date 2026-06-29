@@ -142,6 +142,56 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame('4K', $rows[0]['tag']);
     }
 
+    public function testListWithSearchMatchesDirectoryAndSynonymsLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'ultra hd',
+            '--fields' => 'tag_id,tag_dir,synonyms',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4k', $rows[0]['tag_dir']);
+        $this->assertSame('uhd, ultra hd', $rows[0]['synonyms']);
+
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('tags') .
+            " (tag_id, tag, tag_dir, synonyms, status_id) VALUES (50, 'Slug Target', 'directory-only', '', 1)"
+        );
+
+        $slugTester = new CommandTester($this->command);
+        $slugTester->execute([
+            'action' => 'list',
+            '--search' => 'directory-only',
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(0, $slugTester->getStatusCode());
+        $this->assertSame('1', trim($slugTester->getDisplay()));
+    }
+
+    public function testListExposesKvsAdminRenameField(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '4K',
+            '--format' => 'json',
+            '--fields' => 'tag_id,tag,tag_rename',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4K', $rows[0]['tag']);
+        $this->assertSame('4K', $rows[0]['tag_rename']);
+    }
+
     public function testListWithStatusFilter(): void
     {
         $this->tester->execute([
@@ -209,7 +259,7 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['models']);
         $this->assertSame(1, (int) $rows[0]['dvds']);
         $this->assertSame(1, (int) $rows[0]['dvds_groups']);
-        $this->assertSame(9, (int) $rows[0]['total_usage']);
+        $this->assertSame(14, (int) $rows[0]['total_usage']);
     }
 
     public function testListExposesKvsAdminCountFields(): void
@@ -236,6 +286,32 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(14, (int) $rows[0]['all_amount']);
     }
 
+    public function testListExposesKvsAdminRawScalarAndAverageFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '4K',
+            '--fields' => 'tag_id,tag_dir,synonyms,avg_videos_rating,avg_videos_popularity,' .
+                'avg_albums_rating,avg_albums_popularity,avg_posts_rating,avg_posts_popularity,added_date',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4k', $rows[0]['tag_dir']);
+        $this->assertSame('uhd, ultra hd', $rows[0]['synonyms']);
+        $this->assertSame(4.5, (float) $rows[0]['avg_videos_rating']);
+        $this->assertSame(1200, (int) $rows[0]['avg_videos_popularity']);
+        $this->assertSame(4.25, (float) $rows[0]['avg_albums_rating']);
+        $this->assertSame(900, (int) $rows[0]['avg_albums_popularity']);
+        $this->assertSame(3.75, (float) $rows[0]['avg_posts_rating']);
+        $this->assertSame(300, (int) $rows[0]['avg_posts_popularity']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testShowTagDetails(): void
     {
         $this->tester->execute([
@@ -250,7 +326,65 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('4k', $output);
         $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
         $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
-        $this->assertMatchesRegularExpression('/Total Usage\W+3/', $output);
+        $this->assertMatchesRegularExpression('/Total Usage\W+13/', $output);
+    }
+
+    public function testShowTagSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['id']);
+        $this->assertSame('4K', $rows[0]['name']);
+        $this->assertSame('2', $rows[0]['videos']);
+        $this->assertSame('13', $rows[0]['total_usage']);
+        $this->assertStringNotContainsString('Tag: 4K', $output);
+    }
+
+    public function testShowTagSupportsExactName(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '4K',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['id']);
+        $this->assertSame('4K', $rows[0]['name']);
+    }
+
+    public function testShowTagReportsMissingTextIdentifier(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Tag not found: 10abc', $this->tester->getDisplay());
+    }
+
+    public function testUpdateTagRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '10abc',
+            '--name' => 'Renamed',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Tag ID', $this->tester->getDisplay());
     }
 
     public function testCreateWithoutName(): void
@@ -451,6 +585,7 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Top 10 Most Used Tags', $output);
         $this->assertStringContainsString('4K', $output);
         $this->assertStringContainsString('tagged', $output);
+        $this->assertMatchesRegularExpression('/4K\W+2\W+1\W+10\W+13/', $output);
     }
 
     public function testInvalidAction(): void
@@ -499,6 +634,23 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Top 10 Most Used Tags', $output);
     }
 
+    public function testStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Tags']['section'] ?? null);
+        $this->assertSame(4, (int) ($rowsByMetric['Total Tags']['value'] ?? 0));
+        $this->assertStringNotContainsString('Tag Statistics', $this->tester->getDisplay());
+    }
+
     public function testCommandIntegrationWithHermeticDb(): void
     {
         $exitCode = $this->tester->execute(['action' => 'list', '--limit' => '1']);
@@ -528,7 +680,9 @@ class TagCommandComprehensiveTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
             'tag_id INTEGER, tag TEXT, tag_dir TEXT, synonyms TEXT, status_id INTEGER, ' .
             'added_date TEXT, last_content_date TEXT, total_content_sources INTEGER, total_playlists INTEGER, ' .
-            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
+            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER, ' .
+            'avg_videos_rating REAL, avg_videos_popularity INTEGER, avg_albums_rating REAL, avg_albums_popularity INTEGER, ' .
+            'avg_posts_rating REAL, avg_posts_popularity INTEGER)'
         );
 
         foreach ($this->relationTables() as $suffix => $objectColumn) {
@@ -541,11 +695,13 @@ class TagCommandComprehensiveTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
             ' (tag_id, tag, tag_dir, synonyms, status_id, added_date, last_content_date, ' .
-            'total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES ' .
-            "(10, '4K', '4k', '', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0), " .
-            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
-            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0), " .
-            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0)"
+            'total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups, ' .
+            'avg_videos_rating, avg_videos_popularity, avg_albums_rating, avg_albums_popularity, ' .
+            'avg_posts_rating, avg_posts_popularity) VALUES ' .
+            "(10, '4K', '4k', 'uhd, ultra hd', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0, 4.5, 1200, 4.25, 900, 3.75, 300), " .
+            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_videos') .

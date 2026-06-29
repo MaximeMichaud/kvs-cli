@@ -16,6 +16,9 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 class PluginCommand extends BaseCommand
 {
+    private const HIDDEN_PLUGIN_IDS = ['push_notifications', 'awe_black_label'];
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count', 'ids'];
+
     protected function configure(): void
     {
         $this
@@ -30,7 +33,7 @@ Manage KVS plugins - list, inspect, and get information about installed plugins.
 
 <info>LIST OPTIONS:</info>
   --status=<status>     Filter by status (active|inactive|all)
-  --type=<type>         Filter by type (manual|cron)
+  --type=<type>         Filter by type (manual|cron|api|process_object)
   --fields=<fields>     Comma-separated fields to display
   --field=<field>       Display single field value
   --format=<format>     Output format: table, csv, json, yaml, count
@@ -65,14 +68,18 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listPlugins($input),
-            'show' => $this->showPlugin($id),
-            'path' => $this->showPluginPath($id),
-            'status' => $this->showStatus(),
+            'show' => $this->showPlugin($id, $input),
+            'path' => $this->showPluginPath($id, $input),
+            'status' => $this->showStatus($input),
             default => $this->failUnknownAction(
                 'plugin',
                 $action,
@@ -83,10 +90,19 @@ HELP
 
     private function listPlugins(InputInterface $input): int
     {
-        $plugins = $this->getAllPlugins();
+        $allPlugins = $this->getAllPlugins();
+        $plugins = $allPlugins;
 
         if ($plugins === []) {
-            $this->io()->info('No plugins found');
+            if ($this->isTableFormat($input)) {
+                $this->io()->info('No plugins found');
+            } else {
+                $formatter = new Formatter(
+                    $input->getOptions(),
+                    ['id', 'name', 'version', 'status', 'types']
+                );
+                $formatter->display([], $this->io());
+            }
             return self::SUCCESS;
         }
 
@@ -100,75 +116,26 @@ HELP
                 return self::FAILURE;
             }
 
-            $plugins = array_filter($plugins, function (array $plugin) use ($statusFilter): bool {
-                $isEnabled = $plugin['is_enabled'] ?? false;
-                if ($statusFilter === 'active') {
-                    return (bool)$isEnabled;
-                }
-                return !(bool)$isEnabled;
-            });
+            $plugins = $this->filterPluginsByStatus($plugins, $statusFilter);
         }
 
         if ($typeFilter !== null && $typeFilter !== '') {
             $typeFilter = strtolower($typeFilter);
-            if (!in_array($typeFilter, ['manual', 'cron'], true)) {
-                $this->io()->error('Invalid type "' . $typeFilter . '". Valid values: manual, cron');
+            $availableTypes = $this->getAvailableTypes($allPlugins);
+            if (!in_array($typeFilter, $availableTypes, true)) {
+                $validTypes = $availableTypes === [] ? 'none' : implode(', ', $availableTypes);
+                $this->io()->error('Invalid type "' . $typeFilter . '". Valid values: ' . $validTypes);
                 return self::FAILURE;
             }
 
-            $plugins = array_filter($plugins, function (array $plugin) use ($typeFilter): bool {
-                $types = $plugin['types'] ?? [];
-                if (!is_array($types)) {
-                    return false;
-                }
-                return in_array($typeFilter, $types, true);
-            });
+            $plugins = $this->filterPluginsByType($plugins, $typeFilter);
         }
 
         // Transform plugins to flattened format for Formatter
-        $transformedPlugins = array_map(function (array $plugin): array {
-            $filesOk = (bool)($plugin['files_ok'] ?? false);
-            $syntaxOk = (bool)($plugin['syntax_ok'] ?? false);
-            $compatible = (bool)($plugin['compatible'] ?? false);
-            $isEnabled = (bool)($plugin['is_enabled'] ?? false);
-            $types = $plugin['types'] ?? [];
-            if (!is_array($types)) {
-                $types = [];
-            }
-            $isValid = $filesOk && $syntaxOk && $compatible;
-
-            $typesStr = '';
-            if ($types !== []) {
-                $typesArr = array_map(fn($t): string => is_string($t) ? $t : '', $types);
-                $typesStr = implode(',', array_filter($typesArr, fn($t): bool => $t !== ''));
-            }
-
-            $id = $plugin['id'] ?? '';
-            $name = $plugin['name'] ?? '';
-            $title = $plugin['title'] ?? '';
-            $author = $plugin['author'] ?? '';
-            $version = $plugin['version'] ?? '';
-            $kvsVersion = $plugin['kvs_version'] ?? '';
-            $description = $plugin['description'] ?? '';
-            $path = $plugin['path'] ?? '';
-
-            return [
-                'id' => is_string($id) ? $id : '',
-                'name' => is_string($name) ? $name : '',
-                'title' => is_string($title) ? $title : '',
-                'author' => is_string($author) ? $author : '',
-                'version' => is_string($version) ? $version : '',
-                'kvs_version' => is_string($kvsVersion) ? $kvsVersion : '',
-                'status' => $isEnabled ? 'Active' : 'Inactive',
-                'types' => $typesStr,
-                'files_ok' => $filesOk ? 'Yes' : 'No',
-                'syntax_ok' => $syntaxOk ? 'Yes' : 'No',
-                'compatible' => $compatible ? 'Yes' : 'No',
-                'valid' => $isValid ? 'Yes' : 'No',
-                'description' => is_string($description) ? $description : '',
-                'path' => is_string($path) ? $path : '',
-            ];
-        }, $plugins);
+        $transformedPlugins = array_map(
+            fn (array $plugin): array => $this->formatPluginForList($plugin),
+            $plugins
+        );
 
         // Format and display output using centralized Formatter
         $formatter = new Formatter(
@@ -180,7 +147,119 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showPlugin(?string $id): int
+    /**
+     * @param array<int, array<string, mixed>> $plugins
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterPluginsByStatus(array $plugins, string $statusFilter): array
+    {
+        return array_filter($plugins, function (array $plugin) use ($statusFilter): bool {
+            $isEnabled = $plugin['is_enabled'] ?? false;
+            if ($statusFilter === 'active') {
+                return (bool)$isEnabled;
+            }
+            return !(bool)$isEnabled;
+        });
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $plugins
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterPluginsByType(array $plugins, string $typeFilter): array
+    {
+        return array_filter($plugins, function (array $plugin) use ($typeFilter): bool {
+            $types = $plugin['types'] ?? [];
+            if (!is_array($types)) {
+                return false;
+            }
+            $types = array_map(
+                static fn (mixed $type): string => is_string($type) ? strtolower(trim($type)) : '',
+                $types
+            );
+            return in_array($typeFilter, $types, true);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $plugin
+     * @return array<string, string>
+     */
+    private function formatPluginForList(array $plugin): array
+    {
+        $filesOk = (bool)($plugin['files_ok'] ?? false);
+        $syntaxOk = (bool)($plugin['syntax_ok'] ?? false);
+        $compatible = (bool)($plugin['compatible'] ?? false);
+        $isEnabled = (bool)($plugin['is_enabled'] ?? false);
+        $types = $plugin['types'] ?? [];
+        if (!is_array($types)) {
+            $types = [];
+        }
+        $isValid = $filesOk && $syntaxOk && $compatible;
+
+        $typesStr = '';
+        if ($types !== []) {
+            $typesArr = array_map(fn($t): string => is_string($t) ? $t : '', $types);
+            $typesStr = implode(',', array_filter($typesArr, fn($t): bool => $t !== ''));
+        }
+
+        return [
+            'id' => $this->getPluginStringField($plugin, 'id'),
+            'name' => $this->getPluginStringField($plugin, 'name'),
+            'title' => $this->getPluginStringField($plugin, 'title'),
+            'author' => $this->getPluginStringField($plugin, 'author'),
+            'version' => $this->getPluginStringField($plugin, 'version'),
+            'kvs_version' => $this->getPluginStringField($plugin, 'kvs_version'),
+            'status' => $isEnabled ? 'Active' : 'Inactive',
+            'types' => $typesStr,
+            'files_ok' => $filesOk ? 'Yes' : 'No',
+            'syntax_ok' => $syntaxOk ? 'Yes' : 'No',
+            'compatible' => $compatible ? 'Yes' : 'No',
+            'valid' => $isValid ? 'Yes' : 'No',
+            'description' => $this->getPluginStringField($plugin, 'description'),
+            'path' => $this->getPluginStringField($plugin, 'path'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $plugin
+     */
+    private function getPluginStringField(array $plugin, string $field): string
+    {
+        $value = $plugin[$field] ?? '';
+        return is_string($value) ? $value : '';
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $plugins
+     * @return list<string>
+     */
+    private function getAvailableTypes(array $plugins): array
+    {
+        $availableTypes = [];
+
+        foreach ($plugins as $plugin) {
+            $types = $plugin['types'] ?? [];
+            if (!is_array($types)) {
+                continue;
+            }
+
+            foreach ($types as $type) {
+                if (!is_string($type) || trim($type) === '') {
+                    continue;
+                }
+
+                $availableTypes[] = strtolower(trim($type));
+            }
+        }
+
+        $availableTypes = array_values(array_unique($availableTypes));
+        sort($availableTypes);
+
+        return $availableTypes;
+    }
+
+    private function showPlugin(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === "") {
             $this->io()->error('Plugin ID is required');
@@ -197,7 +276,6 @@ HELP
 
         $name = $plugin['name'] ?? 'Unknown';
         $nameStr = is_string($name) ? $name : 'Unknown';
-        $this->io()->section("Plugin: {$nameStr}");
 
         $filesOk = (bool)($plugin['files_ok'] ?? false);
         $syntaxOk = (bool)($plugin['syntax_ok'] ?? false);
@@ -215,6 +293,33 @@ HELP
         $author = $plugin['author'] ?? '';
         $version = $plugin['version'] ?? '';
         $kvsVersion = $plugin['kvs_version'] ?? '';
+        $pluginPath = $plugin['path'] ?? '';
+        $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
+
+        if (!$this->isTableFormat($input)) {
+            $formatter = new Formatter(
+                $input->getOptions(),
+                [
+                    'id',
+                    'name',
+                    'title',
+                    'author',
+                    'version',
+                    'kvs_version',
+                    'types',
+                    'files_ok',
+                    'syntax_ok',
+                    'compatible',
+                    'status',
+                    'description',
+                    'path',
+                ]
+            );
+            $formatter->display([$this->formatPluginForList($plugin)], $this->io());
+            return self::SUCCESS;
+        }
+
+        $this->io()->section("Plugin: {$nameStr}");
 
         $info = [
             ['ID', is_string($id) ? $id : ''],
@@ -239,9 +344,7 @@ HELP
             $this->io()->text($descriptionStr);
         }
 
-        $pluginPath = $plugin['path'] ?? '';
         $pluginId = $plugin['id'] ?? '';
-        $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
         $pluginIdStr = is_string($pluginId) ? $pluginId : '';
         $this->io()->section('Paths');
         $this->io()->listing([
@@ -254,7 +357,7 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showPluginPath(?string $id): int
+    private function showPluginPath(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === "") {
             $this->io()->error('Plugin ID is required');
@@ -270,11 +373,20 @@ HELP
 
         $pluginPath = $plugin['path'] ?? '';
         $pluginPathStr = is_string($pluginPath) ? $pluginPath : '';
+        if (!$this->isTableFormat($input)) {
+            $formatter = new Formatter($input->getOptions(), ['id', 'path']);
+            $formatter->display([[
+                'id' => $id,
+                'path' => $pluginPathStr,
+            ]], $this->io());
+            return self::SUCCESS;
+        }
+
         $this->io()->writeln($pluginPathStr);
         return self::SUCCESS;
     }
 
-    private function showStatus(): int
+    private function showStatus(InputInterface $input): int
     {
         $plugins = $this->getAllPlugins();
 
@@ -304,8 +416,6 @@ HELP
             }
         }
 
-        $this->io()->section('Plugin Statistics');
-
         $stats = [
             ['Total Plugins', $total],
             ['Active', "<fg=green>$active</>"],
@@ -323,6 +433,31 @@ HELP
             $stats[] = ['Incompatible', "<fg=red>$incompatible</>"];
         }
 
+        /** @var list<array<string, mixed>> $metricRows */
+        $metricRows = [
+            $this->metricRow('overall', 'Total Plugins', $total),
+            $this->metricRow('overall', 'Active', $active),
+            $this->metricRow('overall', 'Inactive', $inactive),
+        ];
+        if ($missingFiles > 0) {
+            $metricRows[] = $this->metricRow('overall', 'Missing Files', $missingFiles);
+        }
+        if ($syntaxErrors > 0) {
+            $metricRows[] = $this->metricRow('overall', 'Syntax Errors', $syntaxErrors);
+        }
+        if ($incompatible > 0) {
+            $metricRows[] = $this->metricRow('overall', 'Incompatible', $incompatible);
+        }
+        foreach ($typeStats as $type => $count) {
+            $metricRows[] = $this->metricRow('by_type', $type, $count, (string) $count, ucfirst($type));
+        }
+
+        if (!$this->isTableFormat($input)) {
+            $this->displayMetricRows($input, $metricRows);
+            return self::SUCCESS;
+        }
+
+        $this->io()->section('Plugin Statistics');
         $this->renderTable(['Metric', 'Count'], $stats);
 
         if ($typeStats !== []) {
@@ -360,6 +495,9 @@ HELP
             $pluginPath = "$pluginsDir/$item";
 
             if (!is_dir($pluginPath)) {
+                continue;
+            }
+            if (in_array($item, self::HIDDEN_PLUGIN_IDS, true)) {
                 continue;
             }
 
@@ -444,6 +582,9 @@ HELP
         if (preg_match('|<version>(.*?)</version>|is', $content, $match) === 1) {
             $plugin['version'] = trim($match[1]);
         }
+        if (($plugin['version'] ?? '') === 'del') {
+            return null;
+        }
 
         if (preg_match('|<kvs_version>(.*?)</kvs_version>|is', $content, $match) === 1) {
             $plugin['kvs_version'] = trim($match[1]);
@@ -490,10 +631,7 @@ HELP
             $plugin['compatible'] = $this->checkVersionCompatibility($plugin['kvs_version']);
         }
 
-        // Check if plugin is enabled/configured (only if all checks pass)
-        if ($plugin['syntax_ok'] && $plugin['compatible']) {
-            $plugin['is_enabled'] = $this->checkPluginEnabled($id, $phpFile);
-        }
+        $plugin['is_enabled'] = $plugin['compatible'] ? $this->checkPluginEnabled($id, $phpFile) : false;
 
         return $plugin;
     }
@@ -518,55 +656,50 @@ HELP
 
     private function checkPluginEnabled(string $id, string $phpFile): bool
     {
-        /**
-         * KVS Plugin Status Logic:
-         * - If plugin has NO IsEnabled function → always enabled (default)
-         * - If plugin HAS IsEnabled function → call it to check if configured/enabled
-         *
-         * Note: IsEnabled checks if plugin is CONFIGURED (e.g., backup has auto-backup enabled),
-         * not just if it's installed. Plugins without IsEnabled are always operational.
-         */
-        try {
-            $kvsPath = $this->config->getKvsPath();
-
-            // Check if plugin has IsEnabled function
-            $phpContent = file_get_contents($phpFile);
-            if ($phpContent === false) {
-                // Can't read file, assume enabled (to avoid false negatives)
-                return true;
-            }
-            if (preg_match("/function\s+{$id}IsEnabled\s*\(/", $phpContent) !== 1) {
-                // No IsEnabled function = plugin is always enabled by default
-                return true;
-            }
-
-            // Plugin has IsEnabled function - need to call it
-            /** @var array<string, mixed> $config */
-            $config = [];
-
-            // Load KVS config (required by most plugins)
-            if (file_exists("$kvsPath/admin/include/setup.php")) {
-                require_once "$kvsPath/admin/include/setup.php";
-            }
-
-            // Load plugin file
-            if (!function_exists("{$id}Show")) {
-                require_once $phpFile;
-            }
-
-            // Call IsEnabled function
-            $funcName = "{$id}IsEnabled";
-            if (function_exists($funcName)) {
-                return (bool)$funcName();
-            }
-
-            // Couldn't call IsEnabled, assume not enabled
+        $phpContent = file_get_contents($phpFile);
+        if ($phpContent === false) {
             return false;
-        } catch (\Throwable $e) {
-            // If anything fails, assume enabled (to avoid false negatives)
-            // Better to show an "active" plugin that might not be configured
-            // than to hide a working plugin
+        }
+
+        $functionName = preg_quote($id . 'IsEnabled', '/');
+        if (preg_match("/function\s+{$functionName}\s*\([^)]*\)\s*(?::\s*[^\\s{]+)?\s*\{(?<body>.*?)\n\}/s", $phpContent, $match) !== 1) {
+            return false;
+        }
+
+        $body = $match['body'];
+        if (preg_match('/return\s+true\s*;/i', $body) === 1) {
             return true;
         }
+        if (preg_match('/return\s+false\s*;/i', $body) === 1) {
+            return false;
+        }
+
+        return $this->checkPluginDataEnabled($id, $body);
+    }
+
+    private function checkPluginDataEnabled(string $id, string $functionBody): bool
+    {
+        if (preg_match("/['\"]is_enabled['\"]/", $functionBody) !== 1) {
+            return false;
+        }
+
+        $dataFile = $this->config->getKvsPath() . '/admin/data/plugins/' . $id . '/data.dat';
+        if (!is_file($dataFile)) {
+            return false;
+        }
+
+        $rawData = file_get_contents($dataFile);
+        if (!is_string($rawData) || $rawData === '') {
+            return false;
+        }
+
+        $data = @unserialize($rawData, ['allowed_classes' => false]);
+        if (!is_array($data)) {
+            return false;
+        }
+
+        $isEnabled = $data['is_enabled'] ?? 0;
+
+        return is_numeric($isEnabled) && (int) $isEnabled === 1;
     }
 }

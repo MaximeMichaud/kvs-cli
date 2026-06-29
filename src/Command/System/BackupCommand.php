@@ -16,31 +16,30 @@ use function KVS\CLI\Utils\format_bytes;
 
 #[AsCommand(
     name: 'system:backup',
-    description: 'Create and restore KVS backups',
+    description: 'Create and list KVS backups',
     aliases: ['backup']
 )]
 class BackupCommand extends BaseCommand
 {
     use SecureFileTrait;
 
+    private const CREATE_TYPES = ['full', 'db', 'files'];
     private const LIST_FORMATS = ['table', 'json', 'csv', 'yaml', 'count'];
 
     protected function configure(): void
     {
         $this
             ->setHelp(<<<'HELP'
-Create, list, and restore KVS backups.
+Create and list KVS backups.
 
 <info>EXAMPLES:</info>
   <comment>kvs system:backup --list</comment>
   <comment>kvs system:backup --list --format=json</comment>
   <comment>kvs system:backup --create --type=db</comment>
   <comment>kvs system:backup --create --type=files --output=/var/backups/kvs</comment>
-  <comment>kvs system:backup --restore=/var/backups/kvs/kvs_backup_full_2026-05-26_12-00-00_full.tar.gz</comment>
 HELP
             )
             ->addOption('create', null, InputOption::VALUE_NONE, 'Create a new backup')
-            ->addOption('restore', null, InputOption::VALUE_REQUIRED, 'Restore from backup file')
             ->addOption('list', null, InputOption::VALUE_NONE, 'List available backups')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Backup type (full|db|files)', 'full')
             ->addOption('output', null, InputOption::VALUE_REQUIRED, 'Output directory for backup')
@@ -56,11 +55,6 @@ HELP
             );
         }
 
-        $restoreOpt = $this->getStringOption($input, 'restore');
-        if ($restoreOpt !== null) {
-            return $this->restoreBackup($restoreOpt);
-        }
-
         if ($this->getBoolOption($input, 'list')) {
             return $this->listBackups(
                 $this->getStringOption($input, 'output'),
@@ -73,7 +67,6 @@ HELP
             '--create : Create a new backup',
             '--create --type=db : Create database backup only',
             '--create --type=files : Create files backup only',
-            '--restore=backup.tar.gz : Restore from backup',
             '--list : List available backups',
             '--list --output=/var/backups/kvs : List backups in a custom directory',
             '--list --format=json : List backups as JSON',
@@ -84,6 +77,15 @@ HELP
 
     private function createBackup(string $type, ?string $outputDir): int
     {
+        if (!in_array($type, self::CREATE_TYPES, true)) {
+            $this->io()->error(sprintf(
+                'Invalid value for --type "%s" (expected: %s)',
+                $type,
+                implode(', ', self::CREATE_TYPES)
+            ));
+            return self::FAILURE;
+        }
+
         $outputDir = $outputDir ?? dirname($this->config->getKvsPath()) . '/backups';
 
         if (!is_dir($outputDir)) {
@@ -337,25 +339,6 @@ HELP
         return false;
     }
 
-    private function restoreBackup(string $backupFile): int
-    {
-        if (!file_exists($backupFile)) {
-            $this->io()->error("Backup file not found: $backupFile");
-            return self::FAILURE;
-        }
-
-        $this->io()->warning('Restore operation will overwrite existing data!');
-
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
-            return self::SUCCESS;
-        }
-
-        $this->io()->info('Restoring from backup: ' . basename($backupFile));
-        $this->io()->error('Backup restore is not implemented yet.');
-
-        return self::FAILURE;
-    }
-
     private function listBackups(?string $outputDir = null, string $format = 'table'): int
     {
         if (!in_array($format, self::LIST_FORMATS, true)) {
@@ -367,9 +350,12 @@ HELP
             return self::FAILURE;
         }
 
-        $backupDir = $outputDir ?? dirname($this->config->getKvsPath()) . '/backups';
+        $backupDirs = $outputDir !== null
+            ? [$outputDir]
+            : $this->getDefaultBackupDirs();
+        $backupDirs = array_values(array_filter($backupDirs, static fn (string $dir): bool => is_dir($dir)));
 
-        if (!is_dir($backupDir)) {
+        if ($backupDirs === []) {
             if ($format === 'table') {
                 $this->io()->warning('No backups directory found');
                 return self::SUCCESS;
@@ -379,9 +365,12 @@ HELP
             return self::SUCCESS;
         }
 
-        $files = glob("$backupDir/kvs_backup_*.{tar.gz,sql.gz}", GLOB_BRACE);
+        $files = [];
+        foreach ($backupDirs as $backupDir) {
+            $files = array_merge($files, $this->findBackupFiles($backupDir));
+        }
 
-        if ($files === false || $files === []) {
+        if ($files === []) {
             if ($format === 'table') {
                 $this->io()->info('No backups found');
                 return self::SUCCESS;
@@ -410,6 +399,48 @@ HELP
         $this->displayBackupList($backups, $format);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getDefaultBackupDirs(): array
+    {
+        return array_values(array_unique([
+            dirname($this->config->getKvsPath()) . '/backups',
+            $this->config->getAdminPath() . '/data/backup',
+        ]));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function findBackupFiles(string $backupDir): array
+    {
+        $entries = scandir($backupDir);
+        if ($entries === false) {
+            return [];
+        }
+
+        $files = [];
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+
+            $path = $backupDir . '/' . $entry;
+            if (!is_file($path)) {
+                continue;
+            }
+
+            if (!str_ends_with($entry, '.gz') && !str_ends_with($entry, '.zip')) {
+                continue;
+            }
+
+            $files[] = $path;
+        }
+
+        return $files;
     }
 
     /**

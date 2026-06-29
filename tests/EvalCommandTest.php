@@ -119,6 +119,24 @@ class EvalCommandTest extends TestCase
         $this->assertEquals(0, $tester->getStatusCode());
     }
 
+    public function testEvalExposesKvsDbVariableForKvsSnippets(): void
+    {
+        $command = new class ($this->config) extends EvalCommand {
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute([
+            'code' => 'echo array_key_exists("kvs_db", get_defined_vars()) ? "has-kvs-db" : "missing-kvs-db";',
+        ]);
+
+        $this->assertStringContainsString('has-kvs-db', $tester->getDisplay());
+        $this->assertEquals(0, $tester->getStatusCode());
+    }
+
     public function testEvalCommandMetadata(): void
     {
         $this->assertEquals('eval', $this->command->getName());

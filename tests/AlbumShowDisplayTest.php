@@ -60,7 +60,8 @@ class AlbumShowDisplayTest extends TestCase
 
         $this->assertSame(0, $tester->getStatusCode());
         $this->assertStringContainsString('Images', $output);
-        $this->assertMatchesRegularExpression('/Access\s*│\s*Private/', $output);
+        $this->assertMatchesRegularExpression('/Type\s*│\s*Private/', $output);
+        $this->assertMatchesRegularExpression('/Access\s*│\s*From access type/', $output);
         $this->assertMatchesRegularExpression('/User\s*│\s*owner/', $output);
         $this->assertMatchesRegularExpression('/Images\s*│\s*7/', $output);
     }

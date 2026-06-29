@@ -136,6 +136,10 @@ HELP
 
     private function listOptions(InputInterface $input): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['enabled', 'disabled'])) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -178,8 +182,8 @@ HELP
         // Filter by search term
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $query .= " AND variable LIKE :search";
-            $params['search'] = '%' . strtoupper($search) . '%';
+            $query .= " AND variable LIKE :search" . $this->likeEscapeSql();
+            $params['search'] = $this->containsLikePattern(strtoupper($search));
         }
 
         // Filter by exact value
@@ -204,9 +208,18 @@ HELP
 
             /** @var list<array{variable: string, value: string}> $options */
             $options = $stmt->fetchAll();
+            $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+            $defaultFields = $format === 'table'
+                ? ['variable', 'display_value', 'category']
+                : ['variable', 'value', 'category'];
 
             if ($options === []) {
-                $this->io()->warning('No options found matching criteria');
+                if ($this->isTableFormat($input)) {
+                    $this->io()->warning('No options found matching criteria');
+                } else {
+                    $formatter = new Formatter($input->getOptions(), $defaultFields);
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
@@ -225,8 +238,6 @@ HELP
                 $option['category'] = $this->detectCategory($option['variable']);
                 return $option;
             }, $options);
-
-            $defaultFields = ['variable', 'display_value', 'category'];
 
             $formatter = new Formatter($input->getOptions(), $defaultFields);
             $formatter->display($options, $this->io());
@@ -274,12 +285,36 @@ HELP
                 return self::FAILURE;
             }
 
+            $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+            $category = $this->detectCategory($option['variable']);
+            $optionRow = [
+                'variable' => $option['variable'],
+                'value' => $option['value'],
+                'category' => $category,
+            ];
+
+            if ($option['value'] === '0' || $option['value'] === '1') {
+                $optionRow['status'] = $option['value'] === '1' ? 'Enabled' : 'Disabled';
+            }
+            if (preg_match('/^\d+x\d+$/', $option['value']) === 1) {
+                $optionRow['type'] = 'Dimension (WxH)';
+            }
+
+            if ($format !== 'table') {
+                $formatter = new Formatter(
+                    $input->getOptions(),
+                    ['variable', 'value', 'category', 'status', 'type']
+                );
+                $formatter->display([$optionRow], $this->io());
+                return self::SUCCESS;
+            }
+
             $this->io()->title("Option: {$option['variable']}");
 
             $info = [
                 ['Name', $option['variable']],
                 ['Value', $option['value']],
-                ['Category', $this->detectCategory($option['variable'])],
+                ['Category', $category],
             ];
 
             // Add interpretation for boolean-like values

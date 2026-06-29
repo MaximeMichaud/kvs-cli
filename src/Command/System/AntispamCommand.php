@@ -19,6 +19,8 @@ class AntispamCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'json'];
+
     /** @var array<string, string> */
     private const SECTIONS = [
         'videos' => 'ANTISPAM_VIDEOS',
@@ -218,7 +220,10 @@ HELP
             $stmt->execute();
             $blockedIpsCount = (int) $stmt->fetchColumn();
 
-            $format = $this->getStringOption($input, 'format');
+            $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+            if ($format === null) {
+                return self::FAILURE;
+            }
 
             if ($format === 'json') {
                 $data = [
@@ -348,7 +353,10 @@ HELP
             /** @var array<string> $ips */
             $ips = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-            $format = $this->getStringOption($input, 'format');
+            $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+            if ($format === null) {
+                return self::FAILURE;
+            }
 
             if ($format === 'json') {
                 $data = [

@@ -27,7 +27,7 @@ class ModelCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'Model ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in model names, directories, descriptions, aliases, and gallery URLs')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -71,8 +71,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listModels($input),
-            'show' => $this->showModel($id),
-            'stats' => $this->showStats(),
+            'show' => $this->showModel($id, $input),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction('model', $action, ['list', 'show', 'stats']),
         };
     }
@@ -92,11 +92,14 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::MODEL_ACTIVE,
                 'disabled' => StatusFormatter::MODEL_DISABLED,
                 'inactive' => StatusFormatter::MODEL_DISABLED,
             ]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $whereClause .= " AND m.status_id = :status";
                 $params['status'] = $statusId;
@@ -106,11 +109,19 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= " AND m.title LIKE :search";
-            $params['search'] = "%$search%";
+            $searchEscape = $this->likeEscapeSql();
+            $whereClause .= " AND (m.title LIKE :search" . $searchEscape
+                . " OR m.dir LIKE :search" . $searchEscape
+                . " OR m.description LIKE :search" . $searchEscape
+                . " OR m.alias LIKE :search" . $searchEscape
+                . " OR m.gallery_url LIKE :search" . $searchEscape . ")";
+            $params['search'] = $this->containsLikePattern($search);
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+            if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                return self::FAILURE;
+            }
             return $this->countModels($db, $fromClause, $whereClause, $params);
         }
 
@@ -148,7 +159,6 @@ HELP
 
             /** @var list<array<string, mixed>> $models */
             $models = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $models = $this->appendModelListFields($db, $input, $models);
 
             // Transform models for display (field aliases)
             $transformedModels = array_map(fn (array $model): array => $this->transformModelForList($model), $models);
@@ -177,9 +187,11 @@ HELP
         $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
         return [
+            ...$model,
             'model_id' => $model['model_id'] ?? 0,
             'id' => $model['model_id'] ?? 0,
             'title' => $model['title'] ?? '',
+            'thumb' => $model['screenshot1'] ?? $model['screenshot2'] ?? '',
             'status_id' => $statusId,
             'status' => StatusFormatter::model($statusId, false),
             'video_count' => $model['video_count'] ?? 0,
@@ -206,69 +218,20 @@ HELP
             'measurements' => $model['measurements'] ?? '',
             'height' => $model['height'] ?? '',
             'weight' => $model['weight'] ?? '',
-            'rank' => $model['rank'] ?? '',
+            'rank' => $this->formatModelRank($model['rank'] ?? null),
             'rating' => format_kvs_rating($model['rating'] ?? 0, $model['rating_amount'] ?? 0),
             'tags' => $model['tags'] ?? '',
             'categories' => $model['categories'] ?? '',
         ];
     }
 
-    /**
-     * @param list<array<string, mixed>> $models
-     * @return list<array<string, mixed>>
-     */
-    private function appendModelListFields(\PDO $db, InputInterface $input, array $models): array
+    private function formatModelRank(mixed $rank): string
     {
-        $fieldMaps = [
-            'categories' => ['categories', 'categories_models', 'category_id', 'model_id', 'title'],
-            'tags' => ['tags', 'tags_models', 'tag_id', 'model_id', 'tag'],
-        ];
-
-        foreach ($fieldMaps as $field => [$itemTable, $linkTable, $itemIdColumn, $modelIdColumn, $titleColumn]) {
-            if (!$this->isModelFieldRequested($input, $field)) {
-                continue;
-            }
-
-            foreach ($models as $index => $model) {
-                $modelId = $model['model_id'] ?? null;
-                $models[$index][$field] = is_numeric($modelId)
-                    ? $this->fetchModelListTitles(
-                        $db,
-                        $itemTable,
-                        $linkTable,
-                        $itemIdColumn,
-                        $modelIdColumn,
-                        $titleColumn,
-                        (int) $modelId
-                    )
-                    : '';
-            }
+        if ($rank === null || !is_scalar($rank)) {
+            return '#';
         }
 
-        return $models;
-    }
-
-    private function fetchModelListTitles(
-        \PDO $db,
-        string $itemTable,
-        string $linkTable,
-        string $itemIdColumn,
-        string $modelIdColumn,
-        string $titleColumn,
-        int $modelId
-    ): string {
-        $query = "SELECT i.$titleColumn
-                  FROM {$this->table($itemTable)} i
-                  INNER JOIN {$this->table($linkTable)} l ON i.$itemIdColumn = l.$itemIdColumn
-                  WHERE l.$modelIdColumn = :model_id
-                  ORDER BY l.id ASC";
-        $stmt = $db->prepare($query);
-        $stmt->execute(['model_id' => $modelId]);
-
-        return implode(', ', array_map(
-            static fn (mixed $value): string => is_scalar($value) ? (string) $value : '',
-            $stmt->fetchAll(\PDO::FETCH_COLUMN)
-        ));
+        return '#' . (string) $rank;
     }
 
     /**
@@ -293,10 +256,10 @@ HELP
         }
     }
 
-    private function showModel(?string $id): int
+    private function showModel(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Model ID is required');
+        $modelId = $this->getRequiredPositiveId($id, 'Model');
+        if ($modelId === null) {
             return self::FAILURE;
         }
 
@@ -315,18 +278,17 @@ HELP
                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
                 WHERE m.model_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $modelId]);
             $model = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($model)) {
-                $this->io()->error("Model not found: $id");
+                $this->io()->error("Model not found: $modelId");
                 return self::FAILURE;
             }
 
             // Display model details
             $titleValue = $model['title'] ?? '';
             $modelTitle = is_scalar($titleValue) ? (string) $titleValue : '';
-            $this->io()->title("Model: $modelTitle");
 
             $videoCountVal = $model['video_count'] ?? 0;
             $albumCountVal = $model['album_count'] ?? 0;
@@ -372,6 +334,11 @@ HELP
             $this->addOptionalField($info, 'Weight', $model['weight'] ?? null);
             $this->addOptionalField($info, 'Description', $model['description'] ?? null);
 
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info);
+            }
+
+            $this->io()->title("Model: $modelTitle");
             $this->renderTable(['Field', 'Value'], $info);
 
             return self::SUCCESS;
@@ -409,6 +376,22 @@ HELP
                 WHERE cm.object_type_id = 4 AND cm.object_id = m.model_id
             ) as comments_amount";
         }
+        if ($this->isModelFieldRequested($input, 'tags')) {
+            $extraSelects[] = "(
+                SELECT GROUP_CONCAT(t.tag ORDER BY tm.id ASC)
+                FROM {$this->table('tags')} t
+                INNER JOIN {$this->table('tags_models')} tm ON tm.tag_id = t.tag_id
+                WHERE tm.model_id = m.model_id
+            ) as tags";
+        }
+        if ($this->isModelFieldRequested($input, 'categories')) {
+            $extraSelects[] = "(
+                SELECT GROUP_CONCAT(c.title ORDER BY cm_rel.id ASC)
+                FROM {$this->table('categories')} c
+                INNER JOIN {$this->table('categories_models')} cm_rel ON cm_rel.category_id = c.category_id
+                WHERE cm_rel.model_id = m.model_id
+            ) as categories";
+        }
 
         return $extraSelects === [] ? '' : ",\n                 " . implode(",\n                 ", $extraSelects);
     }
@@ -434,7 +417,7 @@ HELP
         return false;
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -443,35 +426,52 @@ HELP
 
         try {
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
 
             // Total models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}");
             if ($stmt !== false) {
-                $stats[] = ['Total Models', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Total Models', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Total Models', $value, number_format($value));
             }
 
             // Active models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_ACTIVE);
             if ($stmt !== false) {
-                $stats[] = ['Active', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Active', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Active', $value, number_format($value));
             }
 
-            // Disabled models
+            // Inactive models
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')} WHERE status_id = " . StatusFormatter::MODEL_DISABLED);
             if ($stmt !== false) {
-                $stats[] = ['Disabled', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Inactive', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Inactive', $value, number_format($value));
             }
 
             // Models with videos
             $stmt = $db->query("SELECT COUNT(DISTINCT model_id) FROM {$this->table('models')}_videos");
             if ($stmt !== false) {
-                $stats[] = ['Models with Videos', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Models with Videos', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Models with Videos', $value, number_format($value));
             }
 
             // Total video-model relations
             $stmt = $db->query("SELECT COUNT(*) FROM {$this->table('models')}_videos");
             if ($stmt !== false) {
-                $stats[] = ['Total Video Relations', number_format((int) $stmt->fetchColumn())];
+                $value = (int) $stmt->fetchColumn();
+                $stats[] = ['Total Video Relations', number_format($value)];
+                $metricRows[] = $this->metricRow('overall', 'Total Video Relations', $value, number_format($value));
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
             }
 
             $this->io()->title('Model Statistics');

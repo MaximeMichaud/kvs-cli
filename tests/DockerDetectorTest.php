@@ -80,6 +80,28 @@ class DockerDetectorTest extends TestCase
         $this->assertSame([], $detector->getRunningContainers());
     }
 
+    public function testMapHostPathToContainerUsesDetectedMount(): void
+    {
+        $detector = new class extends DockerDetector {
+            protected function getContainerMounts(string $containerName): array
+            {
+                return [
+                    ['source' => '/var/www', 'destination' => '/host-www'],
+                    ['source' => '/var/www/maximemichaud.ca', 'destination' => '/var/www/kvs'],
+                ];
+            }
+        };
+
+        $this->setPrivateProperty($detector, 'detected', true);
+        $this->setPrivateProperty($detector, 'runningContainers', ['php' => true]);
+        $this->setPrivateProperty($detector, 'containerNames', ['php' => 'kvs-maximemichaud-php']);
+
+        $this->assertSame(
+            '/var/www/kvs/contents/videos_sources',
+            $detector->mapHostPathToContainer('/var/www/maximemichaud.ca/contents/videos_sources')
+        );
+    }
+
     public function testGetSummaryStructure(): void
     {
         $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
@@ -95,6 +117,12 @@ class DockerDetectorTest extends TestCase
         $this->assertFalse($summary['kvs_in_docker']);
         $this->assertNull($summary['prefix']);
         $this->assertSame([], $summary['containers']);
+    }
+
+    private function setPrivateProperty(object $object, string $property, mixed $value): void
+    {
+        $reflection = new \ReflectionProperty(DockerDetector::class, $property);
+        $reflection->setValue($object, $value);
     }
 
     public function testDetectsCurrentPhpContainerWithoutDockerCli(): void

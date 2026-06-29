@@ -18,6 +18,8 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class ScreenshotsCommand extends BaseCommand
 {
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     protected function configure(): void
     {
         $this
@@ -93,6 +95,15 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
+            return self::FAILURE;
+        }
+
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($screenshotsBasePath === '') {
             $this->io()->error('Screenshots path not configured');
@@ -100,8 +111,19 @@ HELP
         }
 
         $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
+        $screenshots = $this->buildLogicalScreenshotRows($videoId, $screenshotsPath);
+        if ($screenshots !== []) {
+            $formatter = new Formatter($input->getOptions(), ['index', 'filename', 'formats', 'dimensions']);
+            $formatter->display($screenshots, $this->io());
+
+            return self::SUCCESS;
+        }
 
         if (!is_dir($screenshotsPath)) {
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
+            }
+
             $this->io()->warning("Screenshots directory not found: $screenshotsPath");
             $this->io()->note("The video might not have screenshots generated yet.");
             return self::SUCCESS;
@@ -114,6 +136,10 @@ HELP
         $files = $this->findImageFiles($screenshotsPath, $extensions);
 
         if ($files === []) {
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
+            }
+
             $this->io()->warning('No screenshot files found in directory');
             $this->io()->text("Directory: $screenshotsPath");
             return self::SUCCESS;
@@ -147,11 +173,188 @@ HELP
         return self::SUCCESS;
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function buildLogicalScreenshotRows(string $videoId, string $screenshotsPath): array
+    {
+        $rows = [];
+        $sourceScreenshotsPath = $this->getVideoContentDir(
+            $this->config->getVideoSourcesPath(),
+            $videoId
+        ) . '/screenshots';
+
+        foreach ($this->discoverLogicalScreenshotIndexes($sourceScreenshotsPath, $screenshotsPath) as $index) {
+            $files = $this->findLogicalScreenshotFiles($sourceScreenshotsPath, $screenshotsPath, $index);
+            $representative = $files[0] ?? null;
+            $filesize = $representative !== null ? filesize($representative) : false;
+
+            $rows[] = [
+                'index' => $index,
+                'filename' => $index . '.jpg',
+                'formats' => count($files),
+                'size' => $filesize !== false ? format_bytes($filesize) : 'Unknown',
+                'dimensions' => $representative !== null ? $this->getImageDimensions($representative) : '',
+                'path' => $representative ?? '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function findLogicalScreenshotFiles(
+        string $sourceScreenshotsPath,
+        string $screenshotsPath,
+        int $index
+    ): array {
+        $files = [];
+        foreach ($this->findScreenshotFilesForIndex($sourceScreenshotsPath, $screenshotsPath, $index) as $file) {
+            $files[] = $file;
+        }
+
+        return array_values(array_unique($files));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function discoverLogicalScreenshotIndexes(string $sourceScreenshotsPath, string $screenshotsPath): array
+    {
+        $indexes = [];
+        foreach ($this->listImmediateImageFiles($sourceScreenshotsPath) as $file) {
+            $index = $this->parseScreenshotIndex($file);
+            if ($index !== null) {
+                $indexes[] = $index;
+            }
+        }
+
+        foreach ($this->listDirectFormatImageFiles($screenshotsPath) as $file) {
+            $index = $this->parseScreenshotIndex($file);
+            if ($index !== null) {
+                $indexes[] = $index;
+            }
+        }
+
+        $indexes = array_values(array_unique($indexes));
+        sort($indexes);
+
+        return $indexes;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function findScreenshotFilesForIndex(string $sourceScreenshotsPath, string $screenshotsPath, int $index): array
+    {
+        $files = [];
+        foreach ($this->getScreenshotFilenameCandidates($index) as $filename) {
+            $sourceFile = $sourceScreenshotsPath . '/' . $filename;
+            if (is_file($sourceFile)) {
+                $files[] = $sourceFile;
+            }
+        }
+
+        if (is_dir($screenshotsPath)) {
+            foreach ($this->getScreenshotFilenameCandidates($index) as $filename) {
+                $matches = glob($screenshotsPath . '/*/' . $filename);
+                if ($matches !== false) {
+                    foreach ($matches as $match) {
+                        $parent = basename(dirname($match));
+                        if (is_file($match) && !in_array($parent, ['posters', 'timelines'], true)) {
+                            $files[] = $match;
+                        }
+                    }
+                }
+            }
+        }
+
+        sort($files);
+
+        return $files;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listImmediateImageFiles(string $dir): array
+    {
+        if (!is_dir($dir)) {
+            return [];
+        }
+
+        $files = glob($dir . '/*.{jpg,jpeg,png,webp,avif}', GLOB_BRACE);
+        if ($files === false) {
+            return [];
+        }
+
+        return array_values(array_filter($files, 'is_file'));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listDirectFormatImageFiles(string $screenshotsPath): array
+    {
+        if (!is_dir($screenshotsPath)) {
+            return [];
+        }
+
+        $files = [];
+        $dirs = glob($screenshotsPath . '/*', GLOB_ONLYDIR);
+        if ($dirs === false) {
+            return [];
+        }
+
+        foreach ($dirs as $dir) {
+            $dirname = basename($dir);
+            if (in_array($dirname, ['posters', 'timelines'], true)) {
+                continue;
+            }
+            foreach ($this->listImmediateImageFiles($dir) as $file) {
+                $files[] = $file;
+            }
+        }
+
+        return $files;
+    }
+
+    private function parseScreenshotIndex(string $file): ?int
+    {
+        $filename = pathinfo($file, PATHINFO_FILENAME);
+        if (preg_match('/^\d+$/', $filename) !== 1) {
+            return null;
+        }
+
+        return (int) $filename;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getScreenshotFilenameCandidates(int $index): array
+    {
+        $names = [];
+        foreach (['jpg', 'jpeg', 'png', 'webp', 'avif'] as $extension) {
+            $names[] = $index . '.' . $extension;
+            $names[] = sprintf('%03d.%s', $index, $extension);
+        }
+
+        return array_values(array_unique($names));
+    }
+
     private function generateScreenshots(InputInterface $input, ?string $videoId): int
     {
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots generate <video_id>');
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -173,6 +376,11 @@ HELP
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
             $this->io()->text('Usage: kvs video:screenshots regenerate <video_id>');
+            return self::FAILURE;
+        }
+
+        $videoId = $this->normalizeVideoId($videoId);
+        if ($videoId === null) {
             return self::FAILURE;
         }
 
@@ -345,6 +553,16 @@ HELP
     private function getVideoContentDir(string $basePath, string $videoId): string
     {
         return $basePath . '/' . $this->getDirById($videoId) . '/' . $videoId;
+    }
+
+    private function normalizeVideoId(string $videoId): ?string
+    {
+        if (preg_match('/^[1-9]\d*$/', $videoId) !== 1) {
+            $this->io()->error('Invalid video ID (use: integer >= 1)');
+            return null;
+        }
+
+        return $videoId;
     }
 
     private function getDirById(string $id): int

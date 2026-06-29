@@ -62,7 +62,7 @@ class ConversionCommandTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertCount(2, $rows);
-        $this->assertSame([1, 3], array_map(static fn (array $row): int => (int) $row['server_id'], $rows));
+        $this->assertSame([3, 1], array_map(static fn (array $row): int => (int) $row['server_id'], $rows));
         $this->assertSame(['Active', 'Active'], array_column($rows, 'status'));
     }
 
@@ -102,6 +102,113 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertSame('4 (prioritize)', $rowsById[1]['max_tasks']);
         $this->assertSame(2, (int) $rowsById[2]['max_tasks']);
+    }
+
+    public function testConversionListExposesKvsAdminServerFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'title',
+                'status_id',
+                'api_version',
+                'tasks_amount',
+                'finished_tasks_amount',
+                'load',
+                'free_space',
+                'heartbeat_date',
+                'max_tasks',
+                'process_priority',
+                'connection_type_id',
+                'task_types',
+                'path',
+                'ftp_host',
+                'ftp_port',
+                'ftp_user',
+                'ftp_timeout',
+                'is_debug_enabled',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('Main Converter', $rowsById[1]['title']);
+        $this->assertSame(1, (int) $rowsById[1]['status_id']);
+        $this->assertSame('7.0.0', $rowsById[1]['api_version']);
+        $this->assertSame(2, (int) $rowsById[1]['tasks_amount']);
+        $this->assertSame(2, (int) $rowsById[1]['finished_tasks_amount']);
+        $this->assertSame('1.25', $rowsById[1]['load']);
+        $this->assertSame('6 GB', $rowsById[1]['free_space']);
+        $this->assertSame('2026-05-26 10:00:00', $rowsById[1]['heartbeat_date']);
+        $this->assertSame('4 (prioritize)', $rowsById[1]['max_tasks']);
+        $this->assertSame(9, (int) $rowsById[1]['process_priority']);
+        $this->assertSame(0, (int) $rowsById[1]['connection_type_id']);
+        $this->assertSame('+New videos from admins', $rowsById[1]['task_types']);
+        $this->assertSame('/tmp/kvs-main-converter', $rowsById[1]['path']);
+        $this->assertSame(0, (int) $rowsById[1]['is_debug_enabled']);
+        $this->assertSame('2026-05-20 10:00:00', $rowsById[1]['added_date']);
+        $this->assertSame('All', $rowsById[2]['task_types']);
+
+        $this->assertSame('ftp.example.test', $rowsById[2]['ftp_host']);
+        $this->assertSame('21', $rowsById[2]['ftp_port']);
+        $this->assertSame('ftp-user', $rowsById[2]['ftp_user']);
+        $this->assertSame('45', $rowsById[2]['ftp_timeout']);
+    }
+
+    public function testConversionListExposesKvsAdminComputedFields(): void
+    {
+        $logsDir = $this->kvsPath . '/admin/logs';
+        self::assertTrue(is_dir($logsDir) || mkdir($logsDir, 0777, true));
+        file_put_contents($logsDir . '/debug_conversion_server_3.txt', 'debug log');
+
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT, value TEXT)');
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('options') .
+            " VALUES ('SYSTEM_CONVERSION_API_VERSION', '8.0.0')"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--limit' => 10,
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'api_version',
+                'free_space_percent',
+                'error_text',
+                'is_error',
+                'has_debug_log',
+                'has_old_api',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'server_id');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('7.0.0 (obsolete)', $rowsById[1]['api_version']);
+        $this->assertSame('(60%)', $rowsById[1]['free_space_percent']);
+        $this->assertSame('', $rowsById[1]['error_text']);
+        $this->assertSame(0, (int) $rowsById[1]['is_error']);
+        $this->assertSame(0, (int) $rowsById[1]['has_debug_log']);
+        $this->assertSame(1, (int) $rowsById[1]['has_old_api']);
+
+        $this->assertSame('(25%)', $rowsById[3]['free_space_percent']);
+        $this->assertSame(
+            '(Some libraries are not configured correctly on this server)',
+            $rowsById[3]['error_text']
+        );
+        $this->assertSame(1, (int) $rowsById[3]['is_error']);
+        $this->assertSame(1, (int) $rowsById[3]['has_debug_log']);
+        $this->assertSame(1, (int) $rowsById[3]['has_old_api']);
     }
 
     public function testConversionListIgnoresDisabledServerErrorsLikeKvsAdmin(): void
@@ -172,9 +279,9 @@ class ConversionCommandTest extends TestCase
 
         $this->assertJson($output);
         $this->assertCount(1, $rows);
-        $this->assertSame(1, (int) $rows[0]['server_id']);
-        $this->assertSame('Main Converter', $rows[0]['title']);
-        $this->assertSame(2, (int) $rows[0]['tasks_pending']);
+        $this->assertSame(4, (int) $rows[0]['server_id']);
+        $this->assertSame('Init Converter', $rows[0]['title']);
+        $this->assertSame(0, (int) $rows[0]['tasks_pending']);
         $this->assertEquals(0, $testerJson->getStatusCode());
     }
 
@@ -229,6 +336,38 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('10 GB', $output);
         $this->assertStringContainsString('6 GB', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConversionShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('1', $rows[0]['server_id']);
+        $this->assertSame('Main Converter', $rows[0]['title']);
+        $this->assertSame(['video_admins'], $rows[0]['task_types']);
+        $this->assertStringNotContainsString('Conversion Server #1', $output);
+    }
+
+    public function testConversionShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
     }
 
     public function testConversionShowParsesSerializedTaskTypes(): void
@@ -317,14 +456,38 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('Conversion Statistics', $output);
         $this->assertMatchesRegularExpression('/Total Servers\W+4/', $output);
         $this->assertMatchesRegularExpression('/Active\W+2/', $output);
-        $this->assertMatchesRegularExpression('/Disabled\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Inactive\W+1/', $output);
         $this->assertMatchesRegularExpression('/Initializing\W+1/', $output);
         $this->assertMatchesRegularExpression('/With Errors\W+1/', $output);
         $this->assertStringContainsString('11 concurrent tasks', $output);
         $this->assertMatchesRegularExpression('/Pending\W+1/', $output);
         $this->assertMatchesRegularExpression('/Processing\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Failed\W+1/', $output);
         $this->assertMatchesRegularExpression('/Completed \(history\)\W+3/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConversionStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Servers']['section'] ?? null);
+        $this->assertSame(4, (int) ($rowsByMetric['Total Servers']['value'] ?? 0));
+        $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
+        $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
+        $this->assertSame('task_queue', $rowsByMetric['Pending']['section'] ?? null);
+        $this->assertSame('task_queue', $rowsByMetric['Failed']['section'] ?? null);
+        $this->assertSame(1, (int) ($rowsByMetric['Failed']['value'] ?? 0));
+        $this->assertStringNotContainsString('Conversion Statistics', $this->tester->getDisplay());
     }
 
     public function testConversionCommandMetadata(): void
@@ -407,6 +570,67 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testConversionLogRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
+    }
+
+    public function testConversionLogJsonReportsMissingFileAsStructuredPayload(): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-server-missing-log';
+        $this->insertLocalConversionServer(50, 'Missing Log Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '50',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertSame('50', $rows[0]['server_id']);
+        $this->assertSame('Missing Log Converter', $rows[0]['title']);
+        $this->assertSame($serverPath . '/cron_log.txt', $rows[0]['file']);
+        $this->assertFalse($rows[0]['exists']);
+        $this->assertSame('Log file not found', $rows[0]['message']);
+        $this->assertStringNotContainsString('[WARNING]', $output);
+    }
+
+    public function testConversionLogFallsBackToCurrentInstallConversionPath(): void
+    {
+        $conversionPath = $this->kvsPath . '/admin/data/conversion';
+        mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/cron_log.txt', "INFO  Local conversion cron\n");
+        $this->insertLocalConversionServer(
+            52,
+            'Moved Local Converter',
+            '/old/kvs/root/admin/data/conversion'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '52',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Local conversion cron', $output);
+        $this->assertStringNotContainsString('/old/kvs/root', $output);
+    }
+
     public function testConversionDebugOnMissingId(): void
     {
         $this->tester->execute([
@@ -456,6 +680,71 @@ class ConversionCommandTest extends TestCase
 
         $this->assertStringContainsString('Config viewing only available for Local/Mount servers', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionConfigRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '1abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Server ID', $this->tester->getDisplay());
+    }
+
+    public function testConversionConfigJsonReportsMissingFileAsStructuredPayload(): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-server-missing-config';
+        $this->insertLocalConversionServer(51, 'Missing Config Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '51',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertSame('51', $rows[0]['server_id']);
+        $this->assertSame('Missing Config Converter', $rows[0]['title']);
+        $this->assertSame($serverPath . '/config.properties', $rows[0]['file']);
+        $this->assertFalse($rows[0]['exists']);
+        $this->assertSame('Config file not found', $rows[0]['message']);
+        $this->assertStringNotContainsString('[WARNING]', $output);
+    }
+
+    public function testConversionConfigFallsBackToCurrentInstallConversionPath(): void
+    {
+        $conversionPath = $this->kvsPath . '/admin/data/conversion';
+        mkdir($conversionPath, 0755, true);
+        file_put_contents($conversionPath . '/config.properties', "max.tasks=4\n");
+        file_put_contents($conversionPath . '/heartbeat.dat', serialize(['libraries' => []]));
+        $this->insertLocalConversionServer(
+            53,
+            'Moved Config Converter',
+            '/old/kvs/root/admin/data/conversion'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '53',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame($conversionPath . '/config.properties', $rows[0]['file']);
+        $this->assertSame("max.tasks=4\n", $rows[0]['content']);
+        $this->assertTrue($rows[0]['heartbeat_exists']);
     }
 
     public function testConversionLogMissingId(): void
@@ -520,8 +809,9 @@ class ConversionCommandTest extends TestCase
             'server_id INTEGER, title TEXT, status_id INTEGER, task_types TEXT, is_allow_any_tasks INTEGER, ' .
             'max_tasks INTEGER, max_tasks_priority INTEGER, process_priority INTEGER, option_storage_servers INTEGER, ' .
             'option_pull_source_files INTEGER, is_debug_enabled INTEGER, connection_type_id INTEGER, path TEXT, ' .
-            'ftp_host TEXT, ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, total_space INTEGER, free_space INTEGER, ' .
-            '`load` REAL, heartbeat_date TEXT, api_version TEXT, error_id INTEGER, error_iteration INTEGER, added_date TEXT)'
+            'ftp_host TEXT, ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, ftp_timeout TEXT, total_space INTEGER, ' .
+            'free_space INTEGER, `load` REAL, heartbeat_date TEXT, api_version TEXT, error_id INTEGER, ' .
+            'error_iteration INTEGER, added_date TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('background_tasks') . ' (' .
@@ -536,19 +826,19 @@ class ConversionCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
             ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
             'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
-            'path, ftp_host, ftp_port, ftp_user, ftp_folder, total_space, free_space, `load`, heartbeat_date, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
             'api_version, error_id, error_iteration, added_date) VALUES ' .
             "(1, 'Main Converter', 1, 'a:1:{i:0;s:12:\"video_admins\";}', 0, 4, 1, 9, 1, 0, 0, 0, " .
-            "'/tmp/kvs-main-converter', '', '', '', '', 10737418240, 6442450944, 1.25, " .
+            "'/tmp/kvs-main-converter', '', '', '', '', '', 10737418240, 6442450944, 1.25, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-20 10:00:00'), " .
             "(2, 'Disabled Converter', 0, '', 1, 2, 0, 14, 0, 0, 0, 2, " .
-            "'', 'ftp.example.test', '21', 'ftp-user', '/incoming', 5368709120, 1073741824, 0.10, " .
+            "'', 'ftp.example.test', '21', 'ftp-user', '/incoming', '45', 5368709120, 1073741824, 0.10, " .
             "'0000-00-00 00:00:00', '7.0.0', 0, 0, '2026-05-21 10:00:00'), " .
             "(3, 'Error Converter', 1, '', 1, 4, 0, 4, 1, 1, 1, 0, " .
-            "'/tmp/kvs-error-converter', '', '', '', '', 2147483648, 536870912, 3.50, " .
+            "'/tmp/kvs-error-converter', '', '', '', '', '', 2147483648, 536870912, 3.50, " .
             "'2026-05-26 10:00:00', '7.0.0', 4, 3, '2026-05-22 10:00:00'), " .
             "(4, 'Init Converter', 2, '', 1, 1, 0, 19, 0, 0, 0, 1, " .
-            "'/mnt/kvs-init-converter', '', '', '', '', 1073741824, 536870912, 0.00, " .
+            "'/mnt/kvs-init-converter', '', '', '', '', '', 1073741824, 536870912, 0.00, " .
             "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-23 10:00:00')"
         );
         $db->exec(
@@ -561,6 +851,25 @@ class ConversionCommandTest extends TestCase
         );
 
         return $db;
+    }
+
+    private function insertLocalConversionServer(int $serverId, string $title, string $path): void
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
+            ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
+            'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
+            'api_version, error_id, error_iteration, added_date) VALUES ' .
+            "(:server_id, :title, 1, '', 1, 1, 0, 14, 0, 0, 0, 0, " .
+            ":path, '', '', '', '', '', 1073741824, 536870912, 0.10, " .
+            "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-24 10:00:00')"
+        );
+        $stmt->execute([
+            'server_id' => $serverId,
+            'title' => $title,
+            'path' => $path,
+        ]);
     }
 
     private function createCommand(PDO $db): ConversionCommand

@@ -81,7 +81,8 @@ HELP
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields in table view')
-            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table');
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompt (for delete)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -90,10 +91,10 @@ HELP
 
         return match ($action) {
             'list' => $this->listUsers($input),
-            'show' => $this->showUser($this->getStringArgument($input, 'id')),
+            'show' => $this->showUser($this->getStringArgument($input, 'id'), $input),
             'create' => $this->createUser($input),
             'delete' => $this->deleteUser($this->getStringArgument($input, 'id'), $input),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction('user', $action, ['list', 'show', 'create', 'delete', 'stats']),
         };
     }
@@ -113,7 +114,7 @@ HELP
         // Status filter
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::USER_ACTIVE,
                 'disabled' => StatusFormatter::USER_DISABLED,
                 'premium' => StatusFormatter::USER_PREMIUM,
@@ -123,6 +124,9 @@ HELP
                 'generated' => StatusFormatter::USER_GENERATED,
                 'webmaster' => StatusFormatter::USER_WEBMASTER,
             ], [0, 1, 2, 3, 4, 5, 6]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $whereClause .= " AND u.status_id = :status";
                 $params['status'] = $statusId;
@@ -132,8 +136,9 @@ HELP
         // Search filter
         $search = $this->getStringOption($input, 'search');
         if ($search !== null) {
-            $whereClause .= " AND (u.username LIKE :search OR u.email LIKE :search)";
-            $params['search'] = "%$search%";
+            $whereClause .= " AND (u.username LIKE :search" . $this->likeEscapeSql()
+                . " OR u.email LIKE :search" . $this->likeEscapeSql() . ")";
+            $params['search'] = $this->containsLikePattern($search);
         }
 
         // Removal requested filter
@@ -148,6 +153,9 @@ HELP
 
         try {
             if ($this->getStringOption($input, 'format') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_CONTENT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 $stmt = $db->prepare("SELECT COUNT(*) {$fromClause} {$whereClause}");
                 foreach ($params as $key => $value) {
                     $stmt->bindValue($key, $value);
@@ -164,7 +172,7 @@ HELP
             $query = "SELECT u.*" . ($counterSelects !== [] ? ', ' . implode(', ', $counterSelects) : '') . "
                  {$fromClause}
                  {$whereClause}
-                 ORDER BY u.added_date DESC LIMIT :limit";
+                 ORDER BY u.user_id DESC LIMIT :limit";
 
             $stmt = $db->prepare($query);
             foreach ($params as $key => $value) {
@@ -179,13 +187,19 @@ HELP
 
             /** @var list<array<string, mixed>> $users */
             $users = $stmt->fetchAll();
-            $users = array_map(function (array $user): array {
+            $users = array_map(function (array $user) use ($db): array {
                 $statusId = $this->getInt($user['status_id'] ?? null);
                 $user['id'] = $user['user_id'] ?? 0;
                 $user['status'] = StatusFormatter::user($statusId, false);
                 $user['gender'] = $this->formatGender($this->getInt($user['gender_id'] ?? null));
+                if (array_key_exists('ip', $user)) {
+                    $user['ip'] = $this->formatKvsIp($user['ip']);
+                }
+                $avatar = $user['avatar'] ?? '';
+                $avatar = is_scalar($avatar) ? (string) $avatar : '';
+                $user['thumb'] = $avatar;
 
-                return $user;
+                return $this->hydrateUserListAppendFields($db, $user);
             }, $users);
 
             // Determine default fields based on filters
@@ -266,6 +280,12 @@ HELP
                 $this->table('playlists')
             );
         }
+        if (in_array('public_playlists_count', $requestedFields, true)) {
+            $selects[] = sprintf(
+                '(SELECT COUNT(*) FROM %s p WHERE p.user_id = u.user_id AND p.is_private = 0) as public_playlists_count',
+                $this->table('playlists')
+            );
+        }
         if (in_array('comments_count', $requestedFields, true)) {
             $selects[] = sprintf(
                 '(SELECT COUNT(*) FROM %s c WHERE c.user_id = u.user_id) as comments_count',
@@ -280,6 +300,63 @@ HELP
         }
 
         return $selects;
+    }
+
+    /**
+     * Hydrate append-only fields used by KVS admin users grid.
+     *
+     * @param array<string, mixed> $user
+     * @return array<string, mixed>
+     */
+    private function hydrateUserListAppendFields(\PDO $db, array $user): array
+    {
+        $user['days_left_message'] = '';
+        if ($this->getInt($user['status_id'] ?? null) !== StatusFormatter::USER_PREMIUM) {
+            return $user;
+        }
+
+        $userId = $this->getInt($user['user_id'] ?? null);
+        if ($userId <= 0) {
+            return $user;
+        }
+
+        try {
+            $stmt = $db->prepare("
+                SELECT status_id, access_end_date, duration_rebill, is_unlimited_access
+                FROM {$this->table('bill_transactions')}
+                WHERE status_id IN (1, 4) AND user_id = :user_id
+                ORDER BY transaction_id DESC
+                LIMIT 1
+            ");
+            $stmt->execute(['user_id' => $userId]);
+            $transaction = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (\Throwable) {
+            return $user;
+        }
+
+        if (!is_array($transaction)) {
+            return $user;
+        }
+
+        if ($this->getInt($transaction['is_unlimited_access'] ?? null) === 1) {
+            $message = "\u{221E}";
+        } elseif ($this->getInt($transaction['status_id'] ?? null) === 4) {
+            $message = $this->getInt($transaction['duration_rebill'] ?? null) . ' days';
+        } else {
+            $accessEndDate = $this->getStr($transaction['access_end_date'] ?? null);
+            $accessEndTimestamp = strtotime($accessEndDate);
+            $daysLeft = $accessEndTimestamp !== false
+                ? (int) round(($accessEndTimestamp - time()) / 86400)
+                : 0;
+            $message = $daysLeft . ' days';
+        }
+
+        if ($this->getInt($user['is_trial'] ?? null) === 1) {
+            $message .= ', trial';
+        }
+
+        $user['days_left_message'] = $message;
+        return $user;
     }
 
     /**
@@ -325,7 +402,7 @@ HELP
         };
     }
 
-    private function showUser(?string $id): int
+    private function showUser(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('User ID or username is required');
@@ -338,11 +415,7 @@ HELP
         }
 
         try {
-            $query = "SELECT * FROM {$this->table('users')} WHERE user_id = :id OR username = :id";
-            $stmt = $db->prepare($query);
-            $stmt->execute(['id' => $id]);
-            /** @var array<string, mixed>|false $user */
-            $user = $stmt->fetch();
+            $user = $this->fetchUserByIdOrUsername($db, $id);
 
             if ($user === false) {
                 $this->io()->error("User not found: $id");
@@ -352,12 +425,10 @@ HELP
             $userId = $this->getInt($user['user_id'] ?? null);
             $username = $this->getStr($user['username'] ?? null);
 
-            $this->io()->section("User: {$username}");
-
             $displayName = $this->getStr($user['display_name'] ?? null);
             $countryCode = $this->getStr($user['country_id'] ?? null);
             $birthDate = $this->getStr($user['birth_date'] ?? null);
-            $ip = $this->getStr($user['ip'] ?? null);
+            $ip = array_key_exists('ip', $user) ? $this->formatKvsIp($user['ip']) : '';
 
             $info = [
                 ['User ID', (string) $userId],
@@ -373,6 +444,23 @@ HELP
                 ['IP', $ip !== '' ? $ip : 'N/A'],
             ];
 
+            if (!$this->isTableFormat($input)) {
+                $contentStats = $this->getUserContentStats(
+                    $db,
+                    $userId,
+                    $this->getInt($user['profile_viewed'] ?? null)
+                );
+
+                return $this->displayDetailRows($input, $info, [
+                    ...$contentStats,
+                    'logins_count' => $this->getInt($user['logins_count'] ?? null),
+                    'activity_score' => $this->getInt($user['activity'] ?? null),
+                    'tokens_available' => $this->getInt($user['tokens_available'] ?? null),
+                    'tokens_required' => $this->getInt($user['tokens_required'] ?? null),
+                ]);
+            }
+
+            $this->io()->section("User: {$username}");
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->displayUserContentStats($db, $userId, $this->getInt($user['profile_viewed'] ?? null));
@@ -386,25 +474,40 @@ HELP
         return self::SUCCESS;
     }
 
-    private function displayUserContentStats(\PDO $db, int $userId, int $profileViewed): void
+    /**
+     * @return array{videos_uploaded: int, albums_created: int, comments_posted: int, profile_views: int}
+     */
+    private function getUserContentStats(\PDO $db, int $userId, int $profileViewed): array
     {
         $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('videos')} WHERE user_id = :id");
         $stmt->execute(['id' => $userId]);
-        $videoCount = $stmt->fetchColumn();
+        $videoCount = (int) $stmt->fetchColumn();
 
         $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('albums')} WHERE user_id = :id");
         $stmt->execute(['id' => $userId]);
-        $albumCount = $stmt->fetchColumn();
+        $albumCount = (int) $stmt->fetchColumn();
 
         $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} WHERE user_id = :id");
         $stmt->execute(['id' => $userId]);
-        $commentCount = $stmt->fetchColumn();
+        $commentCount = (int) $stmt->fetchColumn();
+
+        return [
+            'videos_uploaded' => $videoCount,
+            'albums_created' => $albumCount,
+            'comments_posted' => $commentCount,
+            'profile_views' => $profileViewed,
+        ];
+    }
+
+    private function displayUserContentStats(\PDO $db, int $userId, int $profileViewed): void
+    {
+        $contentStats = $this->getUserContentStats($db, $userId, $profileViewed);
 
         $this->io()->section('Content Statistics');
         $stats = [
-            ['Videos Uploaded', (string) $videoCount],
-            ['Albums Created', (string) $albumCount],
-            ['Comments Posted', (string) $commentCount],
+            ['Videos Uploaded', (string) $contentStats['videos_uploaded']],
+            ['Albums Created', (string) $contentStats['albums_created']],
+            ['Comments Posted', (string) $contentStats['comments_posted']],
             ['Profile Views', number_format($profileViewed)],
         ];
         $this->renderTable(['Metric', 'Count'], $stats);
@@ -514,29 +617,13 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will delete user using KVS native cleanup: $id");
-        $this->io()->warning('Associated videos and albums will be queued for KVS background deletion.');
-
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
-            if (!$input->isInteractive()) {
-                $this->io()->error('User deletion cancelled because confirmation was not provided.');
-                return self::FAILURE;
-            }
-
-            $this->io()->warning('User deletion cancelled');
-            return self::SUCCESS;
-        }
-
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
         }
 
         try {
-            $stmt = $db->prepare("SELECT user_id, username, status_id FROM {$this->table('users')} WHERE user_id = :id OR username = :id");
-            $stmt->execute(['id' => $id]);
-            /** @var array<string, mixed>|false $user */
-            $user = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $user = $this->fetchUserByIdOrUsername($db, $id);
 
             if ($user === false) {
                 $this->io()->error("User not found: $id");
@@ -555,6 +642,25 @@ HELP
                 return self::FAILURE;
             }
 
+            $username = $user['username'] ?? $id;
+            $username = is_scalar($username) ? (string) $username : $id;
+
+            $this->io()->warning("This will delete user using KVS native cleanup: {$username} ({$userId})");
+            $this->io()->warning('Associated videos and albums will be queued for KVS background deletion.');
+
+            if (
+                !$this->getBoolOption($input, 'yes')
+                && $this->io()->confirm('Do you want to continue?', false) !== true
+            ) {
+                if (!$input->isInteractive()) {
+                    $this->io()->error('User deletion cancelled because confirmation was not provided.');
+                    return self::FAILURE;
+                }
+
+                $this->io()->warning('User deletion cancelled');
+                return self::SUCCESS;
+            }
+
             $this->deleteUsersWithKvs([$userId]);
 
             $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE user_id = :id");
@@ -564,8 +670,6 @@ HELP
                 return self::FAILURE;
             }
 
-            $username = $user['username'] ?? $id;
-            $username = is_scalar($username) ? (string) $username : $id;
             $this->io()->success("User deleted with KVS cleanup: {$username} ({$userId})");
         } catch (\Exception $e) {
             $this->io()->error('Failed to delete user: ' . $e->getMessage());
@@ -573,6 +677,42 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function fetchUserByIdOrUsername(\PDO $db, string $idOrUsername): array|false
+    {
+        if (preg_match('/^[1-9]\d*$/', $idOrUsername) === 1) {
+            $stmt = $db->prepare("SELECT * FROM {$this->table('users')} WHERE user_id = :id");
+            $stmt->execute(['id' => (int) $idOrUsername]);
+            return $this->fetchAssocRow($stmt);
+        }
+
+        $stmt = $db->prepare("SELECT * FROM {$this->table('users')} WHERE username = :username");
+        $stmt->execute(['username' => $idOrUsername]);
+        return $this->fetchAssocRow($stmt);
+    }
+
+    /**
+     * @return array<string, mixed>|false
+     */
+    private function fetchAssocRow(\PDOStatement $stmt): array|false
+    {
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!is_array($row)) {
+            return false;
+        }
+
+        $assoc = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $assoc[$key] = $value;
+            }
+        }
+
+        return $assoc;
     }
 
     /**
@@ -597,7 +737,7 @@ HELP
         return 'delete_users';
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -606,15 +746,22 @@ HELP
 
         try {
             $stats = [];
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
+            $todayStart = date('Y-m-d 00:00:00');
+            $tomorrowStart = date('Y-m-d 00:00:00', strtotime('+1 day'));
+            $monthStart = date('Y-m-01 00:00:00');
+            $nextMonthStart = date('Y-m-01 00:00:00', strtotime('first day of next month'));
 
             $queries = [
                 'Total Users' => "SELECT COUNT(*) FROM {$this->table('users')}",
                 'Active Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_ACTIVE,
                 'Premium Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_PREMIUM,
-                'Disabled Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_DISABLED,
-                'Users Today' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE DATE(added_date) = CURDATE()",
+                'Inactive Users' => "SELECT COUNT(*) FROM {$this->table('users')} WHERE status_id = " . StatusFormatter::USER_DISABLED,
+                'Users Today' => "SELECT COUNT(*) FROM {$this->table('users')} "
+                    . "WHERE added_date >= '{$todayStart}' AND added_date < '{$tomorrowStart}'",
                 'Users This Month' => "SELECT COUNT(*) FROM {$this->table('users')} "
-                    . "WHERE MONTH(added_date) = MONTH(NOW()) AND YEAR(added_date) = YEAR(NOW())",
+                    . "WHERE added_date >= '{$monthStart}' AND added_date < '{$nextMonthStart}'",
             ];
 
             foreach ($queries as $label => $query) {
@@ -625,9 +772,8 @@ HELP
                 $value = $result->fetchColumn();
                 $intValue = is_numeric($value) ? (int) $value : 0;
                 $stats[] = [$label, number_format($intValue)];
+                $metricRows[] = $this->metricRow('overall', $label, $intValue, number_format($intValue));
             }
-
-            $this->renderTable(['Metric', 'Count'], $stats);
 
             $stmt = $db->query("
                 SELECT u.username, u.added_date,
@@ -644,19 +790,37 @@ HELP
             /** @var list<array<string, mixed>> $recentUsers */
             $recentUsers = $stmt->fetchAll();
 
+            /** @var list<list<string>> $recentRows */
+            $recentRows = [];
             if ($recentUsers !== []) {
-                $this->io()->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
-                $rows = [];
-                foreach ($recentUsers as $user) {
+                foreach ($recentUsers as $i => $user) {
                     $username = is_string($user['username'] ?? null) ? $user['username'] : '';
                     $videos = is_numeric($user['videos'] ?? null) ? (string) $user['videos'] : '0';
                     $albums = is_numeric($user['albums'] ?? null) ? (string) $user['albums'] : '0';
                     $addedDate = is_string($user['added_date'] ?? null) ? $user['added_date'] : '';
                     $timestamp = $addedDate !== '' ? strtotime($addedDate) : false;
                     $dateStr = $timestamp !== false ? date('Y-m-d', $timestamp) : 'Unknown';
-                    $rows[] = [$username, $videos, $albums, $dateStr];
+                    $metricRows[] = $this->metricRow(
+                        'recent_users',
+                        (string) ($i + 1),
+                        $dateStr,
+                        $dateStr,
+                        $username
+                    );
+                    $recentRows[] = [$username, $videos, $albums, $dateStr];
                 }
-                $this->renderTable(['Username', 'Videos', 'Albums', 'Joined'], $rows);
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->renderTable(['Metric', 'Count'], $stats);
+
+            if ($recentRows !== []) {
+                $this->io()->section(Constants::TOP_QUERY_LIMIT . ' Most Recent Users');
+                $this->renderTable(['Username', 'Videos', 'Albums', 'Joined'], $recentRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch statistics: ' . $e->getMessage());

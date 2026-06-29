@@ -36,6 +36,7 @@ The <info>shell</info> command starts an interactive PHP shell (REPL) with the K
   $config    - KVS CMS config array
   $kvsConfig - KVS CLI configuration object
   $db        - Database connection
+  $kvs_db    - KVS-style mysqli connection
   sql()      - KVS native SQL helper
   DB::       - Database helper class
   Video::    - Video model
@@ -89,6 +90,7 @@ HELP
         // Initialize database connections if available
         if ($db !== null) {
             $GLOBALS['kvs_db'] = $db;
+            $kvs_db = $db;
             if (class_exists('\\Model')) {
                 \Model::setDb($db);
             }
@@ -183,6 +185,7 @@ PHP;
         $db = $this->getMysqliConnection(true);
         if ($db !== null) {
             $vars['db'] = $db;
+            $vars['kvs_db'] = $db;
         }
 
         return $vars;
@@ -200,6 +203,7 @@ Variables:
   \$config    - KVS CMS config array
   \$kvsConfig - KVS CLI configuration object
   \$db        - Database connection
+  \$kvs_db    - KVS-style mysqli connection
 
 Classes:
   Video, User, Album, Category, Tag, DVD

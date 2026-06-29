@@ -115,6 +115,30 @@ class ShellCommandTest extends TestCase
         $this->assertArrayHasKey('kvsConfig', $variables);
         $this->assertSame($this->config, $variables['kvsConfig']);
         $this->assertArrayNotHasKey('db', $variables);
+        $this->assertArrayNotHasKey('kvs_db', $variables);
+    }
+
+    public function testShellVariablesExposeKvsDbAliasWithMysqliConnection(): void
+    {
+        $mysqli = $this->createMock(\mysqli::class);
+        $command = new class ($this->config, $mysqli) extends ShellCommand {
+            public function __construct(Configuration $config, private \mysqli $mysqli)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                return $this->mysqli;
+            }
+        };
+
+        $reflection = new \ReflectionClass(ShellCommand::class);
+        $method = $reflection->getMethod('getShellVariables');
+        $variables = $method->invoke($command);
+
+        $this->assertSame($mysqli, $variables['db']);
+        $this->assertSame($mysqli, $variables['kvs_db']);
     }
 
     public function testShellRequiresPsySH(): void

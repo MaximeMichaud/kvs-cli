@@ -37,6 +37,7 @@ class QueueEmptyFormatTest extends TestCase
             type_id INTEGER,
             video_id INTEGER,
             album_id INTEGER,
+            server_id INTEGER,
             effective_duration INTEGER,
             end_date TEXT
         )');

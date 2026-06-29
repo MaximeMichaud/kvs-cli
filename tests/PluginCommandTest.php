@@ -52,6 +52,27 @@ class PluginCommandTest extends TestCase
             'Track internal statistics.',
             true
         );
+        $this->createPluginFixture(
+            'digiregs',
+            'DigiRegs',
+            'Kernel Team',
+            '1.5',
+            '6.0.0',
+            'api,process_object',
+            'DigiRegs',
+            'Validate content records.'
+        );
+        $this->createGuardedPluginFixture();
+        $this->createPluginFixture(
+            'awe_black_label',
+            'AWE Red Label',
+            'Kernel Team',
+            'del',
+            '6.0.0',
+            'manual',
+            'AWE Red Label',
+            'Deleted internal plugin.'
+        );
 
         $this->config = new Configuration([
             'path' => $this->tempDir,
@@ -125,6 +146,8 @@ class PluginCommandTest extends TestCase
         // Verify type values
         $this->assertStringContainsString('manual', $help);
         $this->assertStringContainsString('cron', $help);
+        $this->assertStringContainsString('api', $help);
+        $this->assertStringContainsString('process_object', $help);
 
         // Verify examples exist
         $this->assertStringContainsString('EXAMPLES', $help);
@@ -240,6 +263,38 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Name', $output);
     }
 
+    public function testListWithTypeApi(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--type' => 'api',
+            '--format' => 'json',
+            '--fields' => 'id,types',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertContains('digiregs', $ids);
+    }
+
+    public function testListWithTypeProcessObject(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--type' => 'process_object',
+            '--format' => 'json',
+            '--fields' => 'id,types',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertContains('digiregs', $ids);
+    }
+
     public function testListWithFields(): void
     {
         $exitCode = $this->tester->execute([
@@ -294,6 +349,38 @@ class PluginCommandTest extends TestCase
         $this->assertGreaterThan(0, (int)$count, 'Should have at least 1 plugin');
     }
 
+    public function testListDoesNotExecutePluginPhpFiles(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'id,status',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertContains('guarded_plugin', $ids);
+        $this->assertStringNotContainsString('Access denied', $output);
+    }
+
+    public function testListSkipsPluginsHiddenByKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'id',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $ids = array_column($rows, 'id');
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertNotContains('awe_black_label', $ids);
+    }
+
     // ========================================
     // SHOW COMMAND TESTS (3 tests)
     // ========================================
@@ -327,6 +414,43 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Main file:', $output);
         $this->assertStringContainsString('Template:', $output);
         $this->assertStringContainsString('Metadata:', $output);
+    }
+
+    public function testShowExistingPluginSupportsJsonFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertSame('Backup', $rows[0]['name'] ?? null);
+        $this->assertSame('Kernel Team', $rows[0]['author'] ?? null);
+        $this->assertStringContainsString('/admin/plugins/backup', $rows[0]['path'] ?? '');
+        $this->assertStringNotContainsString('Plugin:', $output);
+    }
+
+    public function testShowUsesDataFileForDynamicEnabledStatus(): void
+    {
+        $this->createDataBackedPluginFixture('dynamic_status', true);
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'dynamic_status',
+            '--format' => 'json',
+            '--fields' => 'id,status',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('dynamic_status', $rows[0]['id'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
     }
 
     public function testShowWithoutId(): void
@@ -370,6 +494,23 @@ class PluginCommandTest extends TestCase
         $path = trim($output);
         $this->assertStringContainsString('/admin/plugins/backup', $path);
         $this->assertDirectoryExists($path, 'Plugin directory should exist');
+    }
+
+    public function testPathForExistingPluginSupportsJsonFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'path',
+            'id' => 'backup',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode);
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertStringContainsString('/admin/plugins/backup', $rows[0]['path'] ?? '');
+        $this->assertStringNotContainsString('Plugin directory:', $output);
     }
 
     public function testPathWithoutId(): void
@@ -426,6 +567,36 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('By Type', $output);
         $this->assertStringContainsString('Type', $output);
         $this->assertStringContainsString('Count', $output);
+    }
+
+    public function testStatusSupportsJsonFormat(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'status',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Plugins']['section'] ?? null);
+        $this->assertSame(4, (int) ($rowsByMetric['Total Plugins']['value'] ?? 0));
+        $this->assertStringNotContainsString('Plugin Statistics', $this->tester->getDisplay());
+    }
+
+    public function testTypeFilterIsValidatedBeforeStatusFilterCanEmptyResults(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'inactive',
+            '--type' => 'cron',
+            '--format' => 'count',
+        ]);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame("0\n", $this->tester->getDisplay());
     }
 
     // ========================================
@@ -727,15 +898,18 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Unknown plugin action "invalid_action"', $output);
     }
 
-    public function testInvalidFormatThrowsException(): void
+    public function testInvalidFormatReturnsCleanCliError(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid format: invalid_format');
-
-        $this->tester->execute([
+        $exitCode = $this->tester->execute([
             'action' => 'list',
             '--format' => 'invalid_format'
         ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $exitCode);
+        $this->assertStringContainsString('Invalid value for --format "invalid_format"', $output);
+        $this->assertStringNotContainsString('Formatter.php line', $output);
     }
 
     private function createPluginFixture(
@@ -765,10 +939,8 @@ class PluginCommandTest extends TestCase
 XML
         );
 
-        $enabledFunction = '';
-        if ($disabled) {
-            $enabledFunction = "\nfunction {$id}IsEnabled(): bool\n{\n    return false;\n}\n";
-        }
+        $enabledFunctionValue = $disabled ? 'false' : 'true';
+        $enabledFunction = "\nfunction {$id}IsEnabled(): bool\n{\n    return {$enabledFunctionValue};\n}\n";
 
         file_put_contents(
             $pluginDir . '/' . $id . '.php',
@@ -781,6 +953,94 @@ XML
 <?php
 \$lang['plugins']['{$id}']['title'] = '{$title}';
 \$lang['plugins']['{$id}']['description'] = '{$description}';
+
+PHP
+        );
+    }
+
+    private function createGuardedPluginFixture(): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/guarded_plugin';
+        mkdir($pluginDir . '/langs', 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/guarded_plugin.dat',
+            <<<XML
+<plugin>
+    <plugin_name>Guarded Plugin</plugin_name>
+    <author>Test</author>
+    <version>1.0.0</version>
+    <kvs_version>6.0.0</kvs_version>
+    <plugin_types>manual</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/guarded_plugin.php',
+            "<?php\nif (!defined('KVS_ADMIN')) {\n    exit('Access denied');\n}\nfunction guarded_pluginShow(): void\n{\n}\n"
+        );
+        file_put_contents($pluginDir . '/guarded_plugin.tpl', '');
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['guarded_plugin']['title'] = 'Guarded plugin';
+\$lang['plugins']['guarded_plugin']['description'] = 'Should not be executed by CLI list.';
+
+PHP
+        );
+    }
+
+    private function createDataBackedPluginFixture(string $id, bool $enabled): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/' . $id;
+        $dataDir = $this->tempDir . '/admin/data/plugins/' . $id;
+        mkdir($pluginDir . '/langs', 0755, true);
+        mkdir($dataDir, 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.dat',
+            <<<XML
+<plugin>
+    <plugin_name>Dynamic Status</plugin_name>
+    <author>Test</author>
+    <version>1.0.0</version>
+    <kvs_version>6.0.0</kvs_version>
+    <plugin_types>manual,cron</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.php',
+            <<<PHP
+<?php
+function {$id}Show(): void
+{
+}
+
+function {$id}LoadConfig(): array
+{
+    return [];
+}
+
+function {$id}IsEnabled(): bool
+{
+    \$data = {$id}LoadConfig();
+    return intval(\$data['is_enabled']) == 1;
+}
+
+PHP
+        );
+        file_put_contents($pluginDir . '/' . $id . '.tpl', '');
+        file_put_contents($dataDir . '/data.dat', serialize(['is_enabled' => $enabled ? 1 : 0]));
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['{$id}']['title'] = 'Dynamic Status';
+\$lang['plugins']['{$id}']['description'] = 'Uses data.dat to determine enabled status.';
 
 PHP
         );

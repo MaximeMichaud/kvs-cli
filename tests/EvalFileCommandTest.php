@@ -124,6 +124,28 @@ class EvalFileCommandTest extends TestCase
         $this->assertEquals(0, $tester->getStatusCode());
     }
 
+    public function testEvalFileExposesKvsDbVariableForKvsSnippets(): void
+    {
+        $testFile = $this->tempDir . '/test_kvs_db_context.php';
+        file_put_contents(
+            $testFile,
+            '<?php echo array_key_exists("kvs_db", get_defined_vars()) ? "has-kvs-db" : "missing-kvs-db";'
+        );
+
+        $command = new class ($this->config) extends EvalFileCommand {
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute(['file' => $testFile]);
+
+        $this->assertStringContainsString('has-kvs-db', $tester->getDisplay());
+        $this->assertEquals(0, $tester->getStatusCode());
+    }
+
     public function testEvalFileNotFound(): void
     {
         $this->tester->execute(['file' => '/nonexistent/file.php']);

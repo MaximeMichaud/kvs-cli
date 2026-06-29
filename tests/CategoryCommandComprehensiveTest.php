@@ -99,7 +99,7 @@ class CategoryCommandComprehensiveTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertEquals(1, $exitCode);
-        $this->assertStringContainsString('Category ID is required', $output);
+        $this->assertStringContainsString('Category ID or title is required', $output);
     }
 
     public function testShowNonExistent(): void
@@ -363,9 +363,12 @@ class CategoryCommandComprehensiveTest extends TestCase
 
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Category: Action', $output);
+        $this->assertMatchesRegularExpression('/Group\W+Genres \(#2\)/', $output);
         $this->assertStringContainsString('High energy scenes', $output);
         $this->assertMatchesRegularExpression('/Videos\W+2/', $output);
         $this->assertMatchesRegularExpression('/Albums\W+1/', $output);
+        $this->assertMatchesRegularExpression('/Posts\W+2/', $output);
+        $this->assertMatchesRegularExpression('/Total Usage\W+5/', $output);
     }
 
     public function testTreeShowsHierarchy(): void
@@ -501,6 +504,10 @@ class CategoryCommandComprehensiveTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories_albums') .
             ' (category_id, album_id) VALUES (10, 300)'
+        );
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('categories_posts') .
+            ' (category_id, post_id) VALUES (10, 400), (10, 401)'
         );
 
         return $db;

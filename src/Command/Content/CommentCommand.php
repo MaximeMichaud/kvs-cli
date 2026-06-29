@@ -80,7 +80,7 @@ HELP
             ->addArgument('id', InputArgument::OPTIONAL, 'Comment ID(s) - comma-separated for batch')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Filter by video ID')
             ->addOption('album', null, InputOption::VALUE_REQUIRED, 'Filter by album ID')
-            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID')
+            ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID, username, or anonymous name')
             ->addOption(
                 'limit',
                 null,
@@ -88,7 +88,7 @@ HELP
                 'Number of results to show',
                 Constants::DEFAULT_COMMENT_LIMIT
             )
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in comment text')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in comment text and usernames')
             ->addOption('oldest', null, InputOption::VALUE_NONE, 'Show oldest first (default: recent)')
             ->addOption('approved', null, InputOption::VALUE_NONE, 'Show only approved comments')
             ->addOption('pending', null, InputOption::VALUE_NONE, 'Show only pending comments')
@@ -102,22 +102,27 @@ HELP
                 'table'
             )
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable text truncation')
-            ->addOption('all', null, InputOption::VALUE_NONE, 'Apply to all pending comments');
+            ->addOption('all', null, InputOption::VALUE_NONE, 'Apply to all pending comments')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompt');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        if ($this->hasConflictingBoolOptions($input, ['approved', 'pending'])) {
+            return self::FAILURE;
+        }
+
         $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
             'list' => $this->listComments($input),
             'pending' => $this->listPendingComments($input),
-            'show' => $this->showComment($id),
+            'show' => $this->showComment($id, $input),
             'approve' => $this->approveComments($input, $id),
             'reject' => $this->rejectComments($input, $id, 'reject'),
             'delete' => $this->rejectComments($input, $id, 'delete'),
-            'stats' => $this->showStats(),
+            'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'comment',
                 $action,
@@ -126,7 +131,7 @@ HELP
         };
     }
 
-    private function getCommentObjectSelectSql(): string
+    private function getCommentObjectSelectSql(InputInterface $input): string
     {
         $titleCases = [
             Constants::OBJECT_TYPE_VIDEO => ['videos', 'video_id'],
@@ -149,6 +154,7 @@ HELP
         ];
 
         $titleSql = [];
+        $dirSql = [];
         foreach ($titleCases as $typeId => [$table, $idColumn]) {
             $titleSql[] = sprintf(
                 'WHEN %d THEN (SELECT title FROM %s WHERE %s = c.object_id)',
@@ -156,11 +162,41 @@ HELP
                 $this->table($table),
                 $idColumn
             );
+            if ($this->isCommentFieldRequested($input, 'object_dir')) {
+                $dirSql[] = sprintf(
+                    'WHEN %d THEN (SELECT dir FROM %s WHERE %s = c.object_id)',
+                    $typeId,
+                    $this->table($table),
+                    $idColumn
+                );
+            }
         }
 
         $typeSql = [];
         foreach ($typeNames as $typeId => $label) {
             $typeSql[] = sprintf("WHEN %d THEN '%s'", $typeId, $label);
+        }
+
+        $objectDirSql = "'' as object_dir";
+        if ($dirSql !== []) {
+            $objectDirSql = "
+                       CASE c.object_type_id
+                           " . implode("\n                           ", $dirSql) . "
+                           ELSE ''
+                       END as object_dir";
+        }
+
+        $postTypeSql = '0 as post_type_id';
+        if ($this->isCommentFieldRequested($input, 'post_type_id')) {
+            $postTypeSql = "
+                       CASE c.object_type_id
+                           WHEN " . Constants::OBJECT_TYPE_POST . " THEN (
+                               SELECT post_type_id
+                               FROM {$this->table('posts')}
+                               WHERE post_id = c.object_id
+                           )
+                           ELSE 0
+                       END as post_type_id";
         }
 
         return "
@@ -171,7 +207,9 @@ HELP
                        CASE c.object_type_id
                            " . implode("\n                           ", $typeSql) . "
                            ELSE 'Unknown'
-                       END as object_type";
+                       END as object_type,
+                       $objectDirSql,
+                       $postTypeSql";
     }
 
     private function isCommentFieldRequested(InputInterface $input, string $field): bool
@@ -190,6 +228,21 @@ HELP
         return in_array($field, $fields, true);
     }
 
+    /**
+     * @param array<array-key, mixed> $comment
+     */
+    private function getCommentUsername(array $comment, string $fallback = 'Guest'): string
+    {
+        foreach (['username', 'anonymous_username'] as $field) {
+            $value = $comment[$field] ?? null;
+            if (is_scalar($value) && (string) $value !== '') {
+                return (string) $value;
+            }
+        }
+
+        return $fallback;
+    }
+
     private function listComments(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
@@ -201,32 +254,20 @@ HELP
             $conditions = ['1=1'];
             $params = [];
 
-            // Video filter
-            $videoId = $this->getStringOption($input, 'video');
-            if ($videoId !== null) {
-                $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
-                $params['video_id'] = $videoId;
-            }
-
-            // Album filter
-            $albumId = $this->getStringOption($input, 'album');
-            if ($albumId !== null) {
-                $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
-                $params['album_id'] = $albumId;
-            }
-
-            // User filter
-            $userId = $this->getStringOption($input, 'user');
-            if ($userId !== null) {
-                $conditions[] = 'c.user_id = :user_id';
-                $params['user_id'] = $userId;
+            if (!$this->applyCommentReferenceFilters($db, $input, $conditions, $params)) {
+                return self::FAILURE;
             }
 
             // Search filter
             $search = $this->getStringOption($input, 'search');
+            $countJoinSql = '';
             if ($search !== null) {
-                $conditions[] = 'c.comment LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $searchEscape = $this->likeEscapeSql();
+                $conditions[] = '(c.comment LIKE :search' . $searchEscape
+                    . ' OR c.anonymous_username LIKE :search' . $searchEscape
+                    . ' OR u.username LIKE :search' . $searchEscape . ')';
+                $params['search'] = $this->containsLikePattern($search);
+                $countJoinSql = "LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id";
             }
 
             // Approval status filters
@@ -237,8 +278,7 @@ HELP
             }
 
             $whereClause = implode(' AND ', $conditions);
-            // Default: most recent first (DESC), unless --oldest is specified
-            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
+            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.comment_id DESC';
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_COMMENT_LIMIT);
             if ($limit === null) {
                 return self::FAILURE;
@@ -248,6 +288,7 @@ HELP
                 $countSql = "
                     SELECT COUNT(*)
                     FROM {$this->table('comments')} c
+                    $countJoinSql
                     WHERE $whereClause
                 ";
 
@@ -269,11 +310,14 @@ HELP
                 LEFT JOIN {$this->table('list_countries')} lc
                     ON c.country_code = lc.country_code AND lc.language_code = 'en'";
             }
+            $userStatusSelect = $this->isCommentFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
 
             $sql = "
                 SELECT c.*,
-                       u.username,
-                       {$this->getCommentObjectSelectSql()}
+                       u.username$userStatusSelect,
+                       {$this->getCommentObjectSelectSql($input)}
                        $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
@@ -295,20 +339,19 @@ HELP
 
             // Transform comments to use standardized field names
             $transformedComments = array_map(function (array $comment): array {
-                $username = $comment['username'] ?? null;
-                if (!is_scalar($username) || (string) $username === '') {
-                    $username = $comment['anonymous_username'] ?? '';
-                }
-
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
-                    'username' => $username,
+                    'username' => $this->getCommentUsername($comment, ''),
+                    'user_status_id' => $comment['user_status_id'] ?? '',
                     'object_id' => $comment['object_id'] ?? 0,
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
+                    'object_dir' => $comment['object_dir'] ?? '',
+                    'post_type_id' => $comment['post_type_id'] ?? 0,
                     'comment' => $comment['comment'] ?? '',
                     'comment_full' => $comment['comment'] ?? '',
+                    'ip' => array_key_exists('ip', $comment) ? $this->formatKvsIp($comment['ip']) : '',
                     'country' => $comment['country'] ?? '',
                     'rating' => $comment['rating'] ?? 0,
                     'is_approved' => $comment['is_approved'] ?? 0,
@@ -330,11 +373,72 @@ HELP
         }
     }
 
-    private function showComment(?string $id): int
+    /**
+     * @param list<string> $conditions
+     * @param array<string, int|string> $params
+     */
+    private function applyCommentReferenceFilters(
+        \PDO $db,
+        InputInterface $input,
+        array &$conditions,
+        array &$params
+    ): bool {
+        $videoId = $this->getOptionalNonNegativeIntOption($input, 'video');
+        if ($videoId === false) {
+            return false;
+        }
+        if ($videoId !== null) {
+            $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
+            $params['video_id'] = $videoId;
+        }
+
+        $albumId = $this->getOptionalNonNegativeIntOption($input, 'album');
+        if ($albumId === false) {
+            return false;
+        }
+        if ($albumId !== null) {
+            $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
+            $params['album_id'] = $albumId;
+        }
+
+        $user = $this->getStringOption($input, 'user');
+        if ($user !== null) {
+            $user = trim($user);
+            if ($user === '') {
+                $this->io()->error('Invalid value for --user (use: integer >= 0 or username)');
+                return false;
+            }
+            if (preg_match('/^\d+$/', $user) === 1) {
+                $conditions[] = 'c.user_id = :user_id';
+                $params['user_id'] = (int) $user;
+            } elseif (preg_match('/^-?\d+(?:\.\d+)?$/', $user) === 1) {
+                $this->io()->error('Invalid value for --user (use: integer >= 0 or username)');
+                return false;
+            } else {
+                $userId = $this->findReferenceIdByText($db, 'users', 'user_id', 'username', $user);
+                if ($userId !== null) {
+                    $conditions[] = 'c.user_id = :user_id';
+                    $params['user_id'] = $userId;
+                } else {
+                    $conditions[] = 'c.anonymous_username = :anonymous_username';
+                    $params['anonymous_username'] = $user;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private function showComment(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Comment ID is required');
             $this->io()->text('Usage: kvs content:comment show <comment_id>');
+            return self::FAILURE;
+        }
+
+        $commentId = $this->getRequiredPositiveId($id, 'Comment');
+        if ($commentId === null) {
             return self::FAILURE;
         }
 
@@ -348,28 +452,27 @@ HELP
                 SELECT c.*,
                        u.username,
                        u.email,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id = :id
             ");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $commentId]);
             $comment = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($comment)) {
-                $this->io()->error("Comment not found: $id");
+                $this->io()->error("Comment not found: $commentId");
                 return self::FAILURE;
             }
 
-            $this->io()->title("Comment #$id");
-
-            $approvalStatus = (bool)($comment['is_approved'] ?? 0)
-                ? '<fg=green>Approved</>'
-                : '<fg=yellow>Pending</>';
+            $approvalStatus = $this->formatCommentStatus(
+                $comment['is_approved'] ?? 0,
+                $comment['is_review_needed'] ?? 0
+            );
 
             // Safe type extraction
             $commentIdVal = $comment['comment_id'] ?? 0;
-            $usernameVal = $comment['username'] ?? 'Guest';
+            $username = $this->getCommentUsername($comment);
             $emailVal = $comment['email'] ?? 'N/A';
             $objectTypeVal = $comment['object_type'] ?? '';
             $objectIdVal = $comment['object_id'] ?? 0;
@@ -379,7 +482,7 @@ HELP
 
             $info = [
                 ['ID', is_scalar($commentIdVal) ? (string) $commentIdVal : '0'],
-                ['User', is_scalar($usernameVal) ? (string) $usernameVal : 'Guest'],
+                ['User', $username],
                 ['User Email', is_scalar($emailVal) ? (string) $emailVal : 'N/A'],
                 ['Status', $approvalStatus],
                 ['Content Type', is_scalar($objectTypeVal) ? (string) $objectTypeVal : ''],
@@ -388,10 +491,16 @@ HELP
                 ['Posted', is_scalar($addedDateVal) ? (string) $addedDateVal : ''],
             ];
 
+            $commentText = is_scalar($commentTextVal) ? (string) $commentTextVal : '';
+            if (!$this->isTableFormat($input)) {
+                return $this->displayDetailRows($input, $info, ['comment' => $commentText]);
+            }
+
+            $this->io()->title("Comment #$commentId");
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->io()->section('Comment Text');
-            $this->io()->text(is_scalar($commentTextVal) ? (string) $commentTextVal : '');
+            $this->io()->text($commentText);
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch comment: ' . $e->getMessage());
             return self::FAILURE;
@@ -400,7 +509,23 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showStats(): int
+    private function formatCommentStatus(mixed $isApproved, mixed $isReviewNeeded, bool $withColor = true): string
+    {
+        $approved = is_numeric($isApproved) && (int) $isApproved === 1;
+        $reviewNeeded = is_numeric($isReviewNeeded) && (int) $isReviewNeeded === 1;
+
+        if ($reviewNeeded) {
+            return $withColor ? '<fg=yellow>Pending</>' : 'Pending';
+        }
+
+        if ($approved) {
+            return $withColor ? '<fg=green>Approved</>' : 'Approved';
+        }
+
+        return $withColor ? '<fg=red>Not approved</>' : 'Not approved';
+    }
+
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -437,12 +562,12 @@ HELP
 
             // Top commenters
             $stmt = $db->query("
-                SELECT u.username,
+                SELECT COALESCE(NULLIF(u.username, ''), NULLIF(c.anonymous_username, ''), 'Unknown') as username,
                        COUNT(*) as comment_count
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.user_id IS NOT NULL
-                GROUP BY c.user_id
+                GROUP BY COALESCE(NULLIF(u.username, ''), NULLIF(c.anonymous_username, ''), 'Unknown')
                 ORDER BY comment_count DESC
                 LIMIT " . Constants::TOP_QUERY_LIMIT . "
             ");
@@ -471,9 +596,6 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->title('Comment Statistics');
-
-            $this->io()->section('Overall Statistics');
             $totalComments = is_numeric($overall['total_comments']) ? (int) $overall['total_comments'] : 0;
             $uniqueUsers = is_numeric($overall['unique_users']) ? (int) $overall['unique_users'] : 0;
             $videoComments = is_numeric($overall['video_comments']) ? (int) $overall['video_comments'] : 0;
@@ -489,40 +611,59 @@ HELP
             $lastComment = $overall['last_comment'] ?? null;
             $lastCommentStr = is_scalar($lastComment) ? (string) $lastComment : 'N/A';
 
-            $this->renderTable(
-                ['Metric', 'Value'],
-                [
-                    ['Total Comments', number_format($totalComments)],
-                    ['Unique Commenters', number_format($uniqueUsers)],
-                    ['Video Comments', number_format($videoComments)],
-                    ['Album Comments', number_format($albumComments)],
-                    ['Content Source Comments', number_format($contentSourceComments)],
-                    ['Model Comments', number_format($modelComments)],
-                    ['DVD Comments', number_format($dvdComments)],
-                    ['Post Comments', number_format($postComments)],
-                    ['Playlist Comments', number_format($playlistComments)],
-                    ['Comments (Last 7 Days)', number_format($recentComments)],
-                    ['First Comment', $firstCommentStr !== '' ? $firstCommentStr : 'N/A'],
-                    ['Latest Comment', $lastCommentStr !== '' ? $lastCommentStr : 'N/A'],
-                ]
-            );
+            $overallRows = [
+                ['Total Comments', $totalComments],
+                ['Unique Commenters', $uniqueUsers],
+                ['Video Comments', $videoComments],
+                ['Album Comments', $albumComments],
+                ['Content Source Comments', $contentSourceComments],
+                ['Model Comments', $modelComments],
+                ['DVD Comments', $dvdComments],
+                ['Post Comments', $postComments],
+                ['Playlist Comments', $playlistComments],
+                ['Comments (Last 7 Days)', $recentComments],
+                ['First Comment', $firstCommentStr !== '' ? $firstCommentStr : 'N/A'],
+                ['Latest Comment', $lastCommentStr !== '' ? $lastCommentStr : 'N/A'],
+            ];
 
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [];
+            /** @var list<list<string>> $tableRows */
+            $tableRows = [];
+            foreach ($overallRows as [$label, $value]) {
+                $displayValue = is_int($value) ? number_format($value) : $value;
+                $metricRows[] = $this->metricRow('overall', $label, $value, $displayValue);
+                $tableRows[] = [$label, $displayValue];
+            }
+
+            /** @var list<list<string>> $topRows */
+            $topRows = [];
             if ($topCommenters !== []) {
-                $this->io()->section('Top 10 Commenters');
-                /** @var list<list<string>> $rows */
-                $rows = [];
-                foreach ($topCommenters as $commenter) {
+                foreach ($topCommenters as $i => $commenter) {
                     if (!is_array($commenter)) {
                         continue;
                     }
                     $commenterUsername = $commenter['username'] ?? 'Unknown';
                     $commenterCount = $commenter['comment_count'] ?? 0;
-                    $rows[] = [
-                        is_scalar($commenterUsername) ? (string) $commenterUsername : 'Unknown',
-                        is_numeric($commenterCount) ? number_format((float) $commenterCount) : '0',
-                    ];
+                    $username = is_scalar($commenterUsername) ? (string) $commenterUsername : 'Unknown';
+                    $count = is_numeric($commenterCount) ? (int) $commenterCount : 0;
+                    $metricRows[] = $this->metricRow('top_commenters', (string) ($i + 1), $count, number_format($count), $username);
+                    $topRows[] = [$username, number_format($count)];
                 }
-                $this->renderTable(['User', 'Comments'], $rows);
+            }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
+            }
+
+            $this->io()->title('Comment Statistics');
+            $this->io()->section('Overall Statistics');
+            $this->renderTable(['Metric', 'Value'], $tableRows);
+
+            if ($topRows !== []) {
+                $this->io()->section('Top 10 Commenters');
+                $this->renderTable(['User', 'Comments'], $topRows);
             }
         } catch (\Exception $e) {
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
@@ -543,39 +684,38 @@ HELP
             $conditions = ['c.is_review_needed = 1'];
             $params = [];
 
-            // Video filter
-            $videoId = $this->getStringOption($input, 'video');
-            if ($videoId !== null) {
-                $conditions[] = 'c.object_id = :video_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_VIDEO;
-                $params['video_id'] = $videoId;
-            }
-
-            // Album filter
-            $albumId = $this->getStringOption($input, 'album');
-            if ($albumId !== null) {
-                $conditions[] = 'c.object_id = :album_id AND c.object_type_id = ' . Constants::OBJECT_TYPE_ALBUM;
-                $params['album_id'] = $albumId;
-            }
-
-            // User filter
-            $userId = $this->getStringOption($input, 'user');
-            if ($userId !== null) {
-                $conditions[] = 'c.user_id = :user_id';
-                $params['user_id'] = $userId;
+            if (!$this->applyCommentReferenceFilters($db, $input, $conditions, $params)) {
+                return self::FAILURE;
             }
 
             // Search filter
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $conditions[] = 'c.comment LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $conditions[] = 'c.comment LIKE :search' . $this->likeEscapeSql();
+                $params['search'] = $this->containsLikePattern($search);
             }
 
             $whereClause = implode(' AND ', $conditions);
-            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.added_date DESC';
+            $orderBy = $this->getBoolOption($input, 'oldest') ? 'c.added_date ASC' : 'c.comment_id DESC';
             $limit = $this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_COMMENT_LIMIT);
             if ($limit === null) {
                 return self::FAILURE;
+            }
+
+            $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+            $hasSingleField = $this->getStringOption($input, 'field') !== null;
+            $decorateOutput = $format === 'table' && !$hasSingleField;
+
+            if ($format === 'count') {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('comments')} c WHERE $whereClause");
+                foreach ($params as $key => $value) {
+                    $stmt->bindValue(':' . $key, $value);
+                }
+                $stmt->execute();
+
+                $total = $stmt->fetchColumn();
+                $this->io()->writeln((string) (is_numeric($total) ? (int) $total : 0));
+                return self::SUCCESS;
             }
 
             $countrySelect = '';
@@ -586,11 +726,14 @@ HELP
                 LEFT JOIN {$this->table('list_countries')} lc
                     ON c.country_code = lc.country_code AND lc.language_code = 'en'";
             }
+            $userStatusSelect = $this->isCommentFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
 
             $sql = "
                 SELECT c.*,
-                       u.username,
-                       {$this->getCommentObjectSelectSql()}
+                       u.username$userStatusSelect,
+                       {$this->getCommentObjectSelectSql($input)}
                        $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
@@ -611,22 +754,37 @@ HELP
             $comments = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             if ($comments === []) {
-                $this->io()->success('No pending comments awaiting moderation');
+                if ($decorateOutput) {
+                    $this->io()->success('No pending comments awaiting moderation');
+                } else {
+                    $formatter = new Formatter(
+                        $input->getOptions(),
+                        ['comment_id', 'username', 'object_type', 'object_title', 'comment', 'added_date']
+                    );
+                    $formatter->display([], $this->io());
+                }
                 return self::SUCCESS;
             }
 
-            $this->io()->title('Pending Comments (' . count($comments) . ' awaiting moderation)');
+            if ($decorateOutput) {
+                $this->io()->title('Pending Comments (' . count($comments) . ' awaiting moderation)');
+            }
 
             // Transform comments
             $transformedComments = array_map(function (array $comment): array {
                 return [
                     'comment_id' => $comment['comment_id'] ?? 0,
-                    'username' => $comment['username'] ?? $comment['anonymous_username'] ?? 'Guest',
+                    'username' => $this->getCommentUsername($comment),
+                    'user_status_id' => $comment['user_status_id'] ?? '',
                     'object_type' => $comment['object_type'] ?? '',
                     'object_title' => $comment['object_title'] ?? '',
                     'object' => $comment['object_title'] ?? '',
+                    'object_dir' => $comment['object_dir'] ?? '',
+                    'post_type_id' => $comment['post_type_id'] ?? 0,
+                    'object_id' => $comment['object_id'] ?? 0,
                     'comment' => $comment['comment'] ?? '',
                     'comment_full' => $comment['comment'] ?? '',
+                    'ip' => array_key_exists('ip', $comment) ? $this->formatKvsIp($comment['ip']) : '',
                     'country' => $comment['country'] ?? '',
                     'rating' => $comment['rating'] ?? 0,
                     'is_approved' => $comment['is_approved'] ?? 0,
@@ -640,11 +798,13 @@ HELP
             );
             $formatter->display($transformedComments, $this->io());
 
-            $this->io()->newLine();
-            $this->io()->text(
-                '<info>Tip:</info> Use <comment>kvs comment approve ID</comment> ' .
-                'or <comment>kvs comment reject ID</comment> to moderate'
-            );
+            if ($decorateOutput) {
+                $this->io()->newLine();
+                $this->io()->text(
+                    '<info>Tip:</info> Use <comment>kvs comment approve ID</comment> ' .
+                    'or <comment>kvs comment reject ID</comment> to moderate'
+                );
+            }
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -672,10 +832,9 @@ HELP
             // Get comment details for confirmation
             $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
             $stmt = $db->prepare("
-                SELECT c.comment_id, c.object_id, c.object_type_id, c.user_id, c.comment,
-                       c.is_approved, c.is_review_needed,
+                SELECT c.*,
                        u.username,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id IN ($placeholders)
@@ -698,18 +857,21 @@ HELP
             foreach ($comments as $comment) {
                 $commentText = is_string($comment['comment']) ? $comment['comment'] : '';
                 $commentIdVal = $comment['comment_id'] ?? '';
-                $usernameVal = $comment['username'] ?? 'Guest';
+                $username = $this->getCommentUsername($comment);
                 $objectTypeVal = $comment['object_type'] ?? '';
                 $rows[] = [
                     is_scalar($commentIdVal) ? (string) $commentIdVal : '',
-                    is_scalar($usernameVal) ? (string) $usernameVal : 'Guest',
+                    $username,
                     is_scalar($objectTypeVal) ? (string) $objectTypeVal : '',
                     truncate($commentText, Constants::COMMENT_TRUNCATE_LENGTH),
                 ];
             }
             $this->renderTable(['ID', 'User', 'Type', 'Comment'], $rows);
 
-            if ($this->io()->confirm('Approve ' . count($comments) . ' comment(s)?', false) !== true) {
+            if (
+                !$this->getBoolOption($input, 'yes')
+                && $this->io()->confirm('Approve ' . count($comments) . ' comment(s)?', false) !== true
+            ) {
                 if (!$input->isInteractive()) {
                     $this->io()->error('Comment moderation cancelled because confirmation was not provided.');
                     return self::FAILURE;
@@ -919,9 +1081,9 @@ HELP
             // Get comment details for confirmation
             $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
             $stmt = $db->prepare("
-                SELECT c.comment_id, c.object_id, c.object_type_id, c.user_id, c.comment,
+                SELECT c.*,
                        u.username,
-                       {$this->getCommentObjectSelectSql()}
+                       {$this->getCommentObjectSelectSql($input)}
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
                 WHERE c.comment_id IN ($placeholders)
@@ -943,18 +1105,21 @@ HELP
             foreach ($comments as $comment) {
                 $commentText = is_string($comment['comment']) ? $comment['comment'] : '';
                 $commentIdVal = $comment['comment_id'] ?? '';
-                $usernameVal = $comment['username'] ?? 'Guest';
+                $username = $this->getCommentUsername($comment);
                 $objectTypeVal = $comment['object_type'] ?? '';
                 $rows[] = [
                     is_scalar($commentIdVal) ? (string) $commentIdVal : '',
-                    is_scalar($usernameVal) ? (string) $usernameVal : 'Guest',
+                    $username,
                     is_scalar($objectTypeVal) ? (string) $objectTypeVal : '',
                     truncate($commentText, Constants::COMMENT_TRUNCATE_LENGTH),
                 ];
             }
             $this->renderTable(['ID', 'User', 'Type', 'Comment'], $rows);
 
-            if ($this->io()->confirm('Reject and DELETE ' . count($comments) . ' comment(s)?', false) !== true) {
+            if (
+                !$this->getBoolOption($input, 'yes')
+                && $this->io()->confirm('Reject and DELETE ' . count($comments) . ' comment(s)?', false) !== true
+            ) {
                 if (!$input->isInteractive()) {
                     $this->io()->error('Comment moderation cancelled because confirmation was not provided.');
                     return self::FAILURE;

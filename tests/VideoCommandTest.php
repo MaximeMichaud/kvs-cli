@@ -19,7 +19,11 @@ class VideoCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->kvsPath = TestHelper::createTestKvsInstallation();
+        $this->kvsPath = TestHelper::createTestKvsInstallation([
+            'project_url' => 'https://example.test',
+            'content_url_videos_screenshots' => 'https://cdn.example.test/videos_screenshots',
+            'content_url_videos_screenshots_admin_panel' => 'https://admin-cdn.example.test/videos_screenshots',
+        ]);
         $this->db = $this->createDatabase();
 
         $this->config = TestHelper::createTestConfiguration($this->kvsPath);
@@ -45,7 +49,7 @@ class VideoCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Video id', $output);
-        $this->assertStringContainsString('Featured Clip', $output);
+        $this->assertStringContainsString('Older Active Clip', $output);
         $this->assertStringContainsString('Disabled Clip', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
@@ -63,15 +67,247 @@ class VideoCommandTest extends TestCase
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertCount(2, $rows);
-        $this->assertSame([10, 30], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
-        $this->assertSame('Featured Clip', $rows[0]['title']);
-        $this->assertSame('Active', $rows[0]['status']);
-        $this->assertSame(123, (int) $rows[0]['views']);
-        $this->assertSame('alice', $rows[0]['username']);
-        $this->assertSame('2:05', $rows[0]['duration']);
-        $this->assertSame('1.00 MB', $rows[0]['filesize']);
-        $this->assertSame('4.0/5 (10 votes)', $rows[0]['rating']);
+        $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $rowsById = array_column($rows, null, 'video_id');
+        $this->assertSame('Featured Clip', $rowsById[10]['title']);
+        $this->assertSame('Active', $rowsById[10]['status']);
+        $this->assertSame(123, (int) $rowsById[10]['views']);
+        $this->assertSame('alice', $rowsById[10]['username']);
+        $this->assertSame('2:05', $rowsById[10]['duration']);
+        $this->assertSame('1.00 MB', $rowsById[10]['filesize']);
+        $this->assertSame('4.0/5 (10 votes)', $rowsById[10]['rating']);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testVideoListFiltersUserByUsernameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--user' => 'alice',
+            '--fields' => 'video_id,user',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame(['alice', 'alice'], array_column($rows, 'user'));
+    }
+
+    public function testVideoListFiltersCategoryByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--category' => 'Drama',
+            '--fields' => 'video_id,categories',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Drama', $rows[0]['categories']);
+        $this->assertSame('Drama,Action', $rows[1]['categories']);
+    }
+
+    public function testVideoListFiltersTagByNameLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--tag' => 'tag-two',
+            '--fields' => 'video_id,tags',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('tag-two,tag-one', $rows[0]['tags']);
+    }
+
+    public function testVideoListFiltersModelByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--model' => 'Model Two',
+            '--fields' => 'video_id,models',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Model Two,Model One', $rows[0]['models']);
+    }
+
+    public function testVideoListFiltersContentSourceByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--content-source' => 'Studio One',
+            '--fields' => 'video_id,content_source',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Studio One', $rows[0]['content_source']);
+    }
+
+    public function testVideoListFiltersDvdByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--dvd' => 'Series One',
+            '--fields' => 'video_id,dvd',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Series One', $rows[0]['dvd']);
+    }
+
+    public function testVideoListFiltersCategoryGroupByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--category-group' => 'Genre Group',
+            '--fields' => 'video_id,categories',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([20, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Drama', $rows[0]['categories']);
+        $this->assertSame('Drama,Action', $rows[1]['categories']);
+    }
+
+    public function testVideoListFiltersPlaylistByTitleLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--playlist' => 'Editorial Picks',
+            '--fields' => 'video_id,title',
+            '--format' => 'json',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([30, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+    }
+
+    public function testVideoThumbMatchesKvsAdminWhenScreenMainIsZero(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'video_id,thumb',
+            '--format' => 'json',
+            '--limit' => 2,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'video_id');
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(
+            'https://admin-cdn.example.test/videos_screenshots/0/20/320x180/0.jpg',
+            $rowsById[20]['thumb']
+        );
+    }
+
+    public function testVideoListExposesKvsWebsiteLinkField(): void
+    {
+        file_put_contents(
+            $this->kvsPath . '/admin/data/system/website_ui_params.dat',
+            serialize([
+                'WEBSITE_LINK_PATTERN' => 'video/%ID%/%DIR%/',
+                'DISABLED_CONTENT_AVAILABILITY' => '0',
+            ])
+        );
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'video_id,website_link',
+            '--format' => 'json',
+            '--limit' => 3,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'video_id');
+
+        $this->assertSame(
+            'https://example.test/video/10/featured-clip/',
+            $rowsById[10]['website_link']
+        );
+        $this->assertSame(
+            'https://example.test/video/20/disabled-clip/',
+            $rowsById[20]['website_link']
+        );
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testVideoListRejectsInvalidStatusWithCliError(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--status' => 'bogus',
+            '--format' => 'count',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid status "bogus"', $output);
+        $this->assertStringNotContainsString('In BaseCommand.php line', $output);
+    }
+
+    public function testVideoListEscapesLikeWildcardsInSearch(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '%',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('0', trim($this->tester->getDisplay()));
+    }
+
+    public function testVideoListSearchesDescriptionLikeKvsAdmin(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Featured description',
+            '--format' => 'json',
+            '--fields' => 'video_id,description',
+            '--limit' => 5,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
+        $this->assertSame('Featured description', $rows[0]['description']);
     }
 
     public function testVideoListFormats(): void
@@ -88,8 +324,8 @@ class VideoCommandTest extends TestCase
         $this->assertJson($output);
         $jsonRows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         $this->assertCount(1, $jsonRows);
-        $this->assertSame(10, (int) $jsonRows[0]['video_id']);
-        $this->assertSame('Featured Clip', $jsonRows[0]['title']);
+        $this->assertSame(30, (int) $jsonRows[0]['video_id']);
+        $this->assertSame('Older Active Clip', $jsonRows[0]['title']);
         $this->assertEquals(0, $testerJson->getStatusCode());
 
         // Test CSV format
@@ -103,7 +339,7 @@ class VideoCommandTest extends TestCase
         $csvOutput = ob_get_clean();
 
         $this->assertStringContainsString('video_id', $csvOutput);
-        $this->assertStringContainsString('Featured Clip', $csvOutput);
+        $this->assertStringContainsString('Older Active Clip', $csvOutput);
         $this->assertEquals(0, $testerCsv->getStatusCode());
 
         // Test count format
@@ -131,10 +367,76 @@ class VideoCommandTest extends TestCase
         $this->assertStringContainsString('Featured Clip', $output);
         $this->assertStringContainsString('Featured description', $output);
         $this->assertStringContainsString('Action', $output);
-        $this->assertStringContainsString('tag-one, tag-two', $output);
+        $this->assertStringContainsString('tag-two, tag-one', $output);
         $this->assertMatchesRegularExpression('/Duration\W+2:05/', $output);
         $this->assertMatchesRegularExpression('/Views\W+123/', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testVideoShowSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $this->assertSame('10', $rows[0]['video_id']);
+        $this->assertSame('Featured Clip', $rows[0]['title']);
+        $this->assertSame('Featured description', $rows[0]['description']);
+        $this->assertSame(['Drama', 'Action'], $rows[0]['categories']);
+        $this->assertSame(['tag-two', 'tag-one'], $rows[0]['tags']);
+        $this->assertStringNotContainsString('Video #10', $output);
+    }
+
+    public function testVideoListSeparatesKvsAccessTypeAndAccessLevel(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'video_id,is_private,type,access_level_id,access',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(30, (int) $rows[0]['video_id']);
+        $this->assertSame('Private', $rows[0]['is_private']);
+        $this->assertSame('Private', $rows[0]['type']);
+        $this->assertSame(0, (int) $rows[0]['access_level_id']);
+        $this->assertSame('From access type', $rows[0]['access']);
+    }
+
+    public function testVideoShowSeparatesKvsAccessTypeAndAccessLevel(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('Private', $rows[0]['type']);
+        $this->assertSame('From access type', $rows[0]['access']);
+    }
+
+    public function testVideoShowRejectsNonIntegerIdBeforeQuery(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10abc',
+            '--format' => 'json',
+        ]);
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Invalid Video ID', $this->tester->getDisplay());
     }
 
     public function testVideoListFormatsKvsResolutionTypesAboveFhd(): void
@@ -170,6 +472,7 @@ class VideoCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
+            '--search' => 'Featured Clip',
             '--fields' => 'video_id,title,r_ctr,comments_count',
             '--format' => 'json',
             '--limit' => 1,
@@ -188,7 +491,8 @@ class VideoCommandTest extends TestCase
     {
         $this->tester->execute([
             'action' => 'list',
-            '--fields' => 'video_id,title,content_source,dvd,admin_flag,server_group,format_video_group',
+            '--search' => 'Featured Clip',
+            '--fields' => 'video_id,title,thumb,content_source,dvd,admin_flag,server_group,format_video_group,tags,categories,models,ip',
             '--format' => 'json',
             '--limit' => 1,
         ]);
@@ -198,18 +502,24 @@ class VideoCommandTest extends TestCase
 
         $this->assertSame(10, (int) $rows[0]['video_id']);
         $this->assertSame('Featured Clip', $rows[0]['title']);
+        $this->assertSame('https://admin-cdn.example.test/videos_screenshots/0/10/320x180/3.jpg', $rows[0]['thumb']);
         $this->assertSame('Studio One', $rows[0]['content_source']);
         $this->assertSame('Series One', $rows[0]['dvd']);
         $this->assertSame('Needs Review', $rows[0]['admin_flag']);
         $this->assertSame('Primary Storage', $rows[0]['server_group']);
         $this->assertSame('HD Formats', $rows[0]['format_video_group']);
+        $this->assertSame('tag-two,tag-one', $rows[0]['tags']);
+        $this->assertSame('Drama,Action', $rows[0]['categories']);
+        $this->assertSame('Model Two,Model One', $rows[0]['models']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
     }
 
-    public function testVideoListExposesKvsAdminOwnerAndListFields(): void
+    public function testVideoListExposesRelationStatusFieldsWhenRequestedDirectly(): void
     {
         $this->tester->execute([
             'action' => 'list',
-            '--fields' => 'video_id,title,admin_user,tags,categories,models',
+            '--search' => 'Featured Clip',
+            '--fields' => 'video_id,content_source_status_id,dvd_status_id,server_group_status_id,admin_user_is_superadmin',
             '--format' => 'json',
             '--limit' => 1,
         ]);
@@ -218,11 +528,104 @@ class VideoCommandTest extends TestCase
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
 
         $this->assertSame(10, (int) $rows[0]['video_id']);
+        $this->assertSame(1, (int) $rows[0]['content_source_status_id']);
+        $this->assertSame(1, (int) $rows[0]['dvd_status_id']);
+        $this->assertSame(1, (int) $rows[0]['server_group_status_id']);
+        $this->assertSame(0, (int) $rows[0]['admin_user_is_superadmin']);
+    }
+
+    public function testVideoListExposesKvsAdminErrorHighlightField(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('videos') . ' SET status_id = 2 WHERE video_id = 20');
+
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Disabled Clip',
+            '--fields' => 'video_id,status_id,is_error',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(20, (int) $rows[0]['video_id']);
+        $this->assertSame(2, (int) $rows[0]['status_id']);
+        $this->assertSame(1, (int) $rows[0]['is_error']);
+    }
+
+    public function testVideoListExposesKvsAdminUserStatusAndAdminUserFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Featured Clip',
+            '--fields' => 'video_id,title,user,user_status_id,admin_user,admin_user_is_superadmin',
+            '--format' => 'json',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(10, (int) $rows[0]['video_id']);
         $this->assertSame('Featured Clip', $rows[0]['title']);
-        $this->assertSame('editor', $rows[0]['admin_user']);
-        $this->assertSame('tag-one, tag-two', $rows[0]['tags']);
-        $this->assertSame('Action', $rows[0]['categories']);
-        $this->assertSame('Model One', $rows[0]['models']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame(1, (int) $rows[0]['user_status_id']);
+        $this->assertSame('moderator', $rows[0]['admin_user']);
+        $this->assertSame(0, (int) $rows[0]['admin_user_is_superadmin']);
+    }
+
+    public function testVideoListAcceptsKvsLifecycleStatusAliases(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            ' (video_id, user_id, admin_user_id, title, status_id, resolution_type, is_private, duration, file_size, ' .
+            'file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, r_ctr, description, ' .
+            'content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id, screen_main, ip) VALUES ' .
+            "(40, 1, 0, 'Processing Clip', 3, 0, 0, 10, 0, '', '2026-05-27 10:00:00', 0, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 0, 0), " .
+            "(50, 1, 0, 'Deleting Clip', 4, 0, 0, 10, 0, '', '2026-05-27 11:00:00', 0, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 0, 0), " .
+            "(60, 1, 0, 'Deleted Clip', 5, 0, 0, 10, 0, '', '2026-05-27 12:00:00', 0, 0, 0, 0, 0, '', 0, 0, 0, 0, 0, 0, 0)"
+        );
+
+        $cases = [
+            'in_process' => [40, 'In process'],
+            'deleting' => [50, 'Deleting'],
+            'deleted' => [60, 'Deleted'],
+        ];
+
+        foreach ($cases as $status => [$expectedId, $expectedLabel]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--status' => $status,
+                '--fields' => 'video_id,status',
+                '--format' => 'json',
+                '--limit' => 1,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($expectedId, (int) $rows[0]['video_id']);
+            $this->assertSame($expectedLabel, $rows[0]['status']);
+        }
+    }
+
+    public function testVideoStatsSupportsJsonFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--format' => 'json',
+            '--fields' => 'section,metric,value,label',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByMetric = array_column($rows, null, 'metric');
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('overall', $rowsByMetric['Total Videos']['section'] ?? null);
+        $this->assertSame(3, (int) ($rowsByMetric['Total Videos']['value'] ?? 0));
+        $this->assertStringNotContainsString('Top 10 Most Viewed Videos', $this->tester->getDisplay());
     }
 
     public function testVideoCommandMetadata(): void
@@ -232,6 +635,19 @@ class VideoCommandTest extends TestCase
 
         $aliases = $this->command->getAliases();
         $this->assertContains('video', $aliases);
+    }
+
+    public function testVideoUpdateIsNotAdvertisedAsSupportedAction(): void
+    {
+        $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Unknown video action "update"', $output);
+        $this->assertMatchesRegularExpression('/Available actions: list, show, delete,\s+stats/', $output);
     }
 
     private function createDatabase(): PDO
@@ -244,13 +660,16 @@ class VideoCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
             'video_id INTEGER, user_id INTEGER, admin_user_id INTEGER, title TEXT, status_id INTEGER, resolution_type INTEGER, ' .
-            'is_private INTEGER, duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, ' .
-            'rating INTEGER, rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, r_ctr REAL, ' .
+            'dir TEXT, is_private INTEGER, access_level_id INTEGER, duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, ' .
+            'rating INTEGER, rating_amount INTEGER, video_viewed INTEGER, comments_count INTEGER, favourites_count INTEGER, r_ctr REAL, ' .
             'description TEXT, content_source_id INTEGER, dvd_id INTEGER, admin_flag_id INTEGER, ' .
-            'server_group_id INTEGER, format_video_group_id INTEGER)'
+            'server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER)'
         );
-        $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('admin_users') . ' (user_id INTEGER, login TEXT, is_superadmin INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('users') . ' (user_id INTEGER, username TEXT, status_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_users') . ' (' .
+            'user_id INTEGER, login TEXT, is_superadmin INTEGER)'
+        );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('content_sources') . ' (' .
             'content_source_id INTEGER, title TEXT, status_id INTEGER)'
@@ -273,26 +692,44 @@ class VideoCommandTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('comments') .
-            ' (comment_id INTEGER, object_type_id INTEGER, object_id INTEGER)'
+            ' (comment_id INTEGER, object_type_id INTEGER, object_id INTEGER, is_approved INTEGER)'
         );
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories') . ' (category_id INTEGER, title TEXT, status_id INTEGER)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('categories_videos') . ' (id INTEGER, category_id INTEGER, video_id INTEGER)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT, status_id INTEGER)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('formats_screenshots') .
+            ' (format_screenshot_id INTEGER, size TEXT, status_id INTEGER, group_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_groups') .
+            ' (category_group_id INTEGER, title TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories') .
+            ' (category_id INTEGER, title TEXT, category_group_id INTEGER)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_videos') .
+            ' (id INTEGER, category_id INTEGER, video_id INTEGER)'
+        );
+        $db->exec('CREATE TABLE ' . TestHelper::table('tags') . ' (tag_id INTEGER, tag TEXT)');
         $db->exec('CREATE TABLE ' . TestHelper::table('tags_videos') . ' (id INTEGER, tag_id INTEGER, video_id INTEGER)');
-        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT, status_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('models') . ' (model_id INTEGER, title TEXT)');
         $db->exec('CREATE TABLE ' . TestHelper::table('models_videos') . ' (id INTEGER, model_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('playlists') . ' (playlist_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ' . TestHelper::table('fav_videos') . ' (video_id INTEGER, playlist_id INTEGER)');
 
-        $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice'), (2, 'bob')");
-        $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'editor', 0)");
+        $db->exec("INSERT INTO " . TestHelper::table('users') . " VALUES (1, 'alice', 1), (2, 'bob', 0)");
+        $db->exec("INSERT INTO " . TestHelper::table('admin_users') . " VALUES (8, 'moderator', 0), (9, 'admin', 1)");
         $db->exec(
             "INSERT INTO " . TestHelper::table('videos') .
-            " (video_id, user_id, admin_user_id, title, status_id, resolution_type, is_private, duration, file_size, " .
-            "file_dimensions, post_date, rating, rating_amount, video_viewed, favourites_count, r_ctr, description, " .
-            "content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id) VALUES " .
-            "(10, 1, 8, 'Featured Clip', 1, 2, 0, 125, 1048576, '1920x1080', " .
-            "'2026-05-26 10:00:00', 40, 10, 123, 7, 0.125, 'Featured description', 3, 4, 5, 6, 7), " .
-            "(20, 2, 0, 'Disabled Clip', 0, 0, 2, 61, 524288, '640x360', '2026-05-25 10:00:00', 0, 0, 5, 0, 0.050, '', 0, 0, 0, 0, 0), " .
-            "(30, 1, 0, 'Older Active Clip', 1, 1, 1, 3600, 2097152, '1280x720', '2026-05-24 10:00:00', 15, 5, 20, 1, 0, '', 0, 0, 0, 0, 0)"
+            " (video_id, user_id, admin_user_id, title, status_id, resolution_type, dir, is_private, access_level_id, duration, file_size, " .
+            "file_dimensions, post_date, rating, rating_amount, video_viewed, comments_count, favourites_count, r_ctr, description, " .
+            "content_source_id, dvd_id, admin_flag_id, server_group_id, format_video_group_id, screen_main, ip) VALUES " .
+            "(10, 1, 8, 'Featured Clip', 1, 2, 'featured-clip', 0, 0, 125, 1048576, '1920x1080', " .
+            "'2026-05-26 10:00:00', 40, 10, 123, 2, 7, 0.125, 'Featured description', 3, 4, 5, 6, 7, 3, 2130706433), " .
+            "(20, 2, 9, 'Disabled Clip', 0, 0, 'disabled-clip', 2, 2, 61, 524288, '640x360', " .
+            "'2026-05-25 10:00:00', 0, 0, 5, 1, 0, 0.050, '', 0, 0, 0, 0, 0, 0, 0), " .
+            "(30, 1, 0, 'Older Active Clip', 1, 1, 'older-active-clip', 1, 0, 3600, 2097152, '1280x720', " .
+            "'2026-05-24 10:00:00', 15, 5, 20, 0, 1, 0, '', 0, 0, 0, 0, 0, 0, 0)"
         );
         $db->exec(
             "INSERT INTO " . TestHelper::table('content_sources') .
@@ -316,15 +753,22 @@ class VideoCommandTest extends TestCase
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('comments') .
-            ' (comment_id, object_type_id, object_id) VALUES ' .
-            '(1, 1, 10), (2, 1, 10), (3, 2, 10), (4, 1, 20)'
+            ' (comment_id, object_type_id, object_id, is_approved) VALUES ' .
+            '(1, 1, 10, 1), (2, 1, 10, 1), (3, 1, 10, 0), (4, 2, 10, 1), (5, 1, 20, 1)'
         );
-        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Action', 1), (2, 'Drama', 1)");
-        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 1, 10), (2, 2, 20)");
-        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one', 1), (2, 'tag-two', 1)");
-        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 1, 10), (2, 2, 10)");
-        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One', 1)");
-        $db->exec("INSERT INTO " . TestHelper::table('models_videos') . " VALUES (1, 1, 10)");
+        $db->exec(
+            "INSERT INTO " . TestHelper::table('formats_screenshots') .
+            " VALUES (1, 'source', 1, 1), (2, '640x360', 1, 1), (3, '320x180', 1, 1)"
+        );
+        $db->exec("INSERT INTO " . TestHelper::table('categories_groups') . " VALUES (10, 'Genre Group')");
+        $db->exec("INSERT INTO " . TestHelper::table('categories') . " VALUES (1, 'Action', 0), (2, 'Drama', 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (1, 2, 10), (2, 1, 10), (3, 2, 20)");
+        $db->exec("INSERT INTO " . TestHelper::table('tags') . " VALUES (1, 'tag-one'), (2, 'tag-two')");
+        $db->exec("INSERT INTO " . TestHelper::table('tags_videos') . " VALUES (1, 2, 10), (2, 1, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('models') . " VALUES (1, 'Model One'), (2, 'Model Two')");
+        $db->exec("INSERT INTO " . TestHelper::table('models_videos') . " VALUES (1, 2, 10), (2, 1, 10)");
+        $db->exec("INSERT INTO " . TestHelper::table('playlists') . " VALUES (100, 'Editorial Picks')");
+        $db->exec("INSERT INTO " . TestHelper::table('fav_videos') . " VALUES (10, 100), (30, 100)");
 
         return $db;
     }

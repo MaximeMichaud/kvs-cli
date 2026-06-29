@@ -79,11 +79,11 @@ HELP
             ->addArgument('values', InputArgument::IS_ARRAY | InputArgument::OPTIONAL, 'Target category ID or category IDs')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Category title')
             ->addOption('description', null, InputOption::VALUE_REQUIRED, 'Category description')
-            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Category group ID')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Category group ID or title')
             ->addOption('parent', null, InputOption::VALUE_REQUIRED, 'Deprecated alias for --group')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Status (active|inactive)')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_LIMIT)
-            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in category titles')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in category titles, directories, descriptions, and synonyms')
             ->addOption('unused', null, InputOption::VALUE_NONE, 'Show only unused categories')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field from each item')
@@ -100,8 +100,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listCategories($input),
-            'tree' => $this->showTree(),
-            'show' => $this->showCategory($id),
+            'tree' => $this->showTree($input),
+            'show' => $this->showCategory($id, $input),
             'create' => $this->createCategory($input),
             'delete' => $this->deleteCategory($id, $input),
             'update' => $this->updateCategory($id, $input),
@@ -128,11 +128,14 @@ HELP
             $conditions = [];
             $params = [];
 
-            $statusId = $this->parseStatusFilter($input, [
+            $statusId = $this->parseStatusFilterOrFail($input, [
                 'active' => StatusFormatter::CATEGORY_ACTIVE,
                 'inactive' => StatusFormatter::CATEGORY_INACTIVE,
                 'disabled' => StatusFormatter::CATEGORY_INACTIVE,
             ]);
+            if ($statusId === false) {
+                return self::FAILURE;
+            }
             if ($statusId !== null) {
                 $conditions[] = 'c.status_id = :status';
                 $params['status'] = $statusId;
@@ -140,18 +143,21 @@ HELP
 
             $search = $this->getStringOption($input, 'search');
             if ($search !== null) {
-                $conditions[] = 'c.title LIKE :search';
-                $params['search'] = '%' . $search . '%';
+                $searchEscape = $this->likeEscapeSql();
+                $conditions[] = '(c.title LIKE :search' . $searchEscape
+                    . ' OR c.dir LIKE :search' . $searchEscape
+                    . ' OR c.description LIKE :search' . $searchEscape
+                    . ' OR c.synonyms LIKE :search' . $searchEscape . ')';
+                $params['search'] = $this->containsLikePattern($search);
             }
 
-            $groupId = $this->getStringOption($input, 'group');
+            $groupId = $this->resolveCategoryGroupFilter($db, $input);
+            if ($groupId === false) {
+                return self::FAILURE;
+            }
             if ($groupId !== null) {
-                if (!ctype_digit($groupId)) {
-                    $this->io()->error('Category group ID must be numeric');
-                    return self::FAILURE;
-                }
                 $conditions[] = 'c.category_group_id = :group';
-                $params['group'] = (int) $groupId;
+                $params['group'] = $groupId;
             }
 
             $usageJoins = $this->getCategoryUsageJoins();
@@ -162,6 +168,9 @@ HELP
 
             $whereClause = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
             if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
+                if ($this->getPositiveIntOptionOrDefault($input, 'limit', Constants::DEFAULT_LIMIT) === null) {
+                    return self::FAILURE;
+                }
                 return $this->countCategories($db, $whereClause, $params, $unusedOnly ? $usageJoins : '');
             }
 
@@ -170,14 +179,20 @@ HELP
                 return self::FAILURE;
             }
             $usageSelectors = $this->getCategoryUsageSelectors();
+            $includeGroupField = $this->isCategoryFieldRequested($input, 'category_group');
+            $groupSelect = $includeGroupField ? ', cg.title as category_group' : '';
+            $groupJoin = $includeGroupField
+                ? "LEFT JOIN {$this->table('categories_groups')} cg ON cg.category_group_id = c.category_group_id"
+                : '';
 
             $sql = "
-                SELECT c.*,
+                SELECT c.*$groupSelect,
                        {$usageSelectors}
                 FROM {$this->table('categories')} c
+                {$groupJoin}
                 {$usageJoins}
                 $whereClause
-                ORDER BY c.title
+                ORDER BY c.category_id DESC
                 LIMIT :limit
             ";
 
@@ -194,17 +209,19 @@ HELP
                 $counts = $this->extractCategoryUsageCounts($category);
                 $statusIdVal = $category['status_id'] ?? 0;
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+                $otherAmount = $this->getCategoryStoredOtherAmount($category);
+                $allAmount = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
                 $category['id'] = $category['category_id'] ?? 0;
                 $category['video_count'] = $counts['videos'];
                 $category['album_count'] = $counts['albums'];
-                $category['total_usage'] = array_sum($counts);
+                $category['total_usage'] = $allAmount;
                 $category['status'] = StatusFormatter::category($statusId, false);
-                $otherAmount = $this->getCategoryStoredOtherAmount($category);
+                $category['thumb'] = $category['screenshot1'] ?? $category['screenshot2'] ?? '';
                 $category['videos_amount'] = $counts['videos'];
                 $category['albums_amount'] = $counts['albums'];
                 $category['posts_amount'] = $counts['posts'];
                 $category['other_amount'] = $otherAmount;
-                $category['all_amount'] = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
+                $category['all_amount'] = $allAmount;
 
                 return [
                     ...$category,
@@ -253,7 +270,41 @@ HELP
         }
     }
 
-    private function showTree(): int
+    private function resolveCategoryGroupFilter(\PDO $db, InputInterface $input): int|false|null
+    {
+        $group = $this->getStringOption($input, 'group');
+        if ($group === null) {
+            $group = $this->getStringOption($input, 'parent');
+        }
+        if ($group === null) {
+            return null;
+        }
+
+        $group = trim($group);
+        if ($group === '') {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        if (preg_match('/^\d+$/', $group) === 1) {
+            return (int) $group;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $group) === 1) {
+            $this->io()->error('Invalid value for --group (use: integer >= 0 or title)');
+            return false;
+        }
+
+        return $this->findReferenceIdByText(
+            $db,
+            'categories_groups',
+            'category_group_id',
+            'title',
+            $group
+        ) ?? 0;
+    }
+
+    private function showTree(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -273,6 +324,22 @@ HELP
             }
             /** @var list<array<string, mixed>> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (!$this->isTableFormat($input)) {
+                $categories = array_map(function (array $category): array {
+                    $statusId = is_numeric($category['status_id'] ?? null) ? (int) $category['status_id'] : 0;
+                    $category['id'] = $category['category_id'] ?? 0;
+                    $category['status_id'] = $statusId;
+                    $category['status'] = StatusFormatter::category($statusId, false);
+                    return $category;
+                }, $categories);
+
+                return $this->displayFormattedRows(
+                    $input,
+                    $categories,
+                    ['category_id', 'title', 'category_group_id', 'video_count', 'status']
+                );
+            }
 
             $this->io()->section('Category Tree');
 
@@ -296,10 +363,10 @@ HELP
         return self::SUCCESS;
     }
 
-    private function showCategory(?string $id): int
+    private function showCategory(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
-            $this->io()->error('Category ID is required');
+            $this->io()->error('Category ID or title is required');
             return self::FAILURE;
         }
 
@@ -309,8 +376,14 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
+            $whereClause = ctype_digit($id) ? 'c.category_id = :identifier_id' : 'c.title = :identifier_title';
+            $stmt = $db->prepare("
+                SELECT c.*, cg.title as category_group
+                FROM {$this->table('categories')} c
+                LEFT JOIN {$this->table('categories_groups')} cg ON c.category_group_id = cg.category_group_id
+                WHERE {$whereClause}
+            ");
+            $stmt->execute(ctype_digit($id) ? ['identifier_id' => (int) $id] : ['identifier_title' => $id]);
             /** @var array<string, mixed>|false $category */
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
@@ -321,40 +394,54 @@ HELP
 
             $titleValue = $category['title'] ?? '';
             $categoryTitle = is_string($titleValue) ? $titleValue : (is_scalar($titleValue) ? (string) $titleValue : '');
-            $this->io()->section("Category: $categoryTitle");
 
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_videos WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
-            $videoCountRaw = $stmt->fetchColumn();
-            $videoCount = is_numeric($videoCountRaw) ? (int) $videoCountRaw : 0;
-
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories')}_albums WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
-            $albumCountRaw = $stmt->fetchColumn();
-            $albumCount = is_numeric($albumCountRaw) ? (int) $albumCountRaw : 0;
+            $categoryId = $category['category_id'] ?? 0;
+            $categoryIdString = is_scalar($categoryId) ? (string) $categoryId : '0';
+            $usage = $this->getCategoryUsageCounts($db, $categoryIdString);
+            $videoCount = $usage['videos'] ?? 0;
+            $albumCount = $usage['albums'] ?? 0;
+            $postCount = $usage['posts'] ?? 0;
+            $otherCount = $this->getCategoryStoredOtherAmount($category);
+            $totalUsage = $videoCount + $albumCount + $postCount + $otherCount;
 
             $groupId = $category['category_group_id'] ?? 0;
             $groupIdInt = is_numeric($groupId) ? (int) $groupId : 0;
             $groupIdStr = $groupIdInt > 0 ? (string) $groupIdInt : 'None (Root)';
+            $groupTitle = $category['category_group'] ?? null;
+            $groupDisplay = $groupIdInt > 0
+                ? ((is_scalar($groupTitle) && (string) $groupTitle !== '') ? (string) $groupTitle . " (#$groupIdInt)" : "#$groupIdInt")
+                : 'None (Root)';
             $addedDate = $category['added_date'] ?? null;
             $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
 
-            $categoryId = $category['category_id'] ?? 0;
             $statusId = isset($category['status_id']) && is_numeric($category['status_id']) ? (int) $category['status_id'] : 0;
 
             $info = [
                 ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
                 ['Title', $categoryTitle],
+                ['Group', $groupDisplay],
                 ['Group ID', $groupIdStr],
                 ['Status', StatusFormatter::category($statusId)],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
+                ['Posts', (string) $postCount],
+                ['Other', (string) $otherCount],
+                ['Total Usage', (string) $totalUsage],
                 ['Added', $addedDateStr],
             ];
 
+            $description = $category['description'] ?? null;
+            if (!$this->isTableFormat($input)) {
+                $extra = [];
+                if ($description !== null && $description !== '' && is_scalar($description)) {
+                    $extra['description'] = (string) $description;
+                }
+                return $this->displayDetailRows($input, $info, $extra);
+            }
+
+            $this->io()->section("Category: $categoryTitle");
             $this->renderTable(['Property', 'Value'], $info);
 
-            $description = $category['description'] ?? null;
             if ($description !== null && $description !== '' && is_scalar($description)) {
                 $this->io()->section('Description');
                 $this->io()->text((string) $description);
@@ -1062,11 +1149,31 @@ HELP
         }
     }
 
+    private function isCategoryFieldRequested(InputInterface $input, string $field): bool
+    {
+        $singleField = $this->getStringOption($input, 'field');
+        if ($singleField === $field) {
+            return true;
+        }
+
+        $fields = $this->getStringOption($input, 'fields');
+        if ($fields === null) {
+            return false;
+        }
+
+        foreach (array_map('trim', explode(',', $fields)) as $requestedField) {
+            if ($requestedField === $field) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function updateCategory(?string $id, InputInterface $input): int
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Category ID is required');
-            $this->io()->text('Usage: kvs content:category update <category_id> --title="New Title" --description="..." --status=inactive');
+        $categoryId = $this->getRequiredPositiveId($id, 'Category');
+        if ($categoryId === null) {
             return self::FAILURE;
         }
 
@@ -1078,16 +1185,16 @@ HELP
         try {
             // Get current category
             $stmt = $db->prepare("SELECT * FROM {$this->table('categories')} WHERE category_id = :id");
-            $stmt->execute(['id' => $id]);
+            $stmt->execute(['id' => $categoryId]);
             $category = $stmt->fetch(\PDO::FETCH_ASSOC);
 
             if (!is_array($category)) {
-                $this->io()->error("Category not found: $id");
+                $this->io()->error("Category not found: $categoryId");
                 return self::FAILURE;
             }
 
             $updates = [];
-            $params = ['id' => $id];
+            $params = ['id' => $categoryId];
 
             // Title
             $title = $this->getStringOption($input, 'title');
@@ -1117,9 +1224,13 @@ HELP
             // Category group
             $groupId = $this->getCategoryGroupInput($input);
             if ($groupId !== null) {
+                if ($groupId !== '' && preg_match('/^\d+$/', $groupId) !== 1) {
+                    $this->io()->error('Invalid Category group ID (use: integer >= 0)');
+                    return self::FAILURE;
+                }
                 if ($groupId !== '') {
                     $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
-                    $stmt->execute(['id' => $groupId]);
+                    $stmt->execute(['id' => (int) $groupId]);
                     if ($stmt->fetch() === false) {
                         $this->io()->error("Category group not found: $groupId");
                         return self::FAILURE;
@@ -1161,7 +1272,7 @@ HELP
             $this->io()->success("Category updated successfully!");
 
             // Show updated category
-            return $this->showCategory($id);
+            return $this->showCategory((string) $categoryId, $input);
         } catch (\Exception $e) {
             $this->io()->error('Failed to update category: ' . $e->getMessage());
             return self::FAILURE;

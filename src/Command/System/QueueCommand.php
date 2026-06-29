@@ -26,39 +26,39 @@ class QueueCommand extends BaseCommand
      * @var array<int, string>
      */
     private const TASK_TYPES = [
-        1 => 'New Video',
-        2 => 'Delete Video',
-        3 => 'Upload Video Format',
-        4 => 'Create Video Format',
-        5 => 'Delete Video Format File',
-        6 => 'Delete Video Format',
-        7 => 'Create Screenshot Format',
-        8 => 'Create Timeline Screenshots',
-        9 => 'Delete Screenshot Format',
-        10 => 'New Album',
-        11 => 'Delete Album',
-        12 => 'Create Album Format',
-        13 => 'Delete Album Format',
-        14 => 'Upload Album Images',
-        15 => 'Change Storage (Video)',
-        16 => 'Create Screenshots ZIP',
-        17 => 'Delete Screenshots ZIP',
-        18 => 'Create Images ZIP',
-        19 => 'Delete Images ZIP',
-        20 => 'Delete Timeline Screenshots',
-        22 => 'Album Images Manipulation',
-        23 => 'Change Storage (Album)',
-        24 => 'Create Overview Screenshots',
-        26 => 'Update Resolution Type',
-        27 => 'Sync Storage Server',
-        28 => 'Delete Overview Screenshots',
-        29 => 'Recreate Screenshot Formats',
-        30 => 'Recreate Album Formats',
-        31 => 'Recreate Player Preview',
-        50 => 'Videos Import',
-        51 => 'Albums Import',
-        52 => 'Videos Mass Edit',
-        53 => 'Albums Mass Edit',
+        1 => 'New video',
+        2 => 'Video deletion',
+        3 => 'Video file upload',
+        4 => 'Video files creation',
+        5 => 'Video files deletion',
+        6 => 'Video format deletion',
+        7 => 'Screenshot format creation',
+        8 => 'Timeline screenshots creation',
+        9 => 'Screenshot format deletion',
+        10 => 'New album',
+        11 => 'Album deletion',
+        12 => 'Album format creation',
+        13 => 'Album format deletion',
+        14 => 'Album images upload',
+        15 => 'Change video storage group',
+        16 => 'Screenshot format ZIP creation',
+        17 => 'Screenshot format ZIP deletion',
+        18 => 'Album format ZIP creation',
+        19 => 'Album format ZIP deletion',
+        20 => 'Timeline screenshots deletion',
+        22 => 'Album images manipulation',
+        23 => 'Change album storage group',
+        24 => 'Overview screenshots creation',
+        26 => 'Quality factor update',
+        27 => 'Sync storage server',
+        28 => 'Overview screenshots deletion',
+        29 => 'Screenshot formats re-creation',
+        30 => 'Album formats re-creation',
+        31 => 'Player preview re-creation',
+        50 => 'Videos import',
+        51 => 'Albums import',
+        52 => 'Videos mass edit',
+        53 => 'Albums mass edit',
     ];
 
     /**
@@ -66,15 +66,15 @@ class QueueCommand extends BaseCommand
      * @var array<int, string>
      */
     private const ERROR_CODES = [
-        1 => 'General Failure',
-        2 => 'Download Failed',
-        3 => 'Conversion Failed',
-        4 => 'Upload Failed',
-        5 => 'File System Error',
-        6 => 'Format Error',
-        7 => 'Manual Cancellation',
-        8 => 'Plugin Error',
-        9 => 'Server Error',
+        1 => '01 - Database consistency error',
+        2 => '02 - Conversion server connection error',
+        3 => '03 - Unexpected error',
+        4 => '04 - Storage server connection error',
+        5 => '05 - Filesystem error',
+        6 => '06 - Unexpected error',
+        7 => '07 - Conversion error',
+        8 => '08 - Screenshots error',
+        9 => '09 - Source file error',
     ];
 
     protected function configure(): void
@@ -89,6 +89,8 @@ class QueueCommand extends BaseCommand
             ->addOption('server', null, InputOption::VALUE_REQUIRED, 'Filter by conversion server ID')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
+            ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields')
+            ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation')
             ->setHelp(<<<'HELP'
 Manage KVS background tasks queue (video/album conversion, processing, etc.).
 
@@ -99,18 +101,18 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   history  Show completed/deleted/failed tasks history
 
 <fg=yellow>STATUS VALUES:</>
-  pending     Tasks waiting to be processed (status_id=0)
-  processing  Tasks currently being processed (status_id=1)
-  failed      Tasks that failed with error (status_id=2)
+  pending     Scheduled tasks waiting to be processed (status_id=0)
+  processing  Tasks currently in process (status_id=1)
+  failed      Tasks finished with error (status_id=2)
 
 <fg=yellow>COMMON TASK TYPES:</>
-  1   New Video (full conversion)
-  2   Delete Video
-  4   Create Video Format
-  8   Create Timeline Screenshots
-  10  New Album
-  11  Delete Album
-  14  Upload Album Images
+  1   New video
+  2   Video deletion
+  4   Video files creation
+  8   Timeline screenshots creation
+  10  New album
+  11  Album deletion
+  14  Album images upload
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs queue list</>                         List all active tasks
@@ -131,8 +133,8 @@ HELP
 
         return match ($action) {
             'list' => $this->listTasks($input),
-            'show' => $this->showTask($this->getStringArgument($input, 'id')),
-            'stats' => $this->showStats(),
+            'show' => $this->showTask($this->getStringArgument($input, 'id'), $input),
+            'stats' => $this->showStats($input),
             'history' => $this->showHistory($input),
             'help-action' => $this->showHelp(),
             default => $this->failUnknownAction(
@@ -176,28 +178,8 @@ HELP
             $params['status'] = $statusMap[$statusKey];
         }
 
-        $type = $this->getIntOption($input, 'type');
-        if ($type !== null) {
-            $fromClause .= " AND bt.type_id = :type";
-            $params['type'] = $type;
-        }
-
-        $videoId = $this->getIntOption($input, 'video');
-        if ($videoId !== null) {
-            $fromClause .= " AND bt.video_id = :video_id";
-            $params['video_id'] = $videoId;
-        }
-
-        $albumId = $this->getIntOption($input, 'album');
-        if ($albumId !== null) {
-            $fromClause .= " AND bt.album_id = :album_id";
-            $params['album_id'] = $albumId;
-        }
-
-        $serverId = $this->getIntOption($input, 'server');
-        if ($serverId !== null) {
-            $fromClause .= " AND bt.server_id = :server_id";
-            $params['server_id'] = $serverId;
+        if (!$this->applyTaskReferenceFilters($input, $fromClause, 'bt', $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
@@ -208,9 +190,13 @@ HELP
         }
 
         $query = "SELECT bt.*,
-                  cs.title as server_name
+                  cs.title as server_name,
+                  cs.title as server,
+                  CASE WHEN bt.video_id > 0 THEN bt.video_id WHEN bt.album_id > 0 THEN bt.album_id END as object_id,
+                  CASE WHEN bt.video_id > 0 THEN bt.video_id WHEN bt.album_id > 0 THEN bt.album_id END as object,
+                  CASE WHEN bt.video_id > 0 THEN 1 WHEN bt.album_id > 0 THEN 2 END as object_type_id
                   $fromClause";
-        $query .= " ORDER BY bt.priority DESC, bt.added_date ASC LIMIT :limit";
+        $query .= " ORDER BY bt.task_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -243,7 +229,7 @@ HELP
 
             // Transform data for display
             /** @var list<array{task_id: int, status_id: int, type_id: int, video_id: int|null, album_id: int|null, server_id: int|null, server_name: string|null, error_code: int|null, priority: int, id: int, status: string, type: string, content_id: string, server: string, error: string}> $tasks */
-            $tasks = array_map(function (array $task): array {
+            $tasks = array_map(function (array $task) use ($db): array {
                 $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
                 $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
                 $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
@@ -262,7 +248,7 @@ HELP
                 $task['error'] = $errorCode > 0
                     ? (self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}")
                     : '';
-                return $task;
+                return $this->hydrateTaskListAppendFields($task, $db);
             }, $tasks);
 
             // Format and display
@@ -298,10 +284,107 @@ HELP
         }
     }
 
-    private function showTask(?string $id): int
+    /**
+     * Hydrate append-only fields used by KVS admin background_tasks grid.
+     *
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function hydrateTaskListAppendFields(array $task, \PDO $db): array
     {
-        if ($id === null || $id === '') {
-            $this->io()->error('Task ID is required');
+        $task['format_postfix'] = '';
+        $task['format_size'] = '';
+        $task['pc_complete'] = '';
+        $task['is_error'] = $this->scalarToPositiveInt($task['status_id'] ?? null) === StatusFormatter::TASK_FAILED ? 1 : 0;
+
+        $taskData = $this->unserializeTaskData($task['data'] ?? null);
+        if ($taskData !== []) {
+            $formatGroupId = $this->scalarToPositiveInt($taskData['new_format_video_group_id'] ?? null);
+            if ($formatGroupId !== null) {
+                $task['format_postfix'] = $this->fetchFormatVideoGroupTitle($db, $formatGroupId);
+            } elseif (isset($taskData['format_postfix']) && is_scalar($taskData['format_postfix'])) {
+                $task['format_postfix'] = (string) $taskData['format_postfix'];
+            }
+
+            if (isset($taskData['format_size']) && is_scalar($taskData['format_size'])) {
+                $task['format_size'] = (string) $taskData['format_size'];
+            }
+        }
+
+        $taskId = $this->scalarToPositiveInt($task['task_id'] ?? null);
+        if ($taskId !== null) {
+            $task['pc_complete'] = $this->readTaskProgressCompletion($taskId);
+        }
+
+        return $task;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function unserializeTaskData(mixed $data): array
+    {
+        if (!is_string($data) || $data === '') {
+            return [];
+        }
+
+        $taskData = @unserialize($data, ['allowed_classes' => false]);
+        if (!is_array($taskData)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($taskData as $key => $value) {
+            if (is_string($key)) {
+                $normalized[$key] = $value;
+            }
+        }
+
+        return $normalized;
+    }
+
+    private function fetchFormatVideoGroupTitle(\PDO $db, int $formatGroupId): string
+    {
+        $stmt = $db->prepare("
+            SELECT title
+            FROM {$this->table('formats_videos_groups')}
+            WHERE format_video_group_id = :format_group_id
+        ");
+        $stmt->execute(['format_group_id' => $formatGroupId]);
+
+        $title = $stmt->fetchColumn();
+        return is_scalar($title) ? (string) $title : '';
+    }
+
+    private function readTaskProgressCompletion(int $taskId): string
+    {
+        $progressFile = $this->config->getKvsPath() . '/admin/data/engine/tasks/' . $taskId . '.dat';
+        if (!is_file($progressFile)) {
+            return '';
+        }
+
+        $progress = @file_get_contents($progressFile);
+        if ($progress === false || $progress === '') {
+            return '';
+        }
+
+        return ((int) $progress) . '%';
+    }
+
+    private function scalarToPositiveInt(mixed $value): ?int
+    {
+        if (!is_scalar($value) || !is_numeric($value)) {
+            return null;
+        }
+
+        $intValue = (int) $value;
+        return $intValue > 0 ? $intValue : null;
+    }
+
+    private function showTask(?string $id, InputInterface $input): int
+    {
+        $taskId = $this->getRequiredPositiveId($id, 'Task');
+        if ($taskId === null) {
             return self::FAILURE;
         }
 
@@ -311,20 +394,34 @@ HELP
         }
 
         try {
-            $result = $this->fetchTask($db, $id);
+            $result = $this->fetchTask($db, $taskId);
             if ($result === null) {
-                $this->io()->error("Task not found: $id");
+                $this->io()->error("Task not found: $taskId");
                 return self::FAILURE;
             }
 
             [$task, $isHistory] = $result;
-            $this->io()->title("Task #$id" . ($isHistory ? ' (History)' : ''));
-
             $info = $this->buildTaskInfo($task, $isHistory);
+
+            if (!$this->isTableFormat($input)) {
+                $extra = [
+                    'task_id' => (string) $taskId,
+                    'is_history' => $isHistory,
+                ];
+                $data = $task['data'] ?? null;
+                if (is_string($data) && $data !== '') {
+                    $unserialized = @unserialize($data, ['allowed_classes' => false]);
+                    $extra['data'] = $unserialized !== false ? $unserialized : $data;
+                }
+
+                return $this->displayDetailRows($input, $info, $extra);
+            }
+
+            $this->io()->title("Task #$taskId" . ($isHistory ? ' (History)' : ''));
             $this->renderTable(['Property', 'Value'], $info);
 
             $this->displayTaskData($task);
-            $this->displayTaskProgress($task, $id, $isHistory);
+            $this->displayTaskProgress($task, (string) $taskId, $isHistory);
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -337,7 +434,7 @@ HELP
      * Fetch task from active or history table
      * @return array{0: array<string, mixed>, 1: bool}|null
      */
-    private function fetchTask(\PDO $db, string $id): ?array
+    private function fetchTask(\PDO $db, int $id): ?array
     {
         $stmt = $db->prepare("
             SELECT bt.*, cs.title as server_name
@@ -492,7 +589,7 @@ HELP
         }
     }
 
-    private function showStats(): int
+    private function showStats(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -500,128 +597,49 @@ HELP
         }
 
         try {
-            $this->io()->title('Queue Statistics');
+            $statusCounts = $this->getQueueStatusCounts($db);
 
-            // Status counts
-            $stmt = $db->query("
-                SELECT status_id, COUNT(*) as count
-                FROM {$this->table('background_tasks')}
-                GROUP BY status_id
-            ");
-            /** @var array<int, int> $statusCounts */
-            $statusCounts = [];
-            if ($stmt !== false) {
-                while ($row = $stmt->fetch()) {
-                    if (is_array($row)) {
-                        $statusIdVal = $row['status_id'] ?? null;
-                        $countVal = $row['count'] ?? null;
-                        if (is_numeric($statusIdVal) && is_numeric($countVal)) {
-                            $statusCounts[(int) $statusIdVal] = (int) $countVal;
-                        }
-                    }
-                }
-            }
-
-            $this->io()->section('Queue Status');
-            /** @var list<list<string|int|null>> $rows */
-            $rows = [
+            /** @var list<list<string|int|null>> $statusRows */
+            $statusRows = [
                 [StatusFormatter::task(0), number_format($statusCounts[0] ?? 0)],
                 [StatusFormatter::task(1), number_format($statusCounts[1] ?? 0)],
                 [StatusFormatter::task(2), number_format($statusCounts[2] ?? 0)],
                 ['<fg=white>Total</>', number_format(array_sum($statusCounts))],
             ];
-            $this->renderTable(['Status', 'Count'], $rows);
+            /** @var list<array<string, mixed>> $metricRows */
+            $metricRows = [
+                $this->metricRow('queue_status', StatusFormatter::task(0, false), $statusCounts[0] ?? 0),
+                $this->metricRow('queue_status', StatusFormatter::task(1, false), $statusCounts[1] ?? 0),
+                $this->metricRow('queue_status', StatusFormatter::task(2, false), $statusCounts[2] ?? 0),
+                $this->metricRow('queue_status', 'Total', array_sum($statusCounts)),
+            ];
 
-            // Type breakdown (top N)
-            $stmt = $db->query("
-                SELECT type_id, COUNT(*) as count
-                FROM {$this->table('background_tasks')}
-                GROUP BY type_id
-                ORDER BY count DESC
-                LIMIT " . Constants::TOP_QUERY_LIMIT . "
-            ");
+            $typeRows = $this->getQueueTypeStatsRows($db, $metricRows);
+            $errorRows = $this->getQueueErrorStatsRows($db, $metricRows);
+            $historyRows = $this->getQueueRecentHistoryRows($db, $metricRows);
 
-            if ($stmt !== false) {
-                /** @var list<array<string, mixed>> $types */
-                $types = $stmt->fetchAll();
-                if ($types !== []) {
-                    $this->io()->section('Tasks by Type (Top ' . Constants::TOP_QUERY_LIMIT . ')');
-                    /** @var list<list<string|int|null>> $rows */
-                    $rows = [];
-                    foreach ($types as $type) {
-                        $typeIdVal = $type['type_id'] ?? null;
-                        $countVal = $type['count'] ?? null;
-                        $typeId = is_numeric($typeIdVal) ? (int) $typeIdVal : 0;
-                        $count = is_numeric($countVal) ? (int) $countVal : 0;
-                        $typeName = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                        $rows[] = [$typeId, $typeName, number_format($count)];
-                    }
-                    $this->renderTable(['ID', 'Type', 'Count'], $rows);
-                }
+            if (!$this->isTableFormat($input)) {
+                $this->displayMetricRows($input, $metricRows);
+                return self::SUCCESS;
             }
 
-            // Error breakdown
-            $stmt = $db->query("
-                SELECT error_code, COUNT(*) as count
-                FROM {$this->table('background_tasks')}
-                WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND error_code > 0
-                GROUP BY error_code
-                ORDER BY count DESC
-            ");
+            $this->io()->title('Queue Statistics');
+            $this->io()->section('Queue Status');
+            $this->renderTable(['Status', 'Count'], $statusRows);
 
-            if ($stmt !== false) {
-                /** @var list<array<string, mixed>> $errors */
-                $errors = $stmt->fetchAll();
-                if ($errors !== []) {
-                    $this->io()->section('Failed Tasks by Error');
-                    /** @var list<list<string|int|null>> $rows */
-                    $rows = [];
-                    foreach ($errors as $error) {
-                        $errorCodeVal = $error['error_code'] ?? null;
-                        $countVal = $error['count'] ?? null;
-                        $errorCode = is_numeric($errorCodeVal) ? (int) $errorCodeVal : 0;
-                        $count = is_numeric($countVal) ? (int) $countVal : 0;
-                        $errorName = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
-                        $rows[] = [$errorCode, $errorName, number_format($count)];
-                    }
-                    $this->renderTable(['Code', 'Error', 'Count'], $rows);
-                }
+            if ($typeRows !== []) {
+                $this->io()->section('Tasks by Type (Top ' . Constants::TOP_QUERY_LIMIT . ')');
+                $this->renderTable(['ID', 'Type', 'Count'], $typeRows);
             }
 
-            // Recent history stats (last 24h)
-            $recentHistoryCutoff = date('Y-m-d H:i:s', time() - (Constants::RECENT_HOURS * 3600));
-            $stmt = $db->prepare("
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
-                    SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
-                    AVG(effective_duration) as avg_duration
-                FROM {$this->table('background_tasks_history')}
-                WHERE end_date >= :cutoff
-            ");
-            $stmt->execute(['cutoff' => $recentHistoryCutoff]);
+            if ($errorRows !== []) {
+                $this->io()->section('Failed Tasks by Error');
+                $this->renderTable(['Code', 'Error', 'Count'], $errorRows);
+            }
 
-            if ($stmt !== false) {
-                /** @var array<string, mixed>|false $history */
-                $history = $stmt->fetch();
-                $totalVal = $history['total'] ?? null;
-                $total = is_numeric($totalVal) ? (int) $totalVal : 0;
-                if (is_array($history) && $total > 0) {
-                    $completedVal = $history['completed'] ?? null;
-                    $deletedVal = $history['deleted'] ?? null;
-                    $avgDurationVal = $history['avg_duration'] ?? null;
-                    $completed = is_numeric($completedVal) ? (int) $completedVal : 0;
-                    $deleted = is_numeric($deletedVal) ? (int) $deletedVal : 0;
-                    $avgDuration = is_numeric($avgDurationVal) ? (int) $avgDurationVal : 0;
-                    $this->io()->section('Last 24 Hours');
-                    /** @var list<list<string|int|null>> $rows */
-                    $rows = [
-                        ['Completed', number_format($completed)],
-                        ['Deleted', number_format($deleted)],
-                        ['Avg Duration', $this->formatDuration($avgDuration)],
-                    ];
-                    $this->renderTable(['Metric', 'Value'], $rows);
-                }
+            if ($historyRows !== []) {
+                $this->io()->section('Last 24 Hours');
+                $this->renderTable(['Metric', 'Value'], $historyRows);
             }
 
             return self::SUCCESS;
@@ -631,6 +649,159 @@ HELP
         }
     }
 
+    /**
+     * @return array<int, int>
+     */
+    private function getQueueStatusCounts(\PDO $db): array
+    {
+        $stmt = $db->query("
+            SELECT status_id, COUNT(*) as count
+            FROM {$this->table('background_tasks')}
+            GROUP BY status_id
+        ");
+
+        $statusCounts = [];
+        if ($stmt === false) {
+            return $statusCounts;
+        }
+
+        while ($row = $stmt->fetch()) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $statusIdVal = $row['status_id'] ?? null;
+            $countVal = $row['count'] ?? null;
+            if (is_numeric($statusIdVal) && is_numeric($countVal)) {
+                $statusCounts[(int) $statusIdVal] = (int) $countVal;
+            }
+        }
+
+        return $statusCounts;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $metricRows
+     * @return list<list<string|int|null>>
+     */
+    private function getQueueTypeStatsRows(\PDO $db, array &$metricRows): array
+    {
+        $stmt = $db->query("
+            SELECT type_id, COUNT(*) as count
+            FROM {$this->table('background_tasks')}
+            GROUP BY type_id
+            ORDER BY count DESC
+            LIMIT " . Constants::TOP_QUERY_LIMIT . "
+        ");
+        if ($stmt === false) {
+            return [];
+        }
+
+        /** @var list<array<string, mixed>> $types */
+        $types = $stmt->fetchAll();
+        $rows = [];
+        foreach ($types as $type) {
+            $typeId = is_numeric($type['type_id'] ?? null) ? (int) $type['type_id'] : 0;
+            $count = is_numeric($type['count'] ?? null) ? (int) $type['count'] : 0;
+            $typeName = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
+            $metricRows[] = $this->metricRow(
+                'tasks_by_type',
+                (string) $typeId,
+                $count,
+                number_format($count),
+                $typeName
+            );
+            $rows[] = [$typeId, $typeName, number_format($count)];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $metricRows
+     * @return list<list<string|int|null>>
+     */
+    private function getQueueErrorStatsRows(\PDO $db, array &$metricRows): array
+    {
+        $stmt = $db->query("
+            SELECT error_code, COUNT(*) as count
+            FROM {$this->table('background_tasks')}
+            WHERE status_id = " . StatusFormatter::TASK_FAILED . " AND error_code > 0
+            GROUP BY error_code
+            ORDER BY count DESC
+        ");
+        if ($stmt === false) {
+            return [];
+        }
+
+        /** @var list<array<string, mixed>> $errors */
+        $errors = $stmt->fetchAll();
+        $rows = [];
+        foreach ($errors as $error) {
+            $errorCode = is_numeric($error['error_code'] ?? null) ? (int) $error['error_code'] : 0;
+            $count = is_numeric($error['count'] ?? null) ? (int) $error['count'] : 0;
+            $errorName = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
+            $metricRows[] = $this->metricRow(
+                'failed_tasks_by_error',
+                (string) $errorCode,
+                $count,
+                number_format($count),
+                $errorName
+            );
+            $rows[] = [$errorCode, $errorName, number_format($count)];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $metricRows
+     * @return list<list<string|int|null>>
+     */
+    private function getQueueRecentHistoryRows(\PDO $db, array &$metricRows): array
+    {
+        $recentHistoryCutoff = date('Y-m-d H:i:s', time() - (Constants::RECENT_HOURS * 3600));
+        $stmt = $db->prepare("
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status_id = " . StatusFormatter::TASK_COMPLETED . " THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status_id = " . StatusFormatter::TASK_DELETED . " THEN 1 ELSE 0 END) as deleted,
+                AVG(effective_duration) as avg_duration
+            FROM {$this->table('background_tasks_history')}
+            WHERE end_date >= :cutoff
+        ");
+        $stmt->execute(['cutoff' => $recentHistoryCutoff]);
+
+        /** @var array<string, mixed>|false $history */
+        $history = $stmt->fetch();
+        if (!is_array($history)) {
+            return [];
+        }
+
+        $total = is_numeric($history['total'] ?? null) ? (int) $history['total'] : 0;
+        if ($total <= 0) {
+            return [];
+        }
+
+        $completed = is_numeric($history['completed'] ?? null) ? (int) $history['completed'] : 0;
+        $deleted = is_numeric($history['deleted'] ?? null) ? (int) $history['deleted'] : 0;
+        $avgDuration = is_numeric($history['avg_duration'] ?? null) ? (int) $history['avg_duration'] : 0;
+        $metricRows[] = $this->metricRow('last_24_hours', 'Completed', $completed, number_format($completed));
+        $metricRows[] = $this->metricRow('last_24_hours', 'Deleted', $deleted, number_format($deleted));
+        $metricRows[] = $this->metricRow(
+            'last_24_hours',
+            'Avg Duration',
+            $avgDuration,
+            $this->formatDuration($avgDuration)
+        );
+
+        return [
+            ['Completed', number_format($completed)],
+            ['Deleted', number_format($deleted)],
+            ['Avg Duration', $this->formatDuration($avgDuration)],
+        ];
+    }
+
     private function showHistory(InputInterface $input): int
     {
         $db = $this->getDatabaseConnection();
@@ -638,7 +809,10 @@ HELP
             return self::FAILURE;
         }
 
-        $fromClause = "FROM {$this->table('background_tasks_history')} WHERE 1=1";
+        $fromClause = "FROM {$this->table('background_tasks_history')} bh
+                       LEFT JOIN {$this->table('admin_conversion_servers')} cs
+                           ON bh.server_id = cs.server_id
+                       WHERE 1=1";
         $params = [];
 
         $status = $this->getStringOption($input, 'status');
@@ -656,32 +830,12 @@ HELP
                 $this->io()->error('Invalid status "' . $status . '". Valid values: failed, completed, deleted');
                 return self::FAILURE;
             }
-            $fromClause .= " AND status_id = :status";
+            $fromClause .= " AND bh.status_id = :status";
             $params['status'] = $statusMap[$statusKey];
         }
 
-        $type = $this->getIntOption($input, 'type');
-        if ($type !== null) {
-            $fromClause .= " AND type_id = :type";
-            $params['type'] = $type;
-        }
-
-        $videoId = $this->getIntOption($input, 'video');
-        if ($videoId !== null) {
-            $fromClause .= " AND video_id = :video_id";
-            $params['video_id'] = $videoId;
-        }
-
-        $albumId = $this->getIntOption($input, 'album');
-        if ($albumId !== null) {
-            $fromClause .= " AND album_id = :album_id";
-            $params['album_id'] = $albumId;
-        }
-
-        $serverId = $this->getIntOption($input, 'server');
-        if ($serverId !== null) {
-            $fromClause .= " AND server_id = :server_id";
-            $params['server_id'] = $serverId;
+        if (!$this->applyTaskReferenceFilters($input, $fromClause, 'bh', $params)) {
+            return self::FAILURE;
         }
 
         if ($this->getStringOptionOrDefault($input, 'format', 'table') === 'count') {
@@ -691,8 +845,14 @@ HELP
             return $this->countQueueHistory($db, $fromClause, $params);
         }
 
-        $query = "SELECT * $fromClause";
-        $query .= " ORDER BY end_date DESC LIMIT :limit";
+        $query = "SELECT bh.*,
+                  cs.title as server_name,
+                  cs.title as server,
+                  CASE WHEN bh.video_id > 0 THEN bh.video_id WHEN bh.album_id > 0 THEN bh.album_id END as object_id,
+                  CASE WHEN bh.video_id > 0 THEN bh.video_id WHEN bh.album_id > 0 THEN bh.album_id END as object,
+                  CASE WHEN bh.video_id > 0 THEN 1 WHEN bh.album_id > 0 THEN 2 END as object_type_id
+                  $fromClause";
+        $query .= " ORDER BY bh.task_id DESC LIMIT :limit";
 
         try {
             $stmt = $db->prepare($query);
@@ -723,47 +883,37 @@ HELP
                 return self::SUCCESS;
             }
 
-            // Transform for display
-            /** @var list<array{task_id: int, status_id: int, type_id: int, video_id: int|null, album_id: int|null, effective_duration: int|null, end_date: string|null, id: int, status: string, type: string, content_id: string, duration: string}> $tasks */
-            $tasks = array_map(function (array $task): array {
-                $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
-                $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
-                $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
-                $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
-                $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
-
-                $task['id'] = $task['task_id'];
-                $task['status_id'] = $statusId;
-                $task['status'] = StatusFormatter::task($statusId, false);
-                $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
-                $task['content_id'] = $videoId > 0
-                    ? "Video #{$videoId}"
-                    : ($albumId > 0 ? "Album #{$albumId}" : '-');
-                $task['duration'] = $this->formatDuration($effectiveDuration);
-                return $task;
-            }, $tasks);
+            $tasks = array_map(fn (array $task): array => $this->transformHistoryTask($task), $tasks);
 
             if ($format === 'table') {
                 $this->io()->title('Task History');
                 /** @var list<list<string|int|null>> $rows */
                 $rows = [];
                 foreach ($tasks as $task) {
-                    $statusId = $task['status_id'];
+                    $taskIdValue = $task['task_id'] ?? null;
+                    $taskId = is_numeric($taskIdValue) ? (int) $taskIdValue : null;
+                    $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
                     $statusColor = match ($statusId) {
                         StatusFormatter::TASK_COMPLETED => 'green',
                         StatusFormatter::TASK_FAILED => 'red',
                         StatusFormatter::TASK_DELETED => 'gray',
                         default => 'yellow',
                     };
-                    $endDate = $task['end_date'] ?? '';
+                    $endDateValue = $task['end_date'] ?? '';
+                    $endDate = is_string($endDateValue) ? $endDateValue : '';
                     $timestamp = $endDate !== '' ? strtotime($endDate) : false;
                     $endDateStr = $timestamp !== false ? date('Y-m-d H:i', $timestamp) : '-';
+                    $status = is_scalar($task['status'] ?? null) ? (string) $task['status'] : '';
+                    $type = is_scalar($task['type'] ?? null) ? (string) $task['type'] : '';
+                    $contentId = is_scalar($task['content_id'] ?? null) ? (string) $task['content_id'] : '';
+                    $duration = is_scalar($task['duration'] ?? null) ? (string) $task['duration'] : '';
+
                     $rows[] = [
-                        $task['task_id'],
-                        "<fg={$statusColor}>{$task['status']}</>",
-                        $task['type'],
-                        $task['content_id'],
-                        $task['duration'],
+                        $taskId,
+                        "<fg={$statusColor}>{$status}</>",
+                        $type,
+                        $contentId,
+                        $duration,
                         $endDateStr,
                     ];
                 }
@@ -782,6 +932,34 @@ HELP
             $this->io()->error('Failed to fetch history: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function transformHistoryTask(array $task): array
+    {
+        $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
+        $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
+        $videoId = is_numeric($task['video_id'] ?? null) ? (int) $task['video_id'] : 0;
+        $albumId = is_numeric($task['album_id'] ?? null) ? (int) $task['album_id'] : 0;
+        $effectiveDuration = is_numeric($task['effective_duration'] ?? null) ? (int) $task['effective_duration'] : 0;
+        $serverId = is_numeric($task['server_id'] ?? null) ? (int) $task['server_id'] : 0;
+        $serverName = $task['server_name'] ?? null;
+
+        $task['id'] = $task['task_id'];
+        $task['status_id'] = $statusId;
+        $task['status'] = StatusFormatter::task($statusId, false);
+        $task['type'] = self::TASK_TYPES[$typeId] ?? "Type #{$typeId}";
+        $task['content_id'] = $videoId > 0 ? "Video #{$videoId}" : ($albumId > 0 ? "Album #{$albumId}" : '-');
+        $task['server'] = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-');
+        $duration = $this->formatDuration($effectiveDuration);
+        $task['effective_duration_seconds'] = $effectiveDuration;
+        $task['effective_duration'] = $duration;
+        $task['duration'] = $duration;
+
+        return $task;
     }
 
     private function showHelp(): int
@@ -804,6 +982,36 @@ HELP
         ]);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, int> $params
+     */
+    private function applyTaskReferenceFilters(
+        InputInterface $input,
+        string &$fromClause,
+        string $alias,
+        array &$params
+    ): bool {
+        $filters = [
+            'type' => ['column' => 'type_id', 'param' => 'type'],
+            'video' => ['column' => 'video_id', 'param' => 'video_id'],
+            'album' => ['column' => 'album_id', 'param' => 'album_id'],
+            'server' => ['column' => 'server_id', 'param' => 'server_id'],
+        ];
+
+        foreach ($filters as $option => $filter) {
+            $value = $this->getOptionalNonNegativeIntOption($input, $option);
+            if ($value === false) {
+                return false;
+            }
+            if ($value !== null) {
+                $fromClause .= sprintf(' AND %s.%s = :%s', $alias, $filter['column'], $filter['param']);
+                $params[$filter['param']] = $value;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -845,7 +1053,7 @@ HELP
     private function formatDuration(int $seconds): string
     {
         if ($seconds <= 0) {
-            return '0s';
+            return '0:00';
         }
 
         $hours = (int)floor($seconds / 3600);
@@ -853,12 +1061,10 @@ HELP
         $secs = $seconds % 60;
 
         if ($hours > 0) {
-            return sprintf('%dh %dm %ds', $hours, $minutes, $secs);
+            return sprintf('%d:%02d:%02d', $hours, $minutes, $secs);
         }
-        if ($minutes > 0) {
-            return sprintf('%dm %ds', $minutes, $secs);
-        }
-        return sprintf('%ds', $secs);
+
+        return sprintf('%d:%02d', $minutes, $secs);
     }
 
     private function formatTaskCount(int $count): string
