@@ -705,7 +705,7 @@ class SystemValidationRegressionTest extends TestCase
     {
         $this->createVideoFormatTables();
 
-        foreach (['status' => 'required', 'group' => '1'] as $option => $value) {
+        foreach (['status' => 'required', 'group' => '1', 'search' => 'mp4'] as $option => $value) {
             $tester = new CommandTester($this->createVideoFormatCommand());
             $tester->execute([
                 'action' => 'groups',

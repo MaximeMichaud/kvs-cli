@@ -645,6 +645,11 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->getStringOption($input, 'search') !== null) {
+            $this->io()->error('The groups action does not support --search. Use list --search to filter video formats.');
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
