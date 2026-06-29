@@ -221,6 +221,33 @@ class ModelCommandTest extends TestCase
         $this->assertSame('2026-01-01', $rows[0]['death_date']);
     }
 
+    public function testListModelsExposesKvsAdminRawScalarFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Test Model',
+            '--fields' => 'model_id,dir,description,alias,access_level_id,gender_id,hair_id,eye_color_id,gallery_url,added_date,sort_id,rank',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['model_id']);
+        $this->assertSame('test-model', $rows[0]['dir']);
+        $this->assertSame('Main model profile', $rows[0]['description']);
+        $this->assertSame('Test Alias', $rows[0]['alias']);
+        $this->assertSame(2, (int) $rows[0]['access_level_id']);
+        $this->assertSame(1, (int) $rows[0]['gender_id']);
+        $this->assertSame(2, (int) $rows[0]['hair_id']);
+        $this->assertSame(3, (int) $rows[0]['eye_color_id']);
+        $this->assertSame('https://example.test/model-gallery', $rows[0]['gallery_url']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame(11, (int) $rows[0]['sort_id']);
+        $this->assertSame('#7', $rows[0]['rank']);
+    }
+
     #[DataProvider('provideOutputFormats')]
     public function testListModelsFormats(string $format): void
     {
@@ -324,9 +351,10 @@ class ModelCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('models') . ' (' .
-            'model_id INTEGER, title TEXT, status_id INTEGER, model_viewed INTEGER, country TEXT, ' .
-            'birth_date TEXT, age INTEGER, measurements TEXT, height TEXT, weight TEXT, rank INTEGER, ' .
-            'rating INTEGER, rating_amount INTEGER, description TEXT, total_videos INTEGER, total_albums INTEGER, ' .
+            'model_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, model_viewed INTEGER, access_level_id INTEGER, ' .
+            'country TEXT, gender_id INTEGER, hair_id INTEGER, eye_color_id INTEGER, birth_date TEXT, age INTEGER, ' .
+            'measurements TEXT, height TEXT, weight TEXT, rank INTEGER, rating INTEGER, rating_amount INTEGER, ' .
+            'description TEXT, alias TEXT, gallery_url TEXT, added_date TEXT, sort_id INTEGER, total_videos INTEGER, total_albums INTEGER, ' .
             'total_dvds INTEGER, total_dvd_groups INTEGER, subscribers_count INTEGER, city TEXT, state TEXT, ' .
             'death_date TEXT, model_group_id INTEGER)'
         );
@@ -357,13 +385,17 @@ class ModelCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models') .
-            ' (model_id, title, status_id, model_viewed, country, birth_date, age, measurements, height, ' .
-            'weight, rank, rating, rating_amount, description, total_videos, total_albums, total_dvds, ' .
+            ' (model_id, title, dir, status_id, model_viewed, access_level_id, country, gender_id, hair_id, eye_color_id, ' .
+            'birth_date, age, measurements, height, weight, rank, rating, rating_amount, description, alias, gallery_url, ' .
+            'added_date, sort_id, total_videos, total_albums, total_dvds, ' .
             'total_dvd_groups, subscribers_count, city, state, death_date, model_group_id) VALUES ' .
-            "(30, 'Test Model', 1, 100, 'CA', '2000-01-01', 26, '34-24-34', '170 cm', " .
-            "'55 kg', 7, 40, 10, 'Main model profile', 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3), " .
-            "(20, 'Disabled Model', 0, 8, '', '', 0, '', '', '', 0, 0, 0, '', 1, 1, 0, 0, 0, '', '', '0000-00-00', 4), " .
-            "(10, 'Other Performer', 1, 25, 'US', '1999-02-03', 27, '', '', '', 0, 20, 5, '', 1, 0, 0, 0, 1, '', '', '0000-00-00', 0)"
+            "(30, 'Test Model', 'test-model', 1, 100, 2, 'CA', 1, 2, 3, '2000-01-01', 26, '34-24-34', '170 cm', " .
+            "'55 kg', 7, 40, 10, 'Main model profile', 'Test Alias', 'https://example.test/model-gallery', " .
+            "'2026-05-25 10:00:00', 11, 2, 1, 3, 4, 6, 'Montreal', 'Quebec', '2026-01-01', 3), " .
+            "(20, 'Disabled Model', 'disabled-model', 0, 8, 0, '', 0, 0, 0, '', 0, '', '', '', 0, 0, 0, '', '', '', " .
+            "'2026-05-26 10:00:00', 12, 1, 1, 0, 0, 0, '', '', '0000-00-00', 4), " .
+            "(10, 'Other Performer', 'other-performer', 1, 25, 0, 'US', 0, 0, 0, '1999-02-03', 27, '', '', '', 0, 20, 5, '', '', '', " .
+            "'2026-05-27 10:00:00', 13, 1, 0, 0, 0, 1, '', '', '0000-00-00', 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('models_groups') .

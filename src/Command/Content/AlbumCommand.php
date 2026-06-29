@@ -137,8 +137,11 @@ HELP
 
             $commentsTable = $this->table('comments');
             [$relationSelectSql, $relationJoinSql] = $this->buildAlbumRelationSql($input);
+            $userStatusSelect = $this->isAlbumFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
 
-            $query = "SELECT a.*, u.username$relationSelectSql,
+            $query = "SELECT a.*, u.username$userStatusSelect$relationSelectSql,
                  a.photos_amount as image_count,
                  (
                      SELECT COUNT(*) FROM $commentsTable c
@@ -174,6 +177,7 @@ HELP
                 $privacy = StatusFormatter::contentPrivacy($privacyId, false);
 
                 return array_merge(
+                    $album,
                     [
                         'album_id' => $album['album_id'] ?? 0,
                         'id' => $album['album_id'] ?? 0,  // Alias
@@ -224,6 +228,12 @@ HELP
             $selects[] = 'cs.title as content_source';
             $selects[] = 'cs.status_id as content_source_status_id';
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = a.content_source_id";
+        }
+
+        if ($this->isAlbumFieldRequested($input, 'admin_user')) {
+            $selects[] = 'au.login as admin_user';
+            $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
+            $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = a.admin_user_id";
         }
 
         if ($this->isAlbumFieldRequested($input, 'admin_flag')) {

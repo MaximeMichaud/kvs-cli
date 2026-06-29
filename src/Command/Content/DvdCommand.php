@@ -144,6 +144,11 @@ HELP
             'rating',
             'rating_amount',
         ];
+        foreach (['dir', 'description', 'synonyms', 'tokens_required', 'added_date', 'sort_id'] as $field) {
+            if ($this->isDvdFieldRequested($input, $field)) {
+                $dvdFields[] = $field;
+            }
+        }
         if ($includeGroupFields) {
             $dvdFields[] = 'dvd_group_id';
         }
@@ -191,6 +196,7 @@ HELP
                 $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
 
                 return [
+                    ...$dvd,
                     'dvd_id' => $dvd['dvd_id'] ?? 0,
                     'id' => $dvd['dvd_id'] ?? 0,
                     'title' => $dvd['title'] ?? '',

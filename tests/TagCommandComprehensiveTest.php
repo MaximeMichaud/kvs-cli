@@ -236,6 +236,32 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(14, (int) $rows[0]['all_amount']);
     }
 
+    public function testListExposesKvsAdminRawScalarAndAverageFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '4K',
+            '--fields' => 'tag_id,tag_dir,synonyms,avg_videos_rating,avg_videos_popularity,' .
+                'avg_albums_rating,avg_albums_popularity,avg_posts_rating,avg_posts_popularity,added_date',
+            '--format' => 'json',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(10, (int) $rows[0]['tag_id']);
+        $this->assertSame('4k', $rows[0]['tag_dir']);
+        $this->assertSame('uhd, ultra hd', $rows[0]['synonyms']);
+        $this->assertSame(4.5, (float) $rows[0]['avg_videos_rating']);
+        $this->assertSame(1200, (int) $rows[0]['avg_videos_popularity']);
+        $this->assertSame(4.25, (float) $rows[0]['avg_albums_rating']);
+        $this->assertSame(900, (int) $rows[0]['avg_albums_popularity']);
+        $this->assertSame(3.75, (float) $rows[0]['avg_posts_rating']);
+        $this->assertSame(300, (int) $rows[0]['avg_posts_popularity']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testShowTagDetails(): void
     {
         $this->tester->execute([
@@ -528,7 +554,9 @@ class TagCommandComprehensiveTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('tags') . ' (' .
             'tag_id INTEGER, tag TEXT, tag_dir TEXT, synonyms TEXT, status_id INTEGER, ' .
             'added_date TEXT, last_content_date TEXT, total_content_sources INTEGER, total_playlists INTEGER, ' .
-            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
+            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER, ' .
+            'avg_videos_rating REAL, avg_videos_popularity INTEGER, avg_albums_rating REAL, avg_albums_popularity INTEGER, ' .
+            'avg_posts_rating REAL, avg_posts_popularity INTEGER)'
         );
 
         foreach ($this->relationTables() as $suffix => $objectColumn) {
@@ -541,11 +569,13 @@ class TagCommandComprehensiveTest extends TestCase
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
             ' (tag_id, tag, tag_dir, synonyms, status_id, added_date, last_content_date, ' .
-            'total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES ' .
-            "(10, '4K', '4k', '', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0), " .
-            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
-            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0), " .
-            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0)"
+            'total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups, ' .
+            'avg_videos_rating, avg_videos_popularity, avg_albums_rating, avg_albums_popularity, ' .
+            'avg_posts_rating, avg_posts_popularity) VALUES ' .
+            "(10, '4K', '4k', 'uhd, ultra hd', 1, '2026-05-26 10:00:00', '2026-05-26 11:00:00', 1, 2, 3, 4, 0, 4.5, 1200, 4.25, 900, 3.75, 300), " .
+            "(20, 'unused', 'unused', '', 1, '2026-05-26 09:00:00', '2026-05-26 10:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "(30, 'archived', 'archived', '', 0, '2026-05-26 08:00:00', '2026-05-26 09:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), " .
+            "(40, 'tagged', 'tagged', '', 1, '2026-05-26 07:00:00', '2026-05-26 08:00:00', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags_videos') .

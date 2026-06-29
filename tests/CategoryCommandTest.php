@@ -94,6 +94,25 @@ class CategoryCommandTest extends TestCase
         $this->assertSame(15, (int) $rows[0]['all_amount']);
     }
 
+    public function testCategoryListExposesKvsAdminGroupField(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => 'Action',
+            '--format' => 'json',
+            '--fields' => 'category_id,title,category_group,category_group_id',
+            '--limit' => 1,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(10, (int) $rows[0]['category_id']);
+        $this->assertSame('Action', $rows[0]['title']);
+        $this->assertSame('Genres', $rows[0]['category_group']);
+        $this->assertSame(2, (int) $rows[0]['category_group_id']);
+    }
+
     public function testCategoryListFormats(): void
     {
         // Test JSON format
@@ -189,6 +208,10 @@ class CategoryCommandTest extends TestCase
             'status_id INTEGER, added_date TEXT, total_content_sources INTEGER, total_playlists INTEGER, ' .
             'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
         );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('categories_groups') . ' (' .
+            'category_group_id INTEGER, title TEXT)'
+        );
 
         foreach ($this->relationTables() as $suffix => $objectColumn) {
             $db->exec(
@@ -205,6 +228,7 @@ class CategoryCommandTest extends TestCase
             "(20, 'Drama', '', 0, 0, '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
             "(30, 'Unused Category', '', 0, 1, '2026-05-26 11:00:00', 0, 0, 0, 0, 0)"
         );
+        $db->exec("INSERT INTO " . TestHelper::table('categories_groups') . " VALUES (2, 'Genres')");
         $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (10, 100), (10, 101), (20, 200)");
         $db->exec("INSERT INTO " . TestHelper::table('categories_albums') . " VALUES (10, 300)");
         $db->exec("INSERT INTO " . TestHelper::table('categories_posts') . " VALUES (10, 400), (10, 401)");

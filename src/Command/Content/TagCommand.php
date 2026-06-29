@@ -199,6 +199,7 @@ HELP
                 $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
                 $otherAmount = $this->getTagStoredOtherAmount($tag);
                 $transformedTags[] = [
+                    ...$tag,
                     'tag_id' => $tag['tag_id'] ?? 0,
                     'id' => $tag['tag_id'] ?? 0,
                     'tag' => $tag['tag'] ?? '',

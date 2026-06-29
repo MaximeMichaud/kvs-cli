@@ -176,6 +176,7 @@ HELP
         $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
         return [
+            ...$model,
             'model_id' => $model['model_id'] ?? 0,
             'id' => $model['model_id'] ?? 0,
             'title' => $model['title'] ?? '',
@@ -205,9 +206,18 @@ HELP
             'measurements' => $model['measurements'] ?? '',
             'height' => $model['height'] ?? '',
             'weight' => $model['weight'] ?? '',
-            'rank' => $model['rank'] ?? '',
+            'rank' => $this->formatModelRank($model['rank'] ?? null),
             'rating' => format_kvs_rating($model['rating'] ?? 0, $model['rating_amount'] ?? 0),
         ];
+    }
+
+    private function formatModelRank(mixed $rank): string
+    {
+        if ($rank === null || !is_scalar($rank)) {
+            return '#';
+        }
+
+        return '#' . (string) $rank;
     }
 
     /**

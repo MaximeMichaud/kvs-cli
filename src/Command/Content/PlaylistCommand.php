@@ -157,8 +157,11 @@ HELP
 
         $commentsTable = $this->table('comments');
         $favVideosTable = $this->table('fav_videos');
+        $userStatusSelect = $this->isPlaylistFieldRequested($input, 'user_status_id')
+            ? ', u.status_id as user_status_id'
+            : '';
 
-        $query = "SELECT p.*, u.username,
+        $query = "SELECT p.*, u.username$userStatusSelect,
                         (SELECT COUNT(*) FROM $favVideosTable f WHERE f.playlist_id = p.playlist_id) as video_count,
                         (
                             SELECT COUNT(*) FROM $commentsTable c
@@ -193,6 +196,7 @@ HELP
                 $isPrivate = is_numeric($isPrivateVal) ? (int) $isPrivateVal : 0;
 
                 return [
+                    ...$playlist,
                     'playlist_id' => $playlist['playlist_id'] ?? 0,
                     'id' => $playlist['playlist_id'] ?? 0,  // Alias
                     'title' => $playlist['title'] ?? '',
@@ -226,6 +230,21 @@ HELP
             $this->io()->error('Failed to fetch playlists: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function isPlaylistFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldOption = $this->getStringOption($input, 'field');
+        if ($fieldOption === $field) {
+            return true;
+        }
+
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        return in_array($field, array_map('trim', explode(',', $fieldsOption)), true);
     }
 
     /**

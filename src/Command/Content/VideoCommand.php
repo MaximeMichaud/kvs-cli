@@ -149,6 +149,9 @@ HELP
             'u.username',
             'v.video_viewed as views',
         ];
+        if ($this->isFieldRequested($input, 'user_status_id')) {
+            $selectFields[] = 'u.status_id as user_status_id';
+        }
         [$relationSelects, $relationJoinSql] = $this->buildVideoRelationSql($input);
         $selectFields = array_merge($selectFields, $relationSelects);
         if ($this->isFieldRequested($input, 'comments_count')) {
@@ -256,6 +259,12 @@ HELP
             $selects[] = 'cs.title as content_source';
             $selects[] = 'cs.status_id as content_source_status_id';
             $joins[] = "LEFT JOIN {$this->table('content_sources')} cs ON cs.content_source_id = v.content_source_id";
+        }
+
+        if ($this->isFieldRequested($input, 'admin_user')) {
+            $selects[] = 'au.login as admin_user';
+            $selects[] = 'au.is_superadmin as admin_user_is_superadmin';
+            $joins[] = "LEFT JOIN {$this->table('admin_users')} au ON au.user_id = v.admin_user_id";
         }
 
         if ($this->isFieldRequested($input, 'dvd')) {

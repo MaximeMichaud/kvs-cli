@@ -170,11 +170,17 @@ HELP
                 return self::FAILURE;
             }
             $usageSelectors = $this->getCategoryUsageSelectors();
+            $includeGroupField = $this->isCategoryFieldRequested($input, 'category_group');
+            $groupSelect = $includeGroupField ? ', cg.title as category_group' : '';
+            $groupJoin = $includeGroupField
+                ? "LEFT JOIN {$this->table('categories_groups')} cg ON cg.category_group_id = c.category_group_id"
+                : '';
 
             $sql = "
-                SELECT c.*,
+                SELECT c.*$groupSelect,
                        {$usageSelectors}
                 FROM {$this->table('categories')} c
+                {$groupJoin}
                 {$usageJoins}
                 $whereClause
                 ORDER BY c.title
@@ -1060,6 +1066,27 @@ HELP
             $db->exec('SET sql_mode = @kvs_cli_old_sql_mode');
         } catch (\Exception) {
         }
+    }
+
+    private function isCategoryFieldRequested(InputInterface $input, string $field): bool
+    {
+        $singleField = $this->getStringOption($input, 'field');
+        if ($singleField === $field) {
+            return true;
+        }
+
+        $fields = $this->getStringOption($input, 'fields');
+        if ($fields === null) {
+            return false;
+        }
+
+        foreach (array_map('trim', explode(',', $fields)) as $requestedField) {
+            if ($requestedField === $field) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function updateCategory(?string $id, InputInterface $input): int

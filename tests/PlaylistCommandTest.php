@@ -167,6 +167,28 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['comments_amount']);
     }
 
+    public function testPlaylistListExposesKvsAdminRawScalarAndUserStatusFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--limit' => 1,
+            '--format' => 'json',
+            '--fields' => 'playlist_id,dir,description,user,user_status_id,status_id,is_private,last_content_date',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['playlist_id']);
+        $this->assertSame('test-playlist', $rows[0]['dir']);
+        $this->assertSame('A test playlist', $rows[0]['description']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame(1, (int) $rows[0]['user_status_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(0, (int) $rows[0]['is_private']);
+        $this->assertSame('2026-05-26 11:00:00', $rows[0]['last_content_date']);
+    }
+
     public function testPlaylistListCsvFormat(): void
     {
         ob_start();
@@ -530,7 +552,7 @@ class PlaylistCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('users') . ' (' .
-            'user_id INTEGER, username TEXT, favourite_videos_count INTEGER)'
+            'user_id INTEGER, username TEXT, status_id INTEGER, favourite_videos_count INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('playlists') . ' (' .
@@ -571,7 +593,7 @@ class PlaylistCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('users') .
-            " (user_id, username, favourite_videos_count) VALUES (1, 'alice', 2), (2, 'bob', 0)"
+            " (user_id, username, status_id, favourite_videos_count) VALUES (1, 'alice', 1, 2), (2, 'bob', 0, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('playlists') .

@@ -188,6 +188,27 @@ class DvdCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['dvd_group_status_id']);
     }
 
+    public function testListDvdsExposesKvsAdminRawScalarFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--format' => 'json',
+            '--fields' => 'dvd_id,dir,description,synonyms,tokens_required,added_date,sort_id',
+            '--limit' => '1',
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(30, (int) $rows[0]['dvd_id']);
+        $this->assertSame('test-series', $rows[0]['dir']);
+        $this->assertSame('Long running series', $rows[0]['description']);
+        $this->assertSame('series, channel', $rows[0]['synonyms']);
+        $this->assertSame(25, (int) $rows[0]['tokens_required']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame(9, (int) $rows[0]['sort_id']);
+    }
+
     public function testListDvdsFormatsZeroReleaseYearLikeKvsAdmin(): void
     {
         $this->db->exec('UPDATE ' . TestHelper::table('dvds') . ' SET release_year = 0 WHERE dvd_id = 10');
@@ -356,8 +377,9 @@ class DvdCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('dvds') . ' (' .
-            'dvd_id INTEGER, title TEXT, status_id INTEGER, release_year INTEGER, dvd_viewed INTEGER, ' .
+            'dvd_id INTEGER, title TEXT, dir TEXT, status_id INTEGER, release_year INTEGER, dvd_viewed INTEGER, ' .
             'subscribers_count INTEGER, rating INTEGER, rating_amount INTEGER, description TEXT, ' .
+            'synonyms TEXT, tokens_required INTEGER, added_date TEXT, sort_id INTEGER, ' .
             'total_videos INTEGER, total_videos_duration INTEGER, dvd_group_id INTEGER)'
         );
         $db->exec(
@@ -375,11 +397,12 @@ class DvdCommandTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('dvds') .
-            ' (dvd_id, title, status_id, release_year, dvd_viewed, subscribers_count, rating, rating_amount, ' .
-            "description, total_videos, total_videos_duration, dvd_group_id) VALUES " .
-            "(30, 'Test Series', 1, 2026, 100, 5, 40, 10, 'Long running series', 99, 99, 7), " .
-            "(20, 'Disabled Series', 0, 2025, 10, 0, 0, 0, '', 99, 99, 8), " .
-            "(10, 'Other Channel', 1, 2024, 50, 2, 12, 3, '', 99, 99, 0)"
+            ' (dvd_id, title, dir, status_id, release_year, dvd_viewed, subscribers_count, rating, rating_amount, ' .
+            'description, synonyms, tokens_required, added_date, sort_id, total_videos, total_videos_duration, dvd_group_id) VALUES ' .
+            "(30, 'Test Series', 'test-series', 1, 2026, 100, 5, 40, 10, 'Long running series', " .
+            "'series, channel', 25, '2026-05-25 10:00:00', 9, 99, 99, 7), " .
+            "(20, 'Disabled Series', 'disabled-series', 0, 2025, 10, 0, 0, 0, '', '', 0, '2026-05-26 10:00:00', 10, 99, 99, 8), " .
+            "(10, 'Other Channel', 'other-channel', 1, 2024, 50, 2, 12, 3, '', '', 0, '2026-05-27 10:00:00', 11, 99, 99, 0)"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('dvds_groups') .
