@@ -77,6 +77,36 @@ class VideoFormatCommandTest extends TestCase
         $this->assertSame('', $rowsById[4]['watermark2_position_scrolling']);
     }
 
+    public function testListFiltersByKvsAdminSearchText(): void
+    {
+        $cases = [
+            'title' => ['Format 4', [4]],
+            'postfix' => ['_stale', [1]],
+            'ffmpeg options' => ['scale=1280', [3]],
+            'missing' => ['missing-format-term', []],
+        ];
+
+        foreach ($cases as $label => [$search, $expectedIds]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--force' => true,
+                'action' => 'list',
+                '--search' => $search,
+                '--format' => 'json',
+                '--fields' => 'format_video_id',
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), "{$label}: {$tester->getDisplay()}");
+            $this->assertSame(
+                $expectedIds,
+                array_map(static fn (array $row): int => (int) $row['format_video_id'], $rows),
+                $label
+            );
+        }
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -106,7 +136,7 @@ class VideoFormatCommandTest extends TestCase
             'timeline_option INTEGER, timeline_amount INTEGER, timeline_interval INTEGER, is_use_as_source INTEGER, ' .
             'watermark_position_id INTEGER, watermark_offset_random TEXT, watermark_scrolling_times INTEGER, ' .
             'watermark_scrolling_duration INTEGER, watermark2_position_id INTEGER, watermark2_offset_random TEXT, ' .
-            'watermark2_scrolling_times INTEGER, watermark2_scrolling_duration INTEGER)'
+            'watermark2_scrolling_times INTEGER, watermark2_scrolling_duration INTEGER, ffmpeg_options TEXT)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
@@ -120,7 +150,7 @@ class VideoFormatCommandTest extends TestCase
         $db->exec("INSERT INTO " . TestHelper::table('formats_videos_groups') . " VALUES (1, 'Main')");
         $this->insertFormat($db, 1, '_stale.mp4', 3, 0, 0, '', 0, 0, 0, '', 0);
         $this->insertFormat($db, 2, '_deleting.mp4', 3, 0, 0, '', 0, 0, 0, '', 0);
-        $this->insertFormat($db, 3, '_error.mp4', 4, 0, 0, '', 0, 0, 0, '', 0);
+        $this->insertFormat($db, 3, '_error.mp4', 4, 0, 0, '', 0, 0, 0, '', 0, 'scale=1280:-2');
         $this->insertFormat($db, 4, '_source.mp4', 1, 1, 5, '3', 2, 5, 0, '4', 0);
         $db->exec(
             'INSERT INTO ' . TestHelper::table('background_tasks') .
@@ -142,7 +172,8 @@ class VideoFormatCommandTest extends TestCase
         int $watermarkDuration,
         int $watermark2PositionId,
         string $watermark2Random,
-        int $watermark2Times
+        int $watermark2Times,
+        string $ffmpegOptions = ''
     ): void {
         $stmt = $db->prepare(
             'INSERT INTO ' . TestHelper::table('formats_videos') .
@@ -150,7 +181,7 @@ class VideoFormatCommandTest extends TestCase
             "'720x400', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, " .
             '0, 0, 0, 0, 0, :is_use_as_source, :watermark_position_id, :watermark_random, ' .
             ':watermark_times, :watermark_duration, :watermark2_position_id, :watermark2_random, ' .
-            ':watermark2_times, 0)'
+            ':watermark2_times, 0, :ffmpeg_options)'
         );
         $stmt->execute([
             'id' => $formatId,
@@ -165,6 +196,7 @@ class VideoFormatCommandTest extends TestCase
             'watermark2_position_id' => $watermark2PositionId,
             'watermark2_random' => $watermark2Random,
             'watermark2_times' => $watermark2Times,
+            'ffmpeg_options' => $ffmpegOptions,
         ]);
     }
 

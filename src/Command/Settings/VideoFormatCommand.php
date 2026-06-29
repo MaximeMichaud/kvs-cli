@@ -31,6 +31,7 @@ class VideoFormatCommand extends BaseCommand
             ->addArgument('id', InputArgument::OPTIONAL, 'Format ID (for show action)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (disabled|required|optional|deleting|error|conditional)')
             ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Filter by group ID')
+            ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in title, postfix, and FFmpeg options')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
@@ -114,6 +115,15 @@ HELP
             WHERE 1=1";
 
         $params = [];
+
+        $search = $this->getStringOption($input, 'search');
+        if ($search !== null) {
+            $searchEscape = $this->likeEscapeSql();
+            $query .= ' AND (f.title LIKE :search' . $searchEscape
+                . ' OR f.postfix LIKE :search' . $searchEscape
+                . ' OR f.ffmpeg_options LIKE :search' . $searchEscape . ')';
+            $params['search'] = $this->containsLikePattern($search);
+        }
 
         $status = $this->getStringOption($input, 'status');
         if ($status !== null) {
