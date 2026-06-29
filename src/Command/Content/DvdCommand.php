@@ -34,6 +34,7 @@ class DvdCommand extends BaseCommand
         'review-needed',
         'not-review-needed',
         'field-filter',
+        'limit',
     ];
 
     /** @var list<string> */
@@ -839,6 +840,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

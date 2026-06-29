@@ -49,6 +49,15 @@ class ContentShowActionValidationRegressionTest extends TestCase
             ['playlist search', fn (): Command => $this->createPlaylistCommand(), $this->showInput('id', '6', 'search'), '--search'],
             ['user search', fn (): Command => $this->createUserCommand(), $this->showInput('id', '320', 'search'), '--search'],
             ['comment search', fn (): Command => $this->createCommentCommand(), $this->showInput('id', '300', 'search'), '--search'],
+            ['video limit', fn (): Command => $this->createVideoCommand(), $this->showInput('id', '73', 'limit', '1'), '--limit'],
+            ['album limit', fn (): Command => $this->createAlbumCommand(), $this->showInput('id', '6', 'limit', '1'), '--limit'],
+            ['dvd limit', fn (): Command => $this->createDvdCommand(), $this->showInput('id', '4', 'limit', '1'), '--limit'],
+            ['model limit', fn (): Command => $this->createModelCommand(), $this->showInput('id', '7', 'limit', '1'), '--limit'],
+            ['category limit', fn (): Command => $this->createCategoryCommand(), $this->showInput('id', '424', 'limit', '1'), '--limit'],
+            ['tag limit', fn (): Command => $this->createTagCommand(), $this->showInput('identifier', '72', 'limit', '1'), '--limit'],
+            ['playlist limit', fn (): Command => $this->createPlaylistCommand(), $this->showInput('id', '6', 'limit', '1'), '--limit'],
+            ['user limit', fn (): Command => $this->createUserCommand(), $this->showInput('id', '320', 'limit', '1'), '--limit'],
+            ['comment limit', fn (): Command => $this->createCommentCommand(), $this->showInput('id', '300', 'limit', '1'), '--limit'],
             ['video status', fn (): Command => $this->createVideoCommand(), $this->showInput('id', '73', 'status', 'disabled'), '--status'],
             ['album status', fn (): Command => $this->createAlbumCommand(), $this->showInput('id', '6', 'status', 'disabled'), '--status'],
             ['dvd status', fn (): Command => $this->createDvdCommand(), $this->showInput('id', '4', 'status', 'disabled'), '--status'],
@@ -88,6 +97,85 @@ class ContentShowActionValidationRegressionTest extends TestCase
             $display = $tester->getDisplay();
             self::assertSame(1, $tester->getStatusCode(), "$label: $display");
             self::assertStringContainsString("The show action does not support $option", $display, $label);
+            self::assertStringNotContainsString('Database access should not be reached', $display, $label);
+        }
+    }
+
+    public function testStatsActionsRejectUnsupportedOptionsBeforeDatabaseAccess(): void
+    {
+        /** @var list<array{string, \Closure(): Command, array<string, mixed>, string}> $cases */
+        $cases = [
+            ['video stats search', fn (): Command => $this->createVideoCommand(), $this->statsInput('search'), '--search'],
+            [
+                'video stats flag search',
+                fn (): Command => $this->createVideoCommand(),
+                $this->statsFlagInput('search'),
+                '--search',
+            ],
+            ['video stats status', fn (): Command => $this->createVideoCommand(), $this->statsInput('status', 'disabled'), '--status'],
+            ['video stats limit', fn (): Command => $this->createVideoCommand(), $this->statsInput('limit', '1'), '--limit'],
+            ['dvd stats search', fn (): Command => $this->createDvdCommand(), $this->statsInput('search'), '--search'],
+            ['dvd stats status', fn (): Command => $this->createDvdCommand(), $this->statsInput('status', 'disabled'), '--status'],
+            ['dvd stats limit', fn (): Command => $this->createDvdCommand(), $this->statsInput('limit', '1'), '--limit'],
+            ['dvd stats user', fn (): Command => $this->createDvdCommand(), $this->statsInput('user', '1'), '--user'],
+            ['model stats search', fn (): Command => $this->createModelCommand(), $this->statsInput('search'), '--search'],
+            ['model stats status', fn (): Command => $this->createModelCommand(), $this->statsInput('status', 'disabled'), '--status'],
+            ['model stats limit', fn (): Command => $this->createModelCommand(), $this->statsInput('limit', '1'), '--limit'],
+            ['model stats usage', fn (): Command => $this->createModelCommand(), $this->statsInput('usage', 'used/videos'), '--usage'],
+            ['tag stats search', fn (): Command => $this->createTagCommand(), $this->statsInput('search'), '--search'],
+            ['tag stats status', fn (): Command => $this->createTagCommand(), $this->statsInput('status', 'inactive'), '--status'],
+            ['tag stats limit', fn (): Command => $this->createTagCommand(), $this->statsInput('limit', '1'), '--limit'],
+            ['tag stats unused', fn (): Command => $this->createTagCommand(), $this->statsInput('unused', true), '--unused'],
+            ['user stats search', fn (): Command => $this->createUserCommand(), $this->statsInput('search'), '--search'],
+            ['user stats status', fn (): Command => $this->createUserCommand(), $this->statsInput('status', 'disabled'), '--status'],
+            ['user stats limit', fn (): Command => $this->createUserCommand(), $this->statsInput('limit', '1'), '--limit'],
+            [
+                'user stats removal requested',
+                fn (): Command => $this->createUserCommand(),
+                $this->statsInput('removal-requested', true),
+                '--removal-requested',
+            ],
+            ['comment stats search', fn (): Command => $this->createCommentCommand(), $this->statsInput('search'), '--search'],
+            ['comment stats pending', fn (): Command => $this->createCommentCommand(), $this->statsInput('pending', true), '--pending'],
+            ['comment stats limit', fn (): Command => $this->createCommentCommand(), $this->statsInput('limit', '1'), '--limit'],
+            ['comment stats video', fn (): Command => $this->createCommentCommand(), $this->statsInput('video', '999999'), '--video'],
+        ];
+
+        foreach ($cases as [$label, $createCommand, $input, $option]) {
+            $tester = new CommandTester($createCommand());
+            $tester->execute($input);
+
+            $display = $tester->getDisplay();
+            self::assertSame(1, $tester->getStatusCode(), "$label: $display");
+            self::assertStringContainsString("The stats action does not support $option", $display, $label);
+            self::assertStringNotContainsString('Database access should not be reached', $display, $label);
+        }
+    }
+
+    public function testCategoryTreeRejectsUnsupportedOptionsBeforeDatabaseAccess(): void
+    {
+        /** @var list<array{string, array<string, mixed>, string}> $cases */
+        $cases = [
+            ['search', $this->treeInput('search'), '--search'],
+            ['status', $this->treeInput('status', 'inactive'), '--status'],
+            ['group', $this->treeInput('group'), '--group'],
+            ['parent', $this->treeInput('parent'), '--parent'],
+            ['unused', $this->treeInput('unused', true), '--unused'],
+            ['usage', $this->treeInput('usage', 'used/videos'), '--usage'],
+            ['field filter', $this->treeInput('field-filter', 'filled/synonyms'), '--field-filter'],
+            ['limit', $this->treeInput('limit', '1'), '--limit'],
+            ['title', $this->treeInput('title'), '--title'],
+            ['description', $this->treeInput('description'), '--description'],
+            ['dry run', $this->treeInput('dry-run', true), '--dry-run'],
+        ];
+
+        foreach ($cases as [$label, $input, $option]) {
+            $tester = new CommandTester($this->createCategoryCommand());
+            $tester->execute($input);
+
+            $display = $tester->getDisplay();
+            self::assertSame(1, $tester->getStatusCode(), "$label: $display");
+            self::assertStringContainsString("The tree action does not support $option", $display, $label);
             self::assertStringNotContainsString('Database access should not be reached', $display, $label);
         }
     }
@@ -244,6 +332,39 @@ class ContentShowActionValidationRegressionTest extends TestCase
         return [
             'action' => 'show',
             $idArgument => $id,
+            '--' . $option => $value,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function statsInput(string $option, mixed $value = '__missing__'): array
+    {
+        return [
+            'action' => 'stats',
+            '--' . $option => $value,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function statsFlagInput(string $option, mixed $value = '__missing__'): array
+    {
+        return [
+            '--stats' => true,
+            '--' . $option => $value,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function treeInput(string $option, mixed $value = '__missing__'): array
+    {
+        return [
+            'action' => 'tree',
             '--' . $option => $value,
         ];
     }

@@ -770,6 +770,17 @@ abstract class BaseCommand extends Command
             return false;
         }
 
+        return $this->rejectUnsupportedOptions($input, $action, $optionNames);
+    }
+
+    /**
+     * @param list<string> $optionNames
+     */
+    protected function rejectUnsupportedOptions(
+        InputInterface $input,
+        string $action,
+        array $optionNames
+    ): bool {
         foreach ($optionNames as $name) {
             if (!$this->isOptionExplicitlySet($input, $name)) {
                 continue;
@@ -794,6 +805,10 @@ abstract class BaseCommand extends Command
             return false;
         }
 
+        if ($input->hasParameterOption('--' . $name)) {
+            return true;
+        }
+
         $value = $input->getOption($name);
         if (is_bool($value)) {
             return $value;
@@ -807,7 +822,7 @@ abstract class BaseCommand extends Command
             return $value !== [];
         }
 
-        return true;
+        return false;
     }
 
     /**

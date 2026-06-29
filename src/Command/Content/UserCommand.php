@@ -35,6 +35,7 @@ class UserCommand extends BaseCommand
         'trusted',
         'untrusted',
         'yes',
+        'limit',
     ];
 
     /** @var list<string> */
@@ -1250,6 +1251,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

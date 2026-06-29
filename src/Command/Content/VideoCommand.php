@@ -49,10 +49,12 @@ class VideoCommand extends BaseCommand
         'unlocked',
         'field-filter',
         'flag',
+        'flag-votes',
         'post-date-from',
         'post-date-to',
         'duration-from',
         'duration-to',
+        'limit',
     ];
 
     /** @var list<string> */
@@ -170,6 +172,10 @@ HELP
         $action = $this->getStringArgument($input, 'action') ?? 'list';
 
         if ($this->getBoolOption($input, 'stats')) {
+            if ($this->rejectUnsupportedOptions($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+                return self::FAILURE;
+            }
+
             return $this->showStats($input);
         }
 
@@ -624,7 +630,7 @@ HELP
 
         $votesOption = $this->getStringOption($input, 'flag-votes');
         if ($flag === null) {
-            if ($votesOption !== null && $votesOption !== '1') {
+            if ($votesOption !== null && $this->isOptionExplicitlySet($input, 'flag-votes')) {
                 $this->io()->error('Option --flag-votes requires --flag');
                 return false;
             }
@@ -1249,6 +1255,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

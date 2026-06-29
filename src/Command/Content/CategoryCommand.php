@@ -36,6 +36,22 @@ class CategoryCommand extends BaseCommand
         'usage',
         'field-filter',
         'dry-run',
+        'limit',
+    ];
+
+    /** @var list<string> */
+    private const TREE_UNSUPPORTED_OPTIONS = [
+        'title',
+        'description',
+        'group',
+        'parent',
+        'status',
+        'search',
+        'unused',
+        'usage',
+        'field-filter',
+        'dry-run',
+        'limit',
     ];
 
     /** @var array<string, string> */
@@ -375,11 +391,15 @@ HELP
             'category_group_id',
             'title',
             $group
-        ) ?? 0;
+        ) ?? -1;
     }
 
     private function showTree(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'tree', self::TREE_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

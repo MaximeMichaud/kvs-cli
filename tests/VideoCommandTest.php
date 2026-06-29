@@ -366,14 +366,17 @@ class VideoCommandTest extends TestCase
 
     public function testVideoListRejectsFlagVotesWithoutFlag(): void
     {
-        $this->tester->execute([
-            'action' => 'list',
-            '--flag-votes' => '2',
-            '--format' => 'count',
-        ]);
+        foreach (['1', '2'] as $flagVotes) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--flag-votes' => $flagVotes,
+                '--format' => 'count',
+            ]);
 
-        $this->assertSame(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Option --flag-votes requires --flag', $this->tester->getDisplay());
+            $this->assertSame(1, $tester->getStatusCode(), $flagVotes);
+            $this->assertStringContainsString('Option --flag-votes requires --flag', $tester->getDisplay());
+        }
     }
 
     public function testVideoThumbMatchesKvsAdminWhenScreenMainIsZero(): void

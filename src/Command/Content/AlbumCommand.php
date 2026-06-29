@@ -40,6 +40,7 @@ class AlbumCommand extends BaseCommand
         'unlocked',
         'field-filter',
         'search',
+        'limit',
     ];
 
     /** @var list<string> */

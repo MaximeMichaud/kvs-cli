@@ -167,6 +167,21 @@ class CategoryCommandTest extends TestCase
         $this->assertSame(2, (int) $rows[0]['category_group_id']);
     }
 
+    public function testCategoryListMissingGroupTitleMatchesKvsAdminEmptyResult(): void
+    {
+        foreach (['--group', '--parent'] as $option) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                $option => '__missing_group__',
+                '--format' => 'count',
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame('0', trim($tester->getDisplay()), $option);
+        }
+    }
+
     public function testCategoryListHonorsDeprecatedParentAliasForGroupFilter(): void
     {
         $this->tester->execute([

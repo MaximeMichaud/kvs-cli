@@ -33,6 +33,7 @@ class PlaylistCommand extends BaseCommand
         'tag',
         'field-filter',
         'flag',
+        'flag-votes',
         'review-needed',
         'not-review-needed',
         'locked',
@@ -41,6 +42,7 @@ class PlaylistCommand extends BaseCommand
         'description',
         'dir',
         'video',
+        'limit',
     ];
 
     protected function configure(): void
@@ -336,7 +338,7 @@ HELP
 
         $votesOption = $this->getStringOption($input, 'flag-votes');
         if ($flag === null) {
-            if ($votesOption !== null && $votesOption !== '1') {
+            if ($votesOption !== null && $this->isOptionExplicitlySet($input, 'flag-votes')) {
                 $this->io()->error('Option --flag-votes requires --flag');
                 return false;
             }

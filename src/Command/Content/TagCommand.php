@@ -32,6 +32,7 @@ class TagCommand extends BaseCommand
         'unused',
         'usage',
         'field-filter',
+        'limit',
     ];
 
     /** @var array<string, string> */
@@ -794,6 +795,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;

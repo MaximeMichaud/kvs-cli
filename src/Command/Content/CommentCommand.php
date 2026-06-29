@@ -40,6 +40,7 @@ class CommentCommand extends BaseCommand
         'not-approved',
         'all',
         'yes',
+        'limit',
     ];
 
     /** @var array<string, int> */
@@ -657,6 +658,10 @@ HELP
 
     private function showStats(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
