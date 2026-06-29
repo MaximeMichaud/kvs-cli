@@ -217,6 +217,80 @@ class DvdCommandTest extends TestCase
         $this->assertSame(1200, (int) $rows[0]['avg_videos_popularity']);
     }
 
+    public function testListDvdsFiltersByKvsAdminRelationsUsageAndReview(): void
+    {
+        $cases = [
+            ['--group' => 'Featured Series', 'expected' => [30]],
+            ['--dvd-group' => '8', 'expected' => [20]],
+            ['--tag' => 'featured', 'expected' => [30]],
+            ['--category' => 'Channels', 'expected' => [30]],
+            ['--model' => 'Model One', 'expected' => [30]],
+            ['--usage' => 'used/videos', 'expected' => [30, 20, 10]],
+            ['--usage' => 'notused/videos', 'expected' => []],
+            ['--review-needed' => true, 'expected' => [30]],
+            ['--not-review-needed' => true, 'expected' => [20, 10]],
+        ];
+
+        foreach ($cases as $case) {
+            $expected = $case['expected'];
+            unset($case['expected']);
+
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$case,
+                '--format' => 'json',
+                '--fields' => 'dvd_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expected, array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
+        }
+    }
+
+    public function testListDvdsFiltersByKvsAdminFieldFilter(): void
+    {
+        $cases = [
+            'filled/description' => [30],
+            'empty/description' => [20, 10],
+            'filled/synonyms' => [30],
+            'empty/synonyms' => [20, 10],
+            'filled/cover1_front' => [30],
+            'empty/cover1_front' => [20, 10],
+            'filled/group' => [30, 20],
+            'empty/group' => [10],
+            'filled/user' => [30, 20],
+            'empty/user' => [10],
+            'filled/dvd_viewed' => [30, 20, 10],
+            'empty/dvd_viewed' => [],
+            'filled/rating' => [30, 10],
+            'empty/rating' => [20],
+            'filled/tags' => [30],
+            'empty/tags' => [20, 10],
+            'filled/categories' => [30],
+            'empty/categories' => [20, 10],
+            'filled/models' => [30],
+            'empty/models' => [20, 10],
+        ];
+
+        foreach ($cases as $filter => $expectedIds) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                '--field-filter' => $filter,
+                '--format' => 'json',
+                '--fields' => 'dvd_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($expectedIds, array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows), $filter);
+        }
+    }
+
     public function testListDvdsExposesKvsAdminRawScalarFields(): void
     {
         $this->tester->execute([
@@ -516,7 +590,7 @@ class DvdCommandTest extends TestCase
             'subscribers_count INTEGER, rating INTEGER, rating_amount INTEGER, description TEXT, ' .
             'synonyms TEXT, tokens_required INTEGER, added_date TEXT, sort_id INTEGER, ' .
             'total_videos INTEGER, total_videos_duration INTEGER, avg_videos_rating REAL, ' .
-            'avg_videos_popularity INTEGER, dvd_group_id INTEGER, ' .
+            'avg_videos_popularity INTEGER, dvd_group_id INTEGER, is_review_needed INTEGER, ' .
             'custom1 TEXT, custom2 TEXT, custom3 TEXT, custom4 TEXT, custom5 TEXT, ' .
             'custom6 TEXT, custom7 TEXT, custom8 TEXT, custom9 TEXT, custom10 TEXT, ' .
             'custom_file1 TEXT, custom_file2 TEXT, custom_file3 TEXT, custom_file4 TEXT, custom_file5 TEXT)'
@@ -567,19 +641,19 @@ class DvdCommandTest extends TestCase
             ' (dvd_id, title, dir, status_id, release_year, dvd_viewed, cover1_front, cover1_back, ' .
             'cover2_front, cover2_back, user_id, is_video_upload_allowed, subscribers_count, rating, rating_amount, ' .
             'description, synonyms, tokens_required, added_date, sort_id, total_videos, total_videos_duration, ' .
-            'avg_videos_rating, avg_videos_popularity, dvd_group_id, custom1, custom2, custom3, custom4, ' .
+            'avg_videos_rating, avg_videos_popularity, dvd_group_id, is_review_needed, custom1, custom2, custom3, custom4, ' .
             'custom5, custom6, custom7, custom8, custom9, custom10, custom_file1, custom_file2, custom_file3, ' .
             'custom_file4, custom_file5) VALUES ' .
             "(30, 'Test Series', 'test-series', 1, 2026, 100, 'front-1.jpg', 'back-1.jpg', " .
             "'front-2.jpg', 'back-2.jpg', 1, 2, 5, 40, 10, 'Long running series', " .
-            "'series, channel', 25, '2026-05-25 10:00:00', 9, 99, 99, 4.5, 1200, 7, " .
+            "'series, channel', 25, '2026-05-25 10:00:00', 9, 99, 99, 4.5, 1200, 7, 1, " .
             "'custom one', '', '', '', '', '', '', '', '', 'custom ten', 'file-one.pdf', '', '', '', " .
             "'file-five.pdf'), " .
-            "(20, 'Disabled Series', 'disabled-series', 0, 2025, 10, '', '', '', '', 2, 0, 0, 0, 0, '', '', 0, " .
-            "'2026-05-26 10:00:00', 10, 99, 99, 0, 0, 8, '', '', '', '', '', '', '', '', '', '', '', " .
+            "(20, 'Disabled Series', 'disabled-series', 0, 2025, 10, '', '', '', '', 2, 0, 0, 0, 1, '', '', 0, " .
+            "'2026-05-26 10:00:00', 10, 99, 99, 0, 0, 8, 0, '', '', '', '', '', '', '', '', '', '', '', " .
             "'', '', '', ''), " .
             "(10, 'Other Channel', 'other-channel', 1, 2024, 50, '', '', '', '', 0, 0, 2, 12, 3, '', '', 0, " .
-            "'2026-05-27 10:00:00', 11, 99, 99, 0, 0, 0, '', '', '', '', '', '', '', '', '', '', '', " .
+            "'2026-05-27 10:00:00', 11, 99, 99, 0, 0, 0, 0, '', '', '', '', '', '', '', '', '', '', '', " .
             "'', '', '', '')"
         );
         $db->exec(

@@ -20,6 +20,43 @@ use function KVS\CLI\Utils\format_kvs_rating;
 )]
 class DvdCommand extends BaseCommand
 {
+    /** @var list<string> */
+    private const DVD_STRING_FIELD_FILTER_COLUMNS = [
+        'description',
+        'synonyms',
+        'cover1_front',
+        'cover1_back',
+        'cover2_front',
+        'cover2_back',
+        'custom1',
+        'custom2',
+        'custom3',
+        'custom4',
+        'custom5',
+        'custom6',
+        'custom7',
+        'custom8',
+        'custom9',
+        'custom10',
+        'custom_file1',
+        'custom_file2',
+        'custom_file3',
+        'custom_file4',
+        'custom_file5',
+        'tokens_required',
+    ];
+
+    /** @var list<string> */
+    private const DVD_SPECIAL_FIELD_FILTERS = [
+        'group',
+        'user',
+        'dvd_viewed',
+        'rating',
+        'tags',
+        'categories',
+        'models',
+    ];
+
     protected function configure(): void
     {
         $this
@@ -29,6 +66,15 @@ class DvdCommand extends BaseCommand
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Number of results to show', Constants::DEFAULT_CONTENT_LIMIT)
             ->addOption('search', null, InputOption::VALUE_REQUIRED, 'Search in DVD titles, directories, descriptions, and synonyms')
             ->addOption('user', null, InputOption::VALUE_REQUIRED, 'Filter by user ID or username')
+            ->addOption('group', null, InputOption::VALUE_REQUIRED, 'Filter by DVD group ID or title')
+            ->addOption('dvd-group', null, InputOption::VALUE_REQUIRED, 'Filter by DVD group ID or title')
+            ->addOption('tag', null, InputOption::VALUE_REQUIRED, 'Filter by tag ID or name')
+            ->addOption('category', null, InputOption::VALUE_REQUIRED, 'Filter by category ID or title')
+            ->addOption('model', null, InputOption::VALUE_REQUIRED, 'Filter by model ID or title')
+            ->addOption('usage', null, InputOption::VALUE_REQUIRED, 'KVS admin usage filter (used/videos|notused/videos)')
+            ->addOption('review-needed', null, InputOption::VALUE_NONE, 'Show only DVDs that need review')
+            ->addOption('not-review-needed', null, InputOption::VALUE_NONE, 'Show only DVDs that do not need review')
+            ->addOption('field-filter', null, InputOption::VALUE_REQUIRED, 'KVS admin field filter (e.g. filled/tags)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -85,6 +131,10 @@ HELP
 
     private function listDvds(InputInterface $input): int
     {
+        if ($this->hasDvdListOptionConflicts($input)) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -211,6 +261,20 @@ HELP
         }
     }
 
+    private function hasDvdListOptionConflicts(InputInterface $input): bool
+    {
+        if ($this->hasConflictingBoolOptions($input, ['review-needed', 'not-review-needed'])) {
+            return true;
+        }
+
+        if ($this->getStringOption($input, 'group') !== null && $this->getStringOption($input, 'dvd-group') !== null) {
+            $this->io()->error('Options --group and --dvd-group cannot be used together');
+            return true;
+        }
+
+        return false;
+    }
+
     /**
      * @param array<string, int|string> $params
      */
@@ -255,7 +319,195 @@ HELP
             $params['user'] = $user;
         }
 
+        if (!$this->applyDvdAdminRelationFilters($db, $input, $whereClause, $params)) {
+            return false;
+        }
+
+        $usage = $this->getStringOption($input, 'usage');
+        if ($usage !== null) {
+            $condition = $this->getDvdUsageFilterCondition($usage);
+            if ($condition === null) {
+                $this->io()->error('Invalid DVD usage filter. Use: used/videos or notused/videos');
+                return false;
+            }
+            $whereClause .= " AND {$condition}";
+        }
+
+        if ($this->getBoolOption($input, 'review-needed')) {
+            $whereClause .= ' AND d.is_review_needed = 1';
+        } elseif ($this->getBoolOption($input, 'not-review-needed')) {
+            $whereClause .= ' AND d.is_review_needed = 0';
+        }
+
+        $fieldFilter = $this->getStringOption($input, 'field-filter');
+        if ($fieldFilter !== null) {
+            $condition = $this->getDvdFieldFilterCondition($fieldFilter);
+            if ($condition === null) {
+                $this->io()->error('Invalid DVD field filter. Use: ' . implode(', ', $this->getDvdFieldFilterValues()));
+                return false;
+            }
+            $whereClause .= " AND {$condition}";
+        }
+
         return true;
+    }
+
+    /**
+     * @param array<string, int|string> $params
+     */
+    private function applyDvdAdminRelationFilters(
+        \PDO $db,
+        InputInterface $input,
+        string &$whereClause,
+        array &$params
+    ): bool {
+        $group = $this->resolveDvdGroupIdOption($db, $input);
+        if ($group === false) {
+            return false;
+        }
+        if ($group !== null) {
+            $whereClause .= ' AND d.dvd_group_id = :dvd_group';
+            $params['dvd_group'] = $group;
+        }
+
+        $tag = $this->resolveTagIdOption($db, $input);
+        if ($tag === false) {
+            return false;
+        }
+        if ($tag !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('tags_dvds')} td "
+                . 'WHERE td.dvd_id = d.dvd_id AND td.tag_id = :tag)';
+            $params['tag'] = $tag;
+        }
+
+        $category = $this->resolveCategoryIdOption($db, $input);
+        if ($category === false) {
+            return false;
+        }
+        if ($category !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('categories_dvds')} cd "
+                . 'WHERE cd.dvd_id = d.dvd_id AND cd.category_id = :category)';
+            $params['category'] = $category;
+        }
+
+        $model = $this->resolveModelIdOption($db, $input);
+        if ($model === false) {
+            return false;
+        }
+        if ($model !== null) {
+            $whereClause .= " AND EXISTS (SELECT 1 FROM {$this->table('models_dvds')} md "
+                . 'WHERE md.dvd_id = d.dvd_id AND md.model_id = :model)';
+            $params['model'] = $model;
+        }
+
+        return true;
+    }
+
+    private function resolveDvdGroupIdOption(\PDO $db, InputInterface $input): int|false|null
+    {
+        $group = $this->getStringOption($input, 'group') ?? $this->getStringOption($input, 'dvd-group');
+        if ($group === null) {
+            return null;
+        }
+        if (preg_match('/^[1-9]\d*$/', $group) === 1) {
+            return (int) $group;
+        }
+
+        $stmt = $db->prepare("SELECT dvd_group_id FROM {$this->table('dvds_groups')} WHERE title = :title LIMIT 1");
+        $stmt->execute(['title' => $group]);
+        $id = $stmt->fetchColumn();
+        if ($id === false) {
+            return -1;
+        }
+
+        return is_numeric($id) ? (int) $id : false;
+    }
+
+    private function getDvdUsageFilterCondition(string $usage): ?string
+    {
+        $videosTable = $this->table('videos');
+
+        return match ($usage) {
+            'used/videos' => "EXISTS (SELECT 1 FROM {$videosTable} v_filter WHERE v_filter.dvd_id = d.dvd_id)",
+            'notused/videos' => "NOT EXISTS (SELECT 1 FROM {$videosTable} v_filter WHERE v_filter.dvd_id = d.dvd_id)",
+            default => null,
+        };
+    }
+
+    /** @return list<string> */
+    private function getDvdFieldFilterValues(): array
+    {
+        $values = [];
+        foreach (['empty', 'filled'] as $prefix) {
+            foreach (self::DVD_STRING_FIELD_FILTER_COLUMNS as $column) {
+                $values[] = "{$prefix}/{$column}";
+            }
+            foreach (self::DVD_SPECIAL_FIELD_FILTERS as $field) {
+                $values[] = "{$prefix}/{$field}";
+            }
+        }
+
+        return $values;
+    }
+
+    private function getDvdFieldFilterCondition(string $fieldFilter): ?string
+    {
+        $parts = explode('/', $fieldFilter, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        [$state, $field] = $parts;
+        if (!in_array($state, ['empty', 'filled'], true)) {
+            return null;
+        }
+
+        return $state === 'empty'
+            ? $this->getEmptyDvdFieldFilterCondition($field)
+            : $this->getFilledDvdFieldFilterCondition($field);
+    }
+
+    private function getEmptyDvdFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::DVD_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "d.{$field} = ''";
+        }
+
+        return match ($field) {
+            'group' => 'd.dvd_group_id = 0',
+            'user' => 'd.user_id = 0',
+            'dvd_viewed' => 'd.dvd_viewed = 0',
+            'rating' => '(d.rating = 0 AND d.rating_amount = 1)',
+            'tags' => $this->getDvdRelationExistsCondition('tags_dvds', 'tag_id', false),
+            'categories' => $this->getDvdRelationExistsCondition('categories_dvds', 'category_id', false),
+            'models' => $this->getDvdRelationExistsCondition('models_dvds', 'model_id', false),
+            default => null,
+        };
+    }
+
+    private function getFilledDvdFieldFilterCondition(string $field): ?string
+    {
+        if (in_array($field, self::DVD_STRING_FIELD_FILTER_COLUMNS, true)) {
+            return "d.{$field} != ''";
+        }
+
+        return match ($field) {
+            'group' => 'd.dvd_group_id != 0',
+            'user' => 'd.user_id != 0',
+            'dvd_viewed' => 'd.dvd_viewed != 0',
+            'rating' => '(d.rating > 0 OR d.rating_amount > 1)',
+            'tags' => $this->getDvdRelationExistsCondition('tags_dvds', 'tag_id', true),
+            'categories' => $this->getDvdRelationExistsCondition('categories_dvds', 'category_id', true),
+            'models' => $this->getDvdRelationExistsCondition('models_dvds', 'model_id', true),
+            default => null,
+        };
+    }
+
+    private function getDvdRelationExistsCondition(string $relationTable, string $idColumn, bool $exists): string
+    {
+        $table = $this->table($relationTable);
+        $operator = $exists ? 'EXISTS' : 'NOT EXISTS';
+        return "{$operator} (SELECT {$idColumn} FROM {$table} rel_filter WHERE rel_filter.dvd_id = d.dvd_id)";
     }
 
     /**
