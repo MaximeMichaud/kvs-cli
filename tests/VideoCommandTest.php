@@ -749,6 +749,23 @@ class VideoCommandTest extends TestCase
         $this->assertStringNotContainsString('Video #10', $output);
     }
 
+    public function testVideoShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Featured Clip', $output);
+        $this->assertStringNotContainsString('Video #10', $output);
+        $this->assertStringNotContainsString('Property', $output);
+    }
+
     public function testVideoListSeparatesKvsAccessTypeAndAccessLevel(): void
     {
         $this->tester->execute([
@@ -982,6 +999,22 @@ class VideoCommandTest extends TestCase
         $this->assertSame('overall', $rowsByMetric['Total Videos']['section'] ?? null);
         $this->assertSame(3, (int) ($rowsByMetric['Total Videos']['value'] ?? 0));
         $this->assertStringNotContainsString('Top 10 Most Viewed Videos', $this->tester->getDisplay());
+    }
+
+    public function testVideoStatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total Videos', $output);
+        $this->assertStringNotContainsString('Top 10 Most Viewed Videos', $output);
+        $this->assertStringNotContainsString('Value', $output);
     }
 
     public function testVideoCommandMetadata(): void

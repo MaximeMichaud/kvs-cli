@@ -678,7 +678,7 @@ HELP
             $this->addOptionalField($info, 'Weight', $model['weight'] ?? null);
             $this->addOptionalField($info, 'Description', $model['description'] ?? null);
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info);
             }
 
@@ -821,7 +821,7 @@ HELP
                 $metricRows[] = $this->metricRow('overall', 'Total Video Relations', $value, number_format($value));
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }

@@ -488,6 +488,23 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringNotContainsString('Playlist #30', $output);
     }
 
+    public function testPlaylistShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Test Playlist', $output);
+        $this->assertStringNotContainsString('Playlist #30', $output);
+        $this->assertStringNotContainsString('Videos (Top 10)', $output);
+    }
+
     public function testPlaylistShowRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

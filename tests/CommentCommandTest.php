@@ -673,6 +673,23 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Comment #30', $output);
     }
 
+    public function testShowCommentHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'comment',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Comment', $output);
+        $this->assertStringContainsString('Great test video', $output);
+        $this->assertStringNotContainsString('Comment #30', $output);
+        $this->assertStringNotContainsString('Comment Text', $output);
+    }
+
     public function testShowCommentTreatsReviewNeededAsPendingEvenWhenApproved(): void
     {
         $this->insertComment($this->db, [
@@ -790,6 +807,22 @@ class CommentCommandTest extends TestCase
         $this->assertSame('overall', $rowsByMetric['Total Comments']['section'] ?? null);
         $this->assertSame(3, (int) ($rowsByMetric['Total Comments']['value'] ?? 0));
         $this->assertStringNotContainsString('Comment Statistics', $this->tester->getDisplay());
+    }
+
+    public function testStatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total Comments', $output);
+        $this->assertStringNotContainsString('Comment Statistics', $output);
+        $this->assertStringNotContainsString('Top 10 Commenters', $output);
     }
 
     public function testPendingActionListsReviewNeededComments(): void

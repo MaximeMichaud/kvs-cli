@@ -193,7 +193,7 @@ HELP
             $defaultFields = ['format_video_id', 'title', 'postfix', 'status', 'size', 'access', 'download', 'timeline'];
 
             if ($formats === []) {
-                if ($this->isTableFormat($input)) {
+                if ($this->isTableFormat($input) && !$this->hasFieldSelection($input)) {
                     $this->io()->warning('No video formats found');
                 } else {
                     $formatter = new Formatter($input->getOptions(), $defaultFields);

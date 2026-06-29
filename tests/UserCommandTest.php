@@ -175,6 +175,23 @@ class UserCommandTest extends TestCase
         $this->assertStringNotContainsString('User: alice', $output);
     }
 
+    public function testUserShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => 'username',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Username', $output);
+        $this->assertStringContainsString('alice', $output);
+        $this->assertStringNotContainsString('User: alice', $output);
+        $this->assertStringNotContainsString('Content Statistics', $output);
+    }
+
     public function testUserShowByUsernameStillWorks(): void
     {
         $this->tester->execute([
@@ -553,6 +570,22 @@ class UserCommandTest extends TestCase
         $this->assertSame(1, (int) ($rowsByMetric['Inactive Users']['value'] ?? 0));
         $this->assertArrayNotHasKey('Disabled Users', $rowsByMetric);
         $this->assertStringNotContainsString('Most Recent Users', $this->tester->getDisplay());
+    }
+
+    public function testUserStatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total Users', $output);
+        $this->assertStringNotContainsString('Most Recent Users', $output);
+        $this->assertStringNotContainsString('Count', $output);
     }
 
     public function testCommandMetadata(): void

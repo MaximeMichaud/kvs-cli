@@ -81,6 +81,22 @@ class FormatsCommandTest extends TestCase
         $this->assertStringNotContainsString('[ERROR]', $output);
     }
 
+    public function testListFormatsMissingDirectoryHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--fields' => 'video_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Video id', $output);
+        $this->assertStringContainsString('999999999', $output);
+        $this->assertStringNotContainsString('Video directory not found', $output);
+    }
+
     public function testListFormatsRejectsInvalidFormatBeforeMissingDirectory(): void
     {
         $this->tester->execute([
@@ -147,6 +163,22 @@ class FormatsCommandTest extends TestCase
         $this->assertFalse($rows[0]['exists']);
         $this->assertSame('Video directory not found', $rows[0]['message']);
         $this->assertStringNotContainsString('[ERROR]', $output);
+    }
+
+    public function testCheckFormatsMissingDirectoryHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '999999999',
+            '--fields' => 'video_id',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Video id', $output);
+        $this->assertStringContainsString('999999999', $output);
+        $this->assertStringNotContainsString('Video directory not found', $output);
     }
 
     public function testCheckFormatsRejectsInvalidFormatBeforeMissingDirectory(): void

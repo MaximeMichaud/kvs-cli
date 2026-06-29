@@ -784,6 +784,23 @@ class AlbumCommandTest extends TestCase
         $this->assertStringNotContainsString('Album #10', $output);
     }
 
+    public function testAlbumShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Active Album', $output);
+        $this->assertStringNotContainsString('Album #10', $output);
+        $this->assertStringNotContainsString('Property', $output);
+    }
+
     public function testAlbumShowRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

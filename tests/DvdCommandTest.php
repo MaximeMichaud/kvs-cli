@@ -528,6 +528,23 @@ class DvdCommandTest extends TestCase
         $this->assertStringNotContainsString('DVD: Test Series', $output);
     }
 
+    public function testShowDvdHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Test Series', $output);
+        $this->assertStringNotContainsString('DVD: Test Series', $output);
+        $this->assertStringNotContainsString('Total Duration', $output);
+    }
+
     public function testShowDvdRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([
@@ -608,6 +625,22 @@ class DvdCommandTest extends TestCase
         $this->assertSame(1, (int) ($rowsByMetric['Inactive']['value'] ?? 0));
         $this->assertArrayNotHasKey('Disabled', $rowsByMetric);
         $this->assertStringNotContainsString('DVD Statistics', $this->tester->getDisplay());
+    }
+
+    public function testStatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total DVDs', $output);
+        $this->assertStringNotContainsString('DVD Statistics', $output);
+        $this->assertStringNotContainsString('Value', $output);
     }
 
     public function testDefaultActionIsList(): void

@@ -383,7 +383,7 @@ HELP
             $info[] = ['Total Usage', (string) $totalUsage];
             $info[] = ['Added', $addedDate];
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info);
             }
 
@@ -932,7 +932,7 @@ HELP
                 }
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }

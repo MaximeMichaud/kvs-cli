@@ -234,7 +234,7 @@ HELP
                 : ['variable', 'value', 'category'];
 
             if ($options === []) {
-                if ($this->isTableFormat($input)) {
+                if ($this->isTableFormat($input) && !$this->hasFieldSelection($input)) {
                     $this->io()->warning('No options found matching criteria');
                 } else {
                     $formatter = new Formatter($input->getOptions(), $defaultFields);

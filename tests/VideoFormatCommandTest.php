@@ -107,6 +107,22 @@ class VideoFormatCommandTest extends TestCase
         }
     }
 
+    public function testListEmptyResultHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'list',
+            '--search' => '__missing_format__',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('No results found.', $output);
+        $this->assertStringNotContainsString('No video formats found', $output);
+    }
+
     public function testListRejectsIgnoredFormatIdArgument(): void
     {
         $this->tester->execute([

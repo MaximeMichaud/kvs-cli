@@ -98,7 +98,7 @@ HELP
 
         $existingVideoPaths = $this->filterExistingDirs($videoPaths);
         if ($existingVideoPaths === []) {
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayFormattedRows($input, [[
                     'video_id' => $videoId,
                     'path' => $videoPaths[0],
@@ -210,7 +210,7 @@ HELP
 
         $existingVideoPaths = $this->filterExistingDirs($videoPaths);
         if ($existingVideoPaths === []) {
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayFormattedRows($input, [[
                     'video_id' => $videoId,
                     'path' => $videoPaths[0],

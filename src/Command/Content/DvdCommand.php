@@ -755,7 +755,7 @@ HELP
                 $info[] = ['Description', is_scalar($description) ? (string) $description : ''];
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info);
             }
 
@@ -979,7 +979,7 @@ HELP
                 $metricRows[] = $this->metricRow('overall', 'Inactive', $value, number_format($value));
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }

@@ -1438,7 +1438,7 @@ HELP
                 $tags
             );
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'video_id' => (string) $videoId,
                     'description' => $video['description'],
@@ -1756,7 +1756,7 @@ HELP
                 }
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }

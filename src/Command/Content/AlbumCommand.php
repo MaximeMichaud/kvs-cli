@@ -1041,7 +1041,7 @@ HELP
                 ],
             ];
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, ['album_id' => (string) $albumId]);
             }
 

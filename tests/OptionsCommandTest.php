@@ -99,6 +99,22 @@ class OptionsCommandTest extends TestCase
         $this->assertStringNotContainsString('Category', $display);
     }
 
+    public function testListEmptyResultHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--search' => '__missing_option__',
+            '--fields' => 'variable',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('No results found.', $display);
+        $this->assertStringNotContainsString('No options found matching criteria', $display);
+    }
+
     public function testListRejectsSetOnlyYesOption(): void
     {
         $this->tester->execute([

@@ -453,7 +453,7 @@ HELP
             /** @var list<array<string, mixed>> $categories */
             $categories = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $categories = array_map(function (array $category): array {
                     $statusId = is_numeric($category['status_id'] ?? null) ? (int) $category['status_id'] : 0;
                     $category['id'] = $category['category_id'] ?? 0;
@@ -563,7 +563,7 @@ HELP
             ];
 
             $description = $category['description'] ?? null;
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $extra = [];
                 if ($description !== null && $description !== '' && is_scalar($description)) {
                     $extra['description'] = (string) $description;

@@ -651,7 +651,7 @@ HELP
             $categoryTitles = array_map(fn($c) => $c['title'], $categories);
             $tagNames = array_map(fn($t) => $t['tag'], $tags);
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'playlist_id' => (string) $playlistId,
                     'description' => $description,

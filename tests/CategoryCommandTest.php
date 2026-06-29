@@ -363,6 +363,23 @@ class CategoryCommandTest extends TestCase
         $this->assertStringNotContainsString('Category: Action', $output);
     }
 
+    public function testCategoryShowHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Action', $output);
+        $this->assertStringNotContainsString('Category: Action', $output);
+        $this->assertStringNotContainsString('Videos', $output);
+    }
+
     public function testCategoryShowSupportsExactTitle(): void
     {
         $this->tester->execute([
@@ -417,6 +434,22 @@ class CategoryCommandTest extends TestCase
         $this->assertContains('Action', array_column($rows, 'title'));
         $this->assertArrayHasKey('video_count', $rows[0]);
         $this->assertStringNotContainsString('Category Tree', $output);
+    }
+
+    public function testCategoryTreeHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'tree',
+            '--fields' => 'title',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Title', $output);
+        $this->assertStringContainsString('Action', $output);
+        $this->assertStringNotContainsString('Category Tree', $output);
+        $this->assertStringNotContainsString('videos)', $output);
     }
 
     public function testCategoryCommandMetadata(): void

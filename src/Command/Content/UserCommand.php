@@ -995,7 +995,7 @@ HELP
                 ['IP', $ip !== '' ? $ip : 'N/A'],
             ];
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $contentStats = $this->getUserContentStats(
                     $db,
                     $userId,
@@ -1370,7 +1370,7 @@ HELP
                 }
             }
 
-            if (!$this->isTableFormat($input)) {
+            if ($this->shouldUseFormattedRows($input)) {
                 $this->displayMetricRows($input, $metricRows);
                 return self::SUCCESS;
             }

@@ -421,6 +421,23 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringNotContainsString('Tag: 4K', $output);
     }
 
+    public function testShowTagHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+            '--fields' => 'name',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Name', $output);
+        $this->assertStringContainsString('4K', $output);
+        $this->assertStringNotContainsString('Tag: 4K', $output);
+        $this->assertStringNotContainsString('Total Usage', $output);
+    }
+
     public function testShowTagSupportsExactName(): void
     {
         $this->tester->execute([
@@ -722,6 +739,22 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame('overall', $rowsByMetric['Total Tags']['section'] ?? null);
         $this->assertSame(4, (int) ($rowsByMetric['Total Tags']['value'] ?? 0));
         $this->assertStringNotContainsString('Tag Statistics', $this->tester->getDisplay());
+    }
+
+    public function testStatsHonorsFieldsSelectionInTableFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'stats',
+            '--fields' => 'metric',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Metric', $output);
+        $this->assertStringContainsString('Total Tags', $output);
+        $this->assertStringNotContainsString('Tag Statistics', $output);
+        $this->assertStringNotContainsString('Top 10 Most Used Tags', $output);
     }
 
     public function testCommandIntegrationWithHermeticDb(): void
