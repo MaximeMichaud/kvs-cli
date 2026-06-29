@@ -397,7 +397,7 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('Unknown video-format action "unknown_action"', $tester->getDisplay());
     }
 
-    public function testVideoFormatShowRejectsNonTableFormat(): void
+    public function testVideoFormatShowSupportsJsonFormat(): void
     {
         $this->createVideoFormatTables();
         $tester = new CommandTester($this->createVideoFormatCommand());
@@ -408,8 +408,15 @@ class SystemValidationRegressionTest extends TestCase
             '--force' => true,
         ]);
 
-        $this->assertSame(1, $tester->getStatusCode());
-        $this->assertStringContainsString('The show action only supports table output', $tester->getDisplay());
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertSame(1, (int) $rows[0]['format_video_id']);
+        $this->assertSame('MP4 480p', $rows[0]['title']);
+        $this->assertSame('Required', $rows[0]['status']);
+        $this->assertSame('Default (#1)', $rows[0]['group']);
+        $this->assertSame('Yes', $rows[0]['hotlink_protection']);
+        $this->assertSame('-vcodec libx264', $rows[0]['ffmpeg_options']);
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
     }
 
@@ -481,6 +488,20 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertMatchesRegularExpression('/Total Duration\W+20s/', $output);
         $this->assertMatchesRegularExpression('/Start Offset\W+5s/', $output);
         $this->assertMatchesRegularExpression('/End Offset\W+10s/', $output);
+    }
+
+    public function testVideoFormatShowDisplaysFormattedKvsSize(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode());
+        $this->assertMatchesRegularExpression('/Size\W+848x480 \(dynamic height\)/', $tester->getDisplay());
     }
 
     public function testVideoFormatListShowsKvsTimelineValue(): void

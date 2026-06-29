@@ -18,6 +18,8 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class ScreenshotsCommand extends BaseCommand
 {
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     protected function configure(): void
     {
         $this
@@ -93,6 +95,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
         if ($screenshotsBasePath === '') {
             $this->io()->error('Screenshots path not configured');
@@ -102,6 +108,10 @@ HELP
         $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
 
         if (!is_dir($screenshotsPath)) {
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
+            }
+
             $this->io()->warning("Screenshots directory not found: $screenshotsPath");
             $this->io()->note("The video might not have screenshots generated yet.");
             return self::SUCCESS;
@@ -114,6 +124,10 @@ HELP
         $files = $this->findImageFiles($screenshotsPath, $extensions);
 
         if ($files === []) {
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [], ['filename', 'size', 'dimensions', 'path']);
+            }
+
             $this->io()->warning('No screenshot files found in directory');
             $this->io()->text("Directory: $screenshotsPath");
             return self::SUCCESS;

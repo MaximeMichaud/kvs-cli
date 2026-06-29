@@ -63,6 +63,38 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('Video directory not found', $output);
     }
 
+    public function testListFormatsMissingDirectoryJsonReturnsStructuredFailure(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertSame('999999999', $rows[0]['video_id']);
+        $this->assertFalse($rows[0]['exists']);
+        $this->assertSame('Video directory not found', $rows[0]['message']);
+        $this->assertStringNotContainsString('[ERROR]', $output);
+    }
+
+    public function testListFormatsRejectsInvalidFormatBeforeMissingDirectory(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'xml',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        $this->assertStringNotContainsString('Video directory not found', $output);
+    }
+
     public function testListFormatsWithExistingVideo(): void
     {
         $this->tester->execute([
@@ -97,6 +129,38 @@ class FormatsCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertEquals(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('Video directory not found for video ID: 999999999', $output);
+    }
+
+    public function testCheckFormatsMissingDirectoryJsonReturnsStructuredFailure(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '999999999',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertSame('999999999', $rows[0]['video_id']);
+        $this->assertFalse($rows[0]['exists']);
+        $this->assertSame('Video directory not found', $rows[0]['message']);
+        $this->assertStringNotContainsString('[ERROR]', $output);
+    }
+
+    public function testCheckFormatsRejectsInvalidFormatBeforeMissingDirectory(): void
+    {
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '999999999',
+            '--format' => 'xml',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        $this->assertStringNotContainsString('Video directory not found', $output);
     }
 
     public function testCheckFormatsWithExistingVideo(): void
@@ -164,6 +228,19 @@ class FormatsCommandTest extends TestCase
         $this->assertStringContainsString('Required', $output);
         $this->assertStringContainsString('Access', $output);
         $this->assertStringContainsString('Premium', $output);
+    }
+
+    public function testAvailableFormatsRejectsInvalidFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'available',
+            '--format' => 'xml',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        $this->assertStringNotContainsString('Available Format Configurations', $output);
     }
 
     public function testAvailableFormatsShowsConditionalStatusLikeKvsAdmin(): void

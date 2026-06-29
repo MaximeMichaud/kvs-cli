@@ -53,6 +53,36 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('999999999', $output);
     }
 
+    public function testListScreenshotsMissingDirectoryJsonReturnsEmptyList(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame([], $rows);
+        $this->assertStringNotContainsString('Screenshots directory not found', $output);
+    }
+
+    public function testListScreenshotsRejectsInvalidFormatBeforeMissingDirectory(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            'video_id' => '999999999',
+            '--format' => 'xml',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $output);
+        $this->assertStringNotContainsString('Screenshots directory not found', $output);
+    }
+
     public function testListScreenshotsWithExistingVideo(): void
     {
         $this->createScreenshotFixture('1234');

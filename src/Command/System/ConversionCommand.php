@@ -23,6 +23,8 @@ class ConversionCommand extends BaseCommand
     use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     private const TASK_TYPE_LABELS = [
         'video_admins' => 'New videos from admins',
         'video_feeds' => 'New videos from feeds',
@@ -114,8 +116,8 @@ HELP
             'disable', 'deactivate' => $this->disableServer($id),
             'debug-on' => $this->toggleDebug($id, true),
             'debug-off' => $this->toggleDebug($id, false),
-            'log' => $this->showLog($id),
-            'config' => $this->showConfig($id),
+            'log' => $this->showLog($id, $input),
+            'config' => $this->showConfig($id, $input),
             'stats' => $this->showStats($input),
             default => $this->failUnknownAction(
                 'conversion',
@@ -525,11 +527,15 @@ HELP
     /**
      * Show server conversion log.
      */
-    private function showLog(?string $id): int
+    private function showLog(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Server ID is required');
             $this->io()->text('Usage: kvs system:conversion log <server_id>');
+            return self::FAILURE;
+        }
+
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
 
@@ -565,18 +571,63 @@ HELP
             $logFile = rtrim($path, '/') . '/log.txt';
 
             if (!file_exists($logFile)) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => $id,
+                        'title' => $this->getStringField($server, 'title'),
+                        'file' => $logFile,
+                        'exists' => false,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'line_count' => 0,
+                        'content' => null,
+                        'message' => 'Log file not found',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->warning("Log file not found: $logFile");
                 return self::FAILURE;
             }
 
-            $title = $this->getStringField($server, 'title');
-            $this->io()->section("Conversion Log - $title");
-
             $content = file_get_contents($logFile);
             if ($content === false) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => $id,
+                        'title' => $this->getStringField($server, 'title'),
+                        'file' => $logFile,
+                        'exists' => true,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'line_count' => 0,
+                        'content' => null,
+                        'message' => 'Cannot read log file',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->error("Cannot read log file: $logFile");
                 return self::FAILURE;
             }
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayConversionFileRows($input, [[
+                    'server_id' => $id,
+                    'title' => $this->getStringField($server, 'title'),
+                    'file' => $logFile,
+                    'exists' => true,
+                    'readable' => true,
+                    'size_bytes' => strlen($content),
+                    'line_count' => $this->countLines($content),
+                    'content' => $content,
+                    'message' => trim($content) === '' ? 'Log file is empty' : '',
+                ]]);
+                return self::SUCCESS;
+            }
+
+            $title = $this->getStringField($server, 'title');
+            $this->io()->section("Conversion Log - $title");
 
             if (trim($content) === '') {
                 $this->io()->info('Log file is empty');
@@ -594,11 +645,15 @@ HELP
     /**
      * Show server configuration.
      */
-    private function showConfig(?string $id): int
+    private function showConfig(?string $id, InputInterface $input): int
     {
         if ($id === null || $id === '') {
             $this->io()->error('Server ID is required');
             $this->io()->text('Usage: kvs system:conversion config <server_id>');
+            return self::FAILURE;
+        }
+
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
 
@@ -632,49 +687,95 @@ HELP
             }
 
             $title = $this->getStringField($server, 'title');
-            $this->io()->section("Configuration - $title");
 
             // Read config.properties
             $configFile = rtrim($path, '/') . '/config.properties';
 
             if (!file_exists($configFile)) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => $id,
+                        'title' => $title,
+                        'file' => $configFile,
+                        'exists' => false,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'content' => null,
+                        'heartbeat_file' => rtrim($path, '/') . '/heartbeat.dat',
+                        'heartbeat_exists' => false,
+                        'libraries' => [],
+                        'message' => 'Config file not found',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->warning("Config file not found: $configFile");
                 return self::FAILURE;
             }
 
             $content = file_get_contents($configFile);
             if ($content === false) {
+                if (!$this->isTableFormat($input)) {
+                    $this->displayConversionFileRows($input, [[
+                        'server_id' => $id,
+                        'title' => $title,
+                        'file' => $configFile,
+                        'exists' => true,
+                        'readable' => false,
+                        'size_bytes' => 0,
+                        'content' => null,
+                        'heartbeat_file' => rtrim($path, '/') . '/heartbeat.dat',
+                        'heartbeat_exists' => file_exists(rtrim($path, '/') . '/heartbeat.dat'),
+                        'libraries' => [],
+                        'message' => 'Cannot read config file',
+                    ]]);
+                    return self::FAILURE;
+                }
+
                 $this->io()->error("Cannot read config file: $configFile");
                 return self::FAILURE;
             }
+
+            $heartbeatFile = rtrim($path, '/') . '/heartbeat.dat';
+            $libraries = $this->readConversionLibraries($heartbeatFile);
+
+            if (!$this->isTableFormat($input)) {
+                $this->displayConversionFileRows($input, [[
+                    'server_id' => $id,
+                    'title' => $title,
+                    'file' => $configFile,
+                    'exists' => true,
+                    'readable' => true,
+                    'size_bytes' => strlen($content),
+                    'content' => $content,
+                    'heartbeat_file' => $heartbeatFile,
+                    'heartbeat_exists' => file_exists($heartbeatFile),
+                    'libraries' => $libraries,
+                    'message' => '',
+                ]]);
+                return self::SUCCESS;
+            }
+
+            $this->io()->section("Configuration - $title");
 
             // Parse and display config
             $this->io()->text('<fg=cyan>Configuration File:</>');
             $this->io()->text($content);
 
             // Read heartbeat.dat for library versions
-            $heartbeatFile = rtrim($path, '/') . '/heartbeat.dat';
-            if (file_exists($heartbeatFile)) {
-                $heartbeatContent = file_get_contents($heartbeatFile);
-                if ($heartbeatContent !== false) {
-                    $heartbeat = @unserialize($heartbeatContent, ['allowed_classes' => false]);
-                    if (is_array($heartbeat) && isset($heartbeat['libraries'])) {
-                        $this->io()->newLine();
-                        $this->io()->text('<fg=cyan>Conversion Libraries:</>');
+            if ($libraries !== []) {
+                $this->io()->newLine();
+                $this->io()->text('<fg=cyan>Conversion Libraries:</>');
 
-                        /** @var array<string, array{path?: string, message?: string}> $libraries */
-                        $libraries = $heartbeat['libraries'];
-                        $rows = [];
-                        foreach ($libraries as $name => $info) {
-                            $command = isset($info['path']) && $info['path'] !== '' ? $info['path'] : 'N/A';
-                            $message = $info['message'] ?? '';
-                            // Get first line of message
-                            $firstLine = explode("\n", $message)[0];
-                            $rows[] = [$name, $command, $firstLine];
-                        }
-                        $this->renderTable(['Library', 'Command', 'Version'], $rows);
-                    }
-                }
+                $rows = array_map(
+                    static fn (array $library): array => [
+                        $library['name'],
+                        $library['command'],
+                        $library['version'],
+                    ],
+                    $libraries
+                );
+                $this->renderTable(['Library', 'Command', 'Version'], $rows);
             }
 
             return self::SUCCESS;
@@ -884,6 +985,60 @@ HELP
             $this->io()->error('Failed to fetch stats: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     */
+    private function displayConversionFileRows(InputInterface $input, array $rows): void
+    {
+        $this->displayFormattedRows($input, $rows, array_keys($rows[0] ?? []));
+    }
+
+    private function countLines(string $content): int
+    {
+        if ($content === '') {
+            return 0;
+        }
+
+        return substr_count($content, "\n") + (str_ends_with($content, "\n") ? 0 : 1);
+    }
+
+    /**
+     * @return list<array{name: string, command: string, version: string}>
+     */
+    private function readConversionLibraries(string $heartbeatFile): array
+    {
+        if (!file_exists($heartbeatFile)) {
+            return [];
+        }
+
+        $heartbeatContent = file_get_contents($heartbeatFile);
+        if ($heartbeatContent === false) {
+            return [];
+        }
+
+        $heartbeat = @unserialize($heartbeatContent, ['allowed_classes' => false]);
+        if (!is_array($heartbeat) || !isset($heartbeat['libraries']) || !is_array($heartbeat['libraries'])) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($heartbeat['libraries'] as $name => $info) {
+            if (!is_array($info)) {
+                continue;
+            }
+
+            $command = isset($info['path']) && is_string($info['path']) && $info['path'] !== '' ? $info['path'] : 'N/A';
+            $message = isset($info['message']) && is_string($info['message']) ? $info['message'] : '';
+            $rows[] = [
+                'name' => (string) $name,
+                'command' => $command,
+                'version' => explode("\n", $message)[0],
+            ];
+        }
+
+        return $rows;
     }
 
     private function formatBytes(int $bytes): string

@@ -162,6 +162,20 @@ PHP
         $this->assertStringContainsString('Unknown stats-settings action "unknown_action"', $display);
     }
 
+    public function testShowRejectsInvalidFormat(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            '--format' => 'xml',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Invalid value for --format "xml"', $display);
+        $this->assertStringNotContainsString('Statistics Collection Settings', $display);
+    }
+
     public function testExperimentalPromptRefusalFails(): void
     {
         $this->tester->setInputs(['no']);

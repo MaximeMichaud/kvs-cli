@@ -22,6 +22,8 @@ class VideoFormatCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+
     protected function configure(): void
     {
         $this
@@ -92,6 +94,10 @@ HELP
 
     private function listFormats(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -322,9 +328,7 @@ HELP
 
     private function showFormat(InputInterface $input, ?string $id): int
     {
-        $format = $this->getStringOptionOrDefault($input, 'format', 'table');
-        if ($format !== 'table') {
-            $this->io()->error('The show action only supports table output. Use list --format=' . $format . ' for machine-readable output.');
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
             return self::FAILURE;
         }
 
@@ -359,10 +363,8 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->title("Video Format #$id");
+            $format = $this->addKvsFileBackedFields($format);
 
-            // Basic Info section
-            $this->io()->section('Basic Info');
             $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;
             $statusId = is_numeric($statusIdValue) ? (int) $statusIdValue : 0;
             $groupId = isset($format['format_video_group_id']) && is_numeric($format['format_video_group_id'])
@@ -373,24 +375,58 @@ HELP
             $title = isset($format['title']) && is_string($format['title']) ? $format['title'] : '';
             $postfix = isset($format['postfix']) && is_string($format['postfix']) ? $format['postfix'] : '';
             $size = isset($format['size']) && is_string($format['size']) ? $format['size'] : '';
-
-            $basicInfo = [
-                ['Title', $title],
-                ['Postfix', $postfix],
-                ['Status', StatusFormatter::videoFormat($statusId)],
-                ['Size', $size],
-                ['Group', $groupId > 0 ? "$groupTitle (#$groupId)" : 'None'],
-            ];
-            $this->renderTable(['Property', 'Value'], $basicInfo);
-
-            // Access & Download section
-            $this->io()->section('Access & Download');
+            $formattedSize = $this->formatKvsVideoSize($format);
             $accessId = isset($format['access_level_id']) && is_numeric($format['access_level_id'])
                 ? (int) $format['access_level_id'] : 0;
             $downloadEnabled = isset($format['is_download_enabled']) && (bool) $format['is_download_enabled'];
             $hotlinkProtection = isset($format['is_hotlink_protection_enabled'])
                 && is_numeric($format['is_hotlink_protection_enabled'])
                 ? (int) $format['is_hotlink_protection_enabled'] : 0;
+            $timelineEnabled = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
+            $ffmpegOptions = isset($format['ffmpeg_options']) && is_string($format['ffmpeg_options'])
+                ? trim($format['ffmpeg_options'])
+                : '';
+
+            $formatRow = [
+                ...$format,
+                'format_video_id' => $format['format_video_id'] ?? $id,
+                'id' => $format['format_video_id'] ?? $id,
+                'title' => $title,
+                'postfix' => $postfix,
+                'status_id' => $statusId,
+                'status' => StatusFormatter::videoFormat($statusId, false),
+                'size' => $formattedSize,
+                'group' => $groupId > 0 ? "$groupTitle (#$groupId)" : 'None',
+                'access' => StatusFormatter::formatAccessLevel($accessId, false),
+                'download' => $downloadEnabled ? 'Yes' : 'No',
+                'hotlink_protection' => $hotlinkProtection > 0 ? 'Yes' : 'No',
+                'limit_total_duration' => $this->formatKvsDurationLimit($format),
+                'limit_offset_start' => $this->formatKvsLimitValue($format, 'limit_offset_start', 'limit_offset_start_unit_id', '0'),
+                'limit_offset_end' => $this->formatKvsLimitValue($format, 'limit_offset_end', 'limit_offset_end_unit_id', '0'),
+                'timeline' => $timelineEnabled ? $this->formatKvsTimelineValue($format) : 'Default',
+                'ffmpeg_options' => $ffmpegOptions,
+            ];
+
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [$formatRow], array_keys($formatRow));
+            }
+
+            $this->io()->title("Video Format #$id");
+
+            // Basic Info section
+            $this->io()->section('Basic Info');
+
+            $basicInfo = [
+                ['Title', $title],
+                ['Postfix', $postfix],
+                ['Status', StatusFormatter::videoFormat($statusId)],
+                ['Size', $formattedSize],
+                ['Group', $groupId > 0 ? "$groupTitle (#$groupId)" : 'None'],
+            ];
+            $this->renderTable(['Property', 'Value'], $basicInfo);
+
+            // Access & Download section
+            $this->io()->section('Access & Download');
 
             $accessInfo = [
                 ['Access Level', StatusFormatter::formatAccessLevel($accessId)],
@@ -416,7 +452,6 @@ HELP
 
             // Timeline Settings section
             $this->io()->section('Timeline Settings');
-            $timelineEnabled = isset($format['is_timeline_enabled']) && (bool) $format['is_timeline_enabled'];
 
             $timelineInfo = [
                 ['Timeline Enabled', $timelineEnabled ? '<fg=green>Yes</>' : '<fg=gray>No</>'],
@@ -435,7 +470,6 @@ HELP
             }
 
             // FFmpeg Options section
-            $ffmpegOptions = isset($format['ffmpeg_options']) && is_string($format['ffmpeg_options']) ? trim($format['ffmpeg_options']) : '';
             if ($ffmpegOptions !== '') {
                 $this->io()->section('FFmpeg Options');
                 $this->io()->text($ffmpegOptions);
@@ -450,6 +484,10 @@ HELP
 
     private function listGroups(InputInterface $input): int
     {
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         if ($this->getStringOption($input, 'status') !== null) {
             $this->io()->error('The groups action does not support --status. Use list --status to filter video formats.');
             return self::FAILURE;

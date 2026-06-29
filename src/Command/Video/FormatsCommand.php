@@ -20,6 +20,8 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class FormatsCommand extends BaseCommand
 {
+    private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml'];
+
     protected function configure(): void
     {
         $this
@@ -79,6 +81,10 @@ HELP
             return self::FAILURE;
         }
 
+        if ($this->validateOutputFormat($input, self::OUTPUT_FORMATS) === null) {
+            return self::FAILURE;
+        }
+
         $videoPaths = $this->getVideoStorageDirs($videoId);
         if ($videoPaths === []) {
             $this->io()->error('Video storage path not configured');
@@ -87,6 +93,16 @@ HELP
 
         $existingVideoPaths = $this->filterExistingDirs($videoPaths);
         if ($existingVideoPaths === []) {
+            if (!$this->isTableFormat($input)) {
+                $this->displayFormattedRows($input, [[
+                    'video_id' => $videoId,
+                    'path' => $videoPaths[0],
+                    'exists' => false,
+                    'message' => 'Video directory not found',
+                ]], ['video_id', 'path', 'exists', 'message']);
+                return self::FAILURE;
+            }
+
             $this->io()->error("Video directory not found: {$videoPaths[0]}");
             $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
@@ -106,6 +122,10 @@ HELP
         }
 
         if ($files === []) {
+            if (!$this->isTableFormat($input)) {
+                return $this->displayFormattedRows($input, [], ['format', 'file', 'size', 'dimensions']);
+            }
+
             $this->io()->warning('No video files found in directory');
             $this->io()->text('Directory: ' . implode(', ', $existingVideoPaths));
             return self::SUCCESS;
@@ -161,7 +181,10 @@ HELP
     private function checkFormats(InputInterface $input): int
     {
         $videoId = $this->getStringArgument($input, 'video_id');
-        $outputFormat = $this->getStringOptionOrDefault($input, 'format', 'table');
+        $outputFormat = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($outputFormat === null) {
+            return self::FAILURE;
+        }
 
         if ($videoId === null) {
             $this->io()->error('Video ID is required');
@@ -177,6 +200,16 @@ HELP
 
         $existingVideoPaths = $this->filterExistingDirs($videoPaths);
         if ($existingVideoPaths === []) {
+            if (!$this->isTableFormat($input)) {
+                $this->displayFormattedRows($input, [[
+                    'video_id' => $videoId,
+                    'path' => $videoPaths[0],
+                    'exists' => false,
+                    'message' => 'Video directory not found',
+                ]], ['video_id', 'path', 'exists', 'message']);
+                return self::FAILURE;
+            }
+
             $this->io()->error("Video directory not found for video ID: $videoId");
             $this->io()->note("The video might not exist or formats haven't been generated yet.");
             return self::FAILURE;
@@ -190,6 +223,11 @@ HELP
         $configuredFormats = $this->getFormatsFromDatabase();
 
         if ($configuredFormats === []) {
+            if ($outputFormat !== 'table') {
+                $this->displayFormattedRows($input, [], ['format', 'postfix', 'status', 'file', 'size', 'dimensions']);
+                return self::FAILURE;
+            }
+
             $this->io()->warning('No formats configured in database');
             $this->io()->text('Cannot check formats without KVS format configuration.');
             $this->io()->text('Use "kvs video:formats list <video_id>" to see actual files.');
@@ -283,7 +321,11 @@ HELP
 
     private function showAvailableFormats(InputInterface $input): int
     {
-        $format = $this->getStringOption($input, 'format') ?? 'table';
+        $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($format === null) {
+            return self::FAILURE;
+        }
+
         if ($format === 'table') {
             $this->io()->title('Available Format Configurations');
         }
@@ -292,6 +334,11 @@ HELP
         $formats = $this->getFormatsFromDatabase();
 
         if ($formats === []) {
+            if ($format !== 'table') {
+                $this->displayFormattedRows($input, [], ['format_id', 'title', 'postfix', 'status', 'group_id', 'access']);
+                return self::FAILURE;
+            }
+
             // Fallback: scan filesystem to see what formats actually exist
             $this->io()->warning('No formats configured in database');
             $this->io()->text('Reading format configuration from KVS database failed.');

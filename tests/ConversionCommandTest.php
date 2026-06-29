@@ -503,6 +503,30 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testConversionLogJsonReportsMissingFileAsStructuredPayload(): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-server-missing-log';
+        $this->insertLocalConversionServer(50, 'Missing Log Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '50',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertSame('50', $rows[0]['server_id']);
+        $this->assertSame('Missing Log Converter', $rows[0]['title']);
+        $this->assertSame($serverPath . '/log.txt', $rows[0]['file']);
+        $this->assertFalse($rows[0]['exists']);
+        $this->assertSame('Log file not found', $rows[0]['message']);
+        $this->assertStringNotContainsString('[WARNING]', $output);
+    }
+
     public function testConversionDebugOnMissingId(): void
     {
         $this->tester->execute([
@@ -552,6 +576,30 @@ class ConversionCommandTest extends TestCase
 
         $this->assertStringContainsString('Config viewing only available for Local/Mount servers', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testConversionConfigJsonReportsMissingFileAsStructuredPayload(): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-server-missing-config';
+        $this->insertLocalConversionServer(51, 'Missing Config Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'config',
+            'id' => '51',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertSame('51', $rows[0]['server_id']);
+        $this->assertSame('Missing Config Converter', $rows[0]['title']);
+        $this->assertSame($serverPath . '/config.properties', $rows[0]['file']);
+        $this->assertFalse($rows[0]['exists']);
+        $this->assertSame('Config file not found', $rows[0]['message']);
+        $this->assertStringNotContainsString('[WARNING]', $output);
     }
 
     public function testConversionLogMissingId(): void
@@ -658,6 +706,25 @@ class ConversionCommandTest extends TestCase
         );
 
         return $db;
+    }
+
+    private function insertLocalConversionServer(int $serverId, string $title, string $path): void
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO ' . TestHelper::table('admin_conversion_servers') .
+            ' (server_id, title, status_id, task_types, is_allow_any_tasks, max_tasks, max_tasks_priority, ' .
+            'process_priority, option_storage_servers, option_pull_source_files, is_debug_enabled, connection_type_id, ' .
+            'path, ftp_host, ftp_port, ftp_user, ftp_folder, ftp_timeout, total_space, free_space, `load`, heartbeat_date, ' .
+            'api_version, error_id, error_iteration, added_date) VALUES ' .
+            "(:server_id, :title, 1, '', 1, 1, 0, 14, 0, 0, 0, 0, " .
+            ":path, '', '', '', '', '', 1073741824, 536870912, 0.10, " .
+            "'2026-05-26 10:00:00', '7.0.0', 0, 0, '2026-05-24 10:00:00')"
+        );
+        $stmt->execute([
+            'server_id' => $serverId,
+            'title' => $title,
+            'path' => $path,
+        ]);
     }
 
     private function createCommand(PDO $db): ConversionCommand
