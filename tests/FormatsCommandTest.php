@@ -107,14 +107,14 @@ class FormatsCommandTest extends TestCase
         ]);
 
         $output = $this->tester->getDisplay();
-        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('720p MP4', $output);
         $this->assertStringContainsString('1080p MP4', $output);
         $this->assertStringContainsString('available', strtolower($output));
         $this->assertStringContainsString('missing', strtolower($output));
     }
 
-    public function testCheckFormatsJsonReturnsFailureWhenAnyFormatIsMissing(): void
+    public function testCheckFormatsJsonSucceedsWhenOnlyOptionalFormatsAreMissing(): void
     {
         $this->tester->execute([
             'action' => 'check',
@@ -125,9 +125,32 @@ class FormatsCommandTest extends TestCase
         $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
         $statuses = array_column($rows, 'status');
 
-        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertContains('available', $statuses);
         $this->assertContains('missing', $statuses);
+    }
+
+    public function testCheckFormatsJsonFailsWhenRequiredFormatIsMissing(): void
+    {
+        $videoDir = $this->storagePath . '/0/13';
+        mkdir($videoDir, 0775, true);
+        file_put_contents($videoDir . '/13_1080p.mp4', str_repeat('x', 1024));
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            " (video_id, server_group_id, load_type_id, status_id, file_formats) VALUES (13, 1, 1, 1, '||_1080p.mp4|')"
+        );
+
+        $this->tester->execute([
+            'action' => 'check',
+            'video_id' => '13',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsByPostfix = array_column($rows, null, 'postfix');
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertSame('missing', $rowsByPostfix['_720p.mp4']['status'] ?? null);
     }
 
     public function testShowAvailableFormats(): void
@@ -172,6 +195,9 @@ class FormatsCommandTest extends TestCase
                 'is_download_enabled',
                 'is_timeline_enabled',
                 'is_hotlink_protection_enabled',
+                'size',
+                'limit_total_duration',
+                'limit_speed_value',
                 'videos_count',
             ]),
             '--format' => 'json',
@@ -187,12 +213,16 @@ class FormatsCommandTest extends TestCase
         $this->assertSame(1, (int) $rowsById[1]['format_video_group_id']);
         $this->assertSame(0, (int) $rowsById[1]['access_level_id']);
         $this->assertSame(1, (int) $rowsById[1]['is_download_enabled']);
-        $this->assertSame(1, (int) $rowsById[1]['is_timeline_enabled']);
+        $this->assertSame('10s', $rowsById[1]['is_timeline_enabled']);
         $this->assertSame(1, (int) $rowsById[1]['is_hotlink_protection_enabled']);
+        $this->assertSame('1280x720 (dynamic width)', $rowsById[1]['size']);
+        $this->assertSame('As source', $rowsById[1]['limit_total_duration']);
+        $this->assertSame('2048 kbit/s', $rowsById[1]['limit_speed_value']);
         $this->assertSame(1, (int) $rowsById[1]['videos_count']);
 
         $this->assertSame(0, (int) $rowsById[2]['is_hotlink_protection_enabled']);
         $this->assertSame(0, (int) $rowsById[3]['videos_count']);
+        $this->assertSame(9, (int) $rowsById[3]['status_id']);
     }
 
     #[DataProvider('provideOutputFormats')]
@@ -288,7 +318,15 @@ class FormatsCommandTest extends TestCase
             'CREATE TABLE ' . TestHelper::table('formats_videos') . ' (' .
             'format_video_id INTEGER, title TEXT, postfix TEXT, status_id INTEGER, is_conditional INTEGER, ' .
             'format_video_group_id INTEGER, access_level_id INTEGER, is_download_enabled INTEGER, ' .
-            'is_timeline_enabled INTEGER, is_hotlink_protection_disabled INTEGER)'
+            'is_timeline_enabled INTEGER, is_hotlink_protection_disabled INTEGER, size TEXT, resize_option2 INTEGER, ' .
+            'limit_total_duration INTEGER, limit_total_duration_unit_id INTEGER, limit_total_min_duration_sec INTEGER, ' .
+            'limit_total_max_duration_sec INTEGER, limit_number_parts INTEGER, limit_offset_start INTEGER, ' .
+            'limit_offset_start_unit_id INTEGER, limit_offset_end INTEGER, limit_offset_end_unit_id INTEGER, ' .
+            'timeline_option INTEGER, timeline_amount INTEGER, timeline_interval INTEGER, limit_speed_option INTEGER, ' .
+            'limit_speed_value INTEGER, limit_speed_guests_option INTEGER, limit_speed_guests_value INTEGER, ' .
+            'limit_speed_standard_option INTEGER, limit_speed_standard_value INTEGER, limit_speed_premium_option INTEGER, ' .
+            'limit_speed_premium_value INTEGER, limit_speed_embed_option INTEGER, limit_speed_embed_value INTEGER, ' .
+            'limit_speed_countries_option INTEGER, limit_speed_countries_value INTEGER)'
         );
 
         $db->exec(
@@ -303,12 +341,36 @@ class FormatsCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('admin_servers') .
             " VALUES (1, {$serverPath}, 1, 1, 0, 1)"
         );
+        $formatRows = [
+            [
+                1, "'720p MP4'", "'_720p.mp4'", 1, 0, 1, 0, 1, 1, 0, "'1280x720'", 2,
+                0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 10, 1, 2048, 1, 2048, 1, 2048, 1, 2048, 1, 2048, 0, 0,
+            ],
+            [
+                2, "'1080p MP4'", "'_1080p.mp4'", 2, 0, 1, 2, 0, 0, 1, "'1920x1080'", 2,
+                0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+            [
+                3, "'Conditional MP4'", "'_cond.mp4'", 2, 1, 1, 0, 0, 0, 0, "'3840x2160'", 2,
+                0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+        ];
+        $formatValuesSql = implode(', ', array_map(
+            static fn (array $row): string => '(' . implode(', ', array_map('strval', $row)) . ')',
+            $formatRows
+        ));
+
         $db->exec(
             'INSERT INTO ' . TestHelper::table('formats_videos') .
-            " VALUES " .
-            "(1, '720p MP4', '_720p.mp4', 1, 0, 1, 0, 1, 1, 0), " .
-            "(2, '1080p MP4', '_1080p.mp4', 2, 0, 1, 2, 0, 0, 1), " .
-            "(3, 'Conditional MP4', '_cond.mp4', 2, 1, 1, 0, 0, 0, 0)"
+            " (format_video_id, title, postfix, status_id, is_conditional, format_video_group_id, access_level_id, " .
+            "is_download_enabled, is_timeline_enabled, is_hotlink_protection_disabled, size, resize_option2, " .
+            "limit_total_duration, limit_total_duration_unit_id, limit_total_min_duration_sec, " .
+            "limit_total_max_duration_sec, limit_number_parts, limit_offset_start, limit_offset_start_unit_id, " .
+            "limit_offset_end, limit_offset_end_unit_id, timeline_option, timeline_amount, timeline_interval, " .
+            "limit_speed_option, limit_speed_value, limit_speed_guests_option, limit_speed_guests_value, " .
+            "limit_speed_standard_option, limit_speed_standard_value, limit_speed_premium_option, " .
+            "limit_speed_premium_value, limit_speed_embed_option, limit_speed_embed_value, " .
+            "limit_speed_countries_option, limit_speed_countries_value) VALUES {$formatValuesSql}"
         );
 
         return $db;
