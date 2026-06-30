@@ -384,6 +384,65 @@ class DvdCommandTest extends TestCase
         $this->assertStringNotContainsString('DVD: Test Series', $output);
     }
 
+    public function testShowDvdExposesKvsAdminFields(): void
+    {
+        $fields = implode(',', [
+            'dvd_id',
+            'title',
+            'dir',
+            'description',
+            'synonyms',
+            'status_id',
+            'cover1_front',
+            'cover1_back',
+            'cover2_front',
+            'cover2_back',
+            'dvd_group',
+            'dvd_group_id',
+            'rating',
+            'dvd_viewed',
+            'release_year',
+            'videos_amount',
+            'total_duration',
+            'comments_amount',
+            'subscribers_amount',
+            'added_date',
+            'sort_id',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+            '--fields' => $fields,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('30', $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame('test-series', $rows[0]['dir']);
+        $this->assertSame('Long running series', $rows[0]['description']);
+        $this->assertSame('series, channel', $rows[0]['synonyms']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('front-1.jpg', $rows[0]['cover1_front']);
+        $this->assertSame('back-1.jpg', $rows[0]['cover1_back']);
+        $this->assertSame('front-2.jpg', $rows[0]['cover2_front']);
+        $this->assertSame('back-2.jpg', $rows[0]['cover2_back']);
+        $this->assertSame('Featured Series', $rows[0]['dvd_group']);
+        $this->assertSame(7, (int) $rows[0]['dvd_group_id']);
+        $this->assertSame('4.0/5 (10 votes)', $rows[0]['rating']);
+        $this->assertSame(100, (int) $rows[0]['dvd_viewed']);
+        $this->assertSame(2026, (int) $rows[0]['release_year']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame('1:01:30', $rows[0]['total_duration']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+        $this->assertSame(5, (int) $rows[0]['subscribers_amount']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame(9, (int) $rows[0]['sort_id']);
+    }
+
     public function testShowDvdRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

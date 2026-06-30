@@ -277,36 +277,40 @@ HELP
 
         try {
             $stmt = $db->prepare("
-                SELECT d.dvd_id,
-                       d.title,
-                       d.status_id,
-                       d.dvd_viewed,
-                       d.release_year,
-                       d.rating_amount,
-                       d.rating,
-                       d.subscribers_count,
-                       d.description,
-                       COUNT(v.dvd_id) as video_count,
-                       COALESCE(SUM(v.duration), 0) as video_duration
+                SELECT d.*,
+                       (
+                           SELECT COUNT(*)
+                           FROM {$this->table('videos')} v_count
+                           WHERE v_count.dvd_id = d.dvd_id
+                       ) as video_count,
+                       (
+                           SELECT COALESCE(SUM(v_duration.duration), 0)
+                           FROM {$this->table('videos')} v_duration
+                           WHERE v_duration.dvd_id = d.dvd_id
+                       ) as video_duration,
+                       (
+                           SELECT COUNT(*)
+                           FROM {$this->table('comments')} c
+                           WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id
+                       ) as comments_amount,
+                       dg.title as dvd_group,
+                       dg.status_id as dvd_group_status_id
                 FROM {$this->table('dvds')} d
-                LEFT JOIN {$this->table('videos')} v ON v.dvd_id = d.dvd_id
+                LEFT JOIN {$this->table('dvds_groups')} dg ON dg.dvd_group_id = d.dvd_group_id
                 WHERE d.dvd_id = :id
-                GROUP BY d.dvd_id,
-                         d.title,
-                         d.status_id,
-                         d.dvd_viewed,
-                         d.release_year,
-                         d.rating_amount,
-                         d.rating,
-                         d.subscribers_count,
-                         d.description
             ");
             $stmt->execute(['id' => $dvdId]);
-            $dvd = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $fetchedDvd = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!is_array($dvd)) {
+            if (!is_array($fetchedDvd)) {
                 $this->io()->error("DVD not found: $dvdId");
                 return self::FAILURE;
+            }
+            $dvd = [];
+            foreach ($fetchedDvd as $field => $value) {
+                if (is_string($field)) {
+                    $dvd[$field] = $value;
+                }
             }
 
             // Display DVD details
@@ -321,46 +325,15 @@ HELP
             $dvdViewed = is_numeric($dvdViewedVal) ? (int) $dvdViewedVal : 0;
             $dvdIdStr = is_scalar($dvdIdVal) ? (string) $dvdIdVal : '0';
             $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
-
-            $info = [
-                ['DVD ID', $dvdIdStr],
-                ['Title', $dvdTitle],
-                ['Status', StatusFormatter::dvd($statusId)],
-                ['Videos', number_format($totalVideos)],
-                ['Views', number_format($dvdViewed)],
-            ];
-
-            // Duration
             $durationVal = $dvd['video_duration'] ?? 0;
             $duration = is_numeric($durationVal) ? (int) $durationVal : 0;
-            if ($duration > 0) {
-                $info[] = ['Total Duration', $this->formatDvdDuration($duration)];
-            }
+            $dvdRow = $this->buildDvdShowRow($dvd, $dvdIdStr, $dvdTitle, $statusId, $totalVideos, $dvdViewed, $duration);
+            $info = $this->buildDvdShowInfo($dvd, $dvdIdStr, $dvdTitle, $statusId, $totalVideos, $dvdViewed, $duration);
 
-            // Release year
-            $releaseYear = $dvd['release_year'] ?? null;
-            if ($this->hasDvdReleaseYear($releaseYear)) {
-                $info[] = ['Release Year', is_scalar($releaseYear) ? (string) $releaseYear : ''];
-            }
-
-            // Rating
-            $ratingAmountVal = $dvd['rating_amount'] ?? 0;
-            $ratingVal = $dvd['rating'] ?? 0;
-            $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
-            if ($ratingAmount > 0) {
-                $info[] = ['Rating', format_kvs_rating($ratingVal, $ratingAmount)];
-            }
-
-            // Subscribers
-            $subscribersCountVal = $dvd['subscribers_count'] ?? null;
-            $subscribersCount = is_numeric($subscribersCountVal) ? (int) $subscribersCountVal : 0;
-            if ($subscribersCount > 0) {
-                $info[] = ['Subscribers', number_format($subscribersCount)];
-            }
-
-            $description = $dvd['description'] ?? null;
-            if ($description !== null && $description !== '') {
-                $info[] = ['Description', is_scalar($description) ? (string) $description : ''];
+            $hasFieldSelection = $this->getStringOption($input, 'fields') !== null
+                || $this->getStringOption($input, 'field') !== null;
+            if ($hasFieldSelection) {
+                return $this->displayFormattedRows($input, [$dvdRow], array_keys($dvdRow));
             }
 
             if (!$this->isTableFormat($input)) {
@@ -375,6 +348,97 @@ HELP
             $this->io()->error('Failed to fetch DVD: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $dvd
+     * @return array<string, mixed>
+     */
+    private function buildDvdShowRow(
+        array $dvd,
+        string $dvdId,
+        string $title,
+        int $statusId,
+        int $totalVideos,
+        int $views,
+        int $duration
+    ): array {
+        return [
+            ...$dvd,
+            'dvd_id' => $dvdId,
+            'id' => $dvdId,
+            'title' => $title,
+            'thumb' => $dvd['cover1_front'] ?? $dvd['cover2_front'] ?? '',
+            'status_id' => $statusId,
+            'status' => StatusFormatter::dvd($statusId, false),
+            'total_videos' => $totalVideos,
+            'videos_amount' => $totalVideos,
+            'videos' => (string) $totalVideos,
+            'total_videos_duration' => $duration,
+            'total_duration' => $this->formatDvdDuration($duration),
+            'duration' => $this->formatDvdDuration($duration),
+            'release_year' => $this->formatDvdReleaseYear($dvd['release_year'] ?? null),
+            'dvd_viewed' => $views,
+            'views' => number_format($views),
+            'dvd_group' => $dvd['dvd_group'] ?? '',
+            'dvd_group_status_id' => $dvd['dvd_group_status_id'] ?? '',
+            'comments_amount' => $dvd['comments_amount'] ?? 0,
+            'subscribers_count' => $dvd['subscribers_count'] ?? 0,
+            'subscribers_amount' => $dvd['subscribers_count'] ?? 0,
+            'subscribers' => $dvd['subscribers_count'] ?? 0,
+            'rating' => format_kvs_rating($dvd['rating'] ?? 0, $dvd['rating_amount'] ?? 0),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $dvd
+     * @return list<array{0: string, 1: string}>
+     */
+    private function buildDvdShowInfo(
+        array $dvd,
+        string $dvdId,
+        string $title,
+        int $statusId,
+        int $totalVideos,
+        int $views,
+        int $duration
+    ): array {
+        $info = [
+            ['DVD ID', $dvdId],
+            ['Title', $title],
+            ['Status', StatusFormatter::dvd($statusId)],
+            ['Videos', number_format($totalVideos)],
+            ['Views', number_format($views)],
+        ];
+
+        if ($duration > 0) {
+            $info[] = ['Total Duration', $this->formatDvdDuration($duration)];
+        }
+
+        $releaseYear = $dvd['release_year'] ?? null;
+        if ($this->hasDvdReleaseYear($releaseYear)) {
+            $info[] = ['Release Year', is_scalar($releaseYear) ? (string) $releaseYear : ''];
+        }
+
+        $ratingAmountVal = $dvd['rating_amount'] ?? 0;
+        $ratingVal = $dvd['rating'] ?? 0;
+        $ratingAmount = is_numeric($ratingAmountVal) ? (int) $ratingAmountVal : 0;
+        if ($ratingAmount > 0) {
+            $info[] = ['Rating', format_kvs_rating($ratingVal, $ratingAmount)];
+        }
+
+        $subscribersCountVal = $dvd['subscribers_count'] ?? null;
+        $subscribersCount = is_numeric($subscribersCountVal) ? (int) $subscribersCountVal : 0;
+        if ($subscribersCount > 0) {
+            $info[] = ['Subscribers', number_format($subscribersCount)];
+        }
+
+        $description = $dvd['description'] ?? null;
+        if ($description !== null && $description !== '') {
+            $info[] = ['Description', is_scalar($description) ? (string) $description : ''];
+        }
+
+        return $info;
     }
 
     private function isDvdFieldRequested(InputInterface $input, string $field): bool
