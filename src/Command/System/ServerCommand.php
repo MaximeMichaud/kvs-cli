@@ -528,13 +528,15 @@ HELP
                 $this->io()->error("Server not found: $serverId");
                 return self::FAILURE;
             }
+            $serverRows = $this->addStorageContentCounts($db, [$server]);
+            $server = $serverRows[0] ?? $server;
 
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
             if (!$this->isTableFormat($input)) {
-                return $this->displayDetailRows($input, $info, ['server_id' => (string) $serverId]);
+                return $this->displayDetailRows($input, $info, $this->getServerShowExtraFields($input, $server, $serverId));
             }
 
             $this->io()->section("Server #$serverId");
@@ -546,6 +548,55 @@ HELP
             $this->io()->error('Failed to fetch server: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array<string, mixed>
+     */
+    private function getServerShowExtraFields(InputInterface $input, array $server, int $serverId): array
+    {
+        $extra = ['server_id' => (string) $serverId];
+
+        $isRemote = $this->getNumericField($server, 'is_remote');
+        $contentCount = $this->getNumericField($server, 'content_count');
+        $controlScriptUrl = $isRemote === 1 ? $this->getStringField($server, 'control_script_url') : '';
+        $controlScriptVersion = $isRemote === 1
+            ? $this->getStringField($server, 'control_script_url_version')
+            : 'N/A';
+
+        $adminFields = [
+            'status_id' => $this->getNumericField($server, 'status_id'),
+            'content_type_id' => $this->getNumericField($server, 'content_type_id'),
+            'total_content' => $this->formatStorageContentCount($contentCount, $server['content_type_id'] ?? null),
+            'streaming_type_id' => $this->getNumericField($server, 'streaming_type_id'),
+            'control_script_url' => $controlScriptUrl,
+            'control_script_url_version' => $controlScriptVersion,
+            'control_script_url_lock_ip' => $isRemote === 1
+                ? $this->getNumericField($server, 'control_script_url_lock_ip')
+                : 0,
+            'connection_type_id' => $this->getNumericField($server, 'connection_type_id'),
+            'added_date' => $this->getStringField($server, 'added_date'),
+        ];
+
+        foreach ($adminFields as $field => $value) {
+            if ($this->isServerFieldRequested($input, $field)) {
+                $extra[$field] = $value;
+            }
+        }
+
+        return $extra;
+    }
+
+    private function isServerFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        $fields = array_map('trim', explode(',', $fieldsOption));
+        return in_array($field, $fields, true);
     }
 
     /**
