@@ -1391,9 +1391,29 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
+            $selectFields = ['v.*'];
+            $joinSql = '';
+            if (
+                $this->isFieldRequested($input, 'user')
+                || $this->isFieldRequested($input, 'username')
+                || $this->isFieldRequested($input, 'user_status_id')
+            ) {
+                $selectFields[] = 'u.username';
+                $selectFields[] = 'u.status_id as user_status_id';
+                $joinSql .= " LEFT JOIN {$this->table('users')} u ON v.user_id = u.user_id";
+            }
+
+            [$relationSelects, $relationJoinSql] = $this->buildVideoRelationSql($input);
+            $selectFields = array_merge($selectFields, $relationSelects);
+            $stmt = $db->prepare(
+                'SELECT ' . implode(",\n                       ", $selectFields) . "
+                 FROM {$this->table('videos')} v
+                 $joinSql
+                 $relationJoinSql
+                 WHERE v.video_id = :id"
+            );
             $stmt->execute(['id' => $videoId]);
-            /** @var array{title: string, status_id: int|string, resolution_type: int|string, is_private: int|string, access_level_id?: int|string, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string, load_type_id?: int|string}|false $video */
+            /** @var array<string, mixed>|false $video */
             $video = $stmt->fetch();
 
             if ($video === false) {
@@ -1401,27 +1421,37 @@ HELP
                 return self::FAILURE;
             }
 
-            $postTimestamp = strtotime($video['post_date']);
+            $title = $this->getVideoStringField($video, 'title');
+            $description = $this->getVideoStringField($video, 'description');
+            $duration = $this->getVideoIntField($video, 'duration');
+            $fileSize = $this->getVideoIntField($video, 'file_size');
+            $dimensions = $this->getVideoStringField($video, 'file_dimensions');
+            $postDate = $this->getVideoStringField($video, 'post_date');
+            $rating = $this->getVideoIntField($video, 'rating');
+            $ratingAmount = $this->getVideoIntField($video, 'rating_amount');
+            $views = $this->getVideoIntField($video, 'video_viewed');
+            $favourites = $this->getVideoIntField($video, 'favourites_count');
+            $postTimestamp = strtotime($postDate);
             $statusId = is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
             $resolutionType = is_numeric($video['resolution_type']) ? (int) $video['resolution_type'] : 0;
             $privacyId = is_numeric($video['is_private']) ? (int) $video['is_private'] : 0;
             $accessLevelId = is_numeric($video['access_level_id'] ?? null) ? (int) $video['access_level_id'] : 0;
             $info = [
-                ['Title', $video['title']],
+                ['Title', $title],
                 ['Status', StatusFormatter::video($statusId)],
                 ['Resolution', $this->formatResolutionType($resolutionType)],
                 ['Type', StatusFormatter::contentPrivacy($privacyId)],
                 ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
-                ['Duration', $this->formatDuration($video['duration'])],
-                ['File Size', format_bytes($video['file_size'])],
-                ['Dimensions', $video['file_dimensions']],
+                ['Duration', $this->formatDuration($duration)],
+                ['File Size', format_bytes($fileSize)],
+                ['Dimensions', $dimensions],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],
                 [
                     'Rating',
-                    format_kvs_rating($video['rating'], $video['rating_amount'])
+                    format_kvs_rating($rating, $ratingAmount)
                 ],
-                ['Views', number_format($video['video_viewed'])],
-                ['Favourites', number_format($video['favourites_count'])],
+                ['Views', number_format($views)],
+                ['Favourites', number_format($favourites)],
             ];
 
             $stmt = $db->prepare("
@@ -1452,29 +1482,21 @@ HELP
             );
 
             if ($this->shouldUseFormattedRows($input)) {
-                $rawLoadTypeId = $video['load_type_id'] ?? 0;
-
                 return $this->displayDetailRows($input, $info, [
                     'video_id' => (string) $videoId,
-                    'description' => $video['description'],
+                    'description' => $description,
                     'categories' => $categoryValues,
                     'tags' => $tagValues,
-                    ...$this->getRequestedDetailFields($input, [
-                        'status_id' => $statusId,
-                        'load_type_id' => is_numeric($rawLoadTypeId) ? (int) $rawLoadTypeId : 0,
-                        'resolution_type' => $resolutionType,
-                        'is_private' => StatusFormatter::contentPrivacy($privacyId, false),
-                        'access_level_id' => $accessLevelId,
-                    ]),
+                    ...$this->getRequestedVideoDetailFields($input, $video, $statusId, $resolutionType, $privacyId, $accessLevelId),
                 ]);
             }
 
             $this->io()->section("Video #$videoId");
             $this->renderTable(['Property', 'Value'], $info);
 
-            if ($video['description'] !== '') {
+            if ($description !== '') {
                 $this->io()->section('Description');
-                $this->io()->text($video['description']);
+                $this->io()->text($description);
             }
 
             if ($categories !== []) {
@@ -1492,6 +1514,152 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     * @return array<string, mixed>
+     */
+    private function getRequestedVideoDetailFields(
+        InputInterface $input,
+        array $video,
+        int $statusId,
+        int $resolutionType,
+        int $privacyId,
+        int $accessLevelId
+    ): array {
+        $fields = [
+            'status_id' => $statusId,
+            'load_type_id' => $this->getVideoIntField($video, 'load_type_id'),
+            'resolution_type' => $resolutionType,
+            'is_private' => StatusFormatter::contentPrivacy($privacyId, false),
+            'access_level_id' => $accessLevelId,
+            'user' => $this->getVideoStringField($video, 'username'),
+            'username' => $this->getVideoStringField($video, 'username'),
+            'admin_user' => $this->getVideoNullableStringField($video, 'admin_user'),
+            'admin_user_is_superadmin' => $this->getVideoNullableIntField($video, 'admin_user_is_superadmin'),
+            'content_source' => $this->getVideoNullableStringField($video, 'content_source'),
+            'content_source_status_id' => $this->getVideoNullableIntField($video, 'content_source_status_id'),
+            'dvd' => $this->getVideoNullableStringField($video, 'dvd'),
+            'dvd_status_id' => $this->getVideoNullableIntField($video, 'dvd_status_id'),
+            'admin_flag' => $this->getVideoNullableStringField($video, 'admin_flag'),
+            'server_group' => $this->getVideoNullableStringField($video, 'server_group'),
+            'server_group_status_id' => $this->getVideoNullableIntField($video, 'server_group_status_id'),
+            'format_video_group' => $this->getVideoNullableStringField($video, 'format_video_group'),
+            'models' => $this->getVideoNullableStringField($video, 'models'),
+            'ip' => $this->formatKvsIp($video['ip'] ?? ''),
+            'r_ctr' => $this->getVideoFloatField($video, 'r_ctr') * 100,
+        ];
+
+        foreach (
+            [
+                'user_id',
+                'admin_user_id',
+                'tokens_required',
+                'video_viewed',
+                'video_viewed_player',
+                'video_viewed_unique',
+                'screen_amount',
+                'screen_main',
+                'poster_amount',
+                'poster_main',
+                'format_video_group_id',
+                'server_group_id',
+                'admin_flag_id',
+                'content_source_id',
+                'dvd_id',
+                'comments_count',
+                'favourites_count',
+                'purchases_count',
+                'release_year',
+                'is_locked',
+                'is_review_needed',
+                'has_errors',
+                'feed_id',
+                'relative_post_date',
+                'is_vertical',
+                'rs_completed',
+            ] as $field
+        ) {
+            $fields[$field] = $this->getVideoNullableIntField($video, $field);
+        }
+
+        foreach (
+            [
+                'dir',
+                'gallery_url',
+                'custom1',
+                'custom2',
+                'custom3',
+                'af_custom1',
+                'af_custom2',
+                'af_custom3',
+                'post_date',
+                'added_date',
+                'last_time_view_date',
+                'file_dimensions',
+                'file_formats',
+                'file_url',
+                'embed',
+                'pseudo_url',
+                'delete_reason',
+            ] as $field
+        ) {
+            $fields[$field] = $this->getVideoNullableStringField($video, $field);
+        }
+
+        return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function getVideoIntField(array $video, string $field): int
+    {
+        $value = $video[$field] ?? 0;
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function getVideoNullableIntField(array $video, string $field): ?int
+    {
+        if (!array_key_exists($field, $video) || $video[$field] === null || $video[$field] === '') {
+            return null;
+        }
+
+        return is_numeric($video[$field]) ? (int) $video[$field] : null;
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function getVideoFloatField(array $video, string $field): float
+    {
+        $value = $video[$field] ?? 0;
+        return is_numeric($value) ? (float) $value : 0.0;
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function getVideoStringField(array $video, string $field): string
+    {
+        $value = $video[$field] ?? '';
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * @param array<string, mixed> $video
+     */
+    private function getVideoNullableStringField(array $video, string $field): ?string
+    {
+        if (!array_key_exists($field, $video) || $video[$field] === null) {
+            return null;
+        }
+
+        return is_scalar($video[$field]) ? (string) $video[$field] : null;
     }
 
     private function getVideoThumbFormat(\PDO $db): ?string

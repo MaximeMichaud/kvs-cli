@@ -823,6 +823,63 @@ class VideoCommandTest extends TestCase
         $this->assertSame(0, $rows[0]['access_level_id']);
     }
 
+    public function testVideoShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => implode(',', [
+                'video_id',
+                'user_id',
+                'user',
+                'username',
+                'admin_user',
+                'admin_user_is_superadmin',
+                'content_source',
+                'content_source_status_id',
+                'dvd',
+                'dvd_status_id',
+                'admin_flag',
+                'server_group',
+                'server_group_status_id',
+                'format_video_group',
+                'screen_amount',
+                'screen_main',
+                'poster_amount',
+                'poster_main',
+                'models',
+                'ip',
+                'file_formats',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('10', $rows[0]['video_id']);
+        $this->assertSame(1, $rows[0]['user_id']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame('moderator', $rows[0]['admin_user']);
+        $this->assertSame(0, $rows[0]['admin_user_is_superadmin']);
+        $this->assertSame('Studio One', $rows[0]['content_source']);
+        $this->assertSame(1, $rows[0]['content_source_status_id']);
+        $this->assertSame('Series One', $rows[0]['dvd']);
+        $this->assertSame(1, $rows[0]['dvd_status_id']);
+        $this->assertSame('Needs Review', $rows[0]['admin_flag']);
+        $this->assertSame('Primary Storage', $rows[0]['server_group']);
+        $this->assertSame(1, $rows[0]['server_group_status_id']);
+        $this->assertSame('HD Formats', $rows[0]['format_video_group']);
+        $this->assertSame(12, $rows[0]['screen_amount']);
+        $this->assertSame(3, $rows[0]['screen_main']);
+        $this->assertSame(2, $rows[0]['poster_amount']);
+        $this->assertSame(1, $rows[0]['poster_main']);
+        $this->assertSame('Model Two,Model One', $rows[0]['models']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
+        $this->assertSame('||mp4|', $rows[0]['file_formats']);
+    }
+
     public function testVideoShowRejectsCountFormat(): void
     {
         $this->tester->execute([
@@ -1141,7 +1198,8 @@ class VideoCommandTest extends TestCase
             'description TEXT, gallery_url TEXT, website_link TEXT, file_url TEXT, embed TEXT, pseudo_url TEXT, ' .
             'delete_reason TEXT, custom1 TEXT, custom2 TEXT, custom3 TEXT, af_custom1 INTEGER, af_custom2 INTEGER, ' .
             'af_custom3 INTEGER, tokens_required INTEGER, content_source_id INTEGER, dvd_id INTEGER, admin_flag_id INTEGER, ' .
-            'server_group_id INTEGER, format_video_group_id INTEGER, screen_main INTEGER, ip INTEGER, ' .
+            'server_group_id INTEGER, format_video_group_id INTEGER, screen_amount INTEGER, screen_main INTEGER, ' .
+            'poster_amount INTEGER, poster_main INTEGER, ip INTEGER, ' .
             'load_type_id INTEGER, feed_id INTEGER, has_errors INTEGER, relative_post_date INTEGER, ' .
             'is_vertical INTEGER, rs_completed INTEGER, file_formats TEXT)'
         );
@@ -1224,17 +1282,18 @@ class VideoCommandTest extends TestCase
             "comments_count, favourites_count, purchases_count, r_ctr, description, gallery_url, custom1, custom2, custom3, " .
             "website_link, file_url, embed, pseudo_url, delete_reason, af_custom1, af_custom2, af_custom3, " .
             "tokens_required, content_source_id, dvd_id, admin_flag_id, server_group_id, " .
-            "format_video_group_id, screen_main, ip, load_type_id, feed_id, has_errors, relative_post_date) VALUES " .
+            "format_video_group_id, screen_amount, screen_main, poster_amount, poster_main, ip, " .
+            "load_type_id, feed_id, has_errors, relative_post_date) VALUES " .
             "(10, 1, 8, 'Featured Clip', 1, 2, 'featured-clip', 0, 0, 125, 1048576, 0, 0, '1920x1080', " .
             "'2026-05-26 10:00:00', 40, 10, 123, 12, 2, 7, 1, 0.125, 'Featured description', " .
             "'https://example.test/gallery', 'custom one', '', '', '', '', '<iframe src=\"featured\"></iframe>', '', '', " .
-            "1, 0, 0, 5, 3, 4, 5, 6, 7, 3, 2130706433, 1, 100, 0, 0), " .
+            "1, 0, 0, 5, 3, 4, 5, 6, 7, 12, 3, 2, 1, 2130706433, 1, 100, 0, 0), " .
             "(20, 2, 9, 'Disabled Clip', 0, 0, 'disabled-clip', 2, 2, 61, 524288, 1, 1, '640x360', " .
             "'2026-05-25 10:00:00', 0, 1, 5, 0, 1, 0, 0, 0.050, '', '', '', '', '', '', '', '', '', '', " .
-            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0), " .
+            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 1, 0), " .
             "(30, 1, 0, 'Older Active Clip', 1, 1, 'older-active-clip', 1, 0, 3600, 2097152, 0, 0, '1280x720', " .
             "'2026-05-24 10:00:00', 15, 5, 20, 0, 0, 1, 0, 0, '', '', '', '', '', '', '', '', '', '', " .
-            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0)"
+            "0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0)"
         );
         $db->exec(
             "UPDATE " . TestHelper::table('videos') .
