@@ -494,6 +494,32 @@ SH
         $this->assertStringNotContainsString('No backups directory found', $output);
     }
 
+    public function testBackupListRejectsInvalidExplicitOutputDirectory(): void
+    {
+        $filePath = $this->rootDir . '/backup-output-file';
+        file_put_contents($filePath, 'not a directory');
+
+        $cases = [
+            'empty output' => ['', 'The --output option cannot be empty'],
+            'file output' => [$filePath, 'Output path is not a directory'],
+            'missing output' => [$this->rootDir . '/missing-backups', 'Backup directory does not exist'],
+        ];
+
+        foreach ($cases as $case => [$outputDir, $expectedMessage]) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--list' => true,
+                '--output' => $outputDir,
+                '--format' => 'count',
+            ]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $case . ': ' . $display);
+            $this->assertStringContainsString($expectedMessage, $display);
+            $this->assertNotSame("0\n", $display);
+        }
+    }
+
     public function testBackupListIncludesNativeKvsBackupDirectory(): void
     {
         $nativeBackupDir = $this->tempDir . '/admin/data/backup';

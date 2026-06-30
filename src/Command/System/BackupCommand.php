@@ -57,9 +57,14 @@ HELP
                 return self::FAILURE;
             }
 
+            $outputDir = $this->getStringOption($input, 'output');
+            if (!$this->validateOutputDirectoryOption($outputDir, true)) {
+                return self::FAILURE;
+            }
+
             return $this->createBackup(
                 $this->getStringOptionOrDefault($input, 'type', 'full'),
-                $this->getStringOption($input, 'output')
+                $outputDir
             );
         }
 
@@ -68,8 +73,13 @@ HELP
                 return self::FAILURE;
             }
 
+            $outputDir = $this->getStringOption($input, 'output');
+            if (!$this->validateOutputDirectoryOption($outputDir, false)) {
+                return self::FAILURE;
+            }
+
             return $this->listBackups(
-                $this->getStringOption($input, 'output'),
+                $outputDir,
                 $this->getStringOptionOrDefault($input, 'format', 'table')
             );
         }
@@ -89,6 +99,30 @@ HELP
         ]);
 
         return self::SUCCESS;
+    }
+
+    private function validateOutputDirectoryOption(?string $outputDir, bool $allowMissing): bool
+    {
+        if ($outputDir === null) {
+            return true;
+        }
+
+        if (trim($outputDir) === '') {
+            $this->io()->error('The --output option cannot be empty');
+            return false;
+        }
+
+        if (file_exists($outputDir) && !is_dir($outputDir)) {
+            $this->io()->error("Output path is not a directory: $outputDir");
+            return false;
+        }
+
+        if (!$allowMissing && !is_dir($outputDir)) {
+            $this->io()->error("Backup directory does not exist: $outputDir");
+            return false;
+        }
+
+        return true;
     }
 
     private function createBackup(string $type, ?string $outputDir): int

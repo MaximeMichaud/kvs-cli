@@ -102,6 +102,61 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringNotContainsString('EMAIL=admin@test.example.com', $output);
     }
 
+    public function testToDockerRejectsInvalidProvidedDomainBeforeDryRun(): void
+    {
+        foreach (['', 'bad_domain'] as $domain) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--domain' => $domain,
+                '--email' => 'test@test.com',
+                '--ssl' => '1',
+                '--dry-run' => true,
+                '--force' => true,
+            ]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Invalid --domain value', $output);
+            $this->assertStringNotContainsString('Migration Plan', $output);
+        }
+    }
+
+    public function testToDockerRejectsInvalidProvidedEmailBeforeDryRun(): void
+    {
+        foreach (['', 'not-an-email'] as $email) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                '--domain' => 'test.example.com',
+                '--email' => $email,
+                '--ssl' => '1',
+                '--dry-run' => true,
+                '--force' => true,
+            ]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Invalid --email value', $output);
+            $this->assertStringNotContainsString('Migration Plan', $output);
+        }
+    }
+
+    public function testToDockerRejectsEmptyTargetBeforeDryRun(): void
+    {
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--target' => '',
+            '--ssl' => '1',
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('The --target option cannot be empty', $output);
+        $this->assertStringNotContainsString('Migration Plan', $output);
+    }
+
     public function testToDockerDryRunUsesSanitizedMariaDbContainerName(): void
     {
         $this->tester->execute([

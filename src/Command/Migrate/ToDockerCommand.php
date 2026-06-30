@@ -98,6 +98,18 @@ EOT
             $this->io()->error('Invalid --db value. Must be 1, 2, 3, or 4');
             return self::FAILURE;
         }
+        if ($domain !== null && !$this->isValidDomainName($domain)) {
+            $this->io()->error('Invalid --domain value. Use a valid domain name such as example.com');
+            return self::FAILURE;
+        }
+        if ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            $this->io()->error('Invalid --email value. Use a valid email address');
+            return self::FAILURE;
+        }
+        if (trim($targetDir) === '') {
+            $this->io()->error('The --target option cannot be empty');
+            return self::FAILURE;
+        }
 
         $this->io()->title('KVS Migration to Docker');
 
@@ -118,8 +130,7 @@ EOT
         if ($domain === null) {
             $question = new Question('Domain name (e.g., example.com): ');
             $question->setValidator(function (?string $value): string {
-                $pattern = '/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/';
-                if ($value === null || $value === '' || preg_match($pattern, $value) !== 1) {
+                if ($value === null || !$this->isValidDomainName($value)) {
                     throw new \RuntimeException('Invalid domain name');
                 }
                 return $value;
@@ -286,6 +297,12 @@ EOT
         ]);
 
         return self::SUCCESS;
+    }
+
+    private function isValidDomainName(string $domain): bool
+    {
+        $pattern = '/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/';
+        return preg_match($pattern, $domain) === 1;
     }
 
     private function loadSourceConfig(?string $path): ?Configuration
