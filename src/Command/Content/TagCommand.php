@@ -390,10 +390,11 @@ HELP
             $info[] = ['Added', $addedDate];
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, $this->getRequestedDetailFields($input, [
-                    'tag_id' => $tagId,
-                    'status_id' => $statusId,
-                ]));
+                return $this->displayDetailRows(
+                    $input,
+                    $info,
+                    $this->getRequestedTagDetailFields($input, $tag, $counts, $tagId, $statusId, $otherAmount, $totalUsage)
+                );
             }
 
             $this->io()->section("Tag: $tagName");
@@ -404,6 +405,86 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, mixed> $tag
+     * @param array<string, int> $counts
+     * @return array<string, mixed>
+     */
+    private function getRequestedTagDetailFields(
+        InputInterface $input,
+        array $tag,
+        array $counts,
+        string $tagId,
+        int $statusId,
+        int $otherAmount,
+        int $totalUsage
+    ): array {
+        $tagName = is_scalar($tag['tag'] ?? null) ? (string) $tag['tag'] : '';
+        $fields = [
+            'tag_id' => $tagId,
+            'tag' => $tagName,
+            'tag_rename' => $tagName,
+            'tag_dir' => $this->getTagStringField($tag, 'tag_dir'),
+            'synonyms' => $this->getTagStringField($tag, 'synonyms'),
+            'status_id' => $statusId,
+            'videos_amount' => $counts['videos'] ?? 0,
+            'albums_amount' => $counts['albums'] ?? 0,
+            'posts_amount' => $counts['posts'] ?? 0,
+            'other_amount' => $otherAmount,
+            'all_amount' => $totalUsage,
+            'added_date' => $this->getTagStringField($tag, 'added_date'),
+        ];
+
+        foreach (
+            [
+                'custom1',
+                'custom2',
+                'custom3',
+                'custom4',
+                'custom5',
+                'avg_videos_rating',
+                'avg_videos_popularity',
+                'avg_albums_rating',
+                'avg_albums_popularity',
+                'avg_posts_rating',
+                'avg_posts_popularity',
+            ] as $field
+        ) {
+            $fields[$field] = $this->getTagScalarField($tag, $field);
+        }
+
+        return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /**
+     * @param array<string, mixed> $tag
+     */
+    private function getTagStringField(array $tag, string $field): string
+    {
+        $value = $tag[$field] ?? '';
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * @param array<string, mixed> $tag
+     */
+    private function getTagScalarField(array $tag, string $field): int|float|string|null
+    {
+        if (!array_key_exists($field, $tag) || $tag[$field] === null) {
+            return null;
+        }
+
+        if (!is_scalar($tag[$field])) {
+            return null;
+        }
+
+        if (is_numeric($tag[$field])) {
+            return str_contains((string) $tag[$field], '.') ? (float) $tag[$field] : (int) $tag[$field];
+        }
+
+        return (string) $tag[$field];
     }
 
     private function createTag(?string $tagName): int
