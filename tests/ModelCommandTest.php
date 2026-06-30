@@ -542,6 +542,59 @@ class ModelCommandTest extends TestCase
         $this->assertSame(1, $rows[0]['status_id']);
     }
 
+    public function testShowModelSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => implode(',', [
+                'model_id',
+                'title',
+                'model_group',
+                'tags',
+                'categories',
+                'videos_amount',
+                'albums_amount',
+                'posts_amount',
+                'other_amount',
+                'all_amount',
+                'comments_amount',
+                'subscribers_amount',
+                'model_viewed',
+                'status_id',
+                'added_date',
+                'dir',
+                'country',
+                'city',
+                'gender_id',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['model_id']);
+        $this->assertSame('Test Model', $rows[0]['title']);
+        $this->assertSame('Featured Models', $rows[0]['model_group']);
+        $this->assertSame('interview,featured', $rows[0]['tags']);
+        $this->assertSame('Guests,Performers', $rows[0]['categories']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(2, (int) $rows[0]['posts_amount']);
+        $this->assertSame(7, (int) $rows[0]['other_amount']);
+        $this->assertSame(12, (int) $rows[0]['all_amount']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+        $this->assertSame(6, (int) $rows[0]['subscribers_amount']);
+        $this->assertSame(100, (int) $rows[0]['model_viewed']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame('test-model', $rows[0]['dir']);
+        $this->assertSame('Canada', $rows[0]['country']);
+        $this->assertSame('Montreal', $rows[0]['city']);
+        $this->assertSame(1, (int) $rows[0]['gender_id']);
+    }
+
     public function testShowModelRejectsCountFormat(): void
     {
         $this->tester->execute([

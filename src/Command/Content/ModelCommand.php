@@ -619,22 +619,33 @@ HELP
         }
 
         try {
+            $extraSelectSql = $this->buildModelExtraSelectSql($input);
+            $modelGroupSelect = $this->isModelFieldRequested($input, 'model_group')
+                ? ",
+                       mg.title as model_group"
+                : '';
+            $modelGroupJoin = $this->isModelFieldRequested($input, 'model_group')
+                ? "LEFT JOIN {$this->table('models_groups')} mg ON mg.model_group_id = m.model_group_id"
+                : '';
+
             $stmt = $db->prepare("
                 SELECT m.*,
                        (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
                        (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
-                       c.title as country_name
+                       c.title as country_name$extraSelectSql$modelGroupSelect
                 FROM {$this->table('models')} m
                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
+                $modelGroupJoin
                 WHERE m.model_id = :id
             ");
             $stmt->execute(['id' => $modelId]);
-            $model = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $modelRow = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!is_array($model)) {
+            if (!is_array($modelRow)) {
                 $this->io()->error("Model not found: $modelId");
                 return self::FAILURE;
             }
+            $model = $this->normalizeModelRow($modelRow);
 
             // Display model details
             $titleValue = $model['title'] ?? '';
@@ -685,9 +696,11 @@ HELP
             $this->addOptionalField($info, 'Description', $model['description'] ?? null);
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, $this->getRequestedDetailFields($input, [
-                    'status_id' => $statusId,
-                ]));
+                return $this->displayDetailRows(
+                    $input,
+                    $info,
+                    $this->getRequestedModelDetailFields($input, $model, $statusId)
+                );
             }
 
             $this->io()->title("Model: $modelTitle");
@@ -698,6 +711,51 @@ HELP
             $this->io()->error('Failed to fetch model: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $model
+     * @return array<string, mixed>
+     */
+    private function getRequestedModelDetailFields(InputInterface $input, array $model, int $statusId): array
+    {
+        $fields = $this->transformModelForList($model);
+        foreach (
+            [
+                'model_id',
+                'id',
+                'status',
+                'videos',
+                'albums',
+                'views',
+                'rating',
+                'rank',
+                'birth_date',
+                'description',
+            ] as $field
+        ) {
+            unset($fields[$field]);
+        }
+
+        $fields['status_id'] = $statusId;
+
+        return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /**
+     * @param array<mixed> $row
+     * @return array<string, mixed>
+     */
+    private function normalizeModelRow(array $row): array
+    {
+        $result = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $result[$key] = $value;
+            }
+        }
+
+        return $result;
     }
 
     private function buildModelExtraSelectSql(InputInterface $input): string
