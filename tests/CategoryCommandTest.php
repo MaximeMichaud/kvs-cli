@@ -273,6 +273,57 @@ class CategoryCommandTest extends TestCase
         $this->assertStringNotContainsString('Category: Action', $output);
     }
 
+    public function testCategoryShowExposesKvsAdminFields(): void
+    {
+        $fields = implode(',', [
+            'category_id',
+            'title',
+            'dir',
+            'description',
+            'status_id',
+            'synonyms',
+            'screenshot1',
+            'screenshot2',
+            'category_group',
+            'category_group_id',
+            'videos_amount',
+            'albums_amount',
+            'posts_amount',
+            'other_amount',
+            'all_amount',
+            'added_date',
+            'sort_id',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--format' => 'json',
+            '--fields' => $fields,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('10', $rows[0]['category_id']);
+        $this->assertSame('Action', $rows[0]['title']);
+        $this->assertSame('action-scenes', $rows[0]['dir']);
+        $this->assertSame('High energy scenes', $rows[0]['description']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('stunts', $rows[0]['synonyms']);
+        $this->assertSame('action-1.jpg', $rows[0]['screenshot1']);
+        $this->assertSame('action-2.jpg', $rows[0]['screenshot2']);
+        $this->assertSame('Genres', $rows[0]['category_group']);
+        $this->assertSame(2, (int) $rows[0]['category_group_id']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(2, (int) $rows[0]['posts_amount']);
+        $this->assertSame(10, (int) $rows[0]['other_amount']);
+        $this->assertSame(15, (int) $rows[0]['all_amount']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame(7, (int) $rows[0]['sort_id']);
+    }
+
     public function testCategoryShowSupportsExactTitle(): void
     {
         $this->tester->execute([
@@ -350,7 +401,7 @@ class CategoryCommandTest extends TestCase
             'category_id INTEGER, title TEXT, dir TEXT, description TEXT, synonyms TEXT, category_group_id INTEGER, ' .
             'status_id INTEGER, screenshot1 TEXT, screenshot2 TEXT, added_date TEXT, ' .
             'total_content_sources INTEGER, total_playlists INTEGER, ' .
-            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
+            'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER, sort_id INTEGER)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories_groups') . ' (' .
@@ -368,11 +419,11 @@ class CategoryCommandTest extends TestCase
             "INSERT INTO " . TestHelper::table('categories') .
             " (category_id, title, dir, description, synonyms, category_group_id, status_id, screenshot1, " .
             "screenshot2, added_date, " .
-            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES " .
+            "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups, sort_id) VALUES " .
             "(10, 'Action', 'action-scenes', 'High energy scenes', 'stunts', 2, 1, 'action-1.jpg', " .
-            "'action-2.jpg', '2026-05-25 10:00:00', 1, 2, 3, 4, 0), " .
-            "(20, 'Drama', 'drama', '', '', 0, 0, '', '', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
-            "(30, 'Unused Category', 'unused-category', '', '', 0, 1, '', '', '2026-05-26 11:00:00', 0, 0, 0, 0, 0)"
+            "'action-2.jpg', '2026-05-25 10:00:00', 1, 2, 3, 4, 0, 7), " .
+            "(20, 'Drama', 'drama', '', '', 0, 0, '', '', '2026-05-26 10:00:00', 0, 0, 0, 0, 0, 8), " .
+            "(30, 'Unused Category', 'unused-category', '', '', 0, 1, '', '', '2026-05-26 11:00:00', 0, 0, 0, 0, 0, 9)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('categories_groups') . " VALUES (2, 'Genres')");
         $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (10, 100), (10, 101), (20, 200)");

@@ -431,6 +431,33 @@ HELP
             $addedDateStr = is_string($addedDate) ? $addedDate : 'N/A';
 
             $statusId = isset($category['status_id']) && is_numeric($category['status_id']) ? (int) $category['status_id'] : 0;
+            $categoryRow = [
+                ...$category,
+                'id' => is_scalar($categoryId) ? (string) $categoryId : '0',
+                'category_id' => $categoryId,
+                'title' => $categoryTitle,
+                'group' => $groupDisplay,
+                'group_id' => $groupIdStr,
+                'status_id' => $statusId,
+                'status' => StatusFormatter::category($statusId, false),
+                'thumb' => $category['screenshot1'] ?? $category['screenshot2'] ?? '',
+                'video_count' => $videoCount,
+                'album_count' => $albumCount,
+                'post_count' => $postCount,
+                'videos' => $videoCount,
+                'albums' => $albumCount,
+                'posts' => $postCount,
+                'other' => $otherCount,
+                'videos_amount' => $videoCount,
+                'albums_amount' => $albumCount,
+                'posts_amount' => $postCount,
+                'other_amount' => $otherCount,
+                'all_amount' => $totalUsage,
+                'total_usage' => $totalUsage,
+                'added' => $addedDateStr,
+                'added_date' => $addedDateStr,
+                ...$usage,
+            ];
 
             $info = [
                 ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
@@ -447,12 +474,14 @@ HELP
             ];
 
             $description = $category['description'] ?? null;
-            if (!$this->isTableFormat($input)) {
-                $extra = [];
-                if ($description !== null && $description !== '' && is_scalar($description)) {
-                    $extra['description'] = (string) $description;
-                }
-                return $this->displayDetailRows($input, $info, $extra);
+            $hasFieldSelection = $this->getStringOption($input, 'fields') !== null
+                || $this->getStringOption($input, 'field') !== null;
+            if (!$this->isTableFormat($input) || $hasFieldSelection) {
+                return $this->displayFormattedRows(
+                    $input,
+                    [$categoryRow],
+                    ['id', 'title', 'group', 'group_id', 'status', 'videos', 'albums', 'posts', 'other', 'total_usage', 'added', 'description']
+                );
             }
 
             $this->io()->section("Category: $categoryTitle");
