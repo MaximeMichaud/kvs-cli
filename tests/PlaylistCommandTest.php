@@ -505,6 +505,55 @@ class PlaylistCommandTest extends TestCase
         $this->assertSame('Public', $rows[0]['is_private']);
     }
 
+    public function testPlaylistShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => implode(',', [
+                'playlist_id',
+                'title',
+                'user',
+                'username',
+                'user_id',
+                'user_status_id',
+                'tags',
+                'categories',
+                'videos_amount',
+                'total_videos',
+                'videos',
+                'comments_amount',
+                'playlist_viewed',
+                'status_id',
+                'is_private',
+                'is_locked',
+                'added_date',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['playlist_id']);
+        $this->assertSame('Test Playlist', $rows[0]['title']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame(1, $rows[0]['user_id']);
+        $this->assertSame(1, $rows[0]['user_status_id']);
+        $this->assertSame(['Archive', 'Featured'], $rows[0]['categories']);
+        $this->assertSame(['practice', 'training'], $rows[0]['tags']);
+        $this->assertSame(2, $rows[0]['videos_amount']);
+        $this->assertSame(2, $rows[0]['total_videos']);
+        $this->assertSame('2', $rows[0]['videos']);
+        $this->assertSame(2, $rows[0]['comments_amount']);
+        $this->assertSame(100, $rows[0]['playlist_viewed']);
+        $this->assertSame(1, $rows[0]['status_id']);
+        $this->assertSame('Public', $rows[0]['is_private']);
+        $this->assertSame(0, $rows[0]['is_locked']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testPlaylistShowRejectsCountFormat(): void
     {
         $this->tester->execute([

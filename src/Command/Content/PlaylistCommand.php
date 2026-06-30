@@ -541,10 +541,22 @@ HELP
         }
 
         try {
+            $favVideosTable = $this->table('fav_videos');
+            $userStatusSelect = $this->isPlaylistFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
+            $commentsAmountSelect = '';
+            if ($this->isPlaylistFieldRequested($input, 'comments_amount')) {
+                $commentsTable = $this->table('comments');
+                $commentsAmountSelect = ",
+                       (SELECT COUNT(*) FROM $commentsTable c
+                        WHERE c.object_type_id = 13 AND c.object_id = p.playlist_id) as comments_amount";
+            }
+
             // Fetch main playlist data with username
             $stmt = $db->prepare("
-                SELECT p.*, u.username,
-                       (SELECT COUNT(*) FROM {$this->table('fav_videos')} f WHERE f.playlist_id = p.playlist_id) as video_count
+                SELECT p.*, u.username$userStatusSelect,
+                       (SELECT COUNT(*) FROM $favVideosTable f WHERE f.playlist_id = p.playlist_id) as video_count$commentsAmountSelect
                 FROM {$this->table('playlists')} p
                 LEFT JOIN {$this->table('users')} u ON p.user_id = u.user_id
                 WHERE p.playlist_id = :id
@@ -664,10 +676,7 @@ HELP
                     'videos_top' => $videoList,
                     'categories' => $categoryTitles,
                     'tags' => $tagNames,
-                    ...$this->getRequestedDetailFields($input, [
-                        'status_id' => $statusId,
-                        'is_private' => $type,
-                    ]),
+                    ...$this->getRequestedPlaylistDetailFields($input, $playlist, $playlistId, $statusId, $type),
                 ]);
             }
 
@@ -706,6 +715,72 @@ HELP
             $this->io()->error('Failed to fetch playlist: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $playlist
+     * @return array<string, mixed>
+     */
+    private function getRequestedPlaylistDetailFields(
+        InputInterface $input,
+        array $playlist,
+        int $playlistId,
+        int $statusId,
+        string $type
+    ): array {
+        $videoCount = $this->getPlaylistNullableIntField($playlist, 'video_count');
+
+        return $this->getRequestedDetailFields($input, [
+            'id' => $playlistId,
+            'status_id' => $statusId,
+            'is_private' => $type,
+            'user' => $this->getPlaylistStringField($playlist, 'username'),
+            'username' => $this->getPlaylistStringField($playlist, 'username'),
+            'user_id' => $this->getPlaylistNullableIntField($playlist, 'user_id'),
+            'user_status_id' => $this->getPlaylistNullableIntField($playlist, 'user_status_id'),
+            'videos_amount' => $videoCount,
+            'total_videos' => $videoCount,
+            'comments_amount' => $this->getPlaylistNullableIntField($playlist, 'comments_amount'),
+            'playlist_viewed' => $this->getPlaylistNullableIntField($playlist, 'playlist_viewed'),
+            'is_locked' => $this->getPlaylistNullableIntField($playlist, 'is_locked'),
+            'is_review_needed' => $this->getPlaylistNullableIntField($playlist, 'is_review_needed'),
+            'dir' => $this->getPlaylistNullableStringField($playlist, 'dir'),
+            'added_date' => $this->getPlaylistNullableStringField($playlist, 'added_date'),
+            'last_content_date' => $this->getPlaylistNullableStringField($playlist, 'last_content_date'),
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $playlist
+     */
+    private function getPlaylistStringField(array $playlist, string $field): string
+    {
+        $value = $playlist[$field] ?? '';
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * @param array<string, mixed> $playlist
+     */
+    private function getPlaylistNullableIntField(array $playlist, string $field): ?int
+    {
+        if (!array_key_exists($field, $playlist) || $playlist[$field] === null || $playlist[$field] === '') {
+            return null;
+        }
+
+        return is_numeric($playlist[$field]) ? (int) $playlist[$field] : null;
+    }
+
+    /**
+     * @param array<string, mixed> $playlist
+     */
+    private function getPlaylistNullableStringField(array $playlist, string $field): ?string
+    {
+        if (!array_key_exists($field, $playlist) || $playlist[$field] === null) {
+            return null;
+        }
+
+        return is_scalar($playlist[$field]) ? (string) $playlist[$field] : null;
     }
 
     /**
