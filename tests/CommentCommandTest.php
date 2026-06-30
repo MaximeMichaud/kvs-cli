@@ -498,6 +498,52 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Comment #30', $output);
     }
 
+    public function testShowCommentSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'comment_id',
+                'comment',
+                'comment_full',
+                'object',
+                'user',
+                'username',
+                'user_status_id',
+                'ip',
+                'country',
+                'rating',
+                'is_approved',
+                'added_date',
+                'object_id',
+                'object_dir',
+                'post_type_id',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(30, (int) $rows[0]['comment_id']);
+        $this->assertSame('Great test video', $rows[0]['comment']);
+        $this->assertSame('Great test video', $rows[0]['comment_full']);
+        $this->assertSame('Intro Video', $rows[0]['object']);
+        $this->assertSame('alice', $rows[0]['user']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame(2, (int) $rows[0]['user_status_id']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
+        $this->assertSame('Canada', $rows[0]['country']);
+        $this->assertSame(5, (int) $rows[0]['rating']);
+        $this->assertSame(1, (int) $rows[0]['is_approved']);
+        $this->assertNotSame('', $rows[0]['added_date']);
+        $this->assertSame(100, (int) $rows[0]['object_id']);
+        $this->assertSame('intro-video', $rows[0]['object_dir']);
+        $this->assertSame(0, (int) $rows[0]['post_type_id']);
+    }
+
     public function testShowCommentTreatsReviewNeededAsPendingEvenWhenApproved(): void
     {
         $this->insertComment($this->db, [

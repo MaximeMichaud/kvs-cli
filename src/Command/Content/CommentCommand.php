@@ -465,19 +465,33 @@ HELP
         }
 
         try {
+            $countrySelect = '';
+            $countryJoin = '';
+            if ($this->isCommentFieldRequested($input, 'country')) {
+                $countrySelect = ', lc.title as country';
+                $countryJoin = "
+                LEFT JOIN {$this->table('list_countries')} lc
+                    ON c.country_code = lc.country_code AND lc.language_code = 'en'";
+            }
+            $userStatusSelect = $this->isCommentFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
+
             $stmt = $db->prepare("
                 SELECT c.*,
-                       u.username,
+                       u.username$userStatusSelect,
                        u.email,
                        {$this->getCommentObjectSelectSql($input)}
+                       $countrySelect
                 FROM {$this->table('comments')} c
                 LEFT JOIN {$this->table('users')} u ON c.user_id = u.user_id
+                $countryJoin
                 WHERE c.comment_id = :id
             ");
             $stmt->execute(['id' => $commentId]);
-            $comment = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $comment = $this->normalizeCommentRow($stmt->fetch(\PDO::FETCH_ASSOC));
 
-            if (!is_array($comment)) {
+            if ($comment === null) {
                 $this->io()->error("Comment not found: $commentId");
                 return self::FAILURE;
             }
@@ -510,7 +524,11 @@ HELP
 
             $commentText = is_scalar($commentTextVal) ? (string) $commentTextVal : '';
             if (!$this->isTableFormat($input)) {
-                return $this->displayDetailRows($input, $info, ['comment' => $commentText]);
+                return $this->displayDetailRows(
+                    $input,
+                    $info,
+                    $this->getCommentShowExtraFields($input, $comment, $commentText)
+                );
             }
 
             $this->io()->title("Comment #$commentId");
@@ -524,6 +542,58 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function normalizeCommentRow(mixed $row): ?array
+    {
+        if (!is_array($row)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $normalized[$key] = $value;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $comment
+     * @return array<string, mixed>
+     */
+    private function getCommentShowExtraFields(InputInterface $input, array $comment, string $commentText): array
+    {
+        $fields = ['comment' => $commentText];
+
+        $adminFields = [
+            'comment_id' => $comment['comment_id'] ?? 0,
+            'comment_full' => $commentText,
+            'object' => $comment['object_title'] ?? '',
+            'username' => $this->getCommentUsername($comment, ''),
+            'user_status_id' => $comment['user_status_id'] ?? '',
+            'ip' => array_key_exists('ip', $comment) ? $this->formatKvsIp($comment['ip']) : '',
+            'country' => $comment['country'] ?? '',
+            'rating' => $comment['rating'] ?? 0,
+            'is_approved' => $comment['is_approved'] ?? 0,
+            'added_date' => $comment['added_date'] ?? '',
+            'object_id' => $comment['object_id'] ?? 0,
+            'object_dir' => $comment['object_dir'] ?? '',
+            'post_type_id' => $comment['post_type_id'] ?? 0,
+        ];
+
+        foreach ($adminFields as $field => $value) {
+            if ($this->isCommentFieldRequested($input, $field)) {
+                $fields[$field] = is_scalar($value) ? $value : '';
+            }
+        }
+
+        return $fields;
     }
 
     private function formatCommentStatus(mixed $isApproved, mixed $isReviewNeeded, bool $withColor = true): string
