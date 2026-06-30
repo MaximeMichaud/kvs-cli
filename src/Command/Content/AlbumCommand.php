@@ -1004,10 +1004,26 @@ HELP
         }
 
         try {
+            [$relationSelectSql, $relationJoinSql] = $this->buildAlbumRelationSql($input);
+            $userStatusSelect = $this->isAlbumFieldRequested($input, 'user_status_id')
+                ? ', u.status_id as user_status_id'
+                : '';
+            $commentsCountSelect = '';
+            if ($this->isAlbumFieldRequested($input, 'comments_count')) {
+                $commentsTable = $this->table('comments');
+                $commentsCountSelect = ",
+                    (
+                        SELECT COUNT(*) FROM $commentsTable c
+                        WHERE c.object_type_id = 2 AND c.object_id = a.album_id
+                    ) as comments_count";
+            }
+
             $stmt = $db->prepare("
-                SELECT a.*, u.username
+                SELECT a.*, u.username$userStatusSelect$relationSelectSql,
+                    a.photos_amount as image_count$commentsCountSelect
                 FROM {$this->table('albums')} a
                 LEFT JOIN {$this->table('users')} u ON a.user_id = u.user_id
+                {$relationJoinSql}
                 WHERE a.album_id = :id
             ");
             $stmt->execute(['id' => $albumId]);
@@ -1054,11 +1070,7 @@ HELP
             if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'album_id' => (string) $albumId,
-                    ...$this->getRequestedDetailFields($input, [
-                        'status_id' => $statusId,
-                        'is_private' => StatusFormatter::contentPrivacy($privacyId, false),
-                        'access_level_id' => $accessLevelId,
-                    ]),
+                    ...$this->getRequestedAlbumDetailFields($input, $album, $statusId, $privacyId, $accessLevelId),
                 ]);
             }
 
@@ -1070,6 +1082,117 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, mixed> $album
+     * @return array<string, mixed>
+     */
+    private function getRequestedAlbumDetailFields(
+        InputInterface $input,
+        array $album,
+        int $statusId,
+        int $privacyId,
+        int $accessLevelId
+    ): array {
+        $fields = [
+            'status_id' => $statusId,
+            'is_private' => StatusFormatter::contentPrivacy($privacyId, false),
+            'access_level_id' => $accessLevelId,
+            'user' => $this->getAlbumStringField($album, 'username'),
+            'username' => $this->getAlbumStringField($album, 'username'),
+            'admin_user' => $this->getAlbumNullableStringField($album, 'admin_user'),
+            'admin_user_is_superadmin' => $this->getAlbumNullableIntField($album, 'admin_user_is_superadmin'),
+            'content_source' => $this->getAlbumNullableStringField($album, 'content_source'),
+            'content_source_status_id' => $this->getAlbumNullableIntField($album, 'content_source_status_id'),
+            'admin_flag' => $this->getAlbumNullableStringField($album, 'admin_flag'),
+            'server_group' => $this->getAlbumNullableStringField($album, 'server_group'),
+            'server_group_status_id' => $this->getAlbumNullableIntField($album, 'server_group_status_id'),
+            'tags' => $this->getAlbumNullableStringField($album, 'tags'),
+            'categories' => $this->getAlbumNullableStringField($album, 'categories'),
+            'models' => $this->getAlbumNullableStringField($album, 'models'),
+            'ip' => $this->formatKvsIp($album['ip'] ?? ''),
+            'website_link' => $this->buildKvsWebsiteLink($album, 'album_id', 'WEBSITE_LINK_PATTERN_ALBUM'),
+        ];
+
+        foreach (
+            [
+                'user_id',
+                'user_status_id',
+                'admin_user_id',
+                'tokens_required',
+                'photos_amount',
+                'image_count',
+                'album_viewed',
+                'album_viewed_unique',
+                'comments_count',
+                'favourites_count',
+                'purchases_count',
+                'content_source_id',
+                'admin_flag_id',
+                'server_group_id',
+                'is_locked',
+                'is_review_needed',
+                'has_errors',
+                'relative_post_date',
+            ] as $field
+        ) {
+            $fields[$field] = $this->getAlbumNullableIntField($album, $field);
+        }
+
+        foreach (
+            [
+                'dir',
+                'description',
+                'gallery_url',
+                'delete_reason',
+                'custom1',
+                'custom2',
+                'custom3',
+                'af_custom1',
+                'af_custom2',
+                'af_custom3',
+                'post_date',
+                'added_date',
+            ] as $field
+        ) {
+            $fields[$field] = $this->getAlbumNullableStringField($album, $field);
+        }
+
+        return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /**
+     * @param array<string, mixed> $album
+     */
+    private function getAlbumStringField(array $album, string $field): string
+    {
+        $value = $album[$field] ?? '';
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * @param array<string, mixed> $album
+     */
+    private function getAlbumNullableIntField(array $album, string $field): ?int
+    {
+        if (!array_key_exists($field, $album) || $album[$field] === null || $album[$field] === '') {
+            return null;
+        }
+
+        return is_numeric($album[$field]) ? (int) $album[$field] : null;
+    }
+
+    /**
+     * @param array<string, mixed> $album
+     */
+    private function getAlbumNullableStringField(array $album, string $field): ?string
+    {
+        if (!array_key_exists($field, $album) || $album[$field] === null) {
+            return null;
+        }
+
+        return is_scalar($album[$field]) ? (string) $album[$field] : null;
     }
 
     private function deleteAlbum(?string $id, InputInterface $input): int

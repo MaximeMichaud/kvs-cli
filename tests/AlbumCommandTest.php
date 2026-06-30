@@ -842,6 +842,61 @@ class AlbumCommandTest extends TestCase
         $this->assertSame(0, $rows[0]['access_level_id']);
     }
 
+    public function testAlbumShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '20',
+            '--fields' => implode(',', [
+                'album_id',
+                'user',
+                'username',
+                'user_id',
+                'admin_user',
+                'admin_user_is_superadmin',
+                'content_source',
+                'content_source_status_id',
+                'admin_flag',
+                'server_group',
+                'server_group_status_id',
+                'tags',
+                'categories',
+                'models',
+                'photos_amount',
+                'image_count',
+                'comments_count',
+                'favourites_count',
+                'purchases_count',
+                'ip',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('20', $rows[0]['album_id']);
+        $this->assertSame('bob', $rows[0]['user']);
+        $this->assertSame('bob', $rows[0]['username']);
+        $this->assertSame(2, $rows[0]['user_id']);
+        $this->assertSame('moderator', $rows[0]['admin_user']);
+        $this->assertSame(0, $rows[0]['admin_user_is_superadmin']);
+        $this->assertSame('Gallery Studio', $rows[0]['content_source']);
+        $this->assertSame(1, $rows[0]['content_source_status_id']);
+        $this->assertSame('Album Review', $rows[0]['admin_flag']);
+        $this->assertSame('Album Storage', $rows[0]['server_group']);
+        $this->assertSame(1, $rows[0]['server_group_status_id']);
+        $this->assertSame('zeta-album,album-tag', $rows[0]['tags']);
+        $this->assertSame('Second Album Category,Album Category', $rows[0]['categories']);
+        $this->assertSame('Album Model Two,Album Model', $rows[0]['models']);
+        $this->assertSame(3, $rows[0]['photos_amount']);
+        $this->assertSame(3, $rows[0]['image_count']);
+        $this->assertSame(1, $rows[0]['comments_count']);
+        $this->assertSame(2, $rows[0]['favourites_count']);
+        $this->assertSame(1, $rows[0]['purchases_count']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
+    }
+
     public function testAlbumShowRejectsCountFormat(): void
     {
         $this->tester->execute([
