@@ -366,11 +366,7 @@ HELP
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
             if (!$this->isTableFormat($input)) {
-                return $this->displayDetailRows($input, $info, [
-                    'server_id' => (string) $serverId,
-                    'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
-                    'allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks') === 1,
-                ]);
+                return $this->displayDetailRows($input, $info, $this->getConversionShowExtraFields($input, $server, $serverId));
             }
 
             $this->io()->section("Conversion Server #$serverId");
@@ -390,6 +386,53 @@ HELP
             $this->io()->error('Failed to fetch server: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array<string, mixed>
+     */
+    private function getConversionShowExtraFields(InputInterface $input, array $server, int $serverId): array
+    {
+        $extra = [
+            'server_id' => (string) $serverId,
+            'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
+            'allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks') === 1,
+        ];
+
+        $adminFields = [
+            'status_id' => $this->getNumericField($server, 'status_id'),
+            'tasks_amount' => $this->getNumericField($server, 'tasks_pending'),
+            'finished_tasks_amount' => $this->getNumericField($server, 'tasks_completed'),
+            'heartbeat_date' => $this->getStringField($server, 'heartbeat_date'),
+            'process_priority' => $this->getNumericField($server, 'process_priority'),
+            'connection_type_id' => $this->getNumericField($server, 'connection_type_id'),
+            'ftp_host' => $this->getStringField($server, 'ftp_host'),
+            'ftp_port' => $this->getStringField($server, 'ftp_port'),
+            'ftp_user' => $this->getStringField($server, 'ftp_user'),
+            'ftp_timeout' => $this->getStringField($server, 'ftp_timeout'),
+            'is_debug_enabled' => $this->getNumericField($server, 'is_debug_enabled'),
+            'added_date' => $this->getStringField($server, 'added_date'),
+        ];
+
+        foreach ($adminFields as $field => $value) {
+            if ($this->isConversionFieldRequested($input, $field)) {
+                $extra[$field] = $value;
+            }
+        }
+
+        return $extra;
+    }
+
+    private function isConversionFieldRequested(InputInterface $input, string $field): bool
+    {
+        $fieldsOption = $this->getStringOption($input, 'fields');
+        if ($fieldsOption === null || $fieldsOption === '') {
+            return false;
+        }
+
+        $fields = array_map('trim', explode(',', $fieldsOption));
+        return in_array($field, $fields, true);
     }
 
     /**
