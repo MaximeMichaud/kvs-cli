@@ -395,6 +395,47 @@ class CategoryCommandTest extends TestCase
         $this->assertSame(1, $rows[0]['status_id']);
     }
 
+    public function testCategoryShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => implode(',', [
+                'category_id',
+                'title',
+                'dir',
+                'description',
+                'status_id',
+                'category_group',
+                'videos_amount',
+                'albums_amount',
+                'posts_amount',
+                'other_amount',
+                'all_amount',
+                'added_date',
+                'sort_id',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('10', $rows[0]['category_id']);
+        $this->assertSame('Action', $rows[0]['title']);
+        $this->assertSame('action-scenes', $rows[0]['dir']);
+        $this->assertSame('High energy scenes', $rows[0]['description']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('Genres', $rows[0]['category_group']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(2, (int) $rows[0]['posts_amount']);
+        $this->assertSame(10, (int) $rows[0]['other_amount']);
+        $this->assertSame(15, (int) $rows[0]['all_amount']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame(5, (int) $rows[0]['sort_id']);
+    }
+
     public function testCategoryShowRejectsCountFormat(): void
     {
         $this->tester->execute([
@@ -515,7 +556,7 @@ class CategoryCommandTest extends TestCase
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories') . ' (' .
             'category_id INTEGER, title TEXT, dir TEXT, description TEXT, synonyms TEXT, category_group_id INTEGER, ' .
-            'status_id INTEGER, screenshot1 TEXT, screenshot2 TEXT, added_date TEXT, ' .
+            'status_id INTEGER, screenshot1 TEXT, screenshot2 TEXT, added_date TEXT, sort_id INTEGER, ' .
             'total_content_sources INTEGER, total_playlists INTEGER, ' .
             'total_models INTEGER, total_dvds INTEGER, total_dvd_groups INTEGER)'
         );
@@ -534,12 +575,12 @@ class CategoryCommandTest extends TestCase
         $db->exec(
             "INSERT INTO " . TestHelper::table('categories') .
             " (category_id, title, dir, description, synonyms, category_group_id, status_id, screenshot1, " .
-            "screenshot2, added_date, " .
+            "screenshot2, added_date, sort_id, " .
             "total_content_sources, total_playlists, total_models, total_dvds, total_dvd_groups) VALUES " .
             "(10, 'Action', 'action-scenes', 'High energy scenes', 'stunts', 2, 1, 'action-1.jpg', " .
-            "'action-2.jpg', '2026-05-25 10:00:00', 1, 2, 3, 4, 0), " .
-            "(20, 'Drama', 'drama', '', '', 0, 0, '', '', '2026-05-26 10:00:00', 0, 0, 0, 0, 0), " .
-            "(30, 'Unused Category', 'unused-category', '', '', 0, 1, '', '', '2026-05-26 11:00:00', 0, 0, 0, 0, 0)"
+            "'action-2.jpg', '2026-05-25 10:00:00', 5, 1, 2, 3, 4, 0), " .
+            "(20, 'Drama', 'drama', '', '', 0, 0, '', '', '2026-05-26 10:00:00', 6, 0, 0, 0, 0, 0), " .
+            "(30, 'Unused Category', 'unused-category', '', '', 0, 1, '', '', '2026-05-26 11:00:00', 7, 0, 0, 0, 0, 0)"
         );
         $db->exec("INSERT INTO " . TestHelper::table('categories_groups') . " VALUES (2, 'Genres')");
         $db->exec("INSERT INTO " . TestHelper::table('categories_videos') . " VALUES (10, 100), (10, 101), (20, 200)");

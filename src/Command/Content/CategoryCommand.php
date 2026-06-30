@@ -575,10 +575,19 @@ HELP
 
             $description = $category['description'] ?? null;
             if ($this->shouldUseFormattedRows($input)) {
-                $extra = $this->getRequestedDetailFields($input, [
-                    'category_id' => is_scalar($categoryId) ? (string) $categoryId : '0',
-                    'status_id' => $statusId,
-                ]);
+                $extra = $this->getRequestedCategoryDetailFields(
+                    $input,
+                    $category,
+                    is_scalar($categoryId) ? (string) $categoryId : '0',
+                    $statusId,
+                    [
+                        'videos' => $videoCount,
+                        'albums' => $albumCount,
+                        'posts' => $postCount,
+                    ],
+                    $otherCount,
+                    $totalUsage
+                );
                 if ($description !== null && $description !== '' && is_scalar($description)) {
                     $extra['description'] = (string) $description;
                 }
@@ -598,6 +607,93 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, mixed> $category
+     * @param array{videos: int, albums: int, posts: int} $counts
+     * @return array<string, mixed>
+     */
+    private function getRequestedCategoryDetailFields(
+        InputInterface $input,
+        array $category,
+        string $categoryId,
+        int $statusId,
+        array $counts,
+        int $otherAmount,
+        int $totalUsage
+    ): array {
+        $fields = [
+            'category_id' => $categoryId,
+            'dir' => $this->getCategoryStringField($category, 'dir'),
+            'description' => $this->getCategoryStringField($category, 'description'),
+            'status_id' => $statusId,
+            'category_group' => $this->getCategoryStringField($category, 'category_group'),
+            'category_group_id' => $this->getCategoryScalarField($category, 'category_group_id'),
+            'videos_amount' => $counts['videos'],
+            'albums_amount' => $counts['albums'],
+            'posts_amount' => $counts['posts'],
+            'other_amount' => $otherAmount,
+            'all_amount' => $totalUsage,
+            'added_date' => $this->getCategoryStringField($category, 'added_date'),
+            'sort_id' => $this->getCategoryScalarField($category, 'sort_id'),
+        ];
+
+        foreach (
+            [
+                'synonyms',
+                'screenshot1',
+                'screenshot2',
+                'custom1',
+                'custom2',
+                'custom3',
+                'custom4',
+                'custom5',
+                'custom6',
+                'custom7',
+                'custom8',
+                'custom9',
+                'custom10',
+                'custom_file1',
+                'custom_file2',
+                'custom_file3',
+                'custom_file4',
+                'custom_file5',
+            ] as $field
+        ) {
+            $fields[$field] = $this->getCategoryScalarField($category, $field);
+        }
+
+        return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /**
+     * @param array<string, mixed> $category
+     */
+    private function getCategoryStringField(array $category, string $field): string
+    {
+        $value = $category[$field] ?? '';
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * @param array<string, mixed> $category
+     */
+    private function getCategoryScalarField(array $category, string $field): int|float|string|null
+    {
+        if (!array_key_exists($field, $category) || $category[$field] === null) {
+            return null;
+        }
+
+        if (!is_scalar($category[$field])) {
+            return null;
+        }
+
+        if (is_numeric($category[$field])) {
+            return str_contains((string) $category[$field], '.') ? (float) $category[$field] : (int) $category[$field];
+        }
+
+        return (string) $category[$field];
     }
 
     private function createCategory(InputInterface $input): int
