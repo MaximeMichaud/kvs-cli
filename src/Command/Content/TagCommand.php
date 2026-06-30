@@ -292,6 +292,39 @@ HELP
             $tagId = is_scalar($tagIdRaw) ? (string) $tagIdRaw : '0';
             $tagDir = is_string($tag['tag_dir'] ?? null) ? $tag['tag_dir'] : '';
             $addedDate = is_string($tag['added_date'] ?? null) ? $tag['added_date'] : 'N/A';
+            $otherAmount = $this->getTagStoredOtherAmount($tag);
+            $totalUsage = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
+            $tagRow = [
+                ...$tag,
+                ...$counts,
+                'tag_id' => $tag['tag_id'] ?? $tagId,
+                'id' => $tagId,
+                'tag' => $tagName,
+                'tag_rename' => $tagName,
+                'name' => $tagName,
+                'tag_dir' => $tagDir,
+                'slug' => $tagDir,
+                'status_id' => $statusId,
+                'status' => StatusFormatter::tag($statusId, false),
+                'video_count' => $counts['videos'],
+                'album_count' => $counts['albums'],
+                'videos' => (string) $counts['videos'],
+                'albums' => (string) $counts['albums'],
+                'posts' => (string) $counts['posts'],
+                'playlists' => (string) $counts['playlists'],
+                'content_sources' => (string) $counts['content_sources'],
+                'models' => (string) $counts['models'],
+                'dvds' => (string) $counts['dvds'],
+                'dvd_groups' => (string) $counts['dvds_groups'],
+                'videos_amount' => $counts['videos'],
+                'albums_amount' => $counts['albums'],
+                'posts_amount' => $counts['posts'],
+                'other_amount' => $otherAmount,
+                'all_amount' => $totalUsage,
+                'total_usage' => (string) $totalUsage,
+                'added' => $addedDate,
+                'added_date' => $addedDate,
+            ];
 
             $info = [
                 ['ID', $tagId],
@@ -304,13 +337,32 @@ HELP
                 $info[] = [$label, (string) ($counts[$suffix] ?? 0)];
             }
 
-            $otherAmount = $this->getTagStoredOtherAmount($tag);
-            $totalUsage = $counts['videos'] + $counts['albums'] + $counts['posts'] + $otherAmount;
             $info[] = ['Total Usage', (string) $totalUsage];
             $info[] = ['Added', $addedDate];
 
-            if (!$this->isTableFormat($input)) {
-                return $this->displayDetailRows($input, $info);
+            $hasFieldSelection = $this->getStringOption($input, 'fields') !== null
+                || $this->getStringOption($input, 'field') !== null;
+            if (!$this->isTableFormat($input) || $hasFieldSelection) {
+                return $this->displayFormattedRows(
+                    $input,
+                    [$tagRow],
+                    [
+                        'id',
+                        'name',
+                        'slug',
+                        'status',
+                        'videos',
+                        'albums',
+                        'posts',
+                        'playlists',
+                        'content_sources',
+                        'models',
+                        'dvds',
+                        'dvd_groups',
+                        'total_usage',
+                        'added',
+                    ]
+                );
             }
 
             $this->io()->section("Tag: $tagName");

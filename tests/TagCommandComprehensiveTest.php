@@ -348,6 +348,45 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringNotContainsString('Tag: 4K', $output);
     }
 
+    public function testShowTagExposesKvsAdminFields(): void
+    {
+        $fields = implode(',', [
+            'tag_id',
+            'tag',
+            'tag_dir',
+            'synonyms',
+            'status_id',
+            'videos_amount',
+            'albums_amount',
+            'posts_amount',
+            'other_amount',
+            'all_amount',
+            'added_date',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+            '--format' => 'json',
+            '--fields' => $fields,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('10', $rows[0]['tag_id']);
+        $this->assertSame('4K', $rows[0]['tag']);
+        $this->assertSame('4k', $rows[0]['tag_dir']);
+        $this->assertSame('uhd, ultra hd', $rows[0]['synonyms']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(0, (int) $rows[0]['posts_amount']);
+        $this->assertSame(10, (int) $rows[0]['other_amount']);
+        $this->assertSame(13, (int) $rows[0]['all_amount']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testShowTagSupportsExactName(): void
     {
         $this->tester->execute([
