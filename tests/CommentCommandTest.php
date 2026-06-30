@@ -695,6 +695,21 @@ class CommentCommandTest extends TestCase
         $this->assertStringNotContainsString('Comment #30', $output);
     }
 
+    public function testShowCommentSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'comment_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['comment_id']);
+    }
+
     public function testShowCommentRejectsCountFormat(): void
     {
         $this->tester->execute([

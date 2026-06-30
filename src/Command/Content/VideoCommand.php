@@ -1393,7 +1393,7 @@ HELP
         try {
             $stmt = $db->prepare("SELECT * FROM {$this->table('videos')} WHERE video_id = :id");
             $stmt->execute(['id' => $videoId]);
-            /** @var array{title: string, status_id: int, resolution_type: int, is_private: int, access_level_id?: int, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string}|false $video */
+            /** @var array{title: string, status_id: int|string, resolution_type: int|string, is_private: int|string, access_level_id?: int|string, duration: int, file_size: int, file_dimensions: string, post_date: string, rating: int, rating_amount: int, video_viewed: int, favourites_count: int, description: string, load_type_id?: int|string}|false $video */
             $video = $stmt->fetch();
 
             if ($video === false) {
@@ -1402,12 +1402,15 @@ HELP
             }
 
             $postTimestamp = strtotime($video['post_date']);
-            $accessLevelId = $video['access_level_id'] ?? 0;
+            $statusId = is_numeric($video['status_id']) ? (int) $video['status_id'] : 0;
+            $resolutionType = is_numeric($video['resolution_type']) ? (int) $video['resolution_type'] : 0;
+            $privacyId = is_numeric($video['is_private']) ? (int) $video['is_private'] : 0;
+            $accessLevelId = is_numeric($video['access_level_id'] ?? null) ? (int) $video['access_level_id'] : 0;
             $info = [
                 ['Title', $video['title']],
-                ['Status', StatusFormatter::video($video['status_id'])],
-                ['Resolution', $this->formatResolutionType($video['resolution_type'])],
-                ['Type', StatusFormatter::contentPrivacy($video['is_private'])],
+                ['Status', StatusFormatter::video($statusId)],
+                ['Resolution', $this->formatResolutionType($resolutionType)],
+                ['Type', StatusFormatter::contentPrivacy($privacyId)],
                 ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
                 ['Duration', $this->formatDuration($video['duration'])],
                 ['File Size', format_bytes($video['file_size'])],
@@ -1449,11 +1452,20 @@ HELP
             );
 
             if ($this->shouldUseFormattedRows($input)) {
+                $rawLoadTypeId = $video['load_type_id'] ?? 0;
+
                 return $this->displayDetailRows($input, $info, [
                     'video_id' => (string) $videoId,
                     'description' => $video['description'],
                     'categories' => $categoryValues,
                     'tags' => $tagValues,
+                    ...$this->getRequestedDetailFields($input, [
+                        'status_id' => $statusId,
+                        'load_type_id' => is_numeric($rawLoadTypeId) ? (int) $rawLoadTypeId : 0,
+                        'resolution_type' => $resolutionType,
+                        'is_private' => StatusFormatter::contentPrivacy($privacyId, false),
+                        'access_level_id' => $accessLevelId,
+                    ]),
                 ]);
             }
 

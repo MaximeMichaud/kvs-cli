@@ -528,6 +528,22 @@ class DvdCommandTest extends TestCase
         $this->assertStringNotContainsString('DVD: Test Series', $output);
     }
 
+    public function testShowDvdSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'dvd_id,status_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['dvd_id']);
+        $this->assertSame(1, $rows[0]['status_id']);
+    }
+
     public function testShowDvdRejectsCountFormat(): void
     {
         $this->tester->execute([

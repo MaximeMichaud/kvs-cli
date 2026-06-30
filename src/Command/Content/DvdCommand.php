@@ -762,7 +762,9 @@ HELP
             }
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info);
+                return $this->displayDetailRows($input, $info, $this->getRequestedDetailFields($input, [
+                    'status_id' => $statusId,
+                ]));
             }
 
             $this->io()->title("DVD: $dvdTitle");

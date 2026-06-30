@@ -1019,6 +1019,12 @@ HELP
                     'activity_score' => $this->getInt($user['activity'] ?? null),
                     'tokens_available' => $this->getInt($user['tokens_available'] ?? null),
                     'tokens_required' => $this->getInt($user['tokens_required'] ?? null),
+                    ...$this->getRequestedDetailFields($input, [
+                        'status_id' => $this->getInt($user['status_id'] ?? null),
+                        'country_id' => $this->getInt($user['country_id'] ?? null),
+                        'gender_id' => $this->getInt($user['gender_id'] ?? null),
+                        'relationship_status_id' => $this->getInt($user['relationship_status_id'] ?? null),
+                    ]),
                 ]);
             }
 

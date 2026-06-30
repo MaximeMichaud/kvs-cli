@@ -674,7 +674,12 @@ HELP
 
             $commentText = is_scalar($commentTextVal) ? (string) $commentTextVal : '';
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, ['comment' => $commentText]);
+                return $this->displayDetailRows($input, $info, [
+                    'comment' => $commentText,
+                    ...$this->getRequestedDetailFields($input, [
+                        'comment_id' => is_scalar($commentIdVal) ? (string) $commentIdVal : '0',
+                    ]),
+                ]);
             }
 
             $this->io()->title("Comment #$commentId");

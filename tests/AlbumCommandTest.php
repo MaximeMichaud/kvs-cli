@@ -824,6 +824,24 @@ class AlbumCommandTest extends TestCase
         $this->assertStringNotContainsString('Album #10', $output);
     }
 
+    public function testAlbumShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => 'album_id,status_id,is_private,access_level_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('10', $rows[0]['album_id']);
+        $this->assertSame(1, $rows[0]['status_id']);
+        $this->assertSame('Public', $rows[0]['is_private']);
+        $this->assertSame(0, $rows[0]['access_level_id']);
+    }
+
     public function testAlbumShowRejectsCountFormat(): void
     {
         $this->tester->execute([

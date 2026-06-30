@@ -175,6 +175,25 @@ class UserCommandTest extends TestCase
         $this->assertStringNotContainsString('User: alice', $output);
     }
 
+    public function testUserShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => 'user_id,status_id,country_id,gender_id,relationship_status_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('1', $rows[0]['user_id']);
+        $this->assertSame(2, $rows[0]['status_id']);
+        $this->assertSame(1, $rows[0]['country_id']);
+        $this->assertSame(2, $rows[0]['gender_id']);
+        $this->assertSame(1, $rows[0]['relationship_status_id']);
+    }
+
     public function testUserShowRejectsCountFormat(): void
     {
         $this->tester->execute([

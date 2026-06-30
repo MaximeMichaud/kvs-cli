@@ -575,7 +575,10 @@ HELP
 
             $description = $category['description'] ?? null;
             if ($this->shouldUseFormattedRows($input)) {
-                $extra = [];
+                $extra = $this->getRequestedDetailFields($input, [
+                    'category_id' => is_scalar($categoryId) ? (string) $categoryId : '0',
+                    'status_id' => $statusId,
+                ]);
                 if ($description !== null && $description !== '' && is_scalar($description)) {
                     $extra['description'] = (string) $description;
                 }

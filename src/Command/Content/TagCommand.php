@@ -390,7 +390,10 @@ HELP
             $info[] = ['Added', $addedDate];
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info);
+                return $this->displayDetailRows($input, $info, $this->getRequestedDetailFields($input, [
+                    'tag_id' => $tagId,
+                    'status_id' => $statusId,
+                ]));
             }
 
             $this->io()->section("Tag: $tagName");

@@ -685,7 +685,9 @@ HELP
             $this->addOptionalField($info, 'Description', $model['description'] ?? null);
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info);
+                return $this->displayDetailRows($input, $info, $this->getRequestedDetailFields($input, [
+                    'status_id' => $statusId,
+                ]));
             }
 
             $this->io()->title("Model: $modelTitle");

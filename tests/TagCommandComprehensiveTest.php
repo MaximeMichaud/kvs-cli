@@ -421,6 +421,22 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringNotContainsString('Tag: 4K', $output);
     }
 
+    public function testShowTagSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'identifier' => '10',
+            '--fields' => 'tag_id,status_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('10', $rows[0]['tag_id']);
+        $this->assertSame(1, $rows[0]['status_id']);
+    }
+
     public function testShowTagRejectsCountFormat(): void
     {
         $this->tester->execute([

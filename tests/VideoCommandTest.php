@@ -803,6 +803,26 @@ class VideoCommandTest extends TestCase
         $this->assertStringNotContainsString('Video #10', $output);
     }
 
+    public function testVideoShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '10',
+            '--fields' => 'video_id,status_id,load_type_id,resolution_type,is_private,access_level_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('10', $rows[0]['video_id']);
+        $this->assertSame(1, $rows[0]['status_id']);
+        $this->assertSame(1, $rows[0]['load_type_id']);
+        $this->assertSame(2, $rows[0]['resolution_type']);
+        $this->assertSame('Public', $rows[0]['is_private']);
+        $this->assertSame(0, $rows[0]['access_level_id']);
+    }
+
     public function testVideoShowRejectsCountFormat(): void
     {
         $this->tester->execute([

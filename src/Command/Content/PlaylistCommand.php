@@ -664,6 +664,10 @@ HELP
                     'videos_top' => $videoList,
                     'categories' => $categoryTitles,
                     'tags' => $tagNames,
+                    ...$this->getRequestedDetailFields($input, [
+                        'status_id' => $statusId,
+                        'is_private' => $type,
+                    ]),
                 ]);
             }
 

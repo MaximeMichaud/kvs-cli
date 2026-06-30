@@ -1052,7 +1052,14 @@ HELP
             ];
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, ['album_id' => (string) $albumId]);
+                return $this->displayDetailRows($input, $info, [
+                    'album_id' => (string) $albumId,
+                    ...$this->getRequestedDetailFields($input, [
+                        'status_id' => $statusId,
+                        'is_private' => StatusFormatter::contentPrivacy($privacyId, false),
+                        'access_level_id' => $accessLevelId,
+                    ]),
+                ]);
             }
 
             $this->io()->section("Album #$albumId");

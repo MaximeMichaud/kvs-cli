@@ -1121,6 +1121,46 @@ abstract class BaseCommand extends Command
         return $this->displayFormattedRows($input, [$record], array_keys($record));
     }
 
+    /**
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    protected function getRequestedDetailFields(InputInterface $input, array $fields): array
+    {
+        if (!$this->hasFieldSelection($input)) {
+            return [];
+        }
+
+        $requested = [];
+        foreach (['field', 'fields'] as $optionName) {
+            try {
+                $value = $this->getStringOption($input, $optionName);
+            } catch (\InvalidArgumentException) {
+                continue;
+            }
+
+            if ($value === null) {
+                continue;
+            }
+
+            foreach (explode(',', $value) as $field) {
+                $field = trim($field);
+                if ($field !== '') {
+                    $requested[$field] = true;
+                }
+            }
+        }
+
+        $result = [];
+        foreach ($fields as $field => $value) {
+            if (isset($requested[$field])) {
+                $result[$field] = $value;
+            }
+        }
+
+        return $result;
+    }
+
     private function detailLabelToKey(string $label): string
     {
         $key = strtolower((string) preg_replace('/[^a-zA-Z0-9]+/', '_', trim($label)));

@@ -488,6 +488,23 @@ class PlaylistCommandTest extends TestCase
         $this->assertStringNotContainsString('Playlist #30', $output);
     }
 
+    public function testPlaylistShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'playlist_id,status_id,is_private',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['playlist_id']);
+        $this->assertSame(1, $rows[0]['status_id']);
+        $this->assertSame('Public', $rows[0]['is_private']);
+    }
+
     public function testPlaylistShowRejectsCountFormat(): void
     {
         $this->tester->execute([

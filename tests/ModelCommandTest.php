@@ -526,6 +526,22 @@ class ModelCommandTest extends TestCase
         $this->assertStringNotContainsString('Model: Test Model', $output);
     }
 
+    public function testShowModelSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => 'model_id,status_id',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['model_id']);
+        $this->assertSame(1, $rows[0]['status_id']);
+    }
+
     public function testShowModelRejectsCountFormat(): void
     {
         $this->tester->execute([
