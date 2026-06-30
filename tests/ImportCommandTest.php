@@ -77,6 +77,85 @@ class ImportCommandTest extends TestCase
         }
     }
 
+    public function testImportCommandRejectsInvalidProvidedDomainBeforeReadingPackage(): void
+    {
+        $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.tar.zst';
+        touch($tempFile);
+
+        try {
+            foreach (['', 'bad_domain'] as $domain) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    'package' => $tempFile,
+                    '--domain' => $domain,
+                    '--email' => 'test@test.com',
+                    '--ssl' => '1',
+                    '--force' => true,
+                ]);
+
+                $output = $tester->getDisplay();
+
+                $this->assertSame(1, $tester->getStatusCode(), $output);
+                $this->assertStringContainsString('Invalid --domain value', $output);
+                $this->assertStringNotContainsString('Reading package', $output);
+            }
+        } finally {
+            unlink($tempFile);
+        }
+    }
+
+    public function testImportCommandRejectsInvalidProvidedEmailBeforeReadingPackage(): void
+    {
+        $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.tar.zst';
+        touch($tempFile);
+
+        try {
+            foreach (['', 'not-an-email'] as $email) {
+                $tester = new CommandTester($this->command);
+                $tester->execute([
+                    'package' => $tempFile,
+                    '--domain' => 'test.local',
+                    '--email' => $email,
+                    '--ssl' => '1',
+                    '--force' => true,
+                ]);
+
+                $output = $tester->getDisplay();
+
+                $this->assertSame(1, $tester->getStatusCode(), $output);
+                $this->assertStringContainsString('Invalid --email value', $output);
+                $this->assertStringNotContainsString('Reading package', $output);
+            }
+        } finally {
+            unlink($tempFile);
+        }
+    }
+
+    public function testImportCommandRejectsEmptyTargetBeforeReadingPackage(): void
+    {
+        $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.tar.zst';
+        touch($tempFile);
+
+        try {
+            $this->tester->execute([
+                'package' => $tempFile,
+                '--domain' => 'test.local',
+                '--email' => 'test@test.com',
+                '--target' => '',
+                '--ssl' => '1',
+                '--force' => true,
+            ]);
+
+            $output = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('The --target option cannot be empty', $output);
+            $this->assertStringNotContainsString('Reading package', $output);
+        } finally {
+            unlink($tempFile);
+        }
+    }
+
     public function testImportCommandRejectsNonexistentWithSslOption(): void
     {
         $this->tester->execute([

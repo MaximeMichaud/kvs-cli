@@ -156,8 +156,7 @@ EOT
         $dbChoice = $this->getStringOption($input, 'db') ?? '1';
         $skipConfirm = $input->getOption('yes') === true;
 
-        // Validate SSL and DB choices
-        if (!$this->validateOptions($sslChoice, $dbChoice)) {
+        if (!$this->validateImportOptions($sslChoice, $dbChoice, $domain, $email, $targetDir)) {
             return Command::FAILURE;
         }
 
@@ -187,9 +186,7 @@ EOT
         if ($domain === null) {
             $question = new Question('Domain name (e.g., example.com): ');
             $question->setValidator(function (?string $value): string {
-                $pattern = '/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?';
-                $pattern .= '(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/';
-                if ($value === null || $value === '' || preg_match($pattern, $value) !== 1) {
+                if ($value === null || !$this->isValidDomainName($value)) {
                     throw new \RuntimeException('Invalid domain name');
                 }
                 return $value;
@@ -700,6 +697,45 @@ EOT
             return false;
         }
         return true;
+    }
+
+    private function validateImportOptions(
+        ?string $sslChoice,
+        string $dbChoice,
+        ?string $domain,
+        ?string $email,
+        string $targetDir
+    ): bool {
+        return $this->validateOptions($sslChoice, $dbChoice)
+            && $this->validateProvidedOptions($domain, $email, $targetDir);
+    }
+
+    private function validateProvidedOptions(?string $domain, ?string $email, string $targetDir): bool
+    {
+        if ($domain !== null && !$this->isValidDomainName($domain)) {
+            $this->io()->error('Invalid --domain value. Use a valid domain name such as example.com');
+            return false;
+        }
+
+        if ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            $this->io()->error('Invalid --email value. Use a valid email address');
+            return false;
+        }
+
+        if (trim($targetDir) === '') {
+            $this->io()->error('The --target option cannot be empty');
+            return false;
+        }
+
+        return true;
+    }
+
+    private function isValidDomainName(string $domain): bool
+    {
+        $pattern = '/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?';
+        $pattern .= '(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/';
+
+        return preg_match($pattern, $domain) === 1;
     }
 
     private function cleanup(string $dir): void
