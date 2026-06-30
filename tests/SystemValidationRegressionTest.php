@@ -513,6 +513,25 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringNotContainsString('Video Format #1', $tester->getDisplay());
     }
 
+    public function testVideoFormatShowSupportsRequestedAdminVideoCount(): void
+    {
+        $this->createVideoFormatTables();
+        $tester = new CommandTester($this->createVideoFormatCommand());
+        $tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => 'format_video_id,videos_count',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(1, (int) $rows[0]['format_video_id']);
+        $this->assertSame(1, (int) $rows[0]['videos_count']);
+    }
+
     public function testVideoFormatShowRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->createVideoFormatTables();
