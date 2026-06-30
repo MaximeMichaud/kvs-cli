@@ -77,6 +77,31 @@ class ImportCommandTest extends TestCase
         }
     }
 
+    public function testImportCommandRejectsDirectoryPackage(): void
+    {
+        $tempDir = TestHelper::createTempDir('test-package-' . bin2hex(random_bytes(8)) . '.tar.zst-');
+        $packageDir = $tempDir . '/package.tar.zst';
+        mkdir($packageDir, 0755, true);
+
+        try {
+            $this->tester->execute([
+                'package' => $packageDir,
+                '--domain' => 'test.local',
+                '--email' => 'test@test.com',
+                '--ssl' => '1',
+                '--force' => true,
+            ]);
+
+            $output = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Package is not a regular file', $output);
+            $this->assertStringNotContainsString('Reading package', $output);
+        } finally {
+            TestHelper::removeDir($tempDir);
+        }
+    }
+
     public function testImportCommandRejectsInvalidProvidedDomainBeforeReadingPackage(): void
     {
         $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.tar.zst';

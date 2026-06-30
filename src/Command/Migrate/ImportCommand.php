@@ -353,6 +353,11 @@ EOT
             return null;
         }
 
+        if (!is_file($packagePath)) {
+            $this->io()->error('Package is not a regular file: ' . $packagePath);
+            return null;
+        }
+
         if (!str_ends_with($packagePath, '.tar.zst')) {
             $this->io()->error('Package must be a .tar.zst file');
             return null;
