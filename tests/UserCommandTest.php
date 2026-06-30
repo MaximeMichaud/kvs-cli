@@ -194,6 +194,53 @@ class UserCommandTest extends TestCase
         $this->assertSame(1, $rows[0]['relationship_status_id']);
     }
 
+    public function testUserShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '1',
+            '--fields' => implode(',', [
+                'user_id',
+                'username',
+                'display_name',
+                'email',
+                'status_id',
+                'profile_viewed',
+                'videos_count',
+                'albums_count',
+                'comments_count',
+                'friends_count',
+                'activity_rank',
+                'added_date',
+                'last_login_date',
+                'ip',
+                'country_id',
+                'gender_id',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('1', $rows[0]['user_id']);
+        $this->assertSame('alice', $rows[0]['username']);
+        $this->assertSame('Alice Example', $rows[0]['display_name']);
+        $this->assertSame('alice@example.com', $rows[0]['email']);
+        $this->assertSame(2, (int) $rows[0]['status_id']);
+        $this->assertSame(1000, (int) $rows[0]['profile_viewed']);
+        $this->assertSame(2, (int) $rows[0]['videos_count']);
+        $this->assertSame(1, (int) $rows[0]['albums_count']);
+        $this->assertSame(3, (int) $rows[0]['comments_count']);
+        $this->assertSame(2, (int) $rows[0]['friends_count']);
+        $this->assertSame(9, (int) $rows[0]['activity_rank']);
+        $this->assertSame('2026-05-26 10:00:00', $rows[0]['added_date']);
+        $this->assertSame('2026-05-26 11:00:00', $rows[0]['last_login_date']);
+        $this->assertSame('127.0.0.1', $rows[0]['ip']);
+        $this->assertSame(1, (int) $rows[0]['country_id']);
+        $this->assertSame(2, (int) $rows[0]['gender_id']);
+    }
+
     public function testUserShowRejectsCountFormat(): void
     {
         $this->tester->execute([
@@ -653,7 +700,7 @@ class UserCommandTest extends TestCase
             'pass TEXT, temp_pass TEXT, last_session_id_hash TEXT, description TEXT, gender_id INTEGER, ' .
             'country_id INTEGER, city TEXT, birth_date TEXT, ip TEXT, ' .
             'added_date TEXT, ' .
-            'last_login_date TEXT, profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, ' .
+            'last_login_date TEXT, profile_viewed INTEGER, logins_count INTEGER, activity INTEGER, activity_rank INTEGER, ' .
             'tokens_available INTEGER, ' .
             'tokens_required INTEGER, total_videos_count INTEGER, total_albums_count INTEGER, is_trusted INTEGER, ' .
             'is_removal_requested INTEGER, removal_reason TEXT, favourite_category_id INTEGER, avatar TEXT, ' .
@@ -701,6 +748,7 @@ class UserCommandTest extends TestCase
             'profile_viewed',
             'logins_count',
             'activity',
+            'activity_rank',
             'tokens_available',
             'tokens_required',
             'total_videos_count',
@@ -746,6 +794,7 @@ class UserCommandTest extends TestCase
             'profile_viewed',
             'logins_count',
             'activity',
+            'activity_rank',
             'tokens_available',
             'tokens_required',
             'total_videos_count',
@@ -792,6 +841,7 @@ class UserCommandTest extends TestCase
                 'profile_viewed' => 1000,
                 'logins_count' => 4,
                 'activity' => 42,
+                'activity_rank' => 9,
                 'tokens_available' => 50,
                 'tokens_required' => 10,
                 'total_videos_count' => 2,

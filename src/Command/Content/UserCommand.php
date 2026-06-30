@@ -1019,12 +1019,7 @@ HELP
                     'activity_score' => $this->getInt($user['activity'] ?? null),
                     'tokens_available' => $this->getInt($user['tokens_available'] ?? null),
                     'tokens_required' => $this->getInt($user['tokens_required'] ?? null),
-                    ...$this->getRequestedDetailFields($input, [
-                        'status_id' => $this->getInt($user['status_id'] ?? null),
-                        'country_id' => $this->getInt($user['country_id'] ?? null),
-                        'gender_id' => $this->getInt($user['gender_id'] ?? null),
-                        'relationship_status_id' => $this->getInt($user['relationship_status_id'] ?? null),
-                    ]),
+                    ...$this->getRequestedUserDetailFields($input, $user, $contentStats),
                 ]);
             }
 
@@ -1040,6 +1035,40 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param array<string, mixed> $user
+     * @param array{videos_uploaded: int, albums_created: int, comments_posted: int, profile_views: int} $contentStats
+     * @return array<string, mixed>
+     */
+    private function getRequestedUserDetailFields(InputInterface $input, array $user, array $contentStats): array
+    {
+        return $this->getRequestedDetailFields($input, [
+            'status_id' => $this->getInt($user['status_id'] ?? null),
+            'country_id' => $this->getInt($user['country_id'] ?? null),
+            'gender_id' => $this->getInt($user['gender_id'] ?? null),
+            'relationship_status_id' => $this->getInt($user['relationship_status_id'] ?? null),
+            'orientation_id' => $this->getInt($user['orientation_id'] ?? null),
+            'profile_viewed' => $contentStats['profile_views'],
+            'videos_count' => $contentStats['videos_uploaded'],
+            'albums_count' => $contentStats['albums_created'],
+            'comments_count' => $contentStats['comments_posted'],
+            'friends_count' => $this->getInt($user['friends_count'] ?? null),
+            'activity_rank' => $this->getInt($user['activity_rank'] ?? ($user['activity'] ?? null)),
+            'added_date' => $this->getStr($user['added_date'] ?? null),
+            'last_login_date' => $this->getStr($user['last_login_date'] ?? null),
+            'description' => $this->getStr($user['description'] ?? null),
+            'city' => $this->getStr($user['city'] ?? null),
+            'avatar' => $this->getStr($user['avatar'] ?? null),
+            'cover' => $this->getStr($user['cover'] ?? null),
+            'website' => $this->getStr($user['website'] ?? null),
+            'education' => $this->getStr($user['education'] ?? null),
+            'occupation' => $this->getStr($user['occupation'] ?? null),
+            'is_trusted' => $this->getInt($user['is_trusted'] ?? null),
+            'video_watched' => $this->getInt($user['video_watched'] ?? null),
+            'album_watched' => $this->getInt($user['album_watched'] ?? null),
+        ]);
     }
 
     /**
