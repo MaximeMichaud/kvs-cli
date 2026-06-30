@@ -353,6 +353,79 @@ class ModelCommandTest extends TestCase
         $this->assertStringNotContainsString('Model: Test Model', $output);
     }
 
+    public function testShowModelExposesKvsAdminFields(): void
+    {
+        $fields = implode(',', [
+            'model_id',
+            'title',
+            'dir',
+            'description',
+            'alias',
+            'status_id',
+            'screenshot1',
+            'screenshot2',
+            'model_group',
+            'model_group_id',
+            'rating',
+            'model_viewed',
+            'country',
+            'city',
+            'state',
+            'gender_id',
+            'height',
+            'weight',
+            'videos_amount',
+            'albums_amount',
+            'posts_amount',
+            'other_amount',
+            'all_amount',
+            'comments_amount',
+            'subscribers_amount',
+            'added_date',
+            'rank',
+            'sort_id',
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--format' => 'json',
+            '--fields' => $fields,
+        ]);
+
+        $this->assertEquals(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame('30', $rows[0]['model_id']);
+        $this->assertSame('Test Model', $rows[0]['title']);
+        $this->assertSame('test-model', $rows[0]['dir']);
+        $this->assertSame('Main model profile', $rows[0]['description']);
+        $this->assertSame('Test Alias', $rows[0]['alias']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('model-1.jpg', $rows[0]['screenshot1']);
+        $this->assertSame('model-2.jpg', $rows[0]['screenshot2']);
+        $this->assertSame('Featured Models', $rows[0]['model_group']);
+        $this->assertSame(3, (int) $rows[0]['model_group_id']);
+        $this->assertSame('4.0/5 (10 votes)', $rows[0]['rating']);
+        $this->assertSame(100, (int) $rows[0]['model_viewed']);
+        $this->assertSame('Canada', $rows[0]['country']);
+        $this->assertSame('Montreal', $rows[0]['city']);
+        $this->assertSame('Quebec', $rows[0]['state']);
+        $this->assertSame(1, (int) $rows[0]['gender_id']);
+        $this->assertSame('170 cm', $rows[0]['height']);
+        $this->assertSame('55 kg', $rows[0]['weight']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame(1, (int) $rows[0]['albums_amount']);
+        $this->assertSame(2, (int) $rows[0]['posts_amount']);
+        $this->assertSame(7, (int) $rows[0]['other_amount']);
+        $this->assertSame(12, (int) $rows[0]['all_amount']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+        $this->assertSame(6, (int) $rows[0]['subscribers_amount']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame('#7', $rows[0]['rank']);
+        $this->assertSame(11, (int) $rows[0]['sort_id']);
+    }
+
     public function testShowModelRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

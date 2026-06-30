@@ -281,17 +281,42 @@ HELP
                 SELECT m.*,
                        (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) as video_count,
                        (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) as album_count,
-                       c.title as country_name
+                       (
+                           SELECT COUNT(*)
+                           FROM {$this->table('models_posts')} mp
+                           WHERE mp.model_id = m.model_id
+                       ) as posts_amount,
+                       (m.total_dvds + m.total_dvd_groups) as other_amount,
+                       (
+                           (SELECT COUNT(*) FROM {$this->table('models')}_videos WHERE model_id = m.model_id) +
+                           (SELECT COUNT(*) FROM {$this->table('models')}_albums WHERE model_id = m.model_id) +
+                           (SELECT COUNT(*) FROM {$this->table('models_posts')} mp_all WHERE mp_all.model_id = m.model_id) +
+                           m.total_dvds + m.total_dvd_groups
+                       ) as all_amount,
+                       (
+                           SELECT COUNT(*)
+                           FROM {$this->table('comments')} cm
+                           WHERE cm.object_type_id = 4 AND cm.object_id = m.model_id
+                       ) as comments_amount,
+                       c.title as country_name,
+                       mg.title as model_group
                 FROM {$this->table('models')} m
                 LEFT JOIN {$this->table('list_countries')} c ON m.country = c.country_code AND c.language_code = 'en'
+                LEFT JOIN {$this->table('models_groups')} mg ON mg.model_group_id = m.model_group_id
                 WHERE m.model_id = :id
             ");
             $stmt->execute(['id' => $modelId]);
-            $model = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $fetchedModel = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!is_array($model)) {
+            if (!is_array($fetchedModel)) {
                 $this->io()->error("Model not found: $modelId");
                 return self::FAILURE;
+            }
+            $model = [];
+            foreach ($fetchedModel as $field => $value) {
+                if (is_string($field)) {
+                    $model[$field] = $value;
+                }
             }
 
             // Display model details
@@ -309,6 +334,15 @@ HELP
             $modelViewed = is_numeric($modelViewedVal) ? (int) $modelViewedVal : 0;
             $modelIdStr = is_scalar($modelIdVal) ? (string) $modelIdVal : '0';
             $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
+            $modelRow = [
+                ...$this->transformModelForList($model),
+                'id' => $modelIdStr,
+                'model_id' => $modelIdStr,
+                'name' => $modelTitle,
+                'videos' => (string) $videoCount,
+                'albums' => (string) $albumCount,
+                'views' => number_format($modelViewed),
+            ];
 
             $info = [
                 ['Model ID', $modelIdStr],
@@ -341,6 +375,12 @@ HELP
             $this->addOptionalField($info, 'Height', $model['height'] ?? null);
             $this->addOptionalField($info, 'Weight', $model['weight'] ?? null);
             $this->addOptionalField($info, 'Description', $model['description'] ?? null);
+
+            $hasFieldSelection = $this->getStringOption($input, 'fields') !== null
+                || $this->getStringOption($input, 'field') !== null;
+            if ($hasFieldSelection) {
+                return $this->displayFormattedRows($input, [$modelRow], array_keys($modelRow));
+            }
 
             if (!$this->isTableFormat($input)) {
                 return $this->displayDetailRows($input, $info);
