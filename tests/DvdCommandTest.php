@@ -544,6 +544,55 @@ class DvdCommandTest extends TestCase
         $this->assertSame(1, $rows[0]['status_id']);
     }
 
+    public function testShowDvdSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '30',
+            '--fields' => implode(',', [
+                'dvd_id',
+                'title',
+                'user',
+                'user_status_id',
+                'dvd_group',
+                'dvd_group_status_id',
+                'tags',
+                'categories',
+                'models',
+                'videos_amount',
+                'total_duration',
+                'comments_amount',
+                'dvd_viewed',
+                'status_id',
+                'added_date',
+                'dir',
+                'release_year',
+            ]),
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('30', $rows[0]['dvd_id']);
+        $this->assertSame('Test Series', $rows[0]['title']);
+        $this->assertSame('channel-owner', $rows[0]['user']);
+        $this->assertSame(1, (int) $rows[0]['user_status_id']);
+        $this->assertSame('Featured Series', $rows[0]['dvd_group']);
+        $this->assertSame(1, (int) $rows[0]['dvd_group_status_id']);
+        $this->assertSame('series,featured', $rows[0]['tags']);
+        $this->assertSame('Featured,Channels', $rows[0]['categories']);
+        $this->assertSame('Model Two,Model One', $rows[0]['models']);
+        $this->assertSame(2, (int) $rows[0]['videos_amount']);
+        $this->assertSame('1:01:30', $rows[0]['total_duration']);
+        $this->assertSame(2, (int) $rows[0]['comments_amount']);
+        $this->assertSame(100, (int) $rows[0]['dvd_viewed']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame('2026-05-25 10:00:00', $rows[0]['added_date']);
+        $this->assertSame('test-series', $rows[0]['dir']);
+        $this->assertSame('2026', $rows[0]['release_year']);
+    }
+
     public function testShowDvdRejectsCountFormat(): void
     {
         $this->tester->execute([

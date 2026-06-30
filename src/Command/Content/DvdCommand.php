@@ -674,38 +674,38 @@ HELP
         }
 
         try {
+            $commentsSelect = '';
+            if ($this->isDvdFieldRequested($input, 'comments_amount')) {
+                $commentsSelect = ",
+                       (SELECT COUNT(*) FROM {$this->table('comments')} c
+                        WHERE c.object_type_id = 5 AND c.object_id = d.dvd_id) as comments_amount";
+            }
+            $relationSelect = $this->buildDvdRelationSelectSql($input);
+            $includeGroupFields = $this->isDvdFieldRequested($input, 'dvd_group')
+                || $this->isDvdFieldRequested($input, 'dvd_group_status_id');
+            $groupSelect = $includeGroupFields ? ",
+                       dg.title as dvd_group,
+                       dg.status_id as dvd_group_status_id" : '';
+            $groupJoin = $includeGroupFields
+                ? "LEFT JOIN {$this->table('dvds_groups')} dg ON dg.dvd_group_id = d.dvd_group_id"
+                : '';
+
             $stmt = $db->prepare("
-                SELECT d.dvd_id,
-                       d.title,
-                       d.status_id,
-                       d.dvd_viewed,
-                       d.release_year,
-                       d.rating_amount,
-                       d.rating,
-                       d.subscribers_count,
-                       d.description,
-                       COUNT(v.dvd_id) as video_count,
-                       COALESCE(SUM(v.duration), 0) as video_duration
+                SELECT d.*$commentsSelect$groupSelect$relationSelect,
+                       (SELECT COUNT(*) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_count,
+                       (SELECT COALESCE(SUM(v.duration), 0) FROM {$this->table('videos')} v WHERE v.dvd_id = d.dvd_id) as video_duration
                 FROM {$this->table('dvds')} d
-                LEFT JOIN {$this->table('videos')} v ON v.dvd_id = d.dvd_id
+                $groupJoin
                 WHERE d.dvd_id = :id
-                GROUP BY d.dvd_id,
-                         d.title,
-                         d.status_id,
-                         d.dvd_viewed,
-                         d.release_year,
-                         d.rating_amount,
-                         d.rating,
-                         d.subscribers_count,
-                         d.description
             ");
             $stmt->execute(['id' => $dvdId]);
-            $dvd = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $dvdRow = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!is_array($dvd)) {
+            if (!is_array($dvdRow)) {
                 $this->io()->error("DVD not found: $dvdId");
                 return self::FAILURE;
             }
+            $dvd = $this->normalizeDvdRow($dvdRow);
 
             // Display DVD details
             $titleValue = $dvd['title'] ?? '';
@@ -762,9 +762,11 @@ HELP
             }
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, $this->getRequestedDetailFields($input, [
-                    'status_id' => $statusId,
-                ]));
+                return $this->displayDetailRows(
+                    $input,
+                    $info,
+                    $this->getRequestedDvdDetailFields($input, $dvd, $statusId)
+                );
             }
 
             $this->io()->title("DVD: $dvdTitle");
@@ -775,6 +777,52 @@ HELP
             $this->io()->error('Failed to fetch DVD: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $dvd
+     * @return array<string, mixed>
+     */
+    private function getRequestedDvdDetailFields(InputInterface $input, array $dvd, int $statusId): array
+    {
+        $fields = $this->transformDvdListRow($dvd);
+        foreach (
+            [
+                'dvd_id',
+                'id',
+                'title',
+                'status',
+                'videos',
+                'views',
+                'total_duration',
+                'duration',
+                'release_year',
+                'rating',
+                'description',
+            ] as $field
+        ) {
+            unset($fields[$field]);
+        }
+
+        $fields['status_id'] = $statusId;
+
+        return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /**
+     * @param array<mixed> $row
+     * @return array<string, mixed>
+     */
+    private function normalizeDvdRow(array $row): array
+    {
+        $result = [];
+        foreach ($row as $key => $value) {
+            if (is_string($key)) {
+                $result[$key] = $value;
+            }
+        }
+
+        return $result;
     }
 
     private function isDvdFieldRequested(InputInterface $input, string $field): bool
