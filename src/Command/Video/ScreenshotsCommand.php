@@ -19,7 +19,8 @@ class ScreenshotsCommand extends BaseCommand
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
     private const GENERATE_UNSUPPORTED_OPTIONS = ['fields', 'format', 'no-truncate'];
-    private const LOGICAL_LIST_FIELDS = ['index', 'filename', 'formats', 'dimensions'];
+    private const LOGICAL_LIST_DEFAULT_FIELDS = ['index', 'filename', 'formats', 'dimensions'];
+    private const LOGICAL_LIST_FIELDS = ['index', 'filename', 'formats', 'size', 'dimensions', 'path', 'is_main'];
     private const FILE_LIST_FIELDS = ['filename', 'size', 'dimensions', 'path'];
 
     protected function configure(): void
@@ -117,12 +118,33 @@ HELP
         }
 
         $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
+
+        $videoMetadata = $this->loadManageableVideoScreenshotMetadata($videoId);
+        if ($videoMetadata === false) {
+            return self::FAILURE;
+        }
+        if (is_array($videoMetadata)) {
+            $screenshots = $this->buildKvsOverviewScreenshotRows(
+                $videoId,
+                $screenshotsPath,
+                $videoMetadata['screen_amount'],
+                $videoMetadata['screen_main']
+            );
+
+            return $this->displayFormattedRows(
+                $input,
+                $screenshots,
+                self::LOGICAL_LIST_DEFAULT_FIELDS,
+                self::LOGICAL_LIST_FIELDS
+            );
+        }
+
         $screenshots = $this->buildLogicalScreenshotRows($videoId, $screenshotsPath);
         if ($screenshots !== []) {
             return $this->displayFormattedRows(
                 $input,
                 $screenshots,
-                self::LOGICAL_LIST_FIELDS,
+                self::LOGICAL_LIST_DEFAULT_FIELDS,
                 self::LOGICAL_LIST_FIELDS
             );
         }
@@ -208,6 +230,58 @@ HELP
     }
 
     /**
+     * @return array{screen_amount: int, screen_main: int}|false|null false when DB proves the video is not manageable,
+     *                                                             null when metadata cannot be loaded.
+     */
+    private function loadManageableVideoScreenshotMetadata(string $videoId): array|false|null
+    {
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            return null;
+        }
+
+        try {
+            $stmt = $db->prepare(
+                "SELECT status_id, screen_amount, screen_main FROM {$this->table('videos')} WHERE video_id = :id"
+            );
+            $stmt->bindValue('id', (int) $videoId, \PDO::PARAM_INT);
+            $stmt->execute();
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (!is_array($row)) {
+            $this->io()->error("Video not found or screenshots are not manageable in KVS admin: $videoId");
+            return false;
+        }
+
+        $statusId = $this->normalizeDatabaseInteger($row['status_id'] ?? null);
+        if ($statusId === null || !in_array($statusId, [0, 1], true)) {
+            $this->io()->error("Video not found or screenshots are not manageable in KVS admin: $videoId");
+            return false;
+        }
+
+        return [
+            'screen_amount' => max(0, $this->normalizeDatabaseInteger($row['screen_amount'] ?? null) ?? 0),
+            'screen_main' => max(0, $this->normalizeDatabaseInteger($row['screen_main'] ?? null) ?? 0),
+        ];
+    }
+
+    private function normalizeDatabaseInteger(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('/^-?\d+$/', $value) === 1) {
+            return (int) $value;
+        }
+
+        return null;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     private function buildLogicalScreenshotRows(string $videoId, string $screenshotsPath): array
@@ -230,6 +304,40 @@ HELP
                 'size' => $filesize !== false ? format_bytes($filesize) : 'Unknown',
                 'dimensions' => $representative !== null ? $this->getImageDimensions($representative) : '',
                 'path' => $representative ?? '',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function buildKvsOverviewScreenshotRows(
+        string $videoId,
+        string $screenshotsPath,
+        int $screenAmount,
+        int $screenMain
+    ): array {
+        $rows = [];
+        $sourceScreenshotsPath = $this->getVideoContentDir(
+            $this->config->getVideoSourcesPath(),
+            $videoId
+        ) . '/screenshots';
+
+        for ($index = 1; $index <= $screenAmount; $index++) {
+            $files = $this->findLogicalScreenshotFiles($sourceScreenshotsPath, $screenshotsPath, $index);
+            $representative = $files[0] ?? null;
+            $filesize = $representative !== null ? filesize($representative) : false;
+
+            $rows[] = [
+                'index' => $index,
+                'filename' => $index . '.jpg',
+                'formats' => count($files),
+                'size' => $filesize !== false ? format_bytes($filesize) : '',
+                'dimensions' => $representative !== null ? $this->getImageDimensions($representative) : '',
+                'path' => $representative ?? '',
+                'is_main' => $screenMain === $index ? 1 : 0,
             ];
         }
 
