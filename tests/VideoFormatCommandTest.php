@@ -77,6 +77,56 @@ class VideoFormatCommandTest extends TestCase
         $this->assertSame('', $rowsById[4]['watermark2_position_scrolling']);
     }
 
+    public function testShowExposesKvsAdminAppendFields(): void
+    {
+        $progressDir = $this->kvsPath . '/admin/data/engine/tasks';
+        self::assertTrue(is_dir($progressDir) || mkdir($progressDir, 0777, true));
+        file_put_contents($progressDir . '/99.dat', '37');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '2',
+            '--format' => 'json',
+            '--fields' => 'format_video_id,status_id,pc_complete,is_error,source_text,videos_count',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(2, (int) $rows[0]['format_video_id']);
+        $this->assertSame(3, (int) $rows[0]['status_id']);
+        $this->assertSame('37%', $rows[0]['pc_complete']);
+        $this->assertSame(0, (int) $rows[0]['is_error']);
+        $this->assertSame('', $rows[0]['source_text']);
+        $this->assertSame(0, (int) $rows[0]['videos_count']);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '4',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'format_video_id',
+                'source_text',
+                'watermark_position_offset',
+                'watermark_position_scrolling',
+                'watermark2_position_offset',
+                'watermark2_position_scrolling',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(4, (int) $rows[0]['format_video_id']);
+        $this->assertSame('(Use as source)', $rows[0]['source_text']);
+        $this->assertSame('', $rows[0]['watermark_position_offset']);
+        $this->assertSame('2 x 5s ±3', $rows[0]['watermark_position_scrolling']);
+        $this->assertSame('±4', $rows[0]['watermark2_position_offset']);
+        $this->assertSame('', $rows[0]['watermark2_position_scrolling']);
+    }
+
     public function testListFiltersByKvsAdminSearchText(): void
     {
         $cases = [
