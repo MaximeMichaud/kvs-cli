@@ -55,8 +55,8 @@ This command delegates to KVS-Install's setup.sh which handles:
 
 <info>Examples:</info>
   kvs migrate:to-docker /var/www/site -d example.com -e admin@example.com
-  kvs migrate:to-docker --domain=example.com --ssl=1      # Let's Encrypt
-  kvs migrate:to-docker /var/www/site --dry-run           # Preview only
+  kvs migrate:to-docker --domain=example.com --email=admin@example.com --ssl=1
+  kvs migrate:to-docker /var/www/site -d example.com -e admin@example.com --dry-run
 
 <info>SSL options:</info>
   --ssl=1  Let's Encrypt (requires valid DNS + ports 80/443)

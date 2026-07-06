@@ -89,7 +89,10 @@ kvs migrate:to-docker /var/www/oldsite \
 
 ```bash
 # Preview what would happen
-kvs migrate:to-docker --domain=example.com --dry-run
+kvs migrate:to-docker /var/www/oldsite \
+  --domain=example.com \
+  --email=admin@example.com \
+  --dry-run
 ```
 
 ### Database Only
@@ -219,7 +222,10 @@ If using Let's Encrypt before DNS:
 dig +short example.com
 
 # Option 2: Use self-signed initially
-kvs migrate:to-docker --ssl=3
+kvs migrate:to-docker /var/www/oldsite \
+  --domain=example.com \
+  --email=admin@example.com \
+  --ssl=3
 ```
 
 ### Insufficient Disk Space
@@ -229,7 +235,10 @@ kvs migrate:to-docker --ssl=3
 df -h /opt/kvs
 
 # Option 1: Use database-only migration
-kvs migrate:to-docker --no-content
+kvs migrate:to-docker /var/www/oldsite \
+  --domain=example.com \
+  --email=admin@example.com \
+  --no-content
 
 # Option 2: Clear Docker cache
 docker system prune -a

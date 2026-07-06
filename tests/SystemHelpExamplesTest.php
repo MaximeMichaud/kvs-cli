@@ -193,6 +193,19 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('| [`video`](commands/video.md) | Manage videos (list, show) |', $docsReadme);
     }
 
+    public function testMigrateToDockerDocumentationUsesCompleteNonInteractiveExamples(): void
+    {
+        $doc = file_get_contents(dirname(__DIR__) . '/docs/commands/migrate_to_docker.md');
+        $this->assertIsString($doc);
+
+        $this->assertStringContainsString('--email=admin@example.com', $doc);
+        $this->assertStringContainsString('-e admin@example.com', $doc);
+        $this->assertStringContainsString('--dry-run', $doc);
+        $this->assertStringNotContainsString('kvs migrate:to-docker --domain=example.com --dry-run', $doc);
+        $this->assertStringNotContainsString('kvs migrate:to-docker --ssl=3', $doc);
+        $this->assertStringNotContainsString('kvs migrate:to-docker --no-content', $doc);
+    }
+
     public function testQueueDocumentationSeparatesActiveAndHistoryStatusValues(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';

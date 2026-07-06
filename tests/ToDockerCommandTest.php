@@ -86,6 +86,22 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('Import database', $output);
     }
 
+    public function testToDockerHelpDryRunExamplesIncludeRequiredEmail(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString(
+            'kvs migrate:to-docker --domain=example.com --email=admin@example.com --ssl=1',
+            $help
+        );
+        $this->assertStringContainsString(
+            'kvs migrate:to-docker /var/www/site -d example.com -e admin@example.com --dry-run',
+            $help
+        );
+        $this->assertStringNotContainsString('kvs migrate:to-docker --domain=example.com --ssl=1', $help);
+        $this->assertStringNotContainsString('kvs migrate:to-docker /var/www/site --dry-run', $help);
+    }
+
     public function testToDockerDryRunUsesProvidedEmail(): void
     {
         $this->tester->execute([
