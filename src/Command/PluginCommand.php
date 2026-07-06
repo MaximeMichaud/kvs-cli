@@ -564,17 +564,32 @@ HELP
             }
         }
 
-        // Sort by name
+        // Match KVS admin plugins.php sorting, which uses the localized title.
         usort($plugins, function (array $a, array $b): int {
-            $nameA = $a['name'] ?? '';
-            $nameB = $b['name'] ?? '';
+            $titleCompare = strcasecmp(
+                $this->getPluginSortableString($a, 'title'),
+                $this->getPluginSortableString($b, 'title')
+            );
+            if ($titleCompare !== 0) {
+                return $titleCompare;
+            }
+
             return strcasecmp(
-                is_string($nameA) ? $nameA : '',
-                is_string($nameB) ? $nameB : ''
+                $this->getPluginSortableString($a, 'id'),
+                $this->getPluginSortableString($b, 'id')
             );
         });
 
         return $plugins;
+    }
+
+    /**
+     * @param array<string, mixed> $plugin
+     */
+    private function getPluginSortableString(array $plugin, string $field): string
+    {
+        $value = $plugin[$field] ?? '';
+        return is_string($value) ? $value : '';
     }
 
     /**

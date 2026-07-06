@@ -212,6 +212,31 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Types', $output);
     }
 
+    public function testListSortsByLocalizedTitleLikeKvsAdmin(): void
+    {
+        $this->createPluginFixture(
+            'late_name_plugin',
+            'Zed internal name',
+            'Kernel Team',
+            '1.0.0',
+            '6.0.0',
+            'manual',
+            'Aardvark title',
+            'Title should drive plugin ordering.'
+        );
+
+        $tester = new CommandTester(new PluginCommand($this->config));
+        $exitCode = $tester->execute([
+            'action' => 'list',
+            '--field' => 'title',
+        ]);
+
+        $titles = array_values(array_filter(explode("\n", trim($tester->getDisplay()))));
+
+        $this->assertSame(0, $exitCode, $tester->getDisplay());
+        $this->assertSame('Aardvark title', $titles[0] ?? null);
+    }
+
     public function testListWithStatusActive(): void
     {
         $exitCode = $this->tester->execute([
