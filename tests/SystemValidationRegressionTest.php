@@ -223,7 +223,9 @@ class SystemValidationRegressionTest extends TestCase
     public function testOptionsSystemCategoryDoesNotMatchUserPrefix(): void
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('ACTIVITY_INDEX_FORMULA', '1')");
         $this->db->exec("INSERT INTO ktvs_options VALUES ('ENABLE_FEATURE', '1')");
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('ENABLE_TOKENS_PUBLIC_VIDEO', '1')");
         $this->db->exec("INSERT INTO ktvs_options VALUES ('USER_AVATAR_SIZE', '200')");
         $this->db->exec("INSERT INTO ktvs_options VALUES ('USE_POST_DATE_RANDOMIZATION', '1')");
 
@@ -239,8 +241,36 @@ class SystemValidationRegressionTest extends TestCase
         $systemRows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
         $systemVariables = array_column($systemRows, 'variable');
         $this->assertContains('ENABLE_FEATURE', $systemVariables);
+        $this->assertNotContains('ENABLE_TOKENS_PUBLIC_VIDEO', $systemVariables);
         $this->assertNotContains('USER_AVATAR_SIZE', $systemVariables);
         $this->assertNotContains('USE_POST_DATE_RANDOMIZATION', $systemVariables);
+
+        $memberzoneTester = new CommandTester($this->createOptionsCommand());
+        $memberzoneTester->execute([
+            'action' => 'list',
+            '--category' => 'memberzone',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $memberzoneTester->getStatusCode(), $memberzoneTester->getDisplay());
+        $memberzoneRows = json_decode($memberzoneTester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $memberzoneVariables = array_column($memberzoneRows, 'variable');
+        $this->assertContains('ACTIVITY_INDEX_FORMULA', $memberzoneVariables);
+        $this->assertContains('ENABLE_TOKENS_PUBLIC_VIDEO', $memberzoneVariables);
+
+        $statsTester = new CommandTester($this->createOptionsCommand());
+        $statsTester->execute([
+            'action' => 'list',
+            '--category' => 'stats',
+            '--format' => 'json',
+            '--force' => true,
+        ]);
+
+        $this->assertSame(0, $statsTester->getStatusCode(), $statsTester->getDisplay());
+        $statsRows = json_decode($statsTester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $statsVariables = array_column($statsRows, 'variable');
+        $this->assertNotContains('ACTIVITY_INDEX_FORMULA', $statsVariables);
 
         $websiteTester = new CommandTester($this->createOptionsCommand());
         $websiteTester->execute([
@@ -261,11 +291,14 @@ class SystemValidationRegressionTest extends TestCase
     {
         $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
         $expected = [
+            'ACTIVITY_INDEX_FORMULA' => 'Memberzone',
             'AFFILIATE_PARAM_NAME' => 'Memberzone',
             'AUTO_DELETE_UNCONFIRMED' => 'Memberzone',
             'AUTO_DELETE_UNCONFIRMED_AFTER' => 'Memberzone',
             'CRON_TIME' => 'System',
             'CRON_UID' => 'System',
+            'DEFAULT_TOKENS_PUBLIC_VIDEO' => 'Memberzone',
+            'ENABLE_TOKENS_PUBLIC_VIDEO' => 'Memberzone',
             'FAILED_TASKS_AUTO_RESTART' => 'System',
             'GENERATED_USERS_REUSE_PROBABILITY' => 'Memberzone',
             'INITIAL_VERSION' => 'System',
