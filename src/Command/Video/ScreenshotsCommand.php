@@ -48,6 +48,11 @@ Manage video screenshots (thumbnails).
 
 <fg=yellow>OPTIONS:</>
   --count=N                 Number of screenshots to generate (default: 10)
+  --fields=FIELDS           List fields to display
+  --format=FORMAT           List output format: table, csv, json, yaml, count
+
+<fg=yellow>AVAILABLE LIST FIELDS:</>
+  index, filename, formats, size, dimensions, path, is_main
 
 <fg=yellow>EXAMPLES:</>
   <fg=green>kvs screenshots list 123</>
@@ -57,8 +62,10 @@ Manage video screenshots (thumbnails).
   <fg=green>kvs video:screenshots list 123 --format=count</>
 
 <fg=yellow>NOTE:</>
-  This command scans the content directory for screenshot files.
-  Generate/regenerate require ffmpeg to be installed.
+  list reports KVS overview screenshot metadata when available, then falls back
+  to scanning overview screenshot files. It does not select timeline screenshots
+  or posters.
+  generate/regenerate write screenshot files and require ffmpeg to be installed.
 HELP
             );
     }

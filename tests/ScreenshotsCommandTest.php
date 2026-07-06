@@ -452,6 +452,19 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertFalse($definition->hasOption('type'));
     }
 
+    public function testCommandHelpDescribesCurrentListSurface(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString('--fields=FIELDS', $help);
+        $this->assertStringContainsString('--format=FORMAT', $help);
+        $this->assertStringContainsString('index, filename, formats, size, dimensions, path, is_main', $help);
+        $this->assertStringContainsString('overview screenshot metadata', $help);
+        $this->assertStringContainsString('It does not select timeline screenshots', $help);
+        $this->assertStringNotContainsString('--type', $help);
+        $this->assertStringNotContainsString('This command scans the content directory for screenshot files.', $help);
+    }
+
     public function testCommandHasExpectedAliases(): void
     {
         $aliases = $this->command->getAliases();

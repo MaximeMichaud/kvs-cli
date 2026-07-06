@@ -130,4 +130,4 @@ kvs video:formats list 123 --format=csv
 ## See Also
 
 - [`video`](video.md) - Manage videos
-- [`video:screenshots`](video-screenshots.md) - Manage screenshots
+- [`video:screenshots`](video_screenshots.md) - Manage screenshots

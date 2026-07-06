@@ -78,6 +78,8 @@ class SystemHelpExamplesTest extends TestCase
             '(system-status.md)',
             '(db-export.md)',
             '(db-import.md)',
+            '(video-formats.md)',
+            '(video-screenshots.md)',
         ];
 
         foreach ($files as $file) {
@@ -168,5 +170,29 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('`deactivate`', $conversionDoc);
         $this->assertStringContainsString('kvs conversion activate 1', $conversionDoc);
         $this->assertStringContainsString('kvs conversion deactivate 1', $conversionDoc);
+    }
+
+    public function testVideoScreenshotsDocumentationMatchesCurrentCliSurface(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $screenshotsDoc = file_get_contents($docsRoot . '/commands/video_screenshots.md');
+        $this->assertIsString($screenshotsDoc);
+
+        $this->assertStringContainsString('overview screenshots', $screenshotsDoc);
+        $this->assertStringContainsString('`videos.screen_amount`', $screenshotsDoc);
+        $this->assertStringContainsString('`videos.screen_main`', $screenshotsDoc);
+        $this->assertStringContainsString('`--fields=<fields>`', $screenshotsDoc);
+        $this->assertStringContainsString('`index`', $screenshotsDoc);
+        $this->assertStringContainsString('`filename`', $screenshotsDoc);
+        $this->assertStringContainsString('`formats`', $screenshotsDoc);
+        $this->assertStringContainsString('`is_main`', $screenshotsDoc);
+        $this->assertStringContainsString('kvs video:screenshots list 123 --fields=index,filename,formats,is_main --format=json', $screenshotsDoc);
+        $this->assertStringContainsString('(video_formats.md)', $screenshotsDoc);
+
+        $this->assertStringNotContainsString('`--type=<type>`', $screenshotsDoc);
+        $this->assertStringNotContainsString('Screenshot type: timeline, poster', $screenshotsDoc);
+        $this->assertStringNotContainsString('#   Time      File', $screenshotsDoc);
+        $this->assertStringNotContainsString('123_1_timeline.jpg', $screenshotsDoc);
+        $this->assertStringNotContainsString('(video-formats.md)', $screenshotsDoc);
     }
 }

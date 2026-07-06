@@ -10,7 +10,12 @@ kvs video:screenshots <action> <video_id> [options]
 
 ## Description
 
-The `video:screenshots` command allows you to list, generate, and regenerate screenshots for videos.
+The `video:screenshots` command lists KVS overview screenshots for a video and can generate or regenerate
+overview screenshot files from the source video.
+
+`list` reports the logical KVS overview screenshots. When database metadata is available, the row count
+comes from `videos.screen_amount` and the main screenshot marker comes from `videos.screen_main`.
+Timeline screenshots and posters are separate KVS screenshot groups and are not selected by this command.
 
 ## Actions
 
@@ -44,35 +49,40 @@ kvs video:screenshots regenerate <video_id> [options]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--count=<n>` | 10 | Number of screenshots to generate |
-| `--type=<type>` | timeline | Screenshot type: timeline, poster |
-| `--fields=<fields>` | - | Comma-separated fields |
-| `--format=<format>` | table | Output format |
-| `--no-truncate` | - | Don't truncate long fields |
+| `--count=<n>` | 10 | Number of screenshots to generate for `generate` and `regenerate` |
+| `--fields=<fields>` | `index,filename,formats,dimensions` | Comma-separated fields for `list` output |
+| `--format=<format>` | table | `list` output format: `table`, `csv`, `json`, `yaml`, `count` |
+| `--no-truncate` | - | Do not truncate long fields in table output |
+
+Available `list` fields:
+
+- `index`
+- `filename`
+- `formats`
+- `size`
+- `dimensions`
+- `path`
+- `is_main`
 
 ## Examples
 
 ### List Screenshots
 
 ```bash
-kvs video:screenshots list 123
+kvs video:screenshots list 123 --fields=index,filename,formats,is_main --format=json
 ```
 
 Output:
 
-```
-Video #123 Screenshots
-======================
-
-#   Time      File                           Size
-────────────────────────────────────────────────────
-1   0:00:05   123_1_timeline.jpg             45 KB
-2   0:00:32   123_2_timeline.jpg             52 KB
-3   0:01:05   123_3_timeline.jpg             48 KB
-4   0:01:38   123_4_timeline.jpg             51 KB
-5   0:02:12   123_5_timeline.jpg             49 KB
-
-Total: 5 screenshots
+```json
+[
+  {
+    "index": 1,
+    "filename": "1.jpg",
+    "formats": 2,
+    "is_main": 1
+  }
+]
 ```
 
 ### Generate Screenshots
@@ -85,22 +95,7 @@ kvs video:screenshots generate 123
 kvs video:screenshots generate 123 --count=20
 ```
 
-Output:
-
-```
-Generating screenshots for video #123...
-
-Video duration: 5:32 (332 seconds)
-Interval: 33 seconds
-
-Generating screenshot 1/10 at 0:00:16... ✓
-Generating screenshot 2/10 at 0:00:49... ✓
-Generating screenshot 3/10 at 0:01:22... ✓
-...
-Generating screenshot 10/10 at 0:05:16... ✓
-
-Generated 10 screenshots successfully.
-```
+This writes screenshot files and requires FFmpeg and FFprobe to be configured.
 
 ### Regenerate Screenshots
 
@@ -108,16 +103,7 @@ Generated 10 screenshots successfully.
 kvs video:screenshots regenerate 123
 ```
 
-Output:
-
-```
-Deleting existing screenshots for video #123...
-Deleted 5 screenshots.
-
-Generating new screenshots...
-...
-Generated 10 screenshots successfully.
-```
+This replaces existing overview screenshot files after the new screenshots are generated successfully.
 
 ### Output Formats
 
@@ -127,6 +113,9 @@ kvs video:screenshots list 123 --format=json
 
 # Count only
 kvs video:screenshots list 123 --format=count
+
+# Select list fields
+kvs video:screenshots list 123 --fields=index,filename,formats,size,dimensions,path,is_main --format=json
 ```
 
 ### Batch Operations
@@ -146,4 +135,4 @@ done
 ## See Also
 
 - [`video`](video.md) - Manage videos
-- [`video:formats`](video-formats.md) - Manage formats
+- [`video:formats`](video_formats.md) - Manage formats

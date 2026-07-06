@@ -177,7 +177,7 @@ done
 
 ## See Also
 
-- [`video:formats`](video-formats.md) - Manage video formats
-- [`video:screenshots`](video-screenshots.md) - Manage screenshots
+- [`video:formats`](video_formats.md) - Manage video formats
+- [`video:screenshots`](video_screenshots.md) - Manage screenshots
 - [`user`](user.md) - Manage users
 - [`comment`](comment.md) - Manage comments
