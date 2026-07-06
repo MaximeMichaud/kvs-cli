@@ -427,4 +427,72 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('The `user` command allows you to list and view user accounts', $userDoc);
         $this->assertStringNotContainsString('(user-purge.md)', $userDoc);
     }
+
+    public function testCategoryTagAndCommentDocumentationUsesCurrentActionsAliasesAndFilters(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+
+        $categoryDoc = file_get_contents($docsRoot . '/commands/category.md');
+        $this->assertIsString($categoryDoc);
+        $this->assertStringContainsString(
+            'Action: `list`, `tree`, `show`, `create`, `delete`, `update`, `enable`, `disable`, `merge`, `assign-group`',
+            $categoryDoc
+        );
+        $this->assertStringContainsString('| `--group=GROUP` | - | Filter by, or assign to, category group ID or title |', $categoryDoc);
+        $this->assertStringContainsString('| `--usage=USAGE` | - | KVS admin usage filter, such as `used/videos` |', $categoryDoc);
+        $this->assertStringContainsString(
+            '| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/description` |',
+            $categoryDoc
+        );
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $categoryDoc);
+        $this->assertStringContainsString('kvs category tree', $categoryDoc);
+        $this->assertStringContainsString('kvs category create "New Category" --group=5', $categoryDoc);
+        $this->assertStringContainsString('kvs category assign-group 5 12,15,18 --dry-run', $categoryDoc);
+        $this->assertStringContainsString('kvs category list --fields=category_id,title,videos_amount,albums_amount --format=json', $categoryDoc);
+        $this->assertStringContainsString('- `kvs cat`', $categoryDoc);
+        $this->assertStringContainsString('- `notused/all`', $categoryDoc);
+        $this->assertStringContainsString('`filled/description`', $categoryDoc);
+        $this->assertStringNotContainsString('| `--limit=<n>` | 20 | Maximum number of results |', $categoryDoc);
+
+        $tagDoc = file_get_contents($docsRoot . '/commands/tag.md');
+        $this->assertIsString($tagDoc);
+        $this->assertStringContainsString(
+            'Action: `list`, `show`, `create`, `delete`, `merge`, `update`, `enable`, `disable`, `stats`',
+            $tagDoc
+        );
+        $this->assertStringContainsString('| `--name=NAME` | - | New tag name for `update` |', $tagDoc);
+        $this->assertStringContainsString('| `--usage=USAGE` | - | KVS admin usage filter, such as `used/videos` |', $tagDoc);
+        $this->assertStringContainsString('| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/synonyms` |', $tagDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $tagDoc);
+        $this->assertStringContainsString('kvs tag show 5', $tagDoc);
+        $this->assertStringContainsString('kvs tag create "4K UHD"', $tagDoc);
+        $this->assertStringContainsString('kvs tag stats', $tagDoc);
+        $this->assertStringContainsString('kvs tag list --fields=tag_id,tag,tag_dir,videos_amount,albums_amount --format=json', $tagDoc);
+        $this->assertStringContainsString('- `notused/all`', $tagDoc);
+        $this->assertStringContainsString('`filled/synonyms`', $tagDoc);
+        $this->assertStringNotContainsString('| `--limit=<n>` | 20 | Maximum number of results |', $tagDoc);
+
+        $commentDoc = file_get_contents($docsRoot . '/commands/comment.md');
+        $this->assertIsString($commentDoc);
+        $this->assertStringContainsString(
+            'Action: `list`, `pending`, `show`, `approve`, `reject`, `delete`, `stats`',
+            $commentDoc
+        );
+        $this->assertStringContainsString('| `--content-source=ID` | - | Filter by content source ID |', $commentDoc);
+        $this->assertStringContainsString('| `--object-type=TYPE` | - | Filter by KVS object type ID or alias |', $commentDoc);
+        $this->assertStringContainsString('| `--approved` | - | Show only approved comments |', $commentDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $commentDoc);
+        $this->assertStringContainsString('| `-y, --yes` | - | Skip confirmation prompt for moderation actions |', $commentDoc);
+        $this->assertStringContainsString('kvs comment pending', $commentDoc);
+        $this->assertStringContainsString('kvs comment approve 1,2,3,4', $commentDoc);
+        $this->assertStringContainsString('kvs comment delete 456 --yes', $commentDoc);
+        $this->assertStringContainsString('`content-source`, `content_source`, `source`', $commentDoc);
+        $this->assertStringContainsString('kvs comment list --object-type=playlist', $commentDoc);
+        $this->assertStringContainsString(
+            'kvs comment list --fields=comment_id,comment,object,user,username,post_type_id,object_id --format=json',
+            $commentDoc
+        );
+        $this->assertStringNotContainsString('comments on videos and albums', $commentDoc);
+        $this->assertStringNotContainsString('| `--limit=<n>` | 20 | Maximum number of results |', $commentDoc);
+    }
 }

@@ -5,12 +5,37 @@ Manage tags in your KVS installation.
 ## Synopsis
 
 ```bash
-kvs tag <action> [<id>] [options]
+kvs tag [<action>] [<identifier>] [<target>] [options]
 ```
 
 ## Description
 
-The `tag` command allows you to list and manage content tags.
+The `tag` command allows you to list, inspect, create, update, merge, and delete
+content tags.
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `action` | No | Action: `list`, `show`, `create`, `delete`, `merge`, `update`, `enable`, `disable`, `stats` (default: `list`) |
+| `identifier` | Conditional | Tag ID or name |
+| `target` | Conditional | Target tag ID for `merge` |
+
+## Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--name=NAME` | - | New tag name for `update` |
+| `--status=STATUS` | - | Filter or set status (`active`, `inactive`, `disabled`, `0`, `1`) |
+| `--limit=N` | 50 | Number of results to show |
+| `--search=TEXT` | - | Search in tag names, directories, and synonyms |
+| `--unused` | - | Show only unused tags |
+| `--usage=USAGE` | - | KVS admin usage filter, such as `used/videos` |
+| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/synonyms` |
+| `--fields=FIELDS` | - | Comma-separated fields to display |
+| `--field=FIELD` | - | Display a single field value |
+| `--format=FORMAT` | table | Output format: `table`, `csv`, `json`, `yaml`, `count`, `ids` |
+| `--no-truncate` | - | Do not truncate long text fields |
 
 ## Actions
 
@@ -22,75 +47,153 @@ List tags with optional filtering.
 kvs tag list [options]
 ```
 
-**Options:**
+### show
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--limit=<n>` | 20 | Maximum number of results |
-| `--status=<id>` | - | Filter by status (0, 1) |
-| `--format=<fmt>` | table | Output format |
-| `--fields=<list>` | - | Comma-separated fields |
+Display details of a specific tag.
 
-**Status Values:**
+```bash
+kvs tag show <id-or-name>
+```
 
-| Value | Name | Color |
-|-------|------|-------|
-| 0 | Inactive | Yellow |
-| 1 | Active | Green |
+### create
 
-### enable
+Create a new tag.
 
-Enable a tag (set status to 1).
+```bash
+kvs tag create "4K UHD"
+```
+
+### update
+
+Update a tag name or status.
+
+```bash
+kvs tag update <id> --name="Ultra HD"
+kvs tag update <id> --status=inactive
+```
+
+### enable / disable
+
+Change tag status.
 
 ```bash
 kvs tag enable <id>
-```
-
-### disable
-
-Disable a tag (set status to 0).
-
-```bash
 kvs tag disable <id>
 ```
 
-## Default Fields
+### merge
 
-- `tag_id` - Tag ID
-- `tag` - Tag name
-- `tag_dir` - Directory/slug
-- `status` - Status with color
+Merge a source tag into a target tag.
+
+```bash
+kvs tag merge <source_id> <target_id>
+```
+
+### stats
+
+Display tag totals and the most used tags.
+
+```bash
+kvs tag stats
+```
+
+### delete
+
+Delete a tag.
+
+```bash
+kvs tag delete <id>
+```
+
+## Mutating Actions
+
+The `create`, `update`, `enable`, `disable`, `merge`, and `delete` actions
+modify tag data.
+
+## Available Fields
+
+| Field | Aliases | Description |
+|-------|---------|-------------|
+| `tag_id` | `id` | Tag ID |
+| `tag` | `tag_rename` | Tag name |
+| `tag_dir` | - | URL slug |
+| `synonyms` | - | Comma-separated synonyms |
+| `status_id` | - | Numeric status ID |
+| `status` | - | Status label |
+| `video_count` | `videos`, `videos_amount` | Number of videos |
+| `album_count` | `albums`, `albums_amount` | Number of albums |
+| `posts_amount` | `posts` | Number of posts |
+| `other_amount` | - | Other usage count |
+| `all_amount` | `total_usage` | Total usage count |
+| `added_date` | - | Created date |
+
+## Usage Filters
+
+The `--usage` option accepts KVS admin usage values:
+
+- `used/videos`
+- `used/albums`
+- `used/posts`
+- `used/other`
+- `used/all`
+- `notused/videos`
+- `notused/albums`
+- `notused/posts`
+- `notused/other`
+- `notused/all`
+
+## Field Filters
+
+The `--field-filter` option accepts `empty/<field>` and `filled/<field>` forms
+for KVS admin tag fields such as:
+
+- `synonyms`
+
+Custom tag fields can also be filtered when they exist in the KVS installation.
 
 ## Examples
 
 ### Basic Usage
 
 ```bash
-# List all tags
+# List tags
 kvs tag list
 
-# List 50 tags
-kvs tag list --limit=50
+# Show tag details
+kvs tag show 5
+
+# Display tag statistics
+kvs tag stats
 ```
 
 ### Filtering
 
 ```bash
-# Active tags only
-kvs tag list --status=1
+# Status filters
+kvs tag list --status=active
+kvs tag list --status=inactive
 
-# Inactive tags
-kvs tag list --status=0
+# Search, unused, and admin filters
+kvs tag list --search=HD
+kvs tag list --unused
+kvs tag list --usage=used/videos
+kvs tag list --field-filter=filled/synonyms
 ```
 
-### Managing Status
+### Mutating Actions
 
 ```bash
-# Enable a tag
-kvs tag enable 3
+# Create and update
+kvs tag create "4K UHD"
+kvs tag update 5 --name="Ultra HD"
 
-# Disable a tag
+# Enable and disable
+kvs tag enable 3
 kvs tag disable 3
+
+# Merge and delete
+kvs tag merge 10 15
+kvs tag delete 8
 ```
 
 ### Output Formats
@@ -104,34 +207,23 @@ kvs tag list --format=csv > tags.csv
 
 # Count only
 kvs tag list --format=count
+
+# IDs only
+kvs tag list --format=ids
 ```
 
-### Scripting Examples
+### Field Selection
 
 ```bash
-# Count tags by status
-echo "Active: $(kvs tag list --status=1 --format=count)"
-echo "Inactive: $(kvs tag list --status=0 --format=count)"
+# Specific fields
+kvs tag list --fields=tag_id,tag,tag_dir,videos_amount,albums_amount --format=json
 
-# Export tag data
-kvs tag list --format=json > tags.json
+# Single field
+kvs tag list --field=tag
 
-# Enable multiple tags
-for id in 1 2 3; do
-    kvs tag enable $id
-done
+# Full text in table output
+kvs tag list --no-truncate
 ```
-
-## Available Fields
-
-| Field | Description |
-|-------|-------------|
-| `tag_id` | Unique tag ID |
-| `tag` | Tag name |
-| `tag_dir` | URL slug |
-| `status_id` | Status code (0, 1) |
-| `videos_amount` | Number of videos |
-| `albums_amount` | Number of albums |
 
 ## Aliases
 
