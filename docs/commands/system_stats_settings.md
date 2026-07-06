@@ -46,7 +46,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 | `--player-devices` | Collect device data (0\|1) |
 | `--player-embed-profiles` | Collect embed profile data (0\|1) |
 | `--player-keep` | Retention period in days (0=forever) |
-| `--player-reporting` | Enable player reporting (0\|1) |
+| `--player-reporting` | Player reporting target (0=KVS, 1=Google Analytics, 2=both) |
 
 ### Video Statistics
 
@@ -172,6 +172,19 @@ kvs stats-settings set --traffic-keep=90
 kvs stats-settings set --search-keep=0
 ```
 
+### Player Reporting
+
+```bash
+# Report player stats to KVS only
+kvs stats-settings set --player-reporting=0
+
+# Report player stats to Google Analytics only
+kvs stats-settings set --player-reporting=1
+
+# Report player stats to both KVS and Google Analytics
+kvs stats-settings set --player=1 --player-reporting=2
+```
+
 ### Country Filtering
 
 ```bash
@@ -249,7 +262,7 @@ Player Statistics
  Countries         Yes
  Devices           Yes
  Embed Profiles    No
- Reporting         Yes
+ Reporting         KVS
  Retention         90 days
 
 Video Statistics

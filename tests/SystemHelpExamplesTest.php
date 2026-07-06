@@ -195,4 +195,22 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('123_1_timeline.jpg', $screenshotsDoc);
         $this->assertStringNotContainsString('(video-formats.md)', $screenshotsDoc);
     }
+
+    public function testStatsSettingsDocumentationDescribesPlayerReportingEnum(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $statsSettingsDoc = file_get_contents($docsRoot . '/commands/system_stats_settings.md');
+        $this->assertIsString($statsSettingsDoc);
+
+        $this->assertStringContainsString(
+            '| `--player-reporting` | Player reporting target (0=KVS, 1=Google Analytics, 2=both) |',
+            $statsSettingsDoc
+        );
+        $this->assertStringContainsString('kvs stats-settings set --player-reporting=0', $statsSettingsDoc);
+        $this->assertStringContainsString('kvs stats-settings set --player-reporting=1', $statsSettingsDoc);
+        $this->assertStringContainsString('kvs stats-settings set --player=1 --player-reporting=2', $statsSettingsDoc);
+        $this->assertStringContainsString('Reporting         KVS', $statsSettingsDoc);
+        $this->assertStringNotContainsString('| `--player-reporting` | Enable player reporting (0\\|1) |', $statsSettingsDoc);
+        $this->assertStringNotContainsString('Reporting         Yes', $statsSettingsDoc);
+    }
 }
