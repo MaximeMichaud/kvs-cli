@@ -271,4 +271,41 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('kvs plugin list --fields=name,version', $pluginDoc);
         $this->assertStringNotContainsString('kvs plugin list --field=path --format=ids', $pluginDoc);
     }
+
+    public function testVideoFormatsDocumentationUsesCurrentFields(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $formatsDoc = file_get_contents($docsRoot . '/commands/video_formats.md');
+        $this->assertIsString($formatsDoc);
+
+        $this->assertStringContainsString('Inspect video format files and configured KVS video formats.', $formatsDoc);
+        $this->assertStringContainsString('### list', $formatsDoc);
+        $this->assertStringContainsString('- `format`', $formatsDoc);
+        $this->assertStringContainsString('- `postfix`', $formatsDoc);
+        $this->assertStringContainsString('- `file`', $formatsDoc);
+        $this->assertStringContainsString('- `size`', $formatsDoc);
+        $this->assertStringContainsString('- `dimensions`', $formatsDoc);
+        $this->assertStringContainsString('- `path`', $formatsDoc);
+        $this->assertStringContainsString('- `status`', $formatsDoc);
+        $this->assertStringContainsString('- `format_id`', $formatsDoc);
+        $this->assertStringContainsString('- `group_id`', $formatsDoc);
+        $this->assertStringContainsString('- `access`', $formatsDoc);
+        $this->assertStringContainsString(
+            'kvs video:formats list 123 --fields=format,postfix,file,size,dimensions --format=json',
+            $formatsDoc
+        );
+        $this->assertStringContainsString(
+            'kvs video:formats check 123 --fields=format,postfix,status,file,size,dimensions --format=json',
+            $formatsDoc
+        );
+        $this->assertStringContainsString(
+            'kvs video:formats available --fields=format_id,title,postfix,status,group_id,access --format=json',
+            $formatsDoc
+        );
+
+        $this->assertStringNotContainsString('Resolution', $formatsDoc);
+        $this->assertStringNotContainsString('Bitrate', $formatsDoc);
+        $this->assertStringNotContainsString('Expected', $formatsDoc);
+        $this->assertStringNotContainsString('Actual', $formatsDoc);
+    }
 }
