@@ -81,5 +81,5 @@ kvs cron optimize
 
 ## See Also
 
-- [`system:status`](system-status.md) - Show system status
-- [`system:check`](system-check.md) - Check cron status
+- [`system:status`](system_status.md) - Show system status
+- [`system:check`](system_check.md) - Check cron status

@@ -136,6 +136,6 @@ echo "Restore complete!"
 
 ## See Also
 
-- [`db:export`](db-export.md) - Export database
-- [`system:backup`](system-backup.md) - Full backup/restore
+- [`db:export`](db_export.md) - Export database
+- [`system:backup`](system_backup.md) - Full backup
 - [`maintenance`](maintenance.md) - Maintenance mode

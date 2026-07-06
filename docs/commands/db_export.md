@@ -124,6 +124,6 @@ echo "Backup saved: $BACKUP"
 
 ## See Also
 
-- [`db:import`](db-import.md) - Import database
-- [`system:backup`](system-backup.md) - Full backup
+- [`db:import`](db_import.md) - Import database
+- [`system:backup`](system_backup.md) - Full backup
 - [`maintenance`](maintenance.md) - Maintenance mode

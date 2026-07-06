@@ -88,7 +88,7 @@ kvs check
 | [`system:check`](commands/system_check.md) | Run health checks |
 | [`system:cache`](commands/system_cache.md) | Manage cache |
 | [`system:cron`](commands/system_cron.md) | Run cron jobs |
-| [`system:backup`](commands/system_backup.md) | Create/restore backups |
+| [`system:backup`](commands/system_backup.md) | Create/list backups |
 | [`maintenance`](commands/maintenance.md) | Enable/disable maintenance mode |
 
 ### Database Operations

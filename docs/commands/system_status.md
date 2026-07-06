@@ -160,6 +160,6 @@ kvs system:status && kvs check
 
 ## See Also
 
-- [`system:check`](system-check.md) - Run health checks
+- [`system:check`](system_check.md) - Run health checks
 - [`config`](config.md) - View configuration
-- [`system:cache`](system-cache.md) - Manage cache
+- [`system:cache`](system_cache.md) - Manage cache

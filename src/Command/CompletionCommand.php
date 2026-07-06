@@ -288,7 +288,7 @@ _kvs() {
         'system\:status:Show system status'
         'system\:cache:Manage cache'
         'system\:cron:Run cron tasks'
-        'system\:backup:Create backup'
+        'system\:backup:Create/list backups'
         'system\:check:Check system health'
         'system\:benchmark:Run performance benchmarks'
         'system\:queue:Manage background task queue'
@@ -442,7 +442,7 @@ complete -c kvs -n "__fish_use_subcommand" -a "cli:info" -d "CLI environment"
 complete -c kvs -n "__fish_use_subcommand" -a "system:status" -d "System status"
 complete -c kvs -n "__fish_use_subcommand" -a "system:cache" -d "Manage cache"
 complete -c kvs -n "__fish_use_subcommand" -a "system:cron" -d "Run cron"
-complete -c kvs -n "__fish_use_subcommand" -a "system:backup" -d "Create backup"
+complete -c kvs -n "__fish_use_subcommand" -a "system:backup" -d "Create/list backups"
 complete -c kvs -n "__fish_use_subcommand" -a "system:check" -d "Check health"
 complete -c kvs -n "__fish_use_subcommand" -a "system:benchmark" -d "Run benchmarks"
 complete -c kvs -n "__fish_use_subcommand" -a "system:queue" -d "Task queue"

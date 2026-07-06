@@ -232,5 +232,5 @@ Did you mean one of these?
 
 ## See Also
 
-- [`system:status`](system-status.md) - Show system status
-- [`system:check`](system-check.md) - Run health checks
+- [`system:status`](system_status.md) - Show system status
+- [`system:check`](system_check.md) - Run health checks

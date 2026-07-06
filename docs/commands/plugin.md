@@ -81,5 +81,5 @@ kvs plugin list --fields=name,version
 
 ## See Also
 
-- [`system:status`](system-status.md) - System status
+- [`system:status`](system_status.md) - System status
 - [`config`](config.md) - Configuration

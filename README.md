@@ -86,7 +86,7 @@ kvs system:status              # System information
 kvs system:check               # Run health checks
 kvs system:cache --clear       # Clear cache
 kvs system:cron                # Run cron tasks
-kvs system:backup              # Create backup
+kvs system:backup --create     # Create backup
 kvs system:benchmark           # Run performance benchmarks
 kvs queue list                 # View background tasks queue
 kvs queue stats                # Queue statistics

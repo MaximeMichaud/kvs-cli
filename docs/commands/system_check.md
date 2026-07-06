@@ -233,6 +233,6 @@ exit 0
 
 ## See Also
 
-- [`system:status`](system-status.md) - Show system status
+- [`system:status`](system_status.md) - Show system status
 - [`config`](config.md) - View configuration
 - [`dev:debug`](dev-debug.md) - Debug information

@@ -27,7 +27,7 @@ Complete reference for all KVS-CLI commands.
 | [`system:check`](system_check.md) | `check` | Run health checks |
 | [`system:cache`](system_cache.md) | `cache` | Manage cache |
 | [`system:cron`](system_cron.md) | `cron` | Run cron jobs |
-| [`system:backup`](system_backup.md) | `backup` | Create/restore backups |
+| [`system:backup`](system_backup.md) | `backup` | Create/list backups |
 | [`system:benchmark`](system_benchmark.md) | `benchmark`, `bench` | Run performance benchmarks |
 | [`system:queue`](queue.md) | `queue` | Manage background tasks queue |
 | [`system:server`](system_server.md) | `server`, `servers` | [EXPERIMENTAL] Manage storage servers |

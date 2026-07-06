@@ -88,6 +88,6 @@ Similar to `kvs check` but with more verbose output.
 
 ## See Also
 
-- [`system:check`](system-check.md) - Health checks
-- [`system:status`](system-status.md) - System status
+- [`system:check`](system_check.md) - Health checks
+- [`system:status`](system_status.md) - System status
 - [`dev:log`](dev-log.md) - View logs

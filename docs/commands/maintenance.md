@@ -122,6 +122,6 @@ echo "Deployment completed successfully!"
 
 ## See Also
 
-- [`system:backup`](system-backup.md) - Create backups
-- [`system:cache`](system-cache.md) - Clear cache
-- [`system:status`](system-status.md) - Check status
+- [`system:backup`](system_backup.md) - Create backups
+- [`system:cache`](system_cache.md) - Clear cache
+- [`system:status`](system_status.md) - Check status

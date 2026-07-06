@@ -109,5 +109,5 @@ kvs maintenance off
 
 ## See Also
 
-- [`system:status`](system-status.md) - Show system status
+- [`system:status`](system_status.md) - Show system status
 - [`maintenance`](maintenance.md) - Maintenance mode
