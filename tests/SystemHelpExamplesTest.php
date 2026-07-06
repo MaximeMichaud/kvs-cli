@@ -341,4 +341,47 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('Action: `list`, `show`, `delete`', $playlistDoc);
         $this->assertStringNotContainsString('Search in titles and descriptions', $playlistDoc);
     }
+
+    public function testModelAndDvdDocumentationUsesCurrentActionsAliasesAndFilters(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+
+        $modelDoc = file_get_contents($docsRoot . '/commands/model.md');
+        $this->assertIsString($modelDoc);
+        $this->assertStringContainsString('Action: `list`, `show`, `stats` (default: `list`)', $modelDoc);
+        $this->assertStringContainsString('| `--group=GROUP` | - | Filter by model group ID or title |', $modelDoc);
+        $this->assertStringContainsString('| `--model-group=GROUP` | - | Filter by model group ID or title |', $modelDoc);
+        $this->assertStringContainsString('| `--tag=TAG` | - | Filter by tag ID or name |', $modelDoc);
+        $this->assertStringContainsString('| `--category=CATEGORY` | - | Filter by category ID or title |', $modelDoc);
+        $this->assertStringContainsString('| `--usage=USAGE` | - | KVS admin usage filter, such as `used/videos` |', $modelDoc);
+        $this->assertStringContainsString('| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/description` |', $modelDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $modelDoc);
+        $this->assertStringContainsString('kvs model stats', $modelDoc);
+        $this->assertStringContainsString('kvs model list --fields=model_id,title,videos_amount,albums_amount --format=json', $modelDoc);
+        $this->assertStringContainsString('- `kvs performer`', $modelDoc);
+        $this->assertStringContainsString('- `kvs performers`', $modelDoc);
+        $this->assertStringContainsString('- `used/all`', $modelDoc);
+        $this->assertStringContainsString('`filled/tags`', $modelDoc);
+        $this->assertStringNotContainsString('The `model` command allows you to list and view model/performer profiles.', $modelDoc);
+        $this->assertStringNotContainsString('| `total_videos` | Number of videos |', $modelDoc);
+
+        $dvdDoc = file_get_contents($docsRoot . '/commands/dvd.md');
+        $this->assertIsString($dvdDoc);
+        $this->assertStringContainsString('Action: `list`, `show`, `stats` (default: `list`)', $dvdDoc);
+        $this->assertStringContainsString('| `--group=GROUP` | - | Filter by DVD group ID or title |', $dvdDoc);
+        $this->assertStringContainsString('| `--dvd-group=GROUP` | - | Filter by DVD group ID or title |', $dvdDoc);
+        $this->assertStringContainsString('| `--model=MODEL` | - | Filter by model ID or title |', $dvdDoc);
+        $this->assertStringContainsString('| `--usage=USAGE` | - | KVS admin usage filter (`used/videos`, `notused/videos`) |', $dvdDoc);
+        $this->assertStringContainsString('| `--review-needed` | - | Show only DVDs that need review |', $dvdDoc);
+        $this->assertStringContainsString('| `--flag=FLAG` | - | Filter by user flag ID |', $dvdDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $dvdDoc);
+        $this->assertStringContainsString('kvs dvd stats', $dvdDoc);
+        $this->assertStringContainsString('kvs dvd list --fields=dvd_id,title,total_videos,dvd_viewed --format=json', $dvdDoc);
+        $this->assertStringContainsString('- `kvs channel`', $dvdDoc);
+        $this->assertStringContainsString('- `kvs channels`', $dvdDoc);
+        $this->assertStringContainsString('- `notused/videos`', $dvdDoc);
+        $this->assertStringContainsString('`filled/tags`', $dvdDoc);
+        $this->assertStringNotContainsString('The `dvd` command allows you to list and view DVD or channel content.', $dvdDoc);
+        $this->assertStringNotContainsString('| `total_videos` | Number of videos |', $dvdDoc);
+    }
 }
