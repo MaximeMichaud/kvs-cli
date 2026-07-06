@@ -384,4 +384,47 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('The `dvd` command allows you to list and view DVD or channel content.', $dvdDoc);
         $this->assertStringNotContainsString('| `total_videos` | Number of videos |', $dvdDoc);
     }
+
+    public function testAlbumAndUserDocumentationUsesCurrentActionsAliasesAndFilters(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+
+        $albumDoc = file_get_contents($docsRoot . '/commands/album.md');
+        $this->assertIsString($albumDoc);
+        $this->assertStringContainsString('Action: `list`, `show`, `delete` (default: `list`)', $albumDoc);
+        $this->assertStringContainsString('The `delete` action modifies album data and uses KVS native cleanup.', $albumDoc);
+        $this->assertStringContainsString('| `--content-source=SOURCE` | - | Filter by content source ID or title |', $albumDoc);
+        $this->assertStringContainsString('| `--content-source-group=GROUP` | - | Filter by content source group ID or title |', $albumDoc);
+        $this->assertStringContainsString('| `--review-needed` | - | Show only albums that need review |', $albumDoc);
+        $this->assertStringContainsString('| `--locked` | - | Show only locked albums |', $albumDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $albumDoc);
+        $this->assertStringContainsString('kvs album delete <id>', $albumDoc);
+        $this->assertStringContainsString('kvs album list --fields=album_id,title,photos_amount,album_viewed --format=json', $albumDoc);
+        $this->assertStringContainsString('- `kvs gallery`', $albumDoc);
+        $this->assertStringContainsString('`filled/tags`', $albumDoc);
+        $this->assertStringNotContainsString('The `album` command allows you to list and view photo album content', $albumDoc);
+        $this->assertStringNotContainsString('| `--status=<id>` | - | Filter by status (0, 1) |', $albumDoc);
+
+        $userDoc = file_get_contents($docsRoot . '/commands/user.md');
+        $this->assertIsString($userDoc);
+        $this->assertStringContainsString('Action: `list`, `show`, `create`, `delete`, `stats` (default: `list`)', $userDoc);
+        $this->assertStringContainsString('The `create` and `delete` actions modify user data.', $userDoc);
+        $this->assertStringContainsString('| `--activity=ACTIVITY` | - | Filter by KVS admin activity bucket |', $userDoc);
+        $this->assertStringContainsString('| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/avatar` |', $userDoc);
+        $this->assertStringContainsString(
+            '| `--banned-status=STATUS` | - | Filter by login protection status (`temporary`, `permanent`, `1`, `2`) |',
+            $userDoc
+        );
+        $this->assertStringContainsString('| `-y, --yes` | - | Skip confirmation prompt for `delete` |', $userDoc);
+        $this->assertStringContainsString('kvs user stats', $userDoc);
+        $this->assertStringContainsString('kvs user delete 123 --yes', $userDoc);
+        $this->assertStringContainsString('kvs user list --fields=user_id,username,status_id,videos_count,albums_count --format=json', $userDoc);
+        $this->assertStringContainsString('- `kvs member`', $userDoc);
+        $this->assertStringContainsString('- `kvs members`', $userDoc);
+        $this->assertStringContainsString('- `have/logins`', $userDoc);
+        $this->assertStringContainsString('`filled/avatar`', $userDoc);
+        $this->assertStringContainsString('(user_purge.md)', $userDoc);
+        $this->assertStringNotContainsString('The `user` command allows you to list and view user accounts', $userDoc);
+        $this->assertStringNotContainsString('(user-purge.md)', $userDoc);
+    }
 }
