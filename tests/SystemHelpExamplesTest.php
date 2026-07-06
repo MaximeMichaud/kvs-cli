@@ -139,6 +139,35 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('`albums_count`', $userDoc);
     }
 
+    public function testCommandReferenceUsesCurrentAliasesAndNamedStatuses(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $commandsReadme = file_get_contents($docsRoot . '/commands/README.md');
+        $this->assertIsString($commandsReadme);
+
+        $this->assertStringContainsString('| [`album`](album.md) | `albums`, `gallery`, `content:album` |', $commandsReadme);
+        $this->assertStringContainsString('| [`user`](user.md) | `users`, `member`, `members`, `content:user` |', $commandsReadme);
+        $this->assertStringContainsString('| [`category`](category.md) | `categories`, `cat`, `content:category` |', $commandsReadme);
+        $this->assertStringContainsString(
+            '| [`model`](model.md) | `models`, `performer`, `performers`, `content:model` |',
+            $commandsReadme
+        );
+        $this->assertStringContainsString('| [`dvd`](dvd.md) | `dvds`, `channel`, `channels`, `content:dvd` |', $commandsReadme);
+        $this->assertStringContainsString('| [`plugin`](plugin.md) | `plugins`, `plug` |', $commandsReadme);
+        $this->assertStringContainsString(
+            '--status=STATUS       Filter by status name or ID, when the command supports it',
+            $commandsReadme
+        );
+        $this->assertStringContainsString('- `processing` / `3` - Processing', $commandsReadme);
+        $this->assertStringContainsString('- `premium` / `3` - Premium', $commandsReadme);
+        $this->assertStringContainsString('- `disabled`, `inactive` / `0` - Disabled', $commandsReadme);
+
+        $this->assertStringNotContainsString('| [`album`](album.md) | `albums`, `content:album` |', $commandsReadme);
+        $this->assertStringNotContainsString('| [`plugin`](plugin.md) | `plugins` |', $commandsReadme);
+        $this->assertStringNotContainsString('--status=ID           Filter by status ID', $commandsReadme);
+        $this->assertStringNotContainsString('- `2` - Error (red)', $commandsReadme);
+    }
+
     public function testQueueDocumentationSeparatesActiveAndHistoryStatusValues(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';

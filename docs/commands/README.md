@@ -9,14 +9,14 @@ Complete reference for all KVS-CLI commands.
 | Command | Aliases | Description |
 |---------|---------|-------------|
 | [`video`](video.md) | `videos`, `content:video` | Manage videos |
-| [`album`](album.md) | `albums`, `content:album` | Manage photo albums |
-| [`user`](user.md) | `users`, `content:user` | Manage users |
+| [`album`](album.md) | `albums`, `gallery`, `content:album` | Manage photo albums |
+| [`user`](user.md) | `users`, `member`, `members`, `content:user` | Manage users |
 | [`user:purge`](user_purge.md) | `users:purge` | Bulk delete users |
 | [`comment`](comment.md) | `comments`, `content:comment` | Manage comments |
-| [`category`](category.md) | `categories`, `content:category` | Manage categories |
+| [`category`](category.md) | `categories`, `cat`, `content:category` | Manage categories |
 | [`tag`](tag.md) | `tags`, `content:tag` | Manage tags |
-| [`model`](model.md) | `models`, `content:model` | Manage models/performers |
-| [`dvd`](dvd.md) | `dvds`, `content:dvd` | Manage DVDs/channels |
+| [`model`](model.md) | `models`, `performer`, `performers`, `content:model` | Manage models/performers |
+| [`dvd`](dvd.md) | `dvds`, `channel`, `channels`, `content:dvd` | Manage DVDs/channels |
 | [`playlist`](playlist.md) | `playlists`, `content:playlist` | Manage playlists |
 
 ### System Administration
@@ -67,7 +67,7 @@ Complete reference for all KVS-CLI commands.
 | [`eval-file`](eval_file.md) | `eval:file` | Execute PHP file |
 | [`shell`](shell.md) | `console`, `repl` | Interactive shell |
 | [`config`](config.md) | `conf`, `cfg` | Manage configuration |
-| [`plugin`](plugin.md) | `plugins` | List plugins |
+| [`plugin`](plugin.md) | `plugins`, `plug` | List plugins |
 | [`dev:debug`](dev_debug.md) | `debug` | Debug information |
 | [`dev:log`](dev_log.md) | `log`, `logs` | View logs |
 
@@ -111,7 +111,7 @@ Most list commands support:
 --fields=FIELDS       Comma-separated list of fields
 --limit=N             Limit number of results (default: 20)
 --no-truncate         Don't truncate long values
---status=ID           Filter by status ID
+--status=STATUS       Filter by status name or ID, when the command supports it
 ```
 
 ## Output Formats
@@ -128,25 +128,40 @@ Most list commands support:
 ## Status Values
 
 ### Video Status
-- `0` - Disabled (yellow)
-- `1` - Active (green)
-- `2` - Error (red)
+- `active` / `1` - Active
+- `disabled` / `0` - Disabled
+- `error` / `2` - Error
+- `processing` / `3` - Processing
+- `deleting` / `4` - Deleting
+- `deleted` / `5` - Deleted
 
 ### User Status
-- `0` - Disabled (red)
-- `1` - Not Confirmed (yellow)
-- `2` - Active (green)
-- `3` - Premium (cyan)
-- `4` - VIP (magenta)
-- `6` - Webmaster (blue)
+- `disabled` / `0` - Disabled
+- `not-confirmed`, `unconfirmed` / `1` - Not confirmed
+- `active` / `2` - Active
+- `premium` / `3` - Premium
+- `anonymous` / `4` - Anonymous
+- `generated` / `5` - Generated
+- `webmaster` / `6` - Webmaster
 
 ### Album Status
-- `0` - Disabled (yellow)
-- `1` - Active (green)
+- `active` / `1` - Active
+- `disabled` / `0` - Disabled
+- `error` / `2` - Error
+- `processing` / `3` - Processing
+- `deleting` / `4` - Deleting
+- `deleted` / `5` - Deleted
+
+### Model Status
+- `active` / `1` - Active
+- `disabled`, `inactive` / `0` - Disabled
 
 ### Category/Tag Status
-- `0` - Inactive (yellow)
-- `1` - Active (green)
+- `active` / `1` - Active
+- `inactive` / `0` - Inactive
+
+Status values vary by command. See the individual command pages for the full
+action-specific options and filters.
 
 ## Getting Help
 
