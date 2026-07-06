@@ -121,7 +121,11 @@ EOT
             $contentDir = null;
             if (!$noContent) {
                 $this->io()->section('Step 2/3: Copying content files');
-                $contentDir = $this->copyContent($targetConfig, $tempDir);
+                $contentResult = $this->copyContent($targetConfig, $tempDir);
+                if ($contentResult === false) {
+                    return self::FAILURE;
+                }
+                $contentDir = $contentResult;
             } else {
                 $this->io()->section('Step 2/3: Skipping content files');
                 $this->io()->comment('--no-content specified');
@@ -291,7 +295,7 @@ EOT
         return $outputFile;
     }
 
-    private function copyContent(Configuration $config, string $tempDir): ?string
+    private function copyContent(Configuration $config, string $tempDir): string|false|null
     {
         $contentPath = $config->getContentPath();
         if (!is_dir($contentPath)) {
@@ -347,6 +351,14 @@ EOT
                 );
                 $process->setTimeout(3600);
                 $process->run();
+            }
+
+            if (!$process->isSuccessful()) {
+                $errorOutput = trim($process->getErrorOutput());
+                $this->io()->error(
+                    'Content copy failed for ' . $dir . ($errorOutput !== '' ? ': ' . $errorOutput : '')
+                );
+                return false;
             }
 
             // Count files

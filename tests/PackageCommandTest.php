@@ -244,6 +244,54 @@ SH
         }
     }
 
+    public function testCopyContentFailsWhenRsyncAndFallbackCopyFail(): void
+    {
+        $toolsDir = $this->tempDir . '/copy-fail-tools';
+        mkdir($toolsDir, 0755, true);
+
+        foreach (['rsync', 'cp'] as $tool) {
+            $path = $toolsDir . '/' . $tool;
+            file_put_contents(
+                $path,
+                <<<'SH'
+#!/bin/sh
+echo 'copy denied' >&2
+exit 1
+SH
+            );
+            chmod($path, 0755);
+        }
+
+        mkdir($this->tempDir . '/contents/videos_sources/1000', 0755, true);
+        file_put_contents($this->tempDir . '/contents/videos_sources/1000/source.mp4', 'video');
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $input = new ArrayInput([]);
+            $output = new BufferedOutput(decorated: false);
+
+            $initialize = new \ReflectionMethod($this->command, 'initialize');
+            $initialize->invoke($this->command, $input, $output);
+
+            $copyContent = new \ReflectionMethod($this->command, 'copyContent');
+            $contentDir = $copyContent->invoke($this->command, $this->config, $this->tempDir . '/package-work');
+
+            $display = $output->fetch();
+
+            $this->assertFalse($contentDir, $display);
+            $this->assertStringContainsString('Content copy failed', $display);
+            $this->assertStringContainsString('copy denied', $display);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     private function packagePath(): string
     {
         return $this->tempDir . '/test-pkg-' . bin2hex(random_bytes(8)) . '.tar.zst';
