@@ -631,6 +631,8 @@ class ConversionCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Unknown conversion action "unknown_action"', $output);
+        $this->assertStringContainsString('activate', $output);
+        $this->assertStringContainsString('deactivate', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 

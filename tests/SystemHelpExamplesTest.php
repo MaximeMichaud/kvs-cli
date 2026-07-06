@@ -150,4 +150,23 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('kvs queue history --status=completed', $queueDoc);
         $this->assertStringNotContainsString('Show completed/deleted tasks history', $queueDoc);
     }
+
+    public function testServerAndConversionDocumentationIncludesActionAliases(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+
+        $serverDoc = file_get_contents($docsRoot . '/commands/system_server.md');
+        $this->assertIsString($serverDoc);
+        $this->assertStringContainsString('`activate`', $serverDoc);
+        $this->assertStringContainsString('`deactivate`', $serverDoc);
+        $this->assertStringContainsString('kvs server activate 1', $serverDoc);
+        $this->assertStringContainsString('kvs server deactivate 1', $serverDoc);
+
+        $conversionDoc = file_get_contents($docsRoot . '/commands/system_conversion.md');
+        $this->assertIsString($conversionDoc);
+        $this->assertStringContainsString('`activate`', $conversionDoc);
+        $this->assertStringContainsString('`deactivate`', $conversionDoc);
+        $this->assertStringContainsString('kvs conversion activate 1', $conversionDoc);
+        $this->assertStringContainsString('kvs conversion deactivate 1', $conversionDoc);
+    }
 }

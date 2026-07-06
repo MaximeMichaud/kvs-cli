@@ -172,8 +172,8 @@ _kvs_complete() {
     local plugin_actions="list show path status"
     local config_actions="list get set edit"
     local queue_actions="list show stats history help-action"
-    local server_actions="list show enable disable stats group"
-    local conversion_actions="list show enable disable debug-on debug-off log config stats"
+    local server_actions="list show enable disable activate deactivate stats group"
+    local conversion_actions="list show enable disable activate deactivate debug-on debug-off log config stats"
     local email_actions="show test set log templates"
     local antispam_actions="show set add remove blacklist"
     local stats_settings_actions="show set"
@@ -448,10 +448,10 @@ _kvs() {
                     _arguments '1:action:(list show stats history help-action)'
                     ;;
                 system:server|server|servers)
-                    _arguments '1:action:(list show enable disable stats group)'
+                    _arguments '1:action:(list show enable disable activate deactivate stats group)'
                     ;;
                 system:conversion|conversion)
-                    _arguments '1:action:(list show enable disable debug-on debug-off log config stats)'
+                    _arguments '1:action:(list show enable disable activate deactivate debug-on debug-off log config stats)'
                     ;;
                 system:email|email)
                     _arguments '1:action:(show test set log templates)'
@@ -631,8 +631,9 @@ complete -c kvs -n "__fish_seen_subcommand_from content:playlist playlist playli
 complete -c kvs -n "__fish_seen_subcommand_from plugin plugins plug" -a "list show path status"
 complete -c kvs -n "__fish_seen_subcommand_from config conf cfg" -a "list get set edit"
 complete -c kvs -n "__fish_seen_subcommand_from system:queue queue" -a "list show stats history help-action"
-complete -c kvs -n "__fish_seen_subcommand_from system:server server servers" -a "list show enable disable stats group"
-complete -c kvs -n "__fish_seen_subcommand_from system:conversion conversion" -a "list show enable disable debug-on debug-off log config stats"
+complete -c kvs -n "__fish_seen_subcommand_from system:server server servers" -a "list show enable disable activate deactivate stats group"
+complete -c kvs -n "__fish_seen_subcommand_from system:conversion conversion" -a "list show enable disable activate deactivate"
+complete -c kvs -n "__fish_seen_subcommand_from system:conversion conversion" -a "debug-on debug-off log config stats"
 complete -c kvs -n "__fish_seen_subcommand_from system:email email" -a "show test set log templates"
 complete -c kvs -n "__fish_seen_subcommand_from system:antispam antispam" -a "show set add remove blacklist"
 complete -c kvs -n "__fish_seen_subcommand_from system:stats-settings stats-settings" -a "show set"

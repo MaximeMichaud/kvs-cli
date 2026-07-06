@@ -92,7 +92,7 @@ class ServerCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|enable|disable|stats|group')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|enable|disable|activate|deactivate|stats|group')
             ->addArgument('id', InputArgument::OPTIONAL, 'Server or group ID')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by content type (video|album)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
@@ -111,6 +111,8 @@ Manage KVS storage servers and server groups.
   show <id>   Show server details
   enable <id> Enable/activate a server
   disable <id> Disable/deactivate a server
+  activate <id>   Alias for enable
+  deactivate <id> Alias for disable
   stats       Show storage statistics overview
   group       List or show server groups (use: group, group <id>)
 
@@ -164,7 +166,7 @@ HELP
             default => $this->failUnknownAction(
                 'server',
                 $action,
-                ['list', 'show', 'enable', 'disable', 'stats', 'group']
+                ['list', 'show', 'enable', 'disable', 'activate', 'deactivate', 'stats', 'group']
             ),
         };
     }

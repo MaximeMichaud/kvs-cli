@@ -1012,8 +1012,11 @@ class ServerCommandTest extends TestCase
             'action' => 'unknown_action',
         ]);
 
+        $output = $this->tester->getDisplay();
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Unknown server action "unknown_action"', $this->tester->getDisplay());
+        $this->assertStringContainsString('Unknown server action "unknown_action"', $output);
+        $this->assertStringContainsString('activate', $output);
+        $this->assertStringContainsString('deactivate', $output);
     }
 
     public function testServerEnableMissingId(): void

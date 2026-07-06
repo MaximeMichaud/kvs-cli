@@ -90,7 +90,7 @@ class ConversionCommand extends BaseCommand
             ->addArgument(
                 'action',
                 InputArgument::OPTIONAL,
-                'Action: list|show|enable|disable|debug-on|debug-off|log|config|stats'
+                'Action: list|show|enable|disable|activate|deactivate|debug-on|debug-off|log|config|stats'
             )
             ->addArgument('id', InputArgument::OPTIONAL, 'Server ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|init)')
@@ -113,6 +113,8 @@ Manage KVS conversion servers (video/image transcoding).
   show <id>      Show server details (tasks, options, connection)
   enable <id>    Enable/activate a server
   disable <id>   Disable/deactivate a server
+  activate <id>   Alias for enable
+  deactivate <id> Alias for disable
   debug-on <id>  Enable debug mode
   debug-off <id> Disable debug mode
   log <id>       View server conversion log
@@ -169,7 +171,7 @@ HELP
             default => $this->failUnknownAction(
                 'conversion',
                 $action,
-                ['list', 'show', 'enable', 'disable', 'debug-on', 'debug-off', 'log', 'config', 'stats']
+                ['list', 'show', 'enable', 'disable', 'activate', 'deactivate', 'debug-on', 'debug-off', 'log', 'config', 'stats']
             ),
         };
     }

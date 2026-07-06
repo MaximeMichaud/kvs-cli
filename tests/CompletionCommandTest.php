@@ -86,6 +86,11 @@ class CompletionCommandTest extends TestCase
         $this->assertStringContainsString('migrate:scan', $bashOutput);
         $this->assertStringContainsString('local video_actions="list show delete stats"', $bashOutput);
         $this->assertStringContainsString('local queue_actions="list show stats history help-action"', $bashOutput);
+        $this->assertStringContainsString('local server_actions="list show enable disable activate deactivate stats group"', $bashOutput);
+        $this->assertStringContainsString(
+            'local conversion_actions="list show enable disable activate deactivate debug-on debug-off log config stats"',
+            $bashOutput
+        );
 
         $zsh = new CommandTester(new CompletionCommand());
         $zsh->execute(['shell' => 'zsh']);
@@ -236,7 +241,15 @@ class CompletionCommandTest extends TestCase
             $fishOutput
         );
         $this->assertStringContainsString(
-            '__fish_seen_subcommand_from system:server server servers" -a "list show enable disable stats group"',
+            '__fish_seen_subcommand_from system:server server servers" -a "list show enable disable activate deactivate stats group"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from system:conversion conversion" -a "list show enable disable activate deactivate"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from system:conversion conversion" -a "debug-on debug-off log config stats"',
             $fishOutput
         );
         $this->assertStringContainsString(
