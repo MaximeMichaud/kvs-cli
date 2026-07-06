@@ -355,6 +355,25 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('(dev-debug.md)', $devLogDoc);
     }
 
+    public function testEmailDocumentationDescribesCliTestLimitationsAndJsonMetadata(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $emailDoc = file_get_contents($docsRoot . '/commands/system_email.md');
+        $this->assertIsString($emailDoc);
+
+        $this->assertStringContainsString('Send a test email through PHP `mail()`.', $emailDoc);
+        $this->assertStringContainsString('The CLI test action does not send SMTP test emails.', $emailDoc);
+        $this->assertStringContainsString('Use the KVS admin panel to', $emailDoc);
+        $this->assertStringContainsString('test SMTP delivery.', $emailDoc);
+        $this->assertStringContainsString(
+            '`test_email`, `test_subject`, and `test_body`. `kvs email set` does not write',
+            $emailDoc
+        );
+        $this->assertStringContainsString('# Basic PHP mail() test', $emailDoc);
+
+        $this->assertStringNotContainsString('Use `test` action to verify settings before enabling', $emailDoc);
+    }
+
     public function testPluginDocumentationUsesCurrentFieldsActionsAndAliases(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';
