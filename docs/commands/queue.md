@@ -17,13 +17,13 @@ kvs queue <action> [id] [options]
 | `list` | List active tasks in queue (default) |
 | `show` | Show details for a specific task |
 | `stats` | Show queue statistics |
-| `history` | Show completed/deleted tasks history |
+| `history` | Show completed/cancelled/failed task history |
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `--status=<status>` | Filter by status: `pending`, `processing`, `failed` |
+| `--status=<status>` | Filter by task status. Active queue values differ from history values. |
 | `--type=<id>` | Filter by task type ID |
 | `--video=<id>` | Filter by video ID |
 | `--album=<id>` | Filter by album ID |
@@ -31,13 +31,21 @@ kvs queue <action> [id] [options]
 | `--limit=<n>` | Number of results (default: 20) |
 | `--format=<format>` | Output format: `table`, `csv`, `json`, `yaml`, `count` |
 
-## Task Status Values
+## Active Queue Status Values
 
-| Status | Description |
-|--------|-------------|
-| `pending` | Tasks waiting to be processed (status_id=0) |
-| `processing` | Tasks currently being processed (status_id=1) |
-| `failed` | Tasks that failed with error (status_id=2) |
+| Status | Aliases | Description |
+|--------|---------|-------------|
+| `pending` | `scheduled`, `0` | Tasks waiting to be processed (status_id=0) |
+| `processing` | `in-process`, `in_process`, `1` | Tasks currently being processed (status_id=1) |
+| `failed` | `error`, `2` | Tasks that failed with error (status_id=2) |
+
+## History Status Values
+
+| Status | Aliases | Description |
+|--------|---------|-------------|
+| `failed` | `error`, `2` | Tasks that failed with error (status_id=2) |
+| `completed` | `3` | Tasks completed successfully (status_id=3) |
+| `cancelled` | `canceled`, `deleted`, `4` | Tasks cancelled or deleted before completion (status_id=4) |
 
 ## Common Task Types
 
@@ -144,6 +152,18 @@ Output includes:
 
 ```bash
 kvs queue history --limit=50
+```
+
+### Show completed history tasks
+
+```bash
+kvs queue history --status=completed
+```
+
+### Show cancelled history tasks
+
+```bash
+kvs queue history --status=cancelled
 ```
 
 ### Export as JSON

@@ -8,6 +8,7 @@ use KVS\CLI\Command\System\BackupCommand;
 use KVS\CLI\Command\System\CacheCommand;
 use KVS\CLI\Command\System\CheckCommand;
 use KVS\CLI\Command\System\CronCommand;
+use KVS\CLI\Command\System\QueueCommand;
 use KVS\CLI\Command\System\StatusCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
@@ -35,6 +36,7 @@ class SystemHelpExamplesTest extends TestCase
             new CacheCommand($this->config),
             new CheckCommand($this->config),
             new CronCommand($this->config),
+            new QueueCommand($this->config),
             new StatusCommand($this->config),
         ];
 
@@ -131,5 +133,21 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('`total_albums`', $userDoc);
         $this->assertStringContainsString('`videos_count`', $userDoc);
         $this->assertStringContainsString('`albums_count`', $userDoc);
+    }
+
+    public function testQueueDocumentationSeparatesActiveAndHistoryStatusValues(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $queueDoc = file_get_contents($docsRoot . '/commands/queue.md');
+        $this->assertIsString($queueDoc);
+
+        $this->assertStringContainsString('## Active Queue Status Values', $queueDoc);
+        $this->assertStringContainsString('## History Status Values', $queueDoc);
+        $this->assertStringContainsString('`completed`', $queueDoc);
+        $this->assertStringContainsString('`cancelled`', $queueDoc);
+        $this->assertStringContainsString('`canceled`', $queueDoc);
+        $this->assertStringContainsString('`deleted`', $queueDoc);
+        $this->assertStringContainsString('kvs queue history --status=completed', $queueDoc);
+        $this->assertStringNotContainsString('Show completed/deleted tasks history', $queueDoc);
     }
 }

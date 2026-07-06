@@ -112,7 +112,7 @@ class QueueCommand extends BaseCommand
                 'status',
                 null,
                 InputOption::VALUE_REQUIRED,
-                'Filter by status (scheduled|pending|in-process|processing|error|failed|completed|cancelled)'
+                'Filter by task status'
             )
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by task type ID')
             ->addOption('error-code', null, InputOption::VALUE_REQUIRED, 'Filter by KVS task error code')
@@ -132,10 +132,18 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   stats    Show queue statistics
   history  Show completed/cancelled/failed tasks history
 
-<fg=yellow>STATUS VALUES:</>
+<fg=yellow>ACTIVE QUEUE STATUS VALUES:</>
   pending     Scheduled tasks waiting to be processed (status_id=0)
   processing  Tasks currently in process (status_id=1)
   failed      Tasks finished with error (status_id=2)
+  Aliases: scheduled, in-process, error, 0, 1, 2
+
+<fg=yellow>HISTORY STATUS VALUES:</>
+  failed      Tasks finished with error (status_id=2)
+  completed   Tasks completed successfully (status_id=3)
+  cancelled   Tasks cancelled or deleted before completion (status_id=4)
+  deleted     Compatibility alias for cancelled history tasks
+  Aliases: error, canceled, 2, 3, 4
 
 <fg=yellow>COMMON TASK TYPES:</>
   1   New video
@@ -154,6 +162,7 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   <fg=green>kvs queue show 123</>                     Show task #123 details
   <fg=green>kvs queue stats</>                        Show queue statistics
   <fg=green>kvs queue history --limit=50</>           Show last 50 history tasks
+  <fg=green>kvs queue history --status=completed</>   Show completed history tasks
   <fg=green>kvs queue history --album=12</>           Show history for album #12
 HELP
             );
@@ -978,7 +987,9 @@ HELP
             ];
             $statusKey = strtolower($status);
             if (!array_key_exists($statusKey, $statusMap)) {
-                $this->io()->error('Invalid status "' . $status . '". Valid values: error, failed, completed, cancelled');
+                $this->io()->error(
+                    'Invalid status "' . $status . '". Valid values: error, failed, completed, cancelled, canceled, deleted, 2, 3, 4'
+                );
                 return self::FAILURE;
             }
             $fromClause .= " AND bh.status_id = :status";

@@ -912,6 +912,38 @@ class QueueCommandTest extends TestCase
         $this->assertSame('Cancelled', $rows[0]['status']);
     }
 
+    public function testQueueHistoryInvalidStatusListsEveryAcceptedHistoryAlias(): void
+    {
+        $this->tester->execute([
+            'action' => 'history',
+            '--status' => 'pending',
+            '--format' => 'count',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertEquals(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('Valid values:', $output);
+        foreach (['error', 'failed', 'completed', 'cancelled', 'canceled', 'deleted', '2', '3', '4'] as $status) {
+            $this->assertStringContainsString($status, $output);
+        }
+    }
+
+    public function testQueueHelpDocumentsActiveAndHistoryStatusValues(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString('ACTIVE QUEUE STATUS VALUES', $help);
+        $this->assertStringContainsString('pending     Scheduled tasks waiting to be processed (status_id=0)', $help);
+        $this->assertStringContainsString('processing  Tasks currently in process (status_id=1)', $help);
+        $this->assertStringContainsString('failed      Tasks finished with error (status_id=2)', $help);
+        $this->assertStringContainsString('HISTORY STATUS VALUES', $help);
+        $this->assertStringContainsString('completed   Tasks completed successfully (status_id=3)', $help);
+        $this->assertStringContainsString('cancelled   Tasks cancelled or deleted before completion (status_id=4)', $help);
+        $this->assertStringContainsString('deleted     Compatibility alias for cancelled history tasks', $help);
+        $this->assertStringContainsString('kvs queue history --status=completed', $help);
+    }
+
     public function testQueueHistoryDisplaysFailedHistoryStatus(): void
     {
         $this->insertFailedHistoryTask();
