@@ -102,7 +102,151 @@ class CompletionCommandTest extends TestCase
         $this->assertStringContainsString('-a "system:queue"', $fishOutput);
         $this->assertStringContainsString('-a "settings:options"', $fishOutput);
         $this->assertStringContainsString('-a "video:screenshots"', $fishOutput);
-        $this->assertStringContainsString('__fish_seen_subcommand_from content:video video" -a "list show delete stats"', $fishOutput);
+        $this->assertStringContainsString('__fish_seen_subcommand_from content:video video videos" -a "list show delete stats"', $fishOutput);
+    }
+
+    public function testCompletionScriptsIncludeCommandAliases(): void
+    {
+        $bash = new CommandTester(new CompletionCommand());
+        $bash->execute(['shell' => 'bash']);
+        $bashOutput = $bash->getDisplay();
+
+        $zsh = new CommandTester(new CompletionCommand());
+        $zsh->execute(['shell' => 'zsh']);
+        $zshOutput = $zsh->getDisplay();
+
+        $fish = new CommandTester(new CompletionCommand());
+        $fish->execute(['shell' => 'fish']);
+        $fishOutput = $fish->getDisplay();
+
+        $aliases = [
+            'selfupdate',
+            'self:update',
+            'info',
+            'status',
+            'cache',
+            'cron',
+            'backup',
+            'check',
+            'benchmark',
+            'bench',
+            'queue',
+            'server',
+            'servers',
+            'conversion',
+            'email',
+            'antispam',
+            'stats',
+            'stats-settings',
+            'maint',
+            'videos',
+            'albums',
+            'gallery',
+            'users',
+            'member',
+            'members',
+            'users:purge',
+            'user:cleanup',
+            'categories',
+            'cat',
+            'tags',
+            'comments',
+            'models',
+            'performer',
+            'performers',
+            'dvds',
+            'channel',
+            'channels',
+            'playlists',
+            'plugins',
+            'plug',
+            'conf',
+            'cfg',
+            'console',
+            'repl',
+            'eval-php',
+            'database:export',
+            'db:dump',
+            'database:import',
+            'db:restore',
+            'debug',
+            'log',
+            'logs',
+            'formats',
+            'screenshots',
+            'options',
+            'option',
+            'video-format',
+            'vformat',
+            'scan',
+            'package',
+            'import',
+            'to-docker',
+        ];
+
+        foreach ($aliases as $alias) {
+            $this->assertMatchesRegularExpression(
+                '/(^|\\s)' . preg_quote($alias, '/') . '(\\s|")/s',
+                $bashOutput,
+                sprintf('Bash completion should include alias "%s".', $alias)
+            );
+
+            $zshAlias = str_replace(':', '\\:', $alias);
+            $this->assertStringContainsString(
+                "'" . $zshAlias . ':',
+                $zshOutput,
+                sprintf('Zsh completion should include alias "%s".', $alias)
+            );
+
+            $this->assertStringContainsString(
+                '-a "' . $alias . '"',
+                $fishOutput,
+                sprintf('Fish completion should include alias "%s".', $alias)
+            );
+        }
+    }
+
+    public function testCompletionScriptsIncludeActionsForCommandAliases(): void
+    {
+        $zsh = new CommandTester(new CompletionCommand());
+        $zsh->execute(['shell' => 'zsh']);
+        $zshOutput = $zsh->getDisplay();
+
+        $this->assertStringContainsString('content:album|album|albums|gallery)', $zshOutput);
+        $this->assertStringContainsString('content:model|model|models|performer|performers)', $zshOutput);
+        $this->assertStringContainsString('content:dvd|dvd|dvds|channel|channels)', $zshOutput);
+        $this->assertStringContainsString('system:server|server|servers)', $zshOutput);
+        $this->assertStringContainsString('settings:video-format|video-format|vformat)', $zshOutput);
+        $this->assertStringContainsString('maintenance|maint)', $zshOutput);
+
+        $fish = new CommandTester(new CompletionCommand());
+        $fish->execute(['shell' => 'fish']);
+        $fishOutput = $fish->getDisplay();
+
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from content:album album albums gallery" -a "list show delete"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from content:model model models performer performers" -a "list show stats"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from content:dvd dvd dvds channel channels" -a "list show stats"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from system:server server servers" -a "list show enable disable stats group"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from settings:video-format video-format vformat" -a "list show groups"',
+            $fishOutput
+        );
+        $this->assertStringContainsString(
+            '__fish_seen_subcommand_from maintenance maint" -a "on off status"',
+            $fishOutput
+        );
     }
 
     public function testCompletionScriptsDoNotSuggestInvalidLegacyActions(): void
