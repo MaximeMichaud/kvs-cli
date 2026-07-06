@@ -1,6 +1,6 @@
 # kvs settings:video-format
 
-**[EXPERIMENTAL]** Manage KVS video format configurations.
+**[EXPERIMENTAL]** Inspect KVS video format configurations.
 
 ## Synopsis
 
@@ -10,32 +10,37 @@ kvs settings:video-format [<action>] [<id>] [options]
 
 ## Description
 
-The `settings:video-format` command manages video format configurations in KVS. This controls which video formats are generated during conversion and their settings.
+The `settings:video-format` command reads configured KVS video formats from
+`admin/formats_videos.php` data. It shows which formats are configured for
+future conversions, their status, group, access level, duration limits, timeline
+settings, and usage count.
 
-**Note:** This command manages format **configuration** (admin settings). To check actual video **files**, use `kvs video:formats`.
+**Note:** This command inspects format **configuration**. To check actual video
+**files** for a specific video, use `kvs video:formats`.
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `action` | No | Action: `list`, `show`, `groups` (default: `list`) |
-| `id` | Conditional | Format ID (required for `show`) |
+| `id` | Conditional | Format ID, required for `show` |
 
 ## Options
 
-| Option | Description |
-|--------|-------------|
-| `--status=STATUS` | Filter by status (see status values below) |
-| `--group=ID` | Filter by group ID |
-| `--fields=FIELDS` | Comma-separated fields to display |
-| `--format=FORMAT` | Output format: `table`, `csv`, `json`, `yaml`, `count` |
-| `--no-truncate` | Disable truncation |
-| `--force` | Skip experimental feature confirmation |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--status=STATUS` | - | Filter by status: `disabled`, `required`, `optional`, `deleting`, `error`, `conditional` |
+| `--group=GROUP` | - | Filter by group ID |
+| `--search=TEXT` | - | Search in title, postfix, and FFmpeg options |
+| `--fields=FIELDS` | - | Comma-separated fields to display |
+| `--format=FORMAT` | table | Output format: `table`, `csv`, `json`, `yaml`, `count` |
+| `--no-truncate` | - | Do not truncate long values |
+| `--force` | - | Skip experimental feature confirmation |
 
 ## Status Values
 
 | Status | ID | Description |
-|--------|-----|-------------|
+|--------|----|-------------|
 | `disabled` | 0 | Format is disabled |
 | `required` | 1 | Always converted for every video |
 | `optional` | 2 | Converted if source quality allows |
@@ -46,7 +51,7 @@ The `settings:video-format` command manages video format configurations in KVS. 
 ## Access Levels
 
 | Level | ID | Description |
-|-------|-----|-------------|
+|-------|----|-------------|
 | `any` | 0 | Available to guests |
 | `member` | 1 | Requires membership |
 | `premium` | 2 | Premium members only |
@@ -55,23 +60,17 @@ The `settings:video-format` command manages video format configurations in KVS. 
 
 ### list
 
-List all configured video formats.
+List configured video formats.
 
 ```bash
-# All formats
 kvs video-format list
-
-# Required formats only
 kvs video-format list --status=required
-
-# Formats in group 1
 kvs video-format list --group=1
-
-# JSON output
+kvs video-format list --search=mp4
 kvs video-format list --format=json
 ```
 
-### show <id>
+### show
 
 Show detailed format configuration.
 
@@ -82,11 +81,64 @@ kvs video-format show 5
 
 ### groups
 
-List format groups.
+List video format groups.
 
 ```bash
 kvs video-format groups
 ```
+
+## List Fields
+
+Common `list` fields include:
+
+- `format_video_id`
+- `id`
+- `title`
+- `postfix`
+- `status_id`
+- `status`
+- `is_conditional`
+- `format_video_group_id`
+- `group_title`
+- `size`
+- `access_level_id`
+- `access`
+- `is_download_enabled`
+- `download`
+- `is_hotlink_protection_enabled`
+- `limit_total_duration`
+- `limit_offset_start`
+- `limit_offset_end`
+- `limit_speed_value`
+- `is_timeline_enabled`
+- `timeline`
+- `videos_count`
+- `ffmpeg_options`
+- `watermark_image`
+- `watermark2_image`
+- `preroll_video`
+- `postroll_video`
+- `added_date`
+
+The `show` action can output the same configuration fields in structured
+formats, plus calculated display fields such as `group`, `hotlink_protection`,
+and formatted duration or offset values.
+
+## Group Fields
+
+Common `groups` fields include:
+
+- `format_video_group_id`
+- `id`
+- `title`
+- `format_count`
+- `formats`
+- `videos_count`
+- `is_default`
+- `default`
+- `is_premium`
+- `premium`
+- `set_duration_from`
 
 ## Examples
 
@@ -99,14 +151,14 @@ kvs video-format list
 # Required formats only
 kvs video-format list --status=required
 
-# Optional formats
-kvs video-format list --status=optional
-
-# Disabled formats
-kvs video-format list --status=disabled
+# Conditional formats
+kvs video-format list --status=conditional
 
 # Formats by group
 kvs video-format list --group=1
+
+# Search title, postfix, or FFmpeg options
+kvs video-format list --search=mp4
 ```
 
 ### View Format Details
@@ -115,8 +167,8 @@ kvs video-format list --group=1
 # Show format 1 configuration
 kvs video-format show 1
 
-# Show format 5
-kvs video-format show 5
+# JSON output for a specific format
+kvs video-format show 1 --format=json
 ```
 
 ### List Groups
@@ -124,72 +176,88 @@ kvs video-format show 5
 ```bash
 # Show all format groups
 kvs video-format groups
+
+# Export groups
+kvs video-format groups --format=json
 ```
 
 ### Export Configuration
 
 ```bash
-# Export format config to JSON
+# Export current format configuration
 kvs video-format list --format=json > formats-config.json
 
-# Export groups
-kvs video-format groups --format=json > groups.json
+# Export selected fields
+kvs video-format list --fields=format_video_id,title,postfix,status,size,access,videos_count --format=json
+
+# Export with long FFmpeg options untruncated
+kvs video-format list --fields=format_video_id,title,ffmpeg_options --no-truncate --format=csv > formats.csv
 ```
 
 ## Sample Output
 
-### List
+### list
 
-```
+```text
 Video Formats
 =============
 
- ID  Title      Status    Group  Size           Access   Videos
- 1   1080p      Required  1      1920x1080      Any      1,234
- 2   720p       Required  1      1280x720       Any      1,234
- 3   480p       Required  1      854x480        Any      1,234
- 4   360p       Optional  1      640x360        Any      856
- 5   4K         Optional  2      3840x2160      Premium  45
+ ID  Title        Postfix       Status          Size                         Access     Download  Timeline
+ 5   MP4 Preview  _preview.mp4  Required        320x180 (fixed size)         Any users  Yes       No
+ 4   MP4 4k       _2160p.mp4    Cond. required  4096x2160 (dynamic width)    Any users  Yes       No
+ 3   MP4 1080p    _1080p.mp4    Cond. required  1920x1080 (dynamic width)    Any users  Yes       No
+ 2   MP4 720p     _720p.mp4     Required        1280x720 (dynamic width)     Any users  Yes       No
+ 1   MP4 480p     .mp4          Required        848x480 (dynamic width)      Any users  Yes       10s
 ```
 
-### Show
+### show
 
-```
+```text
 Video Format #1
 ===============
 
- ID              1
- Title           1080p Full HD
- Status          Required
- Group           Standard Formats
- Resolution      1920x1080
- Bitrate         5000 kbps
- Access Level    Any
- Videos          1,234
-
-Configuration
--------------
- Video Codec     h264
- Audio Codec     aac
- Container       mp4
- Postfix         _1080p
-
-Conditions
+Basic Info
 ----------
- Min Source Width  1920px
- Min Source Height 1080px
+
+ Property  Value
+ Title     MP4 480p
+ Postfix   .mp4
+ Status    Required
+ Size      848x480 (dynamic width)
+ Group     Default (#1)
+
+Access & Download
+-----------------
+
+ Property            Value
+ Access Level        Any users
+ Download Enabled    Yes
+ Hotlink Protection  Yes
+
+Duration & Offset Limits
+------------------------
+
+ Property        Value
+ Total Duration  As source
+ Start Offset    0
+ End Offset      0
+
+Timeline Settings
+-----------------
+
+ Property           Value
+ Timeline Enabled   Yes
+ Timeline Interval  10s
 ```
 
-### Groups
+### groups
 
-```
+```text
 Format Groups
 =============
 
- ID  Title             Formats  Description
- 1   Standard Formats  3        SD, HD, Full HD
- 2   High Quality      2        4K, 8K
- 3   Mobile            2        Low-res for mobile
+ ID  Title    Default  Premium  Formats
+ 1   Default  Yes      No       5
 ```
 
 ## Use Cases
@@ -200,9 +268,11 @@ Format Groups
 # Check which formats are required
 kvs video-format list --status=required
 
-# View premium-only formats
-# (would need to filter output or use show)
-kvs video-format list
+# Search for MP4 formats
+kvs video-format list --search=mp4
+
+# View premium-only or default groups
+kvs video-format groups --fields=format_video_group_id,title,is_default,is_premium,formats --format=json
 ```
 
 ### Identify Issues
@@ -215,16 +285,6 @@ kvs video-format list --status=error
 kvs video-format list --status=deleting
 ```
 
-### Export for Documentation
-
-```bash
-# Export full configuration
-kvs video-format list --format=json > format-config-$(date +%Y%m%d).json
-
-# Export with all details
-kvs video-format list --no-truncate --format=csv > formats.csv
-```
-
 ## Aliases
 
 - `kvs video-format`
@@ -232,21 +292,22 @@ kvs video-format list --no-truncate --format=csv > formats.csv
 
 ## Notes
 
-- This command is **EXPERIMENTAL** - requires confirmation or `--force` flag
-- This manages format **configuration**, not actual video files
-- Changes to format configuration affect future conversions only
-- Existing videos are not automatically reconverted
+- This command is **EXPERIMENTAL** and requires confirmation or `--force`.
+- This command inspects format configuration, not actual video files.
+- It does not create, update, or delete KVS video formats.
+- Use the KVS admin panel for mutating video format configuration.
 
 ## Difference: settings:video-format vs video:formats
 
 | Command | Purpose | Scope |
 |---------|---------|-------|
-| `settings:video-format` | Manage format **configuration** | Admin settings |
+| `settings:video-format` | Inspect format **configuration** | Admin settings |
 | `video:formats` | Check actual video **files** | Individual videos |
 
 **Example:**
+
 ```bash
-# Check what formats are configured (admin)
+# Check what formats are configured
 kvs settings:video-format list
 
 # Check what files exist for video 123
@@ -258,4 +319,4 @@ kvs video:formats 123
 - [`video:formats`](video_formats.md) - Check actual video files
 - [`system:conversion`](system_conversion.md) - Manage conversion servers
 - [`system:queue`](queue.md) - View conversion queue
-- [`video`](video.md) - Video management
+- [`video`](video.md) - Manage videos

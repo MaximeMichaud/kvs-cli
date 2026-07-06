@@ -354,6 +354,33 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('Actual', $formatsDoc);
     }
 
+    public function testSettingsVideoFormatDocumentationUsesCurrentReadOnlySurface(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $formatSettingsDoc = file_get_contents($docsRoot . '/commands/settings_video_format.md');
+        $this->assertIsString($formatSettingsDoc);
+
+        $this->assertStringContainsString('Inspect KVS video format configurations.', $formatSettingsDoc);
+        $this->assertStringContainsString('| `--search=TEXT` | - | Search in title, postfix, and FFmpeg options |', $formatSettingsDoc);
+        $this->assertStringContainsString('kvs video-format list --search=mp4', $formatSettingsDoc);
+        $this->assertStringContainsString('- `format_video_id`', $formatSettingsDoc);
+        $this->assertStringContainsString('- `postfix`', $formatSettingsDoc);
+        $this->assertStringContainsString('- `status_id`', $formatSettingsDoc);
+        $this->assertStringContainsString('- `size`', $formatSettingsDoc);
+        $this->assertStringContainsString('- `videos_count`', $formatSettingsDoc);
+        $this->assertStringContainsString('- `ffmpeg_options`', $formatSettingsDoc);
+        $this->assertStringContainsString('- `format_count`', $formatSettingsDoc);
+        $this->assertStringContainsString(
+            'kvs video-format list --fields=format_video_id,title,postfix,status,size,access,videos_count --format=json',
+            $formatSettingsDoc
+        );
+        $this->assertStringContainsString('It does not create, update, or delete KVS video formats.', $formatSettingsDoc);
+
+        $this->assertStringNotContainsString('Resolution      1920x1080', $formatSettingsDoc);
+        $this->assertStringNotContainsString('Bitrate         5000 kbps', $formatSettingsDoc);
+        $this->assertStringNotContainsString('Changes to format configuration affect future conversions only', $formatSettingsDoc);
+    }
+
     public function testPlaylistDocumentationUsesCurrentActionsAndFilters(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';
