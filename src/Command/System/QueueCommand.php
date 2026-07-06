@@ -528,6 +528,13 @@ HELP
             $adminFields['added_date'] = $this->getTaskStringField($task, 'added_date');
         }
 
+        if ($isHistory) {
+            $adminFields['end_date'] = $this->getTaskStringField($task, 'end_date');
+            $adminFields['effective_duration'] = $this->formatDuration(
+                $this->getTaskNumericField($task, 'effective_duration')
+            );
+        }
+
         return [
             ...$extra,
             ...$this->getRequestedDetailFields($input, $adminFields),

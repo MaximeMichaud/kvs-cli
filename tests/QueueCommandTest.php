@@ -666,6 +666,62 @@ class QueueCommandTest extends TestCase
         $this->assertSame('2026-05-26 10:05:00', $rows[0]['start_date']);
     }
 
+    public function testQueueShowSupportsRequestedHistoryAdminFields(): void
+    {
+        $this->insertHistoryTask($this->db, [
+            'task_id' => 305,
+            'status_id' => 3,
+            'type_id' => 4,
+            'video_id' => 105,
+            'album_id' => 0,
+            'server_id' => 1,
+            'error_code' => 0,
+            'priority' => 20,
+            'message' => 'Finished history conversion',
+            'data' => '',
+            'start_date' => '2026-05-30 01:45:02',
+            'end_date' => '2026-05-30 01:50:02',
+            'effective_duration' => 245,
+        ]);
+
+        $this->tester->execute([
+            'action' => 'show',
+            'id' => '305',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'task_id',
+                'status_id',
+                'type_id',
+                'server',
+                'object',
+                'object_id',
+                'object_type_id',
+                'start_date',
+                'end_date',
+                'effective_duration',
+                'duration',
+                'is_history',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(305, (int) $rows[0]['task_id']);
+        $this->assertSame(3, (int) $rows[0]['status_id']);
+        $this->assertSame(4, (int) $rows[0]['type_id']);
+        $this->assertSame('Local Worker', $rows[0]['server']);
+        $this->assertSame(105, (int) $rows[0]['object']);
+        $this->assertSame(105, (int) $rows[0]['object_id']);
+        $this->assertSame(1, (int) $rows[0]['object_type_id']);
+        $this->assertSame('2026-05-30 01:45:02', $rows[0]['start_date']);
+        $this->assertSame('2026-05-30 01:50:02', $rows[0]['end_date']);
+        $this->assertSame('4:05', $rows[0]['effective_duration']);
+        $this->assertSame('4:05', $rows[0]['duration']);
+        $this->assertTrue($rows[0]['is_history']);
+    }
+
     public function testQueueShowRejectsCountFormat(): void
     {
         $this->tester->execute([
