@@ -325,11 +325,23 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('| `--skip-online-checks` | Skip outbound network checks |', $checkDoc);
         $this->assertStringContainsString('"results": {', $checkDoc);
         $this->assertStringContainsString('"summary": {', $checkDoc);
+        $this->assertStringContainsString('"php_cli_version": "8.2.15"', $checkDoc);
+        $this->assertStringContainsString('"php_web_version": "8.2.15"', $checkDoc);
+        $this->assertStringContainsString('"kvs_version": "7.0.0"', $checkDoc);
+        $this->assertStringContainsString('"required_php_min": "8.1"', $checkDoc);
+        $this->assertStringContainsString('"required_php_max": "8.4.99"', $checkDoc);
+        $this->assertStringContainsString('Result: no errors, 2 warning(s)', $checkDoc);
         $this->assertStringContainsString('kvs check --format=json --skip-online-checks', $checkDoc);
+        $this->assertStringContainsString(".results | to_entries[] | select(.value.status == \"error\")", $checkDoc);
         $this->assertStringContainsString('(dev_debug.md)', $checkDoc);
 
         $this->assertStringNotContainsString('"checks": [', $checkDoc);
+        $this->assertStringNotContainsString(".checks[]", $checkDoc);
+        $this->assertStringNotContainsString('"current": "8.2.15"', $checkDoc);
+        $this->assertStringNotContainsString('"required_min": "8.1"', $checkDoc);
+        $this->assertStringNotContainsString('"message": "PHP 8.2.15"', $checkDoc);
         $this->assertStringNotContainsString('"passed": 11', $checkDoc);
+        $this->assertStringNotContainsString('Summary: 11 passed', $checkDoc);
         $this->assertStringNotContainsString('(dev-debug.md)', $checkDoc);
 
         $devDebugDoc = file_get_contents($docsRoot . '/commands/dev_debug.md');

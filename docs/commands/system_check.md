@@ -136,7 +136,7 @@ Disk Space (Content)    ⚠ WARN  15.3 GB free (12.5% available)
 PHP EOL                 ✓ OK    PHP 8.2 supported until 2026-12-08
 MySQL EOL               ✓ OK    MySQL 8.0 supported until 2026-04-30
 
-Summary: 11 passed, 2 warnings, 0 errors
+Result: no errors, 2 warning(s)
 ```
 
 ### JSON Format
@@ -155,11 +155,13 @@ kvs check --json
       "status": "update_available"
     },
     "php_kvs": {
-      "current": "8.2.15",
-      "required_min": "8.1",
-      "required_max": "8.4.99",
+      "php_cli_version": "8.2.15",
+      "php_web_version": "8.2.15",
+      "kvs_version": "7.0.0",
+      "compatible": true,
       "status": "ok",
-      "message": "PHP 8.2.15"
+      "required_php_min": "8.1",
+      "required_php_max": "8.4.99"
     }
   },
   "summary": {
@@ -222,7 +224,7 @@ ERRORS=$(echo "$RESULT" | jq '.summary.errors')
 
 if [ "$ERRORS" -gt 0 ]; then
     echo "CRITICAL: KVS health check failed"
-    echo "$RESULT" | jq '.checks[] | select(.status == "error")'
+    echo "$RESULT" | jq '.results | to_entries[] | select(.value.status == "error")'
     exit 2
 fi
 
