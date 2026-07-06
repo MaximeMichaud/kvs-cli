@@ -243,4 +243,32 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('(dev_debug.md)', $devLogDoc);
         $this->assertStringNotContainsString('(dev-debug.md)', $devLogDoc);
     }
+
+    public function testPluginDocumentationUsesCurrentFieldsActionsAndAliases(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $pluginDoc = file_get_contents($docsRoot . '/commands/plugin.md');
+        $this->assertIsString($pluginDoc);
+
+        $this->assertStringContainsString('kvs plugin [<action>] [<id>] [options]', $pluginDoc);
+        $this->assertStringContainsString('### show', $pluginDoc);
+        $this->assertStringContainsString('### path', $pluginDoc);
+        $this->assertStringContainsString('### status', $pluginDoc);
+        $this->assertStringContainsString('| `--status=<status>` | all | Filter by status: `active`, `inactive`, `all` |', $pluginDoc);
+        $this->assertStringContainsString('| `--type=<type>` | - | Filter by type: `manual`, `cron`, `api`, `process_object` |', $pluginDoc);
+        $this->assertStringContainsString('| `--field=<field>` | - | Display a single field value |', $pluginDoc);
+        $this->assertStringContainsString('- `id` - Plugin ID', $pluginDoc);
+        $this->assertStringContainsString('- `enabled`', $pluginDoc);
+        $this->assertStringContainsString('- `path`', $pluginDoc);
+        $this->assertStringContainsString('kvs plugin list --fields=id,name,version,status', $pluginDoc);
+        $this->assertStringContainsString('kvs plugin list --field=path', $pluginDoc);
+        $this->assertStringContainsString('kvs plugin show backup', $pluginDoc);
+        $this->assertStringContainsString('kvs plugin path backup', $pluginDoc);
+        $this->assertStringContainsString('kvs plugin status', $pluginDoc);
+        $this->assertStringContainsString('- `kvs plug`', $pluginDoc);
+
+        $this->assertStringNotContainsString('- `plugin_id` - Plugin ID', $pluginDoc);
+        $this->assertStringNotContainsString('kvs plugin list --fields=name,version', $pluginDoc);
+        $this->assertStringNotContainsString('kvs plugin list --field=path --format=ids', $pluginDoc);
+    }
 }
