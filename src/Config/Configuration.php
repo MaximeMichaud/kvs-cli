@@ -406,6 +406,11 @@ class Configuration
         return 'ffprobe';
     }
 
+    public function getImageMagickPath(): string
+    {
+        return $this->getConfiguredExecutablePath('image_magick_path', 'convert');
+    }
+
     public function getPhpPath(): string
     {
         return $this->getConfiguredExecutablePath('php_path', PHP_BINARY);

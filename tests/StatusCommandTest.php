@@ -370,6 +370,35 @@ class StatusCommandTest extends TestCase
         $this->assertFileDoesNotExist($marker);
     }
 
+    public function testStatusUsesConfiguredImageMagickPath(): void
+    {
+        $binDir = $this->tempDir . '/bin';
+        mkdir($binDir, 0755, true);
+
+        $magickPath = $binDir . '/magick';
+        file_put_contents(
+            $magickPath,
+            "#!/bin/sh\nprintf '%s\\n' 'Version: ImageMagick 9.8.7 test-build'\n"
+        );
+        chmod($magickPath, 0755);
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'image_magick_path' => $magickPath,
+        ]);
+
+        $command = new StatusCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+
+        $tester->execute([]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $this->assertStringContainsString('ImageMagick', $display);
+        $this->assertStringContainsString($magickPath, $display);
+        $this->assertStringContainsString('9.8.7', $display);
+        $this->assertStringNotContainsString('/usr/bin/convert', $display);
+    }
+
     public function testStatusChecksDiskSpace(): void
     {
         $this->tester->execute([]);
