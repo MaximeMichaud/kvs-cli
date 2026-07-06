@@ -118,7 +118,7 @@ This command:
   scp backup.tar.zst user@newserver:/tmp/
 
   # On destination server
-  kvs migrate:import /tmp/backup.tar.zst --domain=example.com
+  kvs migrate:import /tmp/backup.tar.zst --domain=example.com --email=admin@example.com
 
 <info>SSL options:</info>
   --ssl=1  Let's Encrypt (requires valid DNS + ports 80/443)

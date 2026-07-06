@@ -220,6 +220,14 @@ class ImportCommandTest extends TestCase
         $this->assertStringContainsString('migrate:package', $help);
         $this->assertStringContainsString('migrate:import', $help);
         $this->assertStringContainsString('SSL options', $help);
+        $this->assertStringContainsString(
+            'kvs migrate:import /tmp/backup.tar.zst --domain=example.com --email=admin@example.com',
+            $help
+        );
+        $this->assertStringNotContainsString(
+            'kvs migrate:import /tmp/backup.tar.zst --domain=example.com' . PHP_EOL,
+            $help
+        );
     }
 
     public function testImportNoInteractionFailsWithoutConfirmation(): void
