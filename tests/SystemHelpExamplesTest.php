@@ -168,6 +168,31 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('- `2` - Error (red)', $commandsReadme);
     }
 
+    public function testTopLevelReadmesUseCurrentCommandSurface(): void
+    {
+        $rootReadme = file_get_contents(dirname(__DIR__) . '/README.md');
+        $this->assertIsString($rootReadme);
+        $this->assertStringContainsString('kvs video stats', $rootReadme);
+        $this->assertStringContainsString('kvs user stats', $rootReadme);
+        $this->assertStringContainsString('kvs model stats', $rootReadme);
+        $this->assertStringContainsString('kvs dvd stats', $rootReadme);
+        $this->assertStringContainsString('kvs playlist list', $rootReadme);
+        $this->assertStringContainsString('Content list commands and many read-only list commands', $rootReadme);
+        $this->assertStringContainsString('Check `kvs <command> --help` for the exact formats accepted', $rootReadme);
+        $this->assertStringNotContainsString('All list commands support multiple output formats:', $rootReadme);
+
+        $docsReadme = file_get_contents(dirname(__DIR__) . '/docs/README.md');
+        $this->assertIsString($docsReadme);
+        $this->assertStringContainsString('| [`video`](commands/video.md) | Manage videos |', $docsReadme);
+        $this->assertStringContainsString('| [`user`](commands/user.md) | Manage users and user statistics |', $docsReadme);
+        $this->assertStringContainsString('| [`user:purge`](commands/user_purge.md) | Bulk delete users |', $docsReadme);
+        $this->assertStringContainsString('| [`playlist`](commands/playlist.md) | Manage playlists |', $docsReadme);
+        $this->assertStringContainsString('| [`system:queue`](commands/queue.md) | Manage background task queue |', $docsReadme);
+        $this->assertStringContainsString('| [`plugin`](commands/plugin.md) | Inspect plugins |', $docsReadme);
+        $this->assertStringContainsString('Some content list commands also support `--format=ids`.', $docsReadme);
+        $this->assertStringNotContainsString('| [`video`](commands/video.md) | Manage videos (list, show) |', $docsReadme);
+    }
+
     public function testQueueDocumentationSeparatesActiveAndHistoryStatusValues(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';

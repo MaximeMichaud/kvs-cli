@@ -71,14 +71,16 @@ kvs check
 
 | Command | Description |
 |---------|-------------|
-| [`video`](commands/video.md) | Manage videos (list, show) |
+| [`video`](commands/video.md) | Manage videos |
 | [`album`](commands/album.md) | Manage photo albums |
-| [`user`](commands/user.md) | Manage users |
-| [`comment`](commands/comment.md) | Manage comments |
+| [`user`](commands/user.md) | Manage users and user statistics |
+| [`user:purge`](commands/user_purge.md) | Bulk delete users |
+| [`comment`](commands/comment.md) | Manage and moderate comments |
 | [`category`](commands/category.md) | Manage categories |
 | [`tag`](commands/tag.md) | Manage tags |
 | [`model`](commands/model.md) | Manage models/performers |
 | [`dvd`](commands/dvd.md) | Manage DVDs/channels |
+| [`playlist`](commands/playlist.md) | Manage playlists |
 
 ### System Administration
 
@@ -89,6 +91,10 @@ kvs check
 | [`system:cache`](commands/system_cache.md) | Manage cache |
 | [`system:cron`](commands/system_cron.md) | Run cron jobs |
 | [`system:backup`](commands/system_backup.md) | Create/list backups |
+| [`system:queue`](commands/queue.md) | Manage background task queue |
+| [`system:stats`](commands/system_stats.md) | Show site statistics |
+| [`system:server`](commands/system_server.md) | Manage storage servers |
+| [`system:conversion`](commands/system_conversion.md) | Manage conversion servers |
 | [`maintenance`](commands/maintenance.md) | Enable/disable maintenance mode |
 
 ### Database Operations
@@ -103,8 +109,10 @@ kvs check
 | Command | Description |
 |---------|-------------|
 | [`eval`](commands/eval.md) | Execute PHP code |
+| [`eval-file`](commands/eval_file.md) | Execute PHP files |
 | [`shell`](commands/shell.md) | Interactive PHP shell |
 | [`config`](commands/config.md) | View/edit configuration |
+| [`plugin`](commands/plugin.md) | Inspect plugins |
 | [`dev:debug`](commands/dev_debug.md) | Debug information |
 | [`dev:log`](commands/dev_log.md) | View logs |
 
@@ -120,12 +128,15 @@ kvs check
 Most commands support these options:
 
 ```
---format=<format>    Output format: table, json, csv, yaml, count
+--format=<format>    Output format, commonly table, json, csv, yaml, count
 --fields=<fields>    Comma-separated list of fields to display
 --limit=<n>          Limit number of results (default: 20)
 --no-truncate        Don't truncate long text
 --path=<path>        Path to KVS installation
 ```
+
+Some content list commands also support `--format=ids`. Format support varies by
+command; use `kvs <command> --help` for the authoritative list.
 
 ## Output Formats
 
