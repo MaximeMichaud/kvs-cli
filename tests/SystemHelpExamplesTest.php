@@ -308,4 +308,37 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('Expected', $formatsDoc);
         $this->assertStringNotContainsString('Actual', $formatsDoc);
     }
+
+    public function testPlaylistDocumentationUsesCurrentActionsAndFilters(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $playlistDoc = file_get_contents($docsRoot . '/commands/playlist.md');
+        $this->assertIsString($playlistDoc);
+
+        $this->assertStringContainsString('`list`, `show`, `create`, `add`, `remove`, `delete`', $playlistDoc);
+        $this->assertStringContainsString('The `create`, `add`, `remove`, and `delete` actions modify playlist data.', $playlistDoc);
+        $this->assertStringContainsString('| `--category=CATEGORY` | - | Filter by category ID or title |', $playlistDoc);
+        $this->assertStringContainsString('| `--tag=TAG` | - | Filter by tag ID or name |', $playlistDoc);
+        $this->assertStringContainsString('| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/videos` |', $playlistDoc);
+        $this->assertStringContainsString('| `--flag=FLAG` | - | Filter by flag ID |', $playlistDoc);
+        $this->assertStringContainsString('| `--flag-votes=VOTES` | 1 | Minimum flag votes for `--flag` |', $playlistDoc);
+        $this->assertStringContainsString('| `--review-needed` | - | Show only playlists that need review |', $playlistDoc);
+        $this->assertStringContainsString('| `--not-review-needed` | - | Show only playlists that do not need review |', $playlistDoc);
+        $this->assertStringContainsString('| `--locked` | - | Show only locked playlists |', $playlistDoc);
+        $this->assertStringContainsString('| `--unlocked` | - | Show only unlocked playlists |', $playlistDoc);
+        $this->assertStringContainsString('| `--title=TITLE` | - | Playlist title for `create` |', $playlistDoc);
+        $this->assertStringContainsString('| `--description=DESCRIPTION` | - | Playlist description for `create` |', $playlistDoc);
+        $this->assertStringContainsString('| `--dir=DIR` | - | Playlist directory slug for `create` |', $playlistDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $playlistDoc);
+        $this->assertStringContainsString('| `--video=VIDEO` | - | Video ID, required for `add` and `remove` |', $playlistDoc);
+        $this->assertStringContainsString('kvs playlist create "Favorites" --user=1 --private', $playlistDoc);
+        $this->assertStringContainsString('kvs playlist add 1 --video=42', $playlistDoc);
+        $this->assertStringContainsString('kvs playlist remove 1 --video=42', $playlistDoc);
+        $this->assertStringContainsString('kvs playlist list --fields=playlist_id,title,videos_amount,playlist_viewed --format=json', $playlistDoc);
+        $this->assertStringContainsString('- `filled/videos`', $playlistDoc);
+
+        $this->assertStringNotContainsString('list, view, and delete user playlists', $playlistDoc);
+        $this->assertStringNotContainsString('Action: `list`, `show`, `delete`', $playlistDoc);
+        $this->assertStringNotContainsString('Search in titles and descriptions', $playlistDoc);
+    }
 }
