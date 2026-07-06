@@ -114,8 +114,30 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('EMAIL=myemail@mycompany.com', $output);
-        $this->assertStringNotContainsString('EMAIL=admin@test.example.com', $output);
+        $this->assertStringContainsString("EMAIL='myemail@mycompany.com'", $output);
+        $this->assertStringNotContainsString("EMAIL='admin@test.example.com'", $output);
+    }
+
+    public function testToDockerDryRunShellQuotesTargetPaths(): void
+    {
+        $targetDir = $this->tempDir . '/target with spaces';
+
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--target' => $targetDir,
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('git clone ', $output);
+        $this->assertStringContainsString(escapeshellarg($targetDir), $output);
+        $this->assertStringContainsString('cd ' . escapeshellarg($targetDir . '/docker') . ' &&', $output);
+        $this->assertStringNotContainsString('git clone https://github.com/MaximeMichaud/KVS-install.git ' . $targetDir, $output);
+        $this->assertStringNotContainsString('cd ' . $targetDir . '/docker &&', $output);
     }
 
     public function testToDockerRejectsInvalidProvidedDomainBeforeDryRun(): void
@@ -185,7 +207,7 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('docker exec -i kvs-test-example-com-mariadb', $output);
+        $this->assertStringContainsString("docker exec -i 'kvs-test-example-com-mariadb'", $output);
         $this->assertStringNotContainsString('docker exec -i kvs-test.example.com-mariadb', $output);
     }
 
@@ -201,7 +223,7 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('mariadb test_example_com < /tmp/kvs-migration.sql', $output);
+        $this->assertStringContainsString("mariadb 'test_example_com' < /tmp/kvs-migration.sql", $output);
         $this->assertStringNotContainsString('mariadb kvs < /tmp/kvs-migration.sql', $output);
     }
 

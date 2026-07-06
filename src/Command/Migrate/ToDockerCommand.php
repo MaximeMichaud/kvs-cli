@@ -393,7 +393,7 @@ EOT
         $dbConfig = $config->getDatabaseConfig();
 
         $this->io()->text('<comment># 1. Clone KVS-Install</comment>');
-        $this->io()->text("git clone " . self::KVS_INSTALL_REPO . " {$targetDir}");
+        $this->io()->text('git clone ' . escapeshellarg(self::KVS_INSTALL_REPO) . ' ' . escapeshellarg($targetDir));
         $this->io()->newLine();
 
         $this->io()->text('<comment># 2. Export source database</comment>');
@@ -401,12 +401,12 @@ EOT
         $this->io()->newLine();
 
         $this->io()->text('<comment># 3. Run KVS-Install setup (headless)</comment>');
-        $this->io()->text("cd {$targetDir}/docker && \\");
+        $this->io()->text('cd ' . escapeshellarg($targetDir . '/docker') . " && \\");
         $this->io()->text("  HEADLESS=y \\");
-        $this->io()->text("  DOMAIN={$domain} \\");
-        $this->io()->text("  EMAIL={$email} \\");
-        $this->io()->text("  SSL_CHOICE={$sslChoice} \\");
-        $this->io()->text("  DB_CHOICE={$dbChoice} \\");
+        $this->io()->text('  DOMAIN=' . escapeshellarg($domain) . " \\");
+        $this->io()->text('  EMAIL=' . escapeshellarg($email) . " \\");
+        $this->io()->text('  SSL_CHOICE=' . escapeshellarg($sslChoice) . " \\");
+        $this->io()->text('  DB_CHOICE=' . escapeshellarg($dbChoice) . " \\");
         $this->io()->text("  STOP_EXISTING=n \\");
         $this->io()->text("  ./setup.sh");
         $this->io()->newLine();
@@ -414,12 +414,23 @@ EOT
         $this->io()->text('<comment># 4. Import database</comment>');
         $containerPrefix = 'kvs-' . str_replace('.', '-', $domain);
         $database = str_replace(['.', '-'], '_', $domain);
-        $this->io()->text("docker exec -i {$containerPrefix}-mariadb mariadb {$database} < /tmp/kvs-migration.sql");
+        $this->io()->text(
+            'docker exec -i '
+            . escapeshellarg($containerPrefix . '-mariadb')
+            . ' mariadb '
+            . escapeshellarg($database)
+            . ' < /tmp/kvs-migration.sql'
+        );
         $this->io()->newLine();
 
         if (!$noContent && is_dir($config->getContentPath())) {
             $this->io()->text('<comment># 5. Copy content</comment>');
-            $this->io()->text("rsync -av {$config->getContentPath()}/ /var/www/{$domain}/contents/");
+            $this->io()->text(
+                'rsync -av '
+                . escapeshellarg(rtrim($config->getContentPath(), '/') . '/')
+                . ' '
+                . escapeshellarg("/var/www/{$domain}/contents/")
+            );
         }
     }
 
