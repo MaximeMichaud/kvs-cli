@@ -71,11 +71,12 @@ Manage KVS plugins - list, inspect, and get information about installed plugins.
   --type=<type>         Filter by type (manual|cron|api|process_object)
   --fields=<fields>     Comma-separated fields to display
   --field=<field>       Display single field value
-  --format=<format>     Output format: table, csv, json, yaml, count
+  --format=<format>     Output format: table, csv, json, yaml, count, ids
 
 <info>AVAILABLE FIELDS:</info>
-  id, name, author, version, kvs_version
-  status, enabled, types, title, description
+  id, name, title, author, version, kvs_version
+  status, enabled, types, files_ok, syntax_ok, compatible
+  valid, description, path
 
 <info>EXAMPLES:</info>
   <comment>kvs plugin list</comment>
@@ -94,7 +95,7 @@ HELP
             ->addArgument('action', InputArgument::OPTIONAL, 'Action: list, show, path, status', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Plugin ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|inactive|all)', 'all')
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by type (manual|cron)')
+            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by type (manual|cron|api|process_object)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')

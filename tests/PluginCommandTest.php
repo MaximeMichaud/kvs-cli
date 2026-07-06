@@ -115,11 +115,14 @@ class PluginCommandTest extends TestCase
         // Filter options
         $this->assertTrue($definition->hasOption('status'), 'Should have --status option');
         $this->assertTrue($definition->hasOption('type'), 'Should have --type option');
+        $this->assertStringContainsString('api', $definition->getOption('type')->getDescription());
+        $this->assertStringContainsString('process_object', $definition->getOption('type')->getDescription());
 
         // Formatter options
         $this->assertTrue($definition->hasOption('fields'), 'Should have --fields option');
         $this->assertTrue($definition->hasOption('field'), 'Should have --field option');
         $this->assertTrue($definition->hasOption('format'), 'Should have --format option');
+        $this->assertStringContainsString('ids', $definition->getOption('format')->getDescription());
     }
 
     public function testHelpDocumentationCompleteness(): void
@@ -165,9 +168,10 @@ class PluginCommandTest extends TestCase
         // Verify available fields section exists
         $this->assertStringContainsString('AVAILABLE FIELDS', $help);
 
-        // Verify all documented fields
-        $expectedFields = ['id', 'name', 'author', 'version', 'kvs_version',
-                          'status', 'enabled', 'types', 'title', 'description'];
+        // Verify all accepted list fields are documented.
+        $reflection = new \ReflectionClass(PluginCommand::class);
+        $expectedFields = $reflection->getConstant('LIST_FIELDS');
+        $this->assertIsArray($expectedFields);
 
         foreach ($expectedFields as $field) {
             $this->assertStringContainsString(
