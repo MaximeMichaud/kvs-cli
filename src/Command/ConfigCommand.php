@@ -523,6 +523,20 @@ class ConfigCommand extends BaseCommand
         }
 
         $keyLower = strtolower($key);
+        $keyName = str_contains($keyLower, '.') ? substr($keyLower, (int) strrpos($keyLower, '.') + 1) : $keyLower;
+        $sensitiveKvsKeys = [
+            'ahv',
+            'billing_scripts_name',
+            'cv',
+            'cvr',
+            'installation_id',
+            'player_lrc',
+        ];
+
+        if (in_array($keyName, $sensitiveKvsKeys, true)) {
+            return true;
+        }
+
         $sensitiveMarkers = [
             'password',
             'pass',
