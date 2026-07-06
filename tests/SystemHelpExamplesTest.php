@@ -174,6 +174,51 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('kvs conversion deactivate 1', $conversionDoc);
     }
 
+    public function testVideoDocumentationUsesCurrentActionsAliasesAndFilters(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $videoDoc = file_get_contents($docsRoot . '/commands/video.md');
+        $this->assertIsString($videoDoc);
+
+        $this->assertStringContainsString('Action: `list`, `show`, `delete`, `stats` (default: `list`)', $videoDoc);
+        $this->assertStringContainsString('The `delete` action modifies video data and uses KVS native cleanup.', $videoDoc);
+        $this->assertStringContainsString(
+            '| `--status=STATUS` | - | Filter by status (`active`, `disabled`, `error`, `processing`, `deleting`, `deleted`) |',
+            $videoDoc
+        );
+        $this->assertStringContainsString('| `--content-source=SOURCE` | - | Filter by content source ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--content-source-group=GROUP` | - | Filter by content source group ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--dvd=DVD` | - | Filter by DVD ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--dvd-group=GROUP` | - | Filter by DVD group ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--playlist=PLAYLIST` | - | Filter by playlist ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--admin-user=ADMIN` | - | Filter by admin user ID or login |', $videoDoc);
+        $this->assertStringContainsString('| `--server-group=GROUP` | - | Filter by storage server group ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--format-video-group=GROUP` | - | Filter by video format group ID or title |', $videoDoc);
+        $this->assertStringContainsString('| `--review-needed` | - | Show only videos that need review |', $videoDoc);
+        $this->assertStringContainsString(
+            '| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/tags` |',
+            $videoDoc
+        );
+        $this->assertStringContainsString('| `--duration-from=SECONDS` | - | Filter by minimum duration in seconds |', $videoDoc);
+        $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $videoDoc);
+        $this->assertStringContainsString('kvs video stats', $videoDoc);
+        $this->assertStringContainsString('kvs video delete 123', $videoDoc);
+        $this->assertStringContainsString(
+            'kvs video list --fields=video_id,title,duration,video_viewed,status_id --format=json',
+            $videoDoc
+        );
+        $this->assertStringContainsString('- `kvs videos`', $videoDoc);
+        $this->assertStringContainsString('- `kvs content:video`', $videoDoc);
+        $this->assertStringContainsString('`filled/tags`', $videoDoc);
+        $this->assertStringContainsString('`score_processing`', $videoDoc);
+        $this->assertStringContainsString('`copyright_applied`', $videoDoc);
+        $this->assertStringContainsString('`wf/<postfix>`', $videoDoc);
+
+        $this->assertStringNotContainsString('The `video` command allows you to list and view video content', $videoDoc);
+        $this->assertStringNotContainsString('| `--status=<id>` | - | Filter by status (0, 1, 2) |', $videoDoc);
+        $this->assertStringNotContainsString('# Videos with errors', $videoDoc);
+    }
+
     public function testVideoScreenshotsDocumentationMatchesCurrentCliSurface(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';
