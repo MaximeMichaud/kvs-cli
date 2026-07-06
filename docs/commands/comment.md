@@ -27,7 +27,6 @@ kvs comment list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit=<n>` | 20 | Maximum number of results |
-| `--offset=<n>` | 0 | Skip first N results |
 | `--video=<id>` | - | Filter by video ID |
 | `--album=<id>` | - | Filter by album ID |
 | `--user=<id>` | - | Filter by user ID |

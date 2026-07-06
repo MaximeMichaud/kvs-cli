@@ -123,7 +123,6 @@ Most commands support these options:
 --format=<format>    Output format: table, json, csv, yaml, count
 --fields=<fields>    Comma-separated list of fields to display
 --limit=<n>          Limit number of results (default: 20)
---offset=<n>         Skip first N results
 --no-truncate        Don't truncate long text
 --path=<path>        Path to KVS installation
 ```

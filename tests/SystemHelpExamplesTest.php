@@ -87,4 +87,49 @@ class SystemHelpExamplesTest extends TestCase
             }
         }
     }
+
+    public function testContentDocumentationDoesNotAdvertiseUnsupportedOffsetOption(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $files = [
+            $docsRoot . '/commands/video.md',
+            $docsRoot . '/commands/album.md',
+            $docsRoot . '/commands/user.md',
+            $docsRoot . '/commands/category.md',
+            $docsRoot . '/commands/tag.md',
+            $docsRoot . '/commands/comment.md',
+            $docsRoot . '/commands/model.md',
+            $docsRoot . '/commands/dvd.md',
+            $docsRoot . '/commands/README.md',
+            $docsRoot . '/README.md',
+            $docsRoot . '/configuration.md',
+        ];
+
+        foreach ($files as $file) {
+            $contents = file_get_contents($file);
+            $this->assertIsString($contents, $file);
+            $this->assertStringNotContainsString('--offset', $contents, $file);
+        }
+    }
+
+    public function testContentDocumentationUsesRealTagAndUserFieldNames(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+
+        $tagDoc = file_get_contents($docsRoot . '/commands/tag.md');
+        $this->assertIsString($tagDoc);
+        $this->assertStringNotContainsString('`dir`', $tagDoc);
+        $this->assertStringNotContainsString('`total_videos`', $tagDoc);
+        $this->assertStringNotContainsString('`total_albums`', $tagDoc);
+        $this->assertStringContainsString('`tag_dir`', $tagDoc);
+        $this->assertStringContainsString('`videos_amount`', $tagDoc);
+        $this->assertStringContainsString('`albums_amount`', $tagDoc);
+
+        $userDoc = file_get_contents($docsRoot . '/commands/user.md');
+        $this->assertIsString($userDoc);
+        $this->assertStringNotContainsString('`total_videos`', $userDoc);
+        $this->assertStringNotContainsString('`total_albums`', $userDoc);
+        $this->assertStringContainsString('`videos_count`', $userDoc);
+        $this->assertStringContainsString('`albums_count`', $userDoc);
+    }
 }

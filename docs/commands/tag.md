@@ -27,7 +27,6 @@ kvs tag list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit=<n>` | 20 | Maximum number of results |
-| `--offset=<n>` | 0 | Skip first N results |
 | `--status=<id>` | - | Filter by status (0, 1) |
 | `--format=<fmt>` | table | Output format |
 | `--fields=<list>` | - | Comma-separated fields |
@@ -59,7 +58,7 @@ kvs tag disable <id>
 
 - `tag_id` - Tag ID
 - `tag` - Tag name
-- `dir` - Directory/slug
+- `tag_dir` - Directory/slug
 - `status` - Status with color
 
 ## Examples
@@ -129,10 +128,10 @@ done
 |-------|-------------|
 | `tag_id` | Unique tag ID |
 | `tag` | Tag name |
-| `dir` | URL slug |
+| `tag_dir` | URL slug |
 | `status_id` | Status code (0, 1) |
-| `total_videos` | Number of videos |
-| `total_albums` | Number of albums |
+| `videos_amount` | Number of videos |
+| `albums_amount` | Number of albums |
 
 ## Aliases
 

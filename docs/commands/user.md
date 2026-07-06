@@ -27,7 +27,6 @@ kvs user list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit=<n>` | 20 | Maximum number of results |
-| `--offset=<n>` | 0 | Skip first N results |
 | `--status=<id>` | - | Filter by status (0-6) |
 | `--format=<fmt>` | table | Output format |
 | `--fields=<list>` | - | Comma-separated fields |
@@ -135,7 +134,7 @@ echo "VIP: $(kvs user list --status=4 --format=count)"
 kvs user list --limit=0 --format=json > all_users.json
 
 # Find users with jq
-kvs user list --format=json | jq '.[] | select(.total_videos > 10)'
+kvs user list --format=json | jq '.[] | select(.videos_count > 10)'
 ```
 
 ## Available Fields
@@ -149,8 +148,8 @@ kvs user list --format=json | jq '.[] | select(.total_videos > 10)'
 | `status_id` | Status code |
 | `added_date` | Registration date |
 | `last_login_date` | Last login |
-| `total_videos` | Videos uploaded |
-| `total_albums` | Albums created |
+| `videos_count` | Videos uploaded |
+| `albums_count` | Albums created |
 | `profile_viewed` | Profile views |
 
 ## Aliases

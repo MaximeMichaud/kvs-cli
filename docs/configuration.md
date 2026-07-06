@@ -158,14 +158,10 @@ kvs video list --fields=id,title,views
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit` | 20 | Maximum results |
-| `--offset` | 0 | Skip first N results |
 
 ```bash
 # First 50 videos
 kvs video list --limit=50
-
-# Videos 51-100
-kvs video list --limit=50 --offset=50
 
 # All videos (be careful with large datasets)
 kvs video list --limit=0

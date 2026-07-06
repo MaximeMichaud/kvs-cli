@@ -27,7 +27,6 @@ kvs model list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit=<n>` | 20 | Maximum number of results |
-| `--offset=<n>` | 0 | Skip first N results |
 | `--format=<fmt>` | table | Output format |
 | `--fields=<list>` | - | Comma-separated fields |
 

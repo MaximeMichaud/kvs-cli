@@ -27,7 +27,6 @@ kvs video list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit=<n>` | 20 | Maximum number of results |
-| `--offset=<n>` | 0 | Skip first N results |
 | `--status=<id>` | - | Filter by status (0, 1, 2) |
 | `--user=<id>` | - | Filter by user ID |
 | `--format=<fmt>` | table | Output format |
@@ -124,14 +123,11 @@ kvs video list --fields=id,title,views
 kvs video list --no-truncate
 ```
 
-### Pagination
+### Result Limits
 
 ```bash
 # First 50 videos
 kvs video list --limit=50
-
-# Videos 51-100
-kvs video list --limit=50 --offset=50
 
 # All videos (careful with large datasets)
 kvs video list --limit=0

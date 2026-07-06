@@ -27,7 +27,6 @@ kvs album list [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit=<n>` | 20 | Maximum number of results |
-| `--offset=<n>` | 0 | Skip first N results |
 | `--status=<id>` | - | Filter by status (0, 1) |
 | `--user=<id>` | - | Filter by user ID |
 | `--format=<fmt>` | table | Output format |

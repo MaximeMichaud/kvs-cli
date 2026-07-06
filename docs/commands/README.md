@@ -110,7 +110,6 @@ Most list commands support:
 --format=FORMAT       Output format (table, json, csv, yaml, count, ids)
 --fields=FIELDS       Comma-separated list of fields
 --limit=N             Limit number of results (default: 20)
---offset=N            Skip first N results
 --no-truncate         Don't truncate long values
 --status=ID           Filter by status ID
 ```
