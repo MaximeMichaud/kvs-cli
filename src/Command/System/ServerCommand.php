@@ -1340,6 +1340,14 @@ HELP
             if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'group_id' => $groupId,
+                    ...$this->getServerGroupShowExtraFields(
+                        $input,
+                        $group,
+                        $contentType,
+                        $contentTypeStr,
+                        $contentCount,
+                        $servers
+                    ),
                     'servers' => $serverRecords,
                 ]);
             }
@@ -1362,6 +1370,74 @@ HELP
             $this->io()->error('Failed to fetch group: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $group
+     * @param list<array<string, mixed>> $servers
+     * @return array<string, mixed>
+     */
+    private function getServerGroupShowExtraFields(
+        InputInterface $input,
+        array $group,
+        int $contentType,
+        string $contentTypeStr,
+        int $contentCount,
+        array $servers
+    ): array {
+        $serverCount = count($servers);
+        $activeCount = 0;
+        $totalSpaceValues = [];
+        $freeSpaceValues = [];
+        $loadSum = 0.0;
+        $loadCount = 0;
+
+        foreach ($servers as $server) {
+            if ($this->getNumericField($server, 'status_id') === StatusFormatter::SERVER_ACTIVE) {
+                $activeCount++;
+            }
+
+            $totalSpace = $this->getNumericField($server, 'total_space');
+            if ($totalSpace > 0) {
+                $totalSpaceValues[] = $totalSpace;
+            }
+
+            $freeSpace = $this->getNumericField($server, 'free_space');
+            if ($freeSpace > 0) {
+                $freeSpaceValues[] = $freeSpace;
+            }
+
+            $loadValue = $server['load'] ?? null;
+            if (is_numeric($loadValue)) {
+                $loadSum += (float) $loadValue;
+                $loadCount++;
+            }
+        }
+
+        $totalSpace = $totalSpaceValues === [] ? 0 : min($totalSpaceValues);
+        $freeSpace = $freeSpaceValues === [] ? 0 : min($freeSpaceValues);
+        $load = $loadCount > 0 ? $loadSum / $loadCount : 0.0;
+
+        return $this->getRequestedDetailFields($input, [
+            'id' => $this->getNumericField($group, 'group_id'),
+            'status_id' => $this->getNumericField($group, 'status_id'),
+            'content_type_id' => $contentType,
+            'server_count' => $serverCount,
+            'servers_count' => $serverCount,
+            'servers_amount' => $serverCount,
+            'total_servers_amount' => $serverCount,
+            'active_count' => $activeCount,
+            'active_servers_amount' => $activeCount,
+            'content_count' => number_format($contentCount),
+            'total_content_count' => $contentCount,
+            'total_content' => number_format($contentCount) . " {$contentTypeStr}",
+            'total_space' => $this->formatBytes($totalSpace),
+            'free_space' => $this->formatBytes($freeSpace),
+            'min_free' => $this->formatBytes($freeSpace),
+            'min_free_space' => $this->formatBytes($freeSpace),
+            'load' => number_format($load, 2),
+            'added_date' => $this->getStringField($group, 'added_date'),
+        ]);
     }
 
     private function enableServer(?string $id, InputInterface $input): int

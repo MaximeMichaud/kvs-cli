@@ -883,6 +883,43 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testServerGroupShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'group_id',
+                'status_id',
+                'content_type_id',
+                'servers_count',
+                'active_servers_amount',
+                'total_content',
+                'total_space',
+                'free_space',
+                'load',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['group_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(1, (int) $rows[0]['content_type_id']);
+        $this->assertSame(2, (int) $rows[0]['servers_count']);
+        $this->assertSame(1, (int) $rows[0]['active_servers_amount']);
+        $this->assertSame('3 Videos', $rows[0]['total_content']);
+        $this->assertSame('5 GB', $rows[0]['total_space']);
+        $this->assertSame('2 GB', $rows[0]['free_space']);
+        $this->assertSame('0.75', $rows[0]['load']);
+        $this->assertSame('2026-05-20 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testServerGroupShowNotFound(): void
     {
         $this->tester->execute([

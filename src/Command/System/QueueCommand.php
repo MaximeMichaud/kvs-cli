@@ -467,17 +467,11 @@ HELP
             $info = $this->buildTaskInfo($task, $isHistory);
 
             if ($this->shouldUseFormattedRows($input)) {
-                $extra = [
-                    'task_id' => (string) $taskId,
-                    'is_history' => $isHistory,
-                ];
-                $data = $task['data'] ?? null;
-                if (is_string($data) && $data !== '') {
-                    $unserialized = @unserialize($data, ['allowed_classes' => false]);
-                    $extra['data'] = $unserialized !== false ? $unserialized : $data;
-                }
-
-                return $this->displayDetailRows($input, $info, $extra);
+                return $this->displayDetailRows(
+                    $input,
+                    $info,
+                    $this->getTaskShowExtraFields($input, $task, $taskId, $isHistory)
+                );
             }
 
             $this->io()->title("Task #$taskId" . ($isHistory ? ' (History)' : ''));
@@ -491,6 +485,70 @@ HELP
             $this->io()->error('Failed to fetch task: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function getTaskShowExtraFields(InputInterface $input, array $task, int $taskId, bool $isHistory): array
+    {
+        $extra = [
+            'task_id' => (string) $taskId,
+            'is_history' => $isHistory,
+        ];
+
+        $data = $task['data'] ?? null;
+        if (is_string($data) && $data !== '') {
+            $unserialized = @unserialize($data, ['allowed_classes' => false]);
+            $extra['data'] = $unserialized !== false ? $unserialized : $data;
+        }
+
+        $videoId = $this->getTaskNumericField($task, 'video_id');
+        $albumId = $this->getTaskNumericField($task, 'album_id');
+        $objectId = $videoId > 0 ? $videoId : ($albumId > 0 ? $albumId : 0);
+        $objectTypeId = $videoId > 0 ? 1 : ($albumId > 0 ? 2 : 0);
+        $serverId = $this->getTaskNumericField($task, 'server_id');
+        $serverName = $task['server_name'] ?? null;
+
+        $adminFields = [
+            'status_id' => $this->getTaskNumericField($task, 'status_id'),
+            'error_code' => $this->getTaskNumericField($task, 'error_code'),
+            'message' => $this->getTaskStringField($task, 'message'),
+            'type_id' => $this->getTaskNumericField($task, 'type_id'),
+            'server' => is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-'),
+            'object' => $objectId,
+            'object_id' => $objectId,
+            'object_type_id' => $objectTypeId,
+            'priority' => $this->getTaskNumericField($task, 'priority'),
+            'start_date' => $this->getTaskStringField($task, 'start_date'),
+        ];
+
+        if (!$isHistory && array_key_exists('added_date', $task)) {
+            $adminFields['added_date'] = $this->getTaskStringField($task, 'added_date');
+        }
+
+        return [
+            ...$extra,
+            ...$this->getRequestedDetailFields($input, $adminFields),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     */
+    private function getTaskNumericField(array $task, string $key): int
+    {
+        return is_numeric($task[$key] ?? null) ? (int) $task[$key] : 0;
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     */
+    private function getTaskStringField(array $task, string $key): string
+    {
+        $value = $task[$key] ?? '';
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**
