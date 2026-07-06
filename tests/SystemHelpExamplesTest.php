@@ -80,6 +80,8 @@ class SystemHelpExamplesTest extends TestCase
             '(db-import.md)',
             '(video-formats.md)',
             '(video-screenshots.md)',
+            '(dev-debug.md)',
+            '(dev-log.md)',
         ];
 
         foreach ($files as $file) {
@@ -212,5 +214,33 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('Reporting         KVS', $statsSettingsDoc);
         $this->assertStringNotContainsString('| `--player-reporting` | Enable player reporting (0\\|1) |', $statsSettingsDoc);
         $this->assertStringNotContainsString('Reporting         Yes', $statsSettingsDoc);
+    }
+
+    public function testCheckDocumentationMatchesJsonSurface(): void
+    {
+        $docsRoot = dirname(__DIR__) . '/docs';
+        $checkDoc = file_get_contents($docsRoot . '/commands/system_check.md');
+        $this->assertIsString($checkDoc);
+
+        $this->assertStringContainsString('| `--format=FORMAT` | Output format: `table`, `json` |', $checkDoc);
+        $this->assertStringContainsString('| `--skip-online-checks` | Skip outbound network checks |', $checkDoc);
+        $this->assertStringContainsString('"results": {', $checkDoc);
+        $this->assertStringContainsString('"summary": {', $checkDoc);
+        $this->assertStringContainsString('kvs check --format=json --skip-online-checks', $checkDoc);
+        $this->assertStringContainsString('(dev_debug.md)', $checkDoc);
+
+        $this->assertStringNotContainsString('"checks": [', $checkDoc);
+        $this->assertStringNotContainsString('"passed": 11', $checkDoc);
+        $this->assertStringNotContainsString('(dev-debug.md)', $checkDoc);
+
+        $devDebugDoc = file_get_contents($docsRoot . '/commands/dev_debug.md');
+        $this->assertIsString($devDebugDoc);
+        $this->assertStringContainsString('(dev_log.md)', $devDebugDoc);
+        $this->assertStringNotContainsString('(dev-log.md)', $devDebugDoc);
+
+        $devLogDoc = file_get_contents($docsRoot . '/commands/dev_log.md');
+        $this->assertIsString($devLogDoc);
+        $this->assertStringContainsString('(dev_debug.md)', $devLogDoc);
+        $this->assertStringNotContainsString('(dev-debug.md)', $devLogDoc);
     }
 }

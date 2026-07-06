@@ -113,5 +113,5 @@ kvs log conversion --tail=20
 
 ## See Also
 
-- [`dev:debug`](dev-debug.md) - Debug information
+- [`dev:debug`](dev_debug.md) - Debug information
 - [`system:status`](system_status.md) - System status

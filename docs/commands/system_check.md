@@ -17,6 +17,8 @@ The `system:check` command performs a thorough analysis of your KVS installation
 | Option | Description |
 |--------|-------------|
 | `--json` | Output results as JSON |
+| `--format=FORMAT` | Output format: `table`, `json` |
+| `--skip-online-checks` | Skip outbound network checks |
 | `--quiet-ok` | Only show warnings and errors |
 
 ## Checks Performed
@@ -145,24 +147,22 @@ kvs check --json
 
 ```json
 {
-  "checks": [
-    {
-      "name": "KVS Update",
-      "status": "ok",
-      "message": "Version 7.0.0 is current"
+  "results": {
+    "update": {
+      "current_version": "7.0.0",
+      "latest_version": "7.0.2",
+      "update_available": true,
+      "status": "update_available"
     },
-    {
-      "name": "PHP Version",
+    "php_kvs": {
+      "current": "8.2.15",
+      "required_min": "8.1",
+      "required_max": "8.4.99",
       "status": "ok",
-      "message": "PHP 8.2.15",
-      "details": {
-        "version": "8.2.15",
-        "required": "8.1.0"
-      }
+      "message": "PHP 8.2.15"
     }
-  ],
+  },
   "summary": {
-    "passed": 11,
     "warnings": 2,
     "errors": 0
   }
@@ -181,6 +181,15 @@ Only shows warnings and errors:
 ⚠ OPcache: JIT not enabled
 ⚠ Disk Space (Content): 15.3 GB free (12.5% available)
 ```
+
+### Skip Outbound Checks
+
+```bash
+kvs check --skip-online-checks
+kvs check --format=json --skip-online-checks
+```
+
+Skips checks that require outbound network access, including internet connectivity and end-of-life lookups.
 
 ## Examples
 
@@ -235,4 +244,4 @@ exit 0
 
 - [`system:status`](system_status.md) - Show system status
 - [`config`](config.md) - View configuration
-- [`dev:debug`](dev-debug.md) - Debug information
+- [`dev:debug`](dev_debug.md) - Debug information

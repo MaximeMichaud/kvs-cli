@@ -90,4 +90,4 @@ Similar to `kvs check` but with more verbose output.
 
 - [`system:check`](system_check.md) - Health checks
 - [`system:status`](system_status.md) - System status
-- [`dev:log`](dev-log.md) - View logs
+- [`dev:log`](dev_log.md) - View logs
