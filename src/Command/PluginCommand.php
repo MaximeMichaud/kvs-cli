@@ -30,6 +30,7 @@ class PluginCommand extends BaseCommand
         'syntax_ok',
         'compatible',
         'status',
+        'enabled',
         'description',
         'path',
     ];
@@ -43,6 +44,7 @@ class PluginCommand extends BaseCommand
         'version',
         'kvs_version',
         'status',
+        'enabled',
         'types',
         'files_ok',
         'syntax_ok',
@@ -248,6 +250,7 @@ HELP
             'version' => $this->getPluginStringField($plugin, 'version'),
             'kvs_version' => $this->getPluginStringField($plugin, 'kvs_version'),
             'status' => $isEnabled ? 'Active' : 'Inactive',
+            'enabled' => $isEnabled ? 'Yes' : 'No',
             'types' => $typesStr,
             'files_ok' => $filesOk ? 'Yes' : 'No',
             'syntax_ok' => $syntaxOk ? 'Yes' : 'No',

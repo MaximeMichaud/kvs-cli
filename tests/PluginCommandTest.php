@@ -350,6 +350,36 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Version', $output);
     }
 
+    public function testDocumentedEnabledFieldIsAvailableForListAndShow(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,enabled,status',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'id');
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('Yes', $rowsById['backup']['enabled'] ?? null);
+        $this->assertSame('No', $rowsById['analytics']['enabled'] ?? null);
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--fields' => 'id,enabled,status',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertSame('Yes', $rows[0]['enabled'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
+    }
+
     public function testListRejectsUnknownFieldsWithoutRawFormatterException(): void
     {
         $exitCode = $this->tester->execute([
