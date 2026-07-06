@@ -430,6 +430,45 @@ class ServerCommandTest extends TestCase
         $this->assertStringNotContainsString('Server #1', $output);
     }
 
+    public function testServerShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'status_id',
+                'content_type_id',
+                'total_content',
+                'content_count',
+                'streaming_type_id',
+                'control_script_url',
+                'control_script_url_version',
+                'control_script_url_lock_ip',
+                'connection_type_id',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['server_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(1, (int) $rows[0]['content_type_id']);
+        $this->assertSame('3 Videos', $rows[0]['total_content']);
+        $this->assertSame(3, (int) $rows[0]['content_count']);
+        $this->assertSame(0, (int) $rows[0]['streaming_type_id']);
+        $this->assertSame('', $rows[0]['control_script_url']);
+        $this->assertSame('N/A', $rows[0]['control_script_url_version']);
+        $this->assertSame(0, (int) $rows[0]['control_script_url_lock_ip']);
+        $this->assertSame(0, (int) $rows[0]['connection_type_id']);
+        $this->assertSame('2026-05-20 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testServerShowRejectsCountFormat(): void
     {
         $this->tester->execute([

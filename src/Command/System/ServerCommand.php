@@ -628,13 +628,18 @@ HELP
                 $this->io()->error("Server not found: $serverId");
                 return self::FAILURE;
             }
+            $serverRows = $this->addStorageContentCounts($db, [$server]);
+            $server = $serverRows[0] ?? $server;
 
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, ['server_id' => (string) $serverId]);
+                return $this->displayDetailRows($input, $info, [
+                    'server_id' => (string) $serverId,
+                    ...$this->getServerShowExtraFields($input, $server),
+                ]);
             }
 
             $this->io()->section("Server #$serverId");
@@ -646,6 +651,69 @@ HELP
             $this->io()->error('Failed to fetch server: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array<string, mixed>
+     */
+    private function getServerShowExtraFields(InputInterface $input, array $server): array
+    {
+        $isRemote = $this->getNumericField($server, 'is_remote');
+        $contentCount = $this->getNumericField($server, 'content_count');
+        $statusId = $this->getNumericField($server, 'status_id');
+        $streamingType = $this->getNumericField($server, 'streaming_type_id');
+        $connectionType = $this->getNumericField($server, 'connection_type_id');
+        $totalSpace = $this->getNumericField($server, 'total_space');
+        $freeSpace = $this->getNumericField($server, 'free_space');
+        $load = $this->getFloatField($server, 'load');
+        $errorIter = $this->getNumericField($server, 'error_iteration');
+        $errorStreamIter = $this->getNumericField($server, 'error_streaming_iteration');
+        $hasError = $errorIter > 1 || $errorStreamIter > 1;
+
+        $controlScriptUrl = $isRemote === 1 ? $this->getStringField($server, 'control_script_url') : '';
+        $controlScriptVersion = $isRemote === 1
+            ? $this->getStringField($server, 'control_script_url_version')
+            : 'N/A';
+
+        return $this->getRequestedDetailFields($input, [
+            'id' => $this->getNumericField($server, 'server_id'),
+            'status_id' => $statusId,
+            'content_type_id' => $this->getNumericField($server, 'content_type_id'),
+            'total_content' => $this->formatStorageContentCount($contentCount, $server['content_type_id'] ?? null),
+            'content_count' => $contentCount,
+            'streaming_type_id' => $streamingType,
+            'control_script_url' => $controlScriptUrl,
+            'control_script_url_version' => $controlScriptVersion,
+            'control_script_url_lock_ip' => $isRemote === 1
+                ? $this->getNumericField($server, 'control_script_url_lock_ip')
+                : 0,
+            'connection_type_id' => $connectionType,
+            'path' => $this->getStringField($server, 'path'),
+            'ftp_host' => $this->getStringField($server, 'ftp_host'),
+            'ftp_port' => $this->getStringField($server, 'ftp_port'),
+            'ftp_user' => $this->getStringField($server, 'ftp_user'),
+            'ftp_folder' => $this->getStringField($server, 'ftp_folder'),
+            'ftp_timeout' => $this->getStringField($server, 'ftp_timeout'),
+            'ftp_force_ssl' => $this->getNumericField($server, 'ftp_force_ssl'),
+            's3_region' => $this->getStringField($server, 's3_region'),
+            's3_endpoint' => $this->getStringField($server, 's3_endpoint'),
+            's3_bucket' => $this->getStringField($server, 's3_bucket'),
+            's3_prefix' => $this->getStringField($server, 's3_prefix'),
+            'time_offset' => $this->getFloatField($server, 'time_offset'),
+            'total_space' => $this->formatBytes($totalSpace),
+            'free_space' => $this->formatBytes($freeSpace),
+            'free_percent' => $totalSpace > 0 ? round(($freeSpace / $totalSpace) * 100, 1) . '%' : '0%',
+            'free_space_percent' => $totalSpace > 0 ? '(' . round(($freeSpace / $totalSpace) * 100, 2) . '%)' : '',
+            'load' => number_format($load, 2),
+            'lb_weight' => $this->getFloatField($server, 'lb_weight'),
+            'lb_countries' => $this->getStringField($server, 'lb_countries'),
+            'is_debug_enabled' => $this->getNumericField($server, 'is_debug_enabled'),
+            'added_date' => $this->getStringField($server, 'added_date'),
+            'group_id' => $this->getNumericField($server, 'group_id'),
+            'group_title' => $this->getStringField($server, 'group_title'),
+            'has_error' => $hasError ? 'Yes' : 'No',
+        ]);
     }
 
     /**
