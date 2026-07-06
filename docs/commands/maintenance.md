@@ -80,14 +80,14 @@ kvs maintenance off
 kvs maintenance on
 kvs db:export --compress=gzip -o backup.sql.gz
 kvs db:import migration.sql
-kvs cache clear
+kvs cache --clear
 kvs maintenance off
 
 # Scheduled maintenance
 kvs maintenance on
 kvs backup --create
 kvs cron optimize
-kvs cache clear
+kvs cache --clear
 kvs maintenance off
 ```
 
@@ -110,7 +110,7 @@ trap 'kvs maintenance off' EXIT
 # Your deployment steps
 git pull
 composer install --no-dev
-kvs cache clear
+kvs cache --clear
 
 echo "Deployment completed successfully!"
 # maintenance off happens automatically via trap

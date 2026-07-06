@@ -293,6 +293,29 @@ class OptionsCommandTest extends TestCase
         }
     }
 
+    public function testSetShowsValidCacheClearCommandHint(): void
+    {
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'ENABLE_DVD_FIELD_1',
+            'value' => '0',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $value = $this->db->query(
+            'SELECT value FROM ' . TestHelper::table('options') . " WHERE variable = 'ENABLE_DVD_FIELD_1'"
+        )->fetchColumn();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame('0', $value);
+        $normalizedDisplay = preg_replace('/\s+/', ' ', $display) ?? $display;
+        $this->assertStringContainsString('kvs cache', $normalizedDisplay);
+        $this->assertStringContainsString('--clear', $normalizedDisplay);
+        $this->assertStringNotContainsString('kvs cache clear', $normalizedDisplay);
+    }
+
     public function testListRejectsConflictingEnabledDisabledFilters(): void
     {
         $this->tester->execute([

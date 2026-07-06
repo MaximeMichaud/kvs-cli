@@ -290,7 +290,7 @@ alias kuser='kvs user'
 
 # Common operations
 alias kbackup='kvs db:export --compress=gzip'
-alias kclear='kvs cache clear'
+alias kclear='kvs cache --clear'
 
 # Multi-environment
 alias kprod='KVS_PATH=/var/www/kvs-prod kvs'
@@ -342,7 +342,7 @@ done
 0 2 * * * www-data /usr/local/bin/kvs --path=/var/www/kvs db:export --compress=gzip -o /backups/kvs-$(date +\%Y\%m\%d).sql.gz
 
 # Clear cache daily
-0 3 * * * www-data /usr/local/bin/kvs --path=/var/www/kvs cache clear
+0 3 * * * www-data /usr/local/bin/kvs --path=/var/www/kvs cache --clear
 ```
 
 ## Troubleshooting

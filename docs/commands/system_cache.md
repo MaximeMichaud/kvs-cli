@@ -5,44 +5,42 @@ Manage system cache.
 ## Synopsis
 
 ```bash
-kvs system:cache <action> [options]
+kvs system:cache [options]
 ```
 
 ## Description
 
 The `system:cache` command allows you to clear and view cache statistics for your KVS installation.
 
-## Actions
+## Options
 
-### clear
+### --clear
 
 Clear cache files.
 
 ```bash
-kvs cache clear [options]
+kvs cache --clear [options]
 ```
 
 **Options:**
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--type=<type>` | all | Cache type to clear |
+| `--type=<type>` | all | Cache type to clear (`file` or `db`) |
 
 **Cache Types:**
 
 | Type | Description |
 |------|-------------|
-| `all` | Clear all caches |
-| `blocks` | Block output cache |
-| `config` | Configuration cache |
-| `templates` | Compiled templates |
+| `file` | Clear filesystem caches |
+| `db` | Clear database cache tables |
 
-### stats
+### --stats
 
 Show cache statistics.
 
 ```bash
-kvs cache stats
+kvs cache --stats
 ```
 
 ## Examples
@@ -50,37 +48,31 @@ kvs cache stats
 ### Clear All Caches
 
 ```bash
-kvs cache clear
+kvs cache --clear
 ```
 
 Output:
 
 ```
-Clearing all caches...
- ✓ Blocks cache cleared (156 files)
- ✓ Config cache cleared (12 files)
- ✓ Templates cache cleared (89 files)
-
+Cleared 156 files from engine
+Cleared 89 files from template-c
 Cache cleared successfully.
 ```
 
 ### Clear Specific Cache
 
 ```bash
-# Clear only block cache
-kvs cache clear --type=blocks
+# Clear only filesystem cache
+kvs cache --clear --type=file
 
-# Clear only config cache
-kvs cache clear --type=config
-
-# Clear only template cache
-kvs cache clear --type=templates
+# Clear only database cache
+kvs cache --clear --type=db
 ```
 
 ### View Statistics
 
 ```bash
-kvs cache stats
+kvs cache --stats
 ```
 
 Output:
@@ -102,11 +94,11 @@ Total         257      14.4 MB
 
 ```bash
 # Clear cache and verify
-kvs cache clear && kvs cache stats
+kvs cache --clear && kvs cache --stats
 
 # Clear cache before deployment
 kvs maintenance on
-kvs cache clear
+kvs cache --clear
 # ... deploy changes ...
 kvs maintenance off
 ```

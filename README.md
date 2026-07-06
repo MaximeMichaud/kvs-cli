@@ -84,7 +84,7 @@ Run `kvs list` for all available commands.
 ```bash
 kvs system:status              # System information
 kvs system:check               # Run health checks
-kvs system:cache clear         # Clear cache
+kvs system:cache --clear       # Clear cache
 kvs system:cron                # Run cron tasks
 kvs system:backup              # Create backup
 kvs system:benchmark           # Run performance benchmarks

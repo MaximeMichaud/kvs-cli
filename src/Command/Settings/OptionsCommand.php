@@ -505,7 +505,7 @@ HELP
             }
 
             // Warn about cache
-            $this->io()->note('You may need to clear cache for changes to take effect: kvs cache clear');
+            $this->io()->note('You may need to clear cache for changes to take effect: kvs cache --clear');
 
             return self::SUCCESS;
         } catch (\Exception $e) {
