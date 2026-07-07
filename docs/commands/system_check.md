@@ -17,6 +17,8 @@ The `system:check` command performs a thorough analysis of your KVS installation
 | Option | Description |
 |--------|-------------|
 | `--json` | Output results as JSON |
+| `--format=FORMAT` | Output format: `table`, `json` |
+| `--skip-online-checks` | Skip outbound network checks |
 | `--quiet-ok` | Only show warnings and errors |
 
 ## Checks Performed
@@ -134,7 +136,7 @@ Disk Space (Content)    ⚠ WARN  15.3 GB free (12.5% available)
 PHP EOL                 ✓ OK    PHP 8.2 supported until 2026-12-08
 MySQL EOL               ✓ OK    MySQL 8.0 supported until 2026-04-30
 
-Summary: 11 passed, 2 warnings, 0 errors
+Result: no errors, 2 warning(s)
 ```
 
 ### JSON Format
@@ -145,24 +147,24 @@ kvs check --json
 
 ```json
 {
-  "checks": [
-    {
-      "name": "KVS Update",
-      "status": "ok",
-      "message": "Version 7.0.0 is current"
+  "results": {
+    "update": {
+      "current_version": "7.0.0",
+      "latest_version": "7.0.2",
+      "update_available": true,
+      "status": "update_available"
     },
-    {
-      "name": "PHP Version",
+    "php_kvs": {
+      "php_cli_version": "8.2.15",
+      "php_web_version": "8.2.15",
+      "kvs_version": "7.0.0",
+      "compatible": true,
       "status": "ok",
-      "message": "PHP 8.2.15",
-      "details": {
-        "version": "8.2.15",
-        "required": "8.1.0"
-      }
+      "required_php_min": "8.1",
+      "required_php_max": "8.4.99"
     }
-  ],
+  },
   "summary": {
-    "passed": 11,
     "warnings": 2,
     "errors": 0
   }
@@ -181,6 +183,15 @@ Only shows warnings and errors:
 ⚠ OPcache: JIT not enabled
 ⚠ Disk Space (Content): 15.3 GB free (12.5% available)
 ```
+
+### Skip Outbound Checks
+
+```bash
+kvs check --skip-online-checks
+kvs check --format=json --skip-online-checks
+```
+
+Skips checks that require outbound network access, including internet connectivity and end-of-life lookups.
 
 ## Examples
 
@@ -213,7 +224,7 @@ ERRORS=$(echo "$RESULT" | jq '.summary.errors')
 
 if [ "$ERRORS" -gt 0 ]; then
     echo "CRITICAL: KVS health check failed"
-    echo "$RESULT" | jq '.checks[] | select(.status == "error")'
+    echo "$RESULT" | jq '.results | to_entries[] | select(.value.status == "error")'
     exit 2
 fi
 
@@ -233,6 +244,6 @@ exit 0
 
 ## See Also
 
-- [`system:status`](system-status.md) - Show system status
+- [`system:status`](system_status.md) - Show system status
 - [`config`](config.md) - View configuration
-- [`dev:debug`](dev-debug.md) - Debug information
+- [`dev:debug`](dev_debug.md) - Debug information

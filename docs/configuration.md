@@ -158,14 +158,10 @@ kvs video list --fields=id,title,views
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--limit` | 20 | Maximum results |
-| `--offset` | 0 | Skip first N results |
 
 ```bash
 # First 50 videos
 kvs video list --limit=50
-
-# Videos 51-100
-kvs video list --limit=50 --offset=50
 
 # All videos (be careful with large datasets)
 kvs video list --limit=0
@@ -290,7 +286,7 @@ alias kuser='kvs user'
 
 # Common operations
 alias kbackup='kvs db:export --compress=gzip'
-alias kclear='kvs cache clear'
+alias kclear='kvs cache --clear'
 
 # Multi-environment
 alias kprod='KVS_PATH=/var/www/kvs-prod kvs'
@@ -342,7 +338,7 @@ done
 0 2 * * * www-data /usr/local/bin/kvs --path=/var/www/kvs db:export --compress=gzip -o /backups/kvs-$(date +\%Y\%m\%d).sql.gz
 
 # Clear cache daily
-0 3 * * * www-data /usr/local/bin/kvs --path=/var/www/kvs cache clear
+0 3 * * * www-data /usr/local/bin/kvs --path=/var/www/kvs cache --clear
 ```
 
 ## Troubleshooting

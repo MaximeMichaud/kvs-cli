@@ -18,7 +18,28 @@ The `completion` command generates shell completion scripts for bash, zsh, and f
 |----------|----------|-------------|
 | `shell` | No | Shell type: bash, zsh, fish (auto-detected if omitted) |
 
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `-i, --install` | Install the completion script for the selected shell |
+
 ## Installation
+
+### Automatic Install
+
+```bash
+# Install for the current shell
+kvs completion --install
+
+# Install for a specific shell
+kvs completion bash --install
+kvs completion zsh --install
+kvs completion fish --install
+```
+
+After automatic installation, restart the terminal or run the shell-specific
+reload command printed by the CLI.
 
 ### Bash
 
@@ -91,9 +112,17 @@ kvs completion fish
 echo 'eval "$(kvs completion bash)"' >> ~/.bashrc
 source ~/.bashrc
 
+# Bash - install to ~/.bash_completion
+kvs completion bash --install
+source ~/.bash_completion
+
 # Zsh - add to ~/.zshrc
 echo 'eval "$(kvs completion zsh)"' >> ~/.zshrc
 source ~/.zshrc
+
+# Fish - install to completions directory
+kvs completion fish --install
+source ~/.config/fish/completions/kvs.fish
 ```
 
 ## Features

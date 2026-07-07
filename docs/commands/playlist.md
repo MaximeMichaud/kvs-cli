@@ -10,28 +10,42 @@ kvs content:playlist [<action>] [<id>] [options]
 
 ## Description
 
-The `content:playlist` command allows you to list, view, and delete user playlists in your KVS installation.
+The `content:playlist` command allows you to list, view, create, modify, and delete user playlists in your KVS installation.
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `action` | No | Action: `list`, `show`, `delete` (default: `list`) |
-| `id` | Conditional | Playlist ID (required for `show` and `delete`) |
+| `action` | No | Action: `list`, `show`, `create`, `add`, `remove`, `delete` (default: `list`) |
+| `id` | Conditional | Playlist ID, or playlist title for `create` |
 
 ## Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--status=STATUS` | - | Filter by status (`active`, `disabled`) |
-| `--user=ID` | - | Filter by user ID |
-| `--public` | - | Show only public playlists |
-| `--private` | - | Show only private playlists |
-| `--search=TEXT` | - | Search in titles and descriptions |
+| `--status=STATUS` | - | Filter by status (`active`, `disabled`, `inactive`) |
+| `--user=USER` | - | Filter by user ID or username; `create` requires a numeric user ID |
+| `--public` | - | Show only public playlists; create a public playlist |
+| `--private` | - | Show only private playlists; create a private playlist |
+| `--search=TEXT` | - | Search in titles, directories, and descriptions |
+| `--category=CATEGORY` | - | Filter by category ID or title |
+| `--tag=TAG` | - | Filter by tag ID or name |
+| `--field-filter=FIELD-FILTER` | - | KVS admin field filter, such as `filled/videos` |
+| `--flag=FLAG` | - | Filter by flag ID |
+| `--flag-votes=VOTES` | 1 | Minimum flag votes for `--flag` |
+| `--review-needed` | - | Show only playlists that need review |
+| `--not-review-needed` | - | Show only playlists that do not need review |
+| `--locked` | - | Show only locked playlists |
+| `--unlocked` | - | Show only unlocked playlists |
+| `--title=TITLE` | - | Playlist title for `create` |
+| `--description=DESCRIPTION` | - | Playlist description for `create` |
+| `--dir=DIR` | - | Playlist directory slug for `create` |
 | `--limit=N` | 20 | Number of results |
 | `--fields=FIELDS` | - | Comma-separated fields to display |
-| `--format=FORMAT` | table | Output format |
-| `--no-truncate` | - | Don't truncate long values |
+| `--field=FIELD` | - | Display a single field value |
+| `--format=FORMAT` | table | Output format: `table`, `csv`, `json`, `yaml`, `count`, `ids` |
+| `--no-truncate` | - | Do not truncate long values |
+| `--video=VIDEO` | - | Video ID, required for `add` and `remove` |
 
 ## Actions
 
@@ -51,6 +65,31 @@ Display details of a specific playlist.
 kvs playlist show <id>
 ```
 
+### create
+
+Create a playlist for a user.
+
+```bash
+kvs playlist create "Favorites" --user=1 --private
+kvs playlist create --title="Favorites" --user=1 --description="Saved videos" --dir=favorites
+```
+
+### add
+
+Add a video to a playlist.
+
+```bash
+kvs playlist add <playlist_id> --video=<video_id>
+```
+
+### remove
+
+Remove a video from a playlist.
+
+```bash
+kvs playlist remove <playlist_id> --video=<video_id>
+```
+
 ### delete
 
 Delete a playlist.
@@ -59,19 +98,53 @@ Delete a playlist.
 kvs playlist delete <id>
 ```
 
+## Mutating Actions
+
+The `create`, `add`, `remove`, and `delete` actions modify playlist data. Run
+`list` or `show` first if you need to confirm the target playlist or video IDs.
+
 ## Available Fields
 
 | Field | Aliases | Description |
 |-------|---------|-------------|
 | `playlist_id` | `id` | Playlist ID |
 | `title` | - | Playlist title |
-| `status` | - | Status (Active/Disabled) |
+| `dir` | - | Playlist directory slug |
+| `description` | - | Playlist description |
+| `status_id` | - | Numeric status ID |
+| `status` | - | Status label (Active/Disabled) |
+| `is_private` | - | Numeric visibility flag |
 | `type` | - | Public or Private |
-| `videos` | - | Number of videos |
+| `user_id` | - | Owner user ID |
 | `username` | `user` | Owner username |
-| `views` | - | View count |
+| `user_status_id` | - | Owner status ID |
 | `rating` | - | Rating (out of 5) |
+| `playlist_viewed` | `views` | View count |
+| `tags` | - | Comma-separated tag names |
+| `categories` | - | Comma-separated category titles |
+| `is_locked` | - | Locked flag |
+| `is_review_needed` | - | Review flag |
+| `videos_amount` | `total_videos`, `videos` | Number of videos |
+| `comments_amount` | - | Number of comments |
 | `added_date` | `date` | Created date |
+| `last_content_date` | - | Last content update date |
+
+## Field Filters
+
+The `--field-filter` option accepts these KVS admin-style values:
+
+- `empty/description`
+- `empty/playlist_viewed`
+- `empty/rating`
+- `empty/tags`
+- `empty/categories`
+- `empty/videos`
+- `filled/description`
+- `filled/playlist_viewed`
+- `filled/rating`
+- `filled/tags`
+- `filled/categories`
+- `filled/videos`
 
 ## Status Values
 
@@ -95,36 +168,35 @@ kvs playlist list --limit=50
 kvs playlist list --status=active
 ```
 
-### Filter by Visibility
+### Filter Playlists
 
 ```bash
 # Public playlists
 kvs playlist list --public
 
-# Private playlists
-kvs playlist list --private
+# Private playlists for a user
+kvs playlist list --private --user=alice
 
-# User's private playlists
-kvs playlist list --private --user=5
-```
+# Playlists in a category or tag
+kvs playlist list --category=Featured
+kvs playlist list --tag=training
 
-### Filter by User
+# Playlists that need moderation
+kvs playlist list --review-needed
+kvs playlist list --flag=7 --flag-votes=2
 
-```bash
-# Playlists by user 5
-kvs playlist list --user=5
-
-# Active playlists by user 10
-kvs playlist list --user=10 --status=active
+# Admin field filters
+kvs playlist list --field-filter=filled/videos
+kvs playlist list --field-filter=empty/tags
 ```
 
 ### Search Playlists
 
 ```bash
-# Search by title/description
+# Search by title, directory, or description
 kvs playlist list --search="favorites"
 
-# Search in user's playlists
+# Search in a user's playlists
 kvs playlist list --user=5 --search="best"
 ```
 
@@ -134,14 +206,23 @@ kvs playlist list --user=5 --search="best"
 # Show playlist 1
 kvs playlist show 1
 
-# Show playlist 42
-kvs playlist show 42
+# Show selected fields as JSON
+kvs playlist show 1 --fields=playlist_id,title,dir,description,user,status_id,is_private --format=json
 ```
 
-### Delete Playlist
+### Modify Playlists
 
 ```bash
-# Delete playlist 10
+# Create a playlist
+kvs playlist create "Favorites" --user=1 --private
+
+# Add a video
+kvs playlist add 1 --video=42
+
+# Remove a video
+kvs playlist remove 1 --video=42
+
+# Delete a playlist
 kvs playlist delete 10
 ```
 
@@ -167,6 +248,12 @@ kvs playlist list --format=ids
 # Specific fields
 kvs playlist list --fields=id,title,videos,views
 
+# KVS admin-style fields
+kvs playlist list --fields=playlist_id,title,videos_amount,playlist_viewed --format=json
+
+# Single field
+kvs playlist list --field=title
+
 # No truncation
 kvs playlist list --no-truncate
 ```
@@ -183,7 +270,7 @@ Playlists
  1    My Favorites           Active  Public  23      john      1,234   4.5/5
  2    Watch Later            Active  Private 15      jane      0       -
  3    Top Rated Collection   Active  Public  45      admin     5,678   4.8/5
- 4    Holiday Special        Disabled Public  12      sarah     234     4.2/5
+ 4    Holiday Special        Disabled Public 12      sarah     234     4.2/5
 ```
 
 ### Show
@@ -210,15 +297,16 @@ Playlist #1
 ### Find Popular Playlists
 
 ```bash
-# Public playlists, most popular first (manual sort by views)
+# Public playlists, most popular first
 kvs playlist list --public --format=json | jq 'sort_by(-.views) | .[:10]'
 ```
 
 ### Moderate Playlists
 
 ```bash
-# Review playlists with specific keywords
-kvs playlist list --search="spam"
+# Review flagged playlists
+kvs playlist list --review-needed
+kvs playlist list --flag=7 --flag-votes=2
 
 # Check a user's playlists
 kvs playlist list --user=suspicious_user_id
@@ -230,16 +318,8 @@ kvs playlist list --user=suspicious_user_id
 # Export all playlists
 kvs playlist list --limit=10000 --format=json > playlists-backup.json
 
-# Export with full titles (no truncation)
+# Export with full titles and descriptions
 kvs playlist list --no-truncate --format=csv > playlists.csv
-```
-
-### Clean Up
-
-```bash
-# Find playlists by inactive users (requires combining with user command)
-# Delete specific playlist
-kvs playlist delete 123
 ```
 
 ## Aliases
@@ -249,14 +329,12 @@ kvs playlist delete 123
 
 ## Notes
 
-- Public playlists are visible to all users
-- Private playlists are only visible to their owners
-- Deleting a playlist doesn't delete the videos in it
-- View count is separate from video view counts
-- Rating is for the playlist itself, not the videos
+- Public playlists are visible to all users.
+- Private playlists are only visible to their owners.
+- Deleting a playlist does not delete the videos in it.
+- View count is separate from video view counts.
+- Rating is for the playlist itself, not the videos.
 
 ## See Also
 
 - [`video`](video.md) - Manage videos
-- [`user`](user.md) - Manage users
-- [`dvd`](dvd.md) - Manage DVDs/channels (similar concept)

@@ -84,9 +84,9 @@ Run `kvs list` for all available commands.
 ```bash
 kvs system:status              # System information
 kvs system:check               # Run health checks
-kvs system:cache clear         # Clear cache
+kvs system:cache --clear       # Clear cache
 kvs system:cron                # Run cron tasks
-kvs system:backup              # Create backup
+kvs system:backup --create     # Create backup
 kvs system:benchmark           # Run performance benchmarks
 kvs queue list                 # View background tasks queue
 kvs queue stats                # Queue statistics
@@ -99,14 +99,19 @@ kvs info                       # CLI environment info
 ```bash
 kvs video list
 kvs video show <id>
+kvs video stats
 kvs user list
 kvs user show <id>
+kvs user stats
 kvs album list
 kvs category list
 kvs tag list
 kvs comment list
 kvs model list
+kvs model stats
 kvs dvd list
+kvs dvd stats
+kvs playlist list
 ```
 
 ### Database Commands
@@ -130,7 +135,9 @@ kvs dev:log                    # View logs
 
 ## Output Formats
 
-All list commands support multiple output formats:
+Content list commands and many read-only list commands support multiple output
+formats. Check `kvs <command> --help` for the exact formats accepted by a
+specific command.
 
 ```bash
 kvs user list                      # Table (default)

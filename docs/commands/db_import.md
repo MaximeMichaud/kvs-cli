@@ -80,7 +80,7 @@ kvs db:export --compress=gzip -o pre-migration-backup.sql.gz
 kvs db:import migration.sql.gz
 
 # 4. Clear cache
-kvs cache clear
+kvs cache --clear
 
 # 5. Disable maintenance mode
 kvs maintenance off
@@ -121,7 +121,7 @@ kvs maintenance on
 kvs db:import "$BACKUP"
 
 # Clear cache
-kvs cache clear
+kvs cache --clear
 
 # Disable maintenance
 kvs maintenance off
@@ -136,6 +136,6 @@ echo "Restore complete!"
 
 ## See Also
 
-- [`db:export`](db-export.md) - Export database
-- [`system:backup`](system-backup.md) - Full backup/restore
+- [`db:export`](db_export.md) - Export database
+- [`system:backup`](system_backup.md) - Full backup
 - [`maintenance`](maintenance.md) - Maintenance mode

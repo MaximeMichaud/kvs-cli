@@ -1,6 +1,6 @@
 # kvs video:formats
 
-Manage video formats and quality variants.
+Inspect video format files and configured KVS video formats.
 
 ## Synopsis
 
@@ -10,13 +10,14 @@ kvs video:formats <action> [<video_id>] [options]
 
 ## Description
 
-The `video:formats` command allows you to view and manage video format variants for specific videos.
+The `video:formats` command inspects actual video format files on disk and compares them with
+the configured KVS video formats.
 
 ## Actions
 
 ### list
 
-List available formats for a video.
+List actual video files found for a video.
 
 ```bash
 kvs video:formats list <video_id> [options]
@@ -43,74 +44,102 @@ kvs video:formats available
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--fields=<fields>` | - | Comma-separated fields |
-| `--format=<format>` | table | Output format |
+| `--format=<format>` | table | Output format: `table`, `csv`, `json`, `yaml` |
+
+## Fields
+
+### list
+
+- `format`
+- `postfix`
+- `file`
+- `size`
+- `dimensions`
+- `path`
+
+### check
+
+- `format`
+- `postfix`
+- `status`
+- `file`
+- `size`
+- `dimensions`
+- `path`
+
+### available
+
+Default fields:
+
+- `format_id`
+- `title`
+- `postfix`
+- `status`
+- `group_id`
+- `access`
 
 ## Examples
 
 ### List Video Formats
 
 ```bash
-kvs video:formats list 123
+kvs video:formats list 123 --fields=format,postfix,file,size,dimensions --format=json
 ```
 
 Output:
 
-```
-Video #123 Formats
-==================
-
-Format    Resolution  Bitrate   Size      Status
-───────────────────────────────────────────────────
-source    1920x1080   8000k     1.2 GB    Active
-1080p     1920x1080   4000k     650 MB    Active
-720p      1280x720    2500k     380 MB    Active
-480p      854x480     1200k     180 MB    Active
-360p      640x360     600k      90 MB     Active
+```json
+[
+  {
+    "format": "MP4 720p",
+    "postfix": "_720p.mp4",
+    "file": "123_720p.mp4",
+    "size": "65.75 MB",
+    "dimensions": "1280x720"
+  }
+]
 ```
 
 ### Check Format Status
 
 ```bash
-kvs video:formats check 123
+kvs video:formats check 123 --fields=format,postfix,status,file,size,dimensions --format=json
 ```
 
 Output:
 
-```
-Video #123 Format Check
-=======================
-
-Format    Expected  Actual    Status
-──────────────────────────────────────
-source    ✓         ✓         OK
-1080p     ✓         ✓         OK
-720p      ✓         ✓         OK
-480p      ✓         ✗         Missing
-360p      ✓         ✓         OK
-
-1 format(s) missing. Run conversion to generate.
+```json
+[
+  {
+    "format": "MP4 720p",
+    "postfix": "_720p.mp4",
+    "status": "available",
+    "file": "123_720p.mp4",
+    "size": "65.75 MB",
+    "dimensions": "1280x720"
+  }
+]
 ```
 
 ### Show Available Formats
 
 ```bash
-kvs video:formats available
+kvs video:formats available --fields=format_id,title,postfix,status,group_id,access --format=json
 ```
 
 Output:
 
-```
-Configured Video Formats
-========================
-
-ID  Name    Resolution  Bitrate  Status
-────────────────────────────────────────
-1   source  Original    -        Active
-2   1080p   1920x1080   4000k    Active
-3   720p    1280x720    2500k    Active
-4   480p    854x480     1200k    Active
-5   360p    640x360     600k     Active
-6   240p    426x240     400k     Disabled
+```json
+[
+  {
+    "format_id": 2,
+    "title": "MP4 720p",
+    "postfix": "_720p.mp4",
+    "status": "Required",
+    "group_id": 1,
+    "access": "Any users"
+  }
+]
 ```
 
 ### Output Formats
@@ -130,4 +159,4 @@ kvs video:formats list 123 --format=csv
 ## See Also
 
 - [`video`](video.md) - Manage videos
-- [`video:screenshots`](video-screenshots.md) - Manage screenshots
+- [`video:screenshots`](video_screenshots.md) - Manage screenshots

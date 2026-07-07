@@ -1,16 +1,17 @@
 # kvs plugin
 
-List installed KVS plugins.
+Manage installed KVS plugins.
 
 ## Synopsis
 
 ```bash
-kvs plugin <action> [options]
+kvs plugin [<action>] [<id>] [options]
 ```
 
 ## Description
 
-The `plugin` command allows you to list and view information about installed KVS plugins.
+The `plugin` command provides read-only access to installed KVS plugins. Activation and
+deactivation are handled in the KVS admin panel.
 
 ## Actions
 
@@ -26,15 +27,61 @@ kvs plugin list [options]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--fields=<fields>` | - | Comma-separated fields |
-| `--format=<format>` | table | Output format |
+| `--status=<status>` | all | Filter by status: `active`, `inactive`, `all` |
+| `--type=<type>` | - | Filter by type: `manual`, `cron`, `api`, `process_object` |
+| `--fields=<fields>` | `id,name,version,status,types` | Comma-separated fields |
+| `--field=<field>` | - | Display a single field value |
+| `--format=<format>` | table | Output format: `table`, `csv`, `json`, `yaml`, `count`, `ids` |
+| `--no-truncate` | - | Disable truncation of long text fields |
+
+### show
+
+Show details for one plugin.
+
+```bash
+kvs plugin show <id> [options]
+```
+
+### path
+
+Print one plugin directory path.
+
+```bash
+kvs plugin path <id>
+```
+
+### status
+
+Show plugin statistics.
+
+```bash
+kvs plugin status [options]
+```
 
 ## Default Fields
 
-- `plugin_id` - Plugin ID
+- `id` - Plugin ID
 - `name` - Plugin name
 - `version` - Plugin version
 - `status` - Plugin status
+
+## Available Fields
+
+- `id`
+- `name`
+- `title`
+- `author`
+- `version`
+- `kvs_version`
+- `status`
+- `enabled`
+- `types`
+- `files_ok`
+- `syntax_ok`
+- `compatible`
+- `valid`
+- `description`
+- `path`
 
 ## Examples
 
@@ -72,14 +119,24 @@ kvs plugin list --format=count
 ### Field Selection
 
 ```bash
-kvs plugin list --fields=name,version
+kvs plugin list --fields=id,name,version,status
+kvs plugin list --field=path
+```
+
+### Details And Paths
+
+```bash
+kvs plugin show backup
+kvs plugin path backup
+kvs plugin status
 ```
 
 ## Aliases
 
 - `kvs plugins`
+- `kvs plug`
 
 ## See Also
 
-- [`system:status`](system-status.md) - System status
+- [`system:status`](system_status.md) - System status
 - [`config`](config.md) - Configuration

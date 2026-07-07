@@ -26,7 +26,7 @@ kvs config list [options]
 
 | Option | Description |
 |--------|-------------|
-| `--file=<file>` | Config file: all, db, main, paths |
+| `--file=<file>` | Config view: all, db, main, paths |
 | `--show-protected` | Show protected values (passwords) |
 | `--json` | Output as JSON |
 
@@ -64,7 +64,10 @@ kvs config edit [options]
 
 | Option | Description |
 |--------|-------------|
-| `--file=<file>` | Config file to edit: db, main, paths |
+| `--file=<file>` | Required config file to edit: db, main |
+
+The `paths` view is derived from `setup.php`; use `--file=main` to edit path
+settings.
 
 ## Configuration Keys
 
@@ -232,5 +235,5 @@ Did you mean one of these?
 
 ## See Also
 
-- [`system:status`](system-status.md) - Show system status
-- [`system:check`](system-check.md) - Run health checks
+- [`system:status`](system_status.md) - Show system status
+- [`system:check`](system_check.md) - Run health checks

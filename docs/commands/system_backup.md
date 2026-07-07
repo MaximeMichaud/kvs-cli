@@ -1,6 +1,6 @@
 # kvs system:backup
 
-Create and restore KVS backups.
+Create and list KVS backups.
 
 ## Synopsis
 
@@ -10,17 +10,17 @@ kvs system:backup [options]
 
 ## Description
 
-The `system:backup` command allows you to create and restore full or partial backups of your KVS installation.
+The `system:backup` command allows you to create full or partial backups of your KVS installation and list existing backup archives.
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
 | `--create` | Create a new backup |
-| `--restore=<file>` | Restore from backup file |
 | `--list` | List available backups |
 | `--type=<type>` | Backup type: full, db, files |
 | `--output=<dir>` | Output directory for backup |
+| `--format=<format>` | Output format for `--list`: table, json, csv, yaml, count |
 
 ## Backup Types
 
@@ -71,23 +71,16 @@ kvs backup --list
 Output:
 
 ```
-Available Backups
-=================
-
-File                              Type    Size      Date
-────────────────────────────────────────────────────────────
-backup-20240115-143022.tar.gz     full    892.3 MB  2024-01-15 14:30
-backup-20240114-020000.tar.gz     full    891.1 MB  2024-01-14 02:00
-backup-20240113-db.sql.gz         db      45.2 MB   2024-01-13 02:00
+Backup File                         Size      Created
+kvs_backup_full_20240115.tar.gz      892.3 MB  2024-01-15 14:30:22
+kvs_backup_db_20240113.sql.gz        45.2 MB   2024-01-13 02:00:00
 ```
 
-### Restore from Backup
+### List Backups as JSON
 
 ```bash
-kvs backup --restore=/backups/backup-20240115-143022.tar.gz
+kvs backup --list --format=json
 ```
-
-**Warning:** Restoration will overwrite existing data!
 
 ### Scripting Examples
 
@@ -119,6 +112,6 @@ echo "Backup completed: $BACKUP_DIR/backup-$DATE-*.tar.gz"
 
 ## See Also
 
-- [`db:export`](db-export.md) - Export database
-- [`db:import`](db-import.md) - Import database
+- [`db:export`](db_export.md) - Export database
+- [`db:import`](db_import.md) - Import database
 - [`maintenance`](maintenance.md) - Maintenance mode

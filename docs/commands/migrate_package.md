@@ -33,7 +33,7 @@ The generated package contains:
 
 - **database.sql.zst** - Compressed database dump
 - **content/** - Content files (videos, albums, screenshots, etc.)
-- **metadata.json** - Package metadata (version, paths, checksums)
+- **metadata.json** - Package metadata (version, paths, sizes)
 
 ## Compression Levels
 

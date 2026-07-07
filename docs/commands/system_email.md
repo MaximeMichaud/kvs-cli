@@ -74,12 +74,15 @@ kvs email show --format=json
 
 ### test
 
-Send a test email to verify configuration.
+Send a test email through PHP `mail()`.
 
 ```bash
 kvs email test --to=test@example.com
 kvs email test --to=test@example.com --subject="Test" --body="Hello"
 ```
+
+The CLI test action does not send SMTP test emails. Use the KVS admin panel to
+test SMTP delivery.
 
 ### set
 
@@ -151,6 +154,10 @@ kvs email show
 kvs email show --format=json
 ```
 
+`show --format=json` includes the KVS admin last-test metadata:
+`test_email`, `test_subject`, and `test_body`. `kvs email set` does not write
+these fields.
+
 ### Configure SMTP
 
 ```bash
@@ -174,7 +181,7 @@ kvs email set \
 ### Test Email Delivery
 
 ```bash
-# Basic test
+# Basic PHP mail() test
 kvs email test --to=admin@example.com
 
 # Custom message
@@ -287,7 +294,7 @@ From Address
 ## Notes
 
 - This command is **EXPERIMENTAL** - requires confirmation or `--force` flag
-- Use `test` action to verify settings before enabling
+- Use `test` action only for PHP `mail()` delivery; use the KVS admin panel for SMTP test emails
 - Debug level 2 logs passwords - use carefully
 - Gmail requires "App Passwords" with 2FA enabled
 - Always use TLS for security

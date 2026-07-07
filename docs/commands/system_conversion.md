@@ -16,7 +16,7 @@ The `system:conversion` command manages KVS conversion servers responsible for v
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `action` | No | Action: `list`, `show`, `enable`, `disable`, `debug-on`, `debug-off`, `log`, `config`, `stats` |
+| `action` | No | Action: `list`, `show`, `enable`, `disable`, `activate`, `deactivate`, `debug-on`, `debug-off`, `log`, `config`, `stats` |
 | `id` | Conditional | Server ID (required for most actions except `list` and `stats`) |
 
 ## Options
@@ -65,6 +65,22 @@ Disable/deactivate a conversion server.
 
 ```bash
 kvs conversion disable 1
+```
+
+### activate <id>
+
+Alias for `enable`.
+
+```bash
+kvs conversion activate 1
+```
+
+### deactivate <id>
+
+Alias for `disable`.
+
+```bash
+kvs conversion deactivate 1
 ```
 
 ### debug-on <id>
@@ -166,9 +182,11 @@ kvs conversion list --errors
 ```bash
 # Enable server 1
 kvs conversion enable 1
+kvs conversion activate 1
 
 # Disable server 2
 kvs conversion disable 2
+kvs conversion deactivate 2
 ```
 
 ### Debugging

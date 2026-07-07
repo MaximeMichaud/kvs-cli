@@ -16,8 +16,8 @@ The `system:server` command manages KVS storage servers used for hosting video a
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `action` | No | Action: `list`, `show`, `enable`, `disable`, `stats`, `group` (default: `list`) |
-| `id` | No | Server or group ID (required for `show`, `enable`, `disable`) |
+| `action` | No | Action: `list`, `show`, `enable`, `disable`, `activate`, `deactivate`, `stats`, `group` (default: `list`) |
+| `id` | No | Server or group ID (required for `show`, `enable`, `disable`, `activate`, `deactivate`) |
 
 ## Options
 
@@ -71,6 +71,22 @@ Disable/deactivate a storage server.
 
 ```bash
 kvs server disable 1
+```
+
+### activate <id>
+
+Alias for `enable`.
+
+```bash
+kvs server activate 1
+```
+
+### deactivate <id>
+
+Alias for `disable`.
+
+```bash
+kvs server deactivate 1
 ```
 
 ### stats
@@ -151,9 +167,11 @@ kvs server list --format=json
 ```bash
 # Enable server 1
 kvs server enable 1
+kvs server activate 1
 
 # Disable server 2
 kvs server disable 2
+kvs server deactivate 2
 ```
 
 ### Statistics
