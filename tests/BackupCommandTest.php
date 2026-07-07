@@ -182,7 +182,7 @@ SH
             $mysqldump,
             '#!/bin/sh' . "\n"
             . 'for arg in "$@"; do echo "$arg"; done > ' . escapeshellarg($argsFile) . "\n"
-            . "echo 'SQL dump'\n"
+            . "printf '%128s\\n' 'SQL dump'\n"
         );
         chmod($mysqldump, 0755);
 
@@ -233,7 +233,7 @@ SH
             $mysqldump,
             <<<'SH'
 #!/bin/sh
-echo 'SQL dump'
+printf '%128s\n' 'SQL dump'
 SH
         );
         chmod($mysqldump, 0755);
@@ -265,13 +265,72 @@ SH
         }
     }
 
+    public function testDatabaseBackupRejectsEmptyDumpOutput(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-empty-db-backup';
+        mkdir($toolsDir, 0755, true);
+        $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
+#!/bin/sh
+exit 0
+SH);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'db',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('SQL dump is empty or incomplete', $output);
+            $this->assertSame([], glob($this->tempDir . '/backups/*_db.sql.gz') ?: []);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testDatabaseBackupStreamsLargeDumpUnderLowPhpMemory(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-large-db-backup';
+        mkdir($toolsDir, 0755, true);
+        $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
+#!/bin/sh
+dd if=/dev/zero bs=1M count=32 2>/dev/null | tr '\000' 'A'
+SH);
+
+        $path = $toolsDir . PATH_SEPARATOR . (getenv('PATH') !== false ? getenv('PATH') : '');
+        $command = sprintf(
+            'PATH=%s %s -d memory_limit=16M %s --path=%s system:backup --create --type=db --output=%s --no-ansi 2>&1',
+            escapeshellarg($path),
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg(dirname(__DIR__) . '/bin/kvs'),
+            escapeshellarg($this->tempDir),
+            escapeshellarg($this->tempDir . '/backups')
+        );
+
+        exec($command, $output, $exitCode);
+
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+        $files = glob($this->tempDir . '/backups/*_db.sql.gz') ?: [];
+        $this->assertCount(1, $files);
+        $this->assertSame(32 * 1024 * 1024, $this->countGzipUncompressedBytes($files[0]));
+    }
+
     public function testDatabaseBackupSuccessMessageShowsActualFilePath(): void
     {
         $toolsDir = $this->tempDir . '/tools-message-db';
         mkdir($toolsDir, 0755, true);
         $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
 #!/bin/sh
-echo 'SQL dump'
+printf '%128s\n' 'SQL dump'
 SH);
 
         $previousPath = getenv('PATH');
@@ -333,7 +392,7 @@ SH);
         mkdir($toolsDir, 0755, true);
         $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
 #!/bin/sh
-echo 'SQL dump'
+printf '%128s\n' 'SQL dump'
 SH);
         $this->writeTool($toolsDir, 'tar', <<<'SH'
 #!/bin/sh
@@ -412,7 +471,7 @@ SH
             $mysqldump,
             <<<'SH'
 #!/bin/sh
-echo 'SQL dump'
+printf '%128s\n' 'SQL dump'
 SH
         );
         chmod($mysqldump, 0755);
@@ -650,6 +709,25 @@ SH
         $path = $toolsDir . '/' . $name;
         file_put_contents($path, $script);
         chmod($path, 0755);
+    }
+
+    private function countGzipUncompressedBytes(string $path): int
+    {
+        $handle = gzopen($path, 'rb');
+        $this->assertIsResource($handle);
+
+        $bytes = 0;
+        try {
+            while (!gzeof($handle)) {
+                $chunk = gzread($handle, 1024 * 1024);
+                $this->assertNotFalse($chunk);
+                $bytes += strlen($chunk);
+            }
+        } finally {
+            gzclose($handle);
+        }
+
+        return $bytes;
     }
 
     private function extractSuccessBackupPath(string $output): string

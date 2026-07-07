@@ -25,6 +25,7 @@ class BackupCommand extends BaseCommand
 
     private const CREATE_TYPES = ['full', 'db', 'files'];
     private const LIST_FORMATS = ['table', 'json', 'csv', 'yaml', 'count'];
+    private const MIN_DATABASE_DUMP_BYTES = 100;
 
     protected function configure(): void
     {
@@ -210,7 +211,7 @@ HELP
             return false;
         }
 
-        $dumpFile = "$outputDir/{$backupName}_db.sql";
+        $gzFile = "$outputDir/{$backupName}_db.sql.gz";
         $host = $dbConfig['host'];
         $port = $dbConfig['port'] ?? (string) Constants::DEFAULT_MYSQL_PORT;
         if (str_contains($host, ':')) {
@@ -235,44 +236,75 @@ HELP
 
         $this->io()->info('Creating database backup...');
 
-        $process->run();
-
-        if ($process->isSuccessful()) {
-            if (!$this->writeSecureFile($dumpFile, $process->getOutput())) {
-                $this->io()->error('Failed to write SQL dump file');
-                return false;
-            }
-
-            $gzFile = "$dumpFile.gz";
-            $fp = $this->withSecureFileUmask(
-                static fn () => gzopen($gzFile, 'w9')
-            );
-            if ($fp === false) {
-                $this->io()->error('Failed to create compressed backup file');
-                return false;
-            }
-
-            $sqlContent = file_get_contents($dumpFile);
-            if ($sqlContent === false) {
-                gzclose($fp);
-                $this->io()->error('Failed to read SQL dump file');
-                return false;
-            }
-
-            gzwrite($fp, $sqlContent);
-            gzclose($fp);
-            if (!$this->restrictFilePermissions($gzFile)) {
-                $this->io()->error('Failed to set compressed backup file permissions');
-                return false;
-            }
-            unlink($dumpFile);
-
-            $this->io()->info('Database backup created: ' . basename($gzFile));
-            return true;
-        } else {
-            $this->io()->error('Database backup failed: ' . $process->getErrorOutput());
+        $fp = $this->withSecureFileUmask(
+            static fn () => gzopen($gzFile, 'w9')
+        );
+        if ($fp === false) {
+            $this->io()->error('Failed to create compressed backup file');
             return false;
         }
+
+        $writeFailed = false;
+        $dumpBytes = 0;
+        $errorOutput = '';
+        $process->disableOutput();
+
+        try {
+            $process->run(static function (
+                string $type,
+                string $buffer
+            ) use (
+                $fp,
+                &$writeFailed,
+                &$dumpBytes,
+                &$errorOutput
+            ): void {
+                if ($type === Process::OUT) {
+                    $dumpBytes += strlen($buffer);
+                    if (gzwrite($fp, $buffer) === false) {
+                        $writeFailed = true;
+                    }
+                    return;
+                }
+
+                if ($type === Process::ERR && $buffer !== '') {
+                    $errorOutput .= $buffer;
+                    if (strlen($errorOutput) > 65536) {
+                        $errorOutput = substr($errorOutput, -65536);
+                    }
+                }
+            });
+        } finally {
+            if (!gzclose($fp)) {
+                $writeFailed = true;
+            }
+        }
+
+        if ($writeFailed) {
+            @unlink($gzFile);
+            $this->io()->error('Failed to write compressed SQL dump file');
+            return false;
+        }
+
+        if (!$process->isSuccessful()) {
+            @unlink($gzFile);
+            $this->io()->error('Database backup failed: ' . $errorOutput);
+            return false;
+        }
+
+        if ($dumpBytes < self::MIN_DATABASE_DUMP_BYTES) {
+            @unlink($gzFile);
+            $this->io()->error('Database backup failed: SQL dump is empty or incomplete');
+            return false;
+        }
+
+        if (!$this->restrictFilePermissions($gzFile)) {
+            $this->io()->error('Failed to set compressed backup file permissions');
+            return false;
+        }
+
+        $this->io()->info('Database backup created: ' . basename($gzFile));
+        return true;
     }
 
     private function createFilesBackup(string $outputDir, string $backupName): bool

@@ -80,6 +80,24 @@ EOT
             return self::FAILURE;
         }
 
+        $compressionFormat = $this->detectCompressionFormat($file);
+        try {
+            $sqlBytes = $this->detectImportSqlBytePresence($file, $compressionFormat);
+        } catch (\RuntimeException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
+        }
+
+        if ($sqlBytes === false) {
+            $this->io()->error('Import file is empty or invalid');
+            return self::FAILURE;
+        }
+
+        if ($sqlBytes === 0) {
+            $this->io()->error('Import file is empty');
+            return self::FAILURE;
+        }
+
         $this->io()->warning('This will overwrite existing data in the database!');
 
         if ($this->io()->confirm('Do you want to continue?', false) !== true) {
@@ -95,7 +113,6 @@ EOT
 
         $this->io()->info('Starting database import...');
 
-        $compressionFormat = $this->detectCompressionFormat($file);
         if ($compressionFormat !== null && $compressionFormat !== '') {
             $this->io()->info("Streaming decompression ($compressionFormat)...");
         }
@@ -205,19 +222,6 @@ EOT
             return ['process' => $process, 'input' => $input];
         }
 
-        if ($compressionFormat === 'gzip') {
-            $mysqlCommand[0] = $this->requireImportCommand();
-            $input = fopen('compress.zlib://' . $file, 'rb');
-            if ($input === false) {
-                throw new \RuntimeException('Failed to open gzip file for import');
-            }
-
-            $process = new Process($mysqlCommand, null, $env);
-            $process->setInput($input);
-
-            return ['process' => $process, 'input' => $input];
-        }
-
         $decompressCommand = $this->getExternalDecompressionCommand($file, $compressionFormat);
         $mysqlCommand[0] = $this->requireImportCommand();
         $shellCommand = $this->buildShellCommand($decompressCommand) . ' | ' . $this->buildShellCommand($mysqlCommand);
@@ -260,6 +264,7 @@ EOT
     private function getExternalDecompressionCommand(string $file, string $format): array
     {
         return match ($format) {
+            'gzip' => [$this->requireDecompressionCommand('gzip', 'gzip'), '-d', '-c', $file],
             'zstd' => [$this->requireDecompressionCommand('zstd', 'zstd'), '-d', '-c', $file],
             'xz' => [$this->requireDecompressionCommand('xz', 'xz-utils'), '-d', '-c', $file],
             'bzip2' => [$this->requireDecompressionCommand('bzip2', 'bzip2'), '-d', '-c', $file],
@@ -279,6 +284,43 @@ EOT
         }
 
         return $path;
+    }
+
+    private function detectImportSqlBytePresence(string $file, ?string $compressionFormat): int|false
+    {
+        if ($compressionFormat === null || $compressionFormat === '') {
+            $size = filesize($file);
+            return $size === false ? false : $size;
+        }
+
+        $decompressCommand = $this->getExternalDecompressionCommand($file, $compressionFormat);
+        $process = new Process($decompressCommand);
+        $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
+
+        $process->start();
+
+        while ($process->isRunning()) {
+            if ($process->getIncrementalOutput() !== '') {
+                $process->stop(0);
+                return 1;
+            }
+
+            $process->getIncrementalErrorOutput();
+            $process->checkTimeout();
+            usleep(10000);
+        }
+
+        if ($process->getIncrementalOutput() !== '') {
+            return 1;
+        }
+
+        $process->wait();
+
+        if (!$process->isSuccessful()) {
+            return false;
+        }
+
+        return 0;
     }
 
     /**

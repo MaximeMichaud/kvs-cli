@@ -103,7 +103,7 @@ class ExportCommandTest extends TestCase
             $mysqldump,
             '#!/bin/sh' . "\n"
             . 'for arg in "$@"; do echo "$arg"; done > ' . escapeshellarg($argsFile) . "\n"
-            . "echo 'SQL dump'\n"
+            . "printf '%128s\\n' 'SQL dump'\n"
         );
         chmod($mysqldump, 0755);
 
@@ -147,7 +147,7 @@ class ExportCommandTest extends TestCase
         chmod($mysql, 0755);
 
         $mysqldump = $toolsDir . '/mysqldump';
-        file_put_contents($mysqldump, "#!/bin/sh\necho 'SQL dump'\n");
+        file_put_contents($mysqldump, "#!/bin/sh\nprintf '%128s\\n' 'SQL dump'\n");
         chmod($mysqldump, 0755);
 
         $outputFile = $this->tempDir . '/exports/secure_backup.sql';
@@ -174,6 +174,41 @@ class ExportCommandTest extends TestCase
         }
     }
 
+    public function testExportRejectsEmptyDumpOutput(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-empty-export';
+        mkdir($toolsDir, 0755, true);
+
+        $mysql = $toolsDir . '/mysql';
+        file_put_contents($mysql, "#!/bin/sh\necho 'mysql  Ver 8.0.35'\n");
+        chmod($mysql, 0755);
+
+        $mysqldump = $toolsDir . '/mysqldump';
+        file_put_contents($mysqldump, "#!/bin/sh\nexit 0\n");
+        chmod($mysqldump, 0755);
+
+        $outputFile = $this->tempDir . '/exports/empty.sql';
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+            $tester->execute(['--output' => $outputFile], ['decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Database export failed', $display);
+            $this->assertStringContainsString('SQL dump is empty or incomplete', $display);
+            $this->assertFileDoesNotExist($outputFile);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testExportUsesCanonicalExtensionForDefaultCompressedOutput(): void
     {
         $toolsDir = $this->tempDir . '/tools-canonical-extension';
@@ -184,12 +219,8 @@ class ExportCommandTest extends TestCase
         chmod($mysql, 0755);
 
         $mariadbDump = $toolsDir . '/mariadb-dump';
-        file_put_contents($mariadbDump, "#!/bin/sh\necho 'SQL dump'\n");
+        file_put_contents($mariadbDump, "#!/bin/sh\nprintf '%128s\\n' 'SQL dump'\n");
         chmod($mariadbDump, 0755);
-
-        $gzip = $toolsDir . '/gzip';
-        file_put_contents($gzip, "#!/bin/sh\ncat\n");
-        chmod($gzip, 0755);
 
         $previousPath = getenv('PATH');
         $previousCwd = getcwd();
@@ -231,10 +262,6 @@ class ExportCommandTest extends TestCase
             . "dd if=/dev/zero bs=1M count=32 2>/dev/null | tr '\\000' 'A'\n"
         );
         chmod($mariadbDump, 0755);
-
-        $gzip = $toolsDir . '/gzip';
-        file_put_contents($gzip, "#!/bin/sh\ncat\n");
-        chmod($gzip, 0755);
 
         $outputFile = $this->tempDir . '/exports/streamed.sql.gz';
         $runner = $this->tempDir . '/run-stream-export.php';
@@ -280,7 +307,7 @@ PHP)
 
         $this->assertSame(0, $exitCode, implode("\n", $output));
         $this->assertFileExists($outputFile);
-        $this->assertSame(32 * 1024 * 1024, filesize($outputFile));
+        $this->assertSame(32 * 1024 * 1024, $this->countGzipUncompressedBytes($outputFile));
     }
 
     public function testExportDetectsToolsWhenShellExecIsDisabled(): void
@@ -293,12 +320,8 @@ PHP)
         chmod($mysql, 0755);
 
         $mariadbDump = $toolsDir . '/mariadb-dump';
-        file_put_contents($mariadbDump, "#!/bin/sh\necho 'SQL dump'\n");
+        file_put_contents($mariadbDump, "#!/bin/sh\nprintf '%128s\\n' 'SQL dump'\n");
         chmod($mariadbDump, 0755);
-
-        $gzip = $toolsDir . '/gzip';
-        file_put_contents($gzip, "#!/bin/sh\ncat\n");
-        chmod($gzip, 0755);
 
         $outputFile = $this->tempDir . '/exports/no-shell-exec.sql.gz';
         $path = $toolsDir . PATH_SEPARATOR . (getenv('PATH') !== false ? getenv('PATH') : '');
@@ -314,7 +337,7 @@ PHP)
         exec($command, $output, $exitCode);
 
         $this->assertSame(0, $exitCode, implode("\n", $output));
-        $this->assertSame("SQL dump\n", file_get_contents($outputFile));
+        $this->assertStringContainsString('SQL dump', $this->readGzipContents($outputFile));
     }
 
     public function testExportWithTablesOption(): void
@@ -501,7 +524,7 @@ PHP)
             $mysqldump,
             '#!/bin/sh' . "\n"
             . 'for arg in "$@"; do echo "$arg"; done > ' . escapeshellarg($argsFile) . "\n"
-            . "echo 'SQL dump'\n"
+            . "printf '%128s\\n' 'SQL dump'\n"
         );
         chmod($mysqldump, 0755);
 
@@ -519,5 +542,18 @@ $database_tables[]="$config[tables_prefix]users";
 $database_tables[]="$config[tables_prefix_multi]admin_processes";
 PHP
         );
+    }
+
+    private function readGzipContents(string $path): string
+    {
+        $contents = gzdecode((string) file_get_contents($path));
+        $this->assertNotFalse($contents);
+
+        return $contents;
+    }
+
+    private function countGzipUncompressedBytes(string $path): int
+    {
+        return strlen($this->readGzipContents($path));
     }
 }

@@ -86,6 +86,78 @@ class DatabaseImportCommandTest extends TestCase
         }
     }
 
+    public function testImportRejectsEmptySqlFileBeforeConfirmation(): void
+    {
+        $emptyFile = $this->tempDir . '/empty.sql';
+        file_put_contents($emptyFile, '');
+
+        $toolsDir = $this->tempDir . '/tools-empty-import';
+        $bytesFile = $this->tempDir . '/empty-import.bytes';
+        $this->createFakeMysql($toolsDir, $bytesFile);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+
+            $tester->execute(['file' => $emptyFile], ['interactive' => false, 'decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Import file is empty', $display);
+            $this->assertStringNotContainsString('overwrite existing data', $display);
+            $this->assertFileDoesNotExist($bytesFile);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testImportRejectsEmptyCompressedSqlFileBeforeConfirmation(): void
+    {
+        $gzipFile = $this->tempDir . '/empty.sql.gz';
+        $handle = gzopen($gzipFile, 'wb');
+        $this->assertIsResource($handle);
+        gzclose($handle);
+
+        $toolsDir = $this->tempDir . '/tools-empty-gzip-import';
+        $bytesFile = $this->tempDir . '/empty-gzip-import.bytes';
+        $this->createFakeMysql($toolsDir, $bytesFile);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+
+            $tester->execute(['file' => $gzipFile], ['interactive' => false, 'decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Import file is empty', $display);
+            $this->assertStringNotContainsString('overwrite existing data', $display);
+            $this->assertFileDoesNotExist($bytesFile);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testFileArgumentDocumentsAllSupportedExtensions(): void
     {
         $command = new ImportCommand(new Configuration([
@@ -162,6 +234,43 @@ class DatabaseImportCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode, implode("\n", $output));
         $this->assertSame((string) (32 * 1024 * 1024), trim((string) file_get_contents($bytesFile)));
+    }
+
+    public function testInvalidGzipImportFailsInsteadOfImportingRawBytes(): void
+    {
+        $gzipFile = $this->tempDir . '/invalid.sql.gz';
+        file_put_contents($gzipFile, 'not a gzip stream');
+
+        $toolsDir = $this->tempDir . '/tools-invalid-gzip-import';
+        $bytesFile = $this->tempDir . '/invalid-gzip-import.bytes';
+        $this->createFakeMysql($toolsDir, $bytesFile);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+            $tester->setInputs(['yes']);
+
+            $tester->execute(['file' => $gzipFile], ['decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame(1, $tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Import file is empty or invalid', $display);
+            $this->assertStringNotContainsString('overwrite existing data', $display);
+            $this->assertStringNotContainsString('Database imported successfully', $display);
+            $this->assertFileDoesNotExist($bytesFile);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
     }
 
     public function testImportSuppressesMariaDbSslPasswordWarning(): void

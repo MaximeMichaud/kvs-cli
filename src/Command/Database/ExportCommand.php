@@ -21,7 +21,10 @@ class ExportCommand extends BaseCommand
 {
     use SecureFileTrait;
 
+    private const MIN_DATABASE_DUMP_BYTES = 100;
+
     private ?\PDO $tableLookupConnection = null;
+    private string $streamingExportError = '';
 
     /** @var array<string, bool> */
     private array $tableLookupCache = [];
@@ -161,13 +164,13 @@ EOT
         }
 
         $process = $this->createStreamingExportProcess($command, $env, $outputFile, $compressor);
-        $exportSucceeded = $this->runStreamingExport($process, $outputFile);
+        $exportSucceeded = $this->runStreamingExport($process, $outputFile, $compressor);
 
         if ($exportSucceeded === false) {
             $this->io()->error('Database export failed');
             $this->io()->newLine();
 
-            $errorOutput = trim($process->getErrorOutput());
+            $errorOutput = trim($this->streamingExportError !== '' ? $this->streamingExportError : $process->getErrorOutput());
             if ($errorOutput !== '') {
                 $this->io()->text('<error>Error details:</error>');
                 $this->io()->text($errorOutput);
@@ -398,8 +401,13 @@ EOT
         return $process;
     }
 
-    private function runStreamingExport(Process $process, string $outputFile): bool
+    /**
+     * @param array{command: string, test: string, extension: string}|null $compressor
+     */
+    private function runStreamingExport(Process $process, string $outputFile, ?array $compressor): bool
     {
+        $this->streamingExportError = '';
+
         $progressBar = $this->io()->createProgressBar();
         $progressBar->start();
 
@@ -423,7 +431,44 @@ EOT
             return false;
         }
 
+        $dumpBytes = $this->countExportedSqlBytes($outputFile, $compressor);
+        if ($dumpBytes === false || $dumpBytes < self::MIN_DATABASE_DUMP_BYTES) {
+            if (is_file($outputFile)) {
+                @unlink($outputFile);
+            }
+            $this->streamingExportError = 'SQL dump is empty or incomplete';
+            return false;
+        }
+
         return $this->restrictFilePermissions($outputFile);
+    }
+
+    /**
+     * @param array{command: string, test: string, extension: string}|null $compressor
+     */
+    private function countExportedSqlBytes(string $outputFile, ?array $compressor): int|false
+    {
+        if ($compressor === null) {
+            $size = filesize($outputFile);
+            return $size === false ? false : $size;
+        }
+
+        $process = new Process([$compressor['command'], '-d', '-c', $outputFile]);
+        $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
+        $process->disableOutput();
+
+        $bytes = 0;
+        $process->run(static function (string $type, string $buffer) use (&$bytes): void {
+            if ($type === Process::OUT) {
+                $bytes += strlen($buffer);
+            }
+        });
+
+        if (!$process->isSuccessful()) {
+            return false;
+        }
+
+        return $bytes;
     }
 
     /**
