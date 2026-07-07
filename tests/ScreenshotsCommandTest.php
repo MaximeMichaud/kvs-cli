@@ -247,6 +247,33 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertStringContainsString('Video ID is required', $output);
     }
 
+    #[DataProvider('provideGenerateActionsWithInvalidCounts')]
+    public function testGenerateActionsRejectNonPositiveCount(string $action, string $count): void
+    {
+        $this->tester->execute([
+            'action' => $action,
+            'video_id' => '1234',
+            '--count' => $count,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Invalid value for --count (use: integer >= 1)', $output);
+        $this->assertStringNotContainsString('ffmpeg is not installed', $output);
+        $this->assertDirectoryDoesNotExist($this->kvsPath . '/contents/videos_screenshots/1000/1234');
+    }
+
+    public static function provideGenerateActionsWithInvalidCounts(): array
+    {
+        return [
+            'generate zero' => ['generate', '0'],
+            'generate negative' => ['generate', '-1'],
+            'regenerate zero' => ['regenerate', '0'],
+            'regenerate negative' => ['regenerate', '-1'],
+        ];
+    }
+
     public function testGenerateScreenshotsFailsWhenFfmpegIsMissing(): void
     {
         TestHelper::createMockSetupConfig($this->kvsPath, [

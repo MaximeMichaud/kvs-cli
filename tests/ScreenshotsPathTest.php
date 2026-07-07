@@ -69,6 +69,27 @@ class ScreenshotsPathTest extends TestCase
         $this->assertStringContainsString('preview.jpg', $output);
     }
 
+    public function testListFallbackIncludesAvifFiles(): void
+    {
+        $screenshotsDir = $this->tempDir . '/contents/videos_screenshots/1000/1234';
+        mkdir($screenshotsDir, 0755, true);
+        file_put_contents($screenshotsDir . '/preview.avif', 'preview');
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--fields' => 'filename',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame([['filename' => 'preview.avif']], $rows);
+    }
+
     public function testListRejectsPathTraversalVideoIdBeforeScanningFiles(): void
     {
         $outsideDir = $this->tempDir . '/static/images';
@@ -149,7 +170,9 @@ class ScreenshotsPathTest extends TestCase
             ]);
 
             $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
-            $this->assertFileExists($screenshotsPath . '/1000/1234/001.jpg');
+            $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+            $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/001.jpg');
+            $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/1.jpg');
         } finally {
             if ($previousPath === false) {
                 putenv('PATH');
@@ -159,16 +182,17 @@ class ScreenshotsPathTest extends TestCase
         }
     }
 
-    public function testRegenerateRemovesEmptyScreenshotSubdirectories(): void
+    public function testRegenerateReplacesSourceScreenshotsWithoutDeletingGeneratedFormats(): void
     {
         [$ffmpeg, $ffprobe] = $this->createMockVideoTools();
 
         $sourcesPath = $this->tempDir . '/contents/videos_sources';
         $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
-        mkdir($sourcesPath . '/1000/1234', 0755, true);
+        mkdir($sourcesPath . '/1000/1234/screenshots', 0755, true);
         mkdir($screenshotsPath . '/1000/1234/320x180', 0755, true);
         file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
-        file_put_contents($screenshotsPath . '/1000/1234/320x180/001.jpg', 'old screenshot');
+        file_put_contents($sourcesPath . '/1000/1234/screenshots/2.jpg', 'old source screenshot');
+        file_put_contents($screenshotsPath . '/1000/1234/320x180/1.jpg', 'generated format');
 
         TestHelper::createMockSetupConfig($this->tempDir, [
             'content_path_videos_sources' => $sourcesPath,
@@ -186,8 +210,41 @@ class ScreenshotsPathTest extends TestCase
         ]);
 
         $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
-        $this->assertFileExists($screenshotsPath . '/1000/1234/001.jpg');
-        $this->assertDirectoryDoesNotExist($screenshotsPath . '/1000/1234/320x180');
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+        $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/2.jpg');
+        $this->assertFileExists($screenshotsPath . '/1000/1234/320x180/1.jpg');
+        $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/1.jpg');
+    }
+
+    public function testRegenerateRemovesExistingAvifSourceScreenshots(): void
+    {
+        [$ffmpeg, $ffprobe] = $this->createMockVideoTools();
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
+        mkdir($sourcesPath . '/1000/1234/screenshots', 0755, true);
+        file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
+        file_put_contents($sourcesPath . '/1000/1234/screenshots/1.avif', 'old source screenshot');
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $screenshotsPath,
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+        $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/1.avif');
+        $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/1.jpg');
     }
 
     public function testRegenerateKeepsExistingScreenshotsWhenDurationProbeFails(): void
@@ -198,10 +255,9 @@ class ScreenshotsPathTest extends TestCase
 
         $sourcesPath = $this->tempDir . '/contents/videos_sources';
         $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
-        mkdir($sourcesPath . '/1000/1234', 0755, true);
-        mkdir($screenshotsPath . '/1000/1234/320x180', 0755, true);
+        mkdir($sourcesPath . '/1000/1234/screenshots', 0755, true);
         file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
-        file_put_contents($screenshotsPath . '/1000/1234/320x180/001.jpg', 'old screenshot');
+        file_put_contents($sourcesPath . '/1000/1234/screenshots/2.jpg', 'old source screenshot');
 
         TestHelper::createMockSetupConfig($this->tempDir, [
             'content_path_videos_sources' => $sourcesPath,
@@ -219,8 +275,8 @@ class ScreenshotsPathTest extends TestCase
         ]);
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
-        $this->assertFileExists($screenshotsPath . '/1000/1234/320x180/001.jpg');
-        $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/001.jpg');
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/2.jpg');
+        $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/1.jpg');
     }
 
     public function testRegenerateKeepsExistingScreenshotsWhenGenerationFails(): void
@@ -231,10 +287,9 @@ class ScreenshotsPathTest extends TestCase
 
         $sourcesPath = $this->tempDir . '/contents/videos_sources';
         $screenshotsPath = $this->tempDir . '/contents/videos_screenshots';
-        mkdir($sourcesPath . '/1000/1234', 0755, true);
-        mkdir($screenshotsPath . '/1000/1234/320x180', 0755, true);
+        mkdir($sourcesPath . '/1000/1234/screenshots', 0755, true);
         file_put_contents($sourcesPath . '/1000/1234/source.mp4', 'video');
-        file_put_contents($screenshotsPath . '/1000/1234/320x180/001.jpg', 'old screenshot');
+        file_put_contents($sourcesPath . '/1000/1234/screenshots/2.jpg', 'old source screenshot');
 
         TestHelper::createMockSetupConfig($this->tempDir, [
             'content_path_videos_sources' => $sourcesPath,
@@ -253,9 +308,9 @@ class ScreenshotsPathTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
         $this->assertStringContainsString('Existing screenshots were not changed.', $tester->getDisplay());
-        $this->assertFileExists($screenshotsPath . '/1000/1234/320x180/001.jpg');
-        $this->assertFileDoesNotExist($screenshotsPath . '/1000/1234/001.jpg');
-        $this->assertSame([], glob($screenshotsPath . '/1000/.1234-regenerate-*') ?: []);
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/2.jpg');
+        $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/1.jpg');
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-regenerate-*') ?: []);
     }
 
     /**

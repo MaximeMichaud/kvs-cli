@@ -11,7 +11,7 @@ kvs video:screenshots <action> <video_id> [options]
 ## Description
 
 The `video:screenshots` command lists KVS overview screenshots for a video and can generate or regenerate
-overview screenshot files from the source video.
+KVS source overview screenshot files from the source video.
 
 `list` reports the logical KVS overview screenshots. When database metadata is available, the row count
 comes from `videos.screen_amount` and the main screenshot marker comes from `videos.screen_main`.
@@ -95,7 +95,8 @@ kvs video:screenshots generate 123
 kvs video:screenshots generate 123 --count=20
 ```
 
-This writes screenshot files and requires FFmpeg and FFprobe to be configured.
+This writes source overview screenshots to `contents/videos_sources/<bucket>/<video_id>/screenshots/`
+and requires FFmpeg and FFprobe to be configured.
 
 ### Regenerate Screenshots
 
@@ -103,7 +104,8 @@ This writes screenshot files and requires FFmpeg and FFprobe to be configured.
 kvs video:screenshots regenerate 123
 ```
 
-This replaces existing overview screenshot files after the new screenshots are generated successfully.
+This replaces existing source overview screenshots after the new screenshots are generated successfully.
+Generated KVS preview and resized overview files under `contents/videos_screenshots/` are not deleted.
 
 ### Output Formats
 

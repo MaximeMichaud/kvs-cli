@@ -65,7 +65,7 @@ Manage video screenshots (thumbnails).
   list reports KVS overview screenshot metadata when available, then falls back
   to scanning overview screenshot files. It does not select timeline screenshots
   or posters.
-  generate/regenerate write screenshot files and require ffmpeg to be installed.
+  generate/regenerate write KVS source overview screenshots and require ffmpeg to be installed.
 HELP
             );
     }
@@ -171,7 +171,7 @@ HELP
         }
 
         // Scan for screenshot files (common extensions)
-        $extensions = ['jpg', 'jpeg', 'png', 'webp'];
+        $extensions = ['jpg', 'jpeg', 'png', 'webp', 'avif'];
         $files = [];
 
         $files = $this->findImageFiles($screenshotsPath, $extensions);
@@ -512,7 +512,12 @@ HELP
             return self::FAILURE;
         }
 
-        $plan = $this->prepareScreenshotGeneration($input, $videoId);
+        $count = $this->getPositiveIntOptionOrDefault($input, 'count', 10);
+        if ($count === null) {
+            return self::FAILURE;
+        }
+
+        $plan = $this->prepareScreenshotGeneration($videoId, $count);
         if ($plan === null) {
             return self::FAILURE;
         }
@@ -542,7 +547,12 @@ HELP
             return self::FAILURE;
         }
 
-        $plan = $this->prepareScreenshotGeneration($input, $videoId);
+        $count = $this->getPositiveIntOptionOrDefault($input, 'count', 10);
+        if ($count === null) {
+            return self::FAILURE;
+        }
+
+        $plan = $this->prepareScreenshotGeneration($videoId, $count);
         if ($plan === null) {
             return self::FAILURE;
         }
@@ -576,7 +586,7 @@ HELP
     /**
      * @return array{ffmpeg_path: string, video_file: string, screenshots_path: string, duration: float, count: int}|null
      */
-    private function prepareScreenshotGeneration(InputInterface $input, string $videoId): ?array
+    private function prepareScreenshotGeneration(string $videoId, int $count): ?array
     {
         $ffmpegPath = $this->config->getFfmpegPath();
         $ffprobePath = $this->config->getFfprobePath();
@@ -595,14 +605,13 @@ HELP
         }
 
         $videoSourcesPath = $this->config->getVideoSourcesPath();
-        $screenshotsBasePath = $this->config->getVideoScreenshotsPath();
-        if ($videoSourcesPath === '' || $screenshotsBasePath === '') {
+        if ($videoSourcesPath === '') {
             $this->io()->error('Content paths not configured');
             return null;
         }
 
         $videoPath = $this->getVideoContentDir($videoSourcesPath, $videoId);
-        $screenshotsPath = $this->getVideoContentDir($screenshotsBasePath, $videoId);
+        $screenshotsPath = $videoPath . '/screenshots';
 
         // Find video source file
         $videoFile = $this->findVideoFile($videoPath);
@@ -618,8 +627,6 @@ HELP
             $this->io()->error("Failed to get video duration for: $videoFile");
             return null;
         }
-
-        $count = $this->getIntOptionOrDefault($input, 'count', 10);
 
         return [
             'ffmpeg_path' => $ffmpegPath,
@@ -649,7 +656,7 @@ HELP
 
         for ($i = 1; $i <= $count; $i++) {
             $timestamp = $interval * $i;
-            $filename = sprintf('%03d.jpg', $i);
+            $filename = "$i.jpg";
             $outputFile = "$screenshotsPath/$filename";
 
             $cmd = sprintf(
@@ -800,7 +807,7 @@ HELP
 
     private function replaceScreenshotsWithStaging(string $stagingPath, string $screenshotsPath): ?int
     {
-        $extensions = ['jpg', 'jpeg', 'png', 'webp'];
+        $extensions = ['jpg', 'jpeg', 'png', 'webp', 'avif'];
         $existingFiles = $this->findImageFiles($screenshotsPath, $extensions);
         $backupPath = null;
         $generatedMoved = [];
