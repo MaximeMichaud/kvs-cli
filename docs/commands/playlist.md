@@ -46,6 +46,7 @@ The `content:playlist` command allows you to list, view, create, modify, and del
 | `--format=FORMAT` | table | Output format: `table`, `csv`, `json`, `yaml`, `count`, `ids` |
 | `--no-truncate` | - | Do not truncate long values |
 | `--video=VIDEO` | - | Video ID, required for `add` and `remove` |
+| `-y, --yes` | - | Skip confirmation prompt for `delete` |
 
 ## Actions
 
@@ -96,6 +97,7 @@ Delete a playlist.
 
 ```bash
 kvs playlist delete <id>
+kvs playlist delete <id> --yes
 ```
 
 ## Mutating Actions
@@ -223,7 +225,7 @@ kvs playlist add 1 --video=42
 kvs playlist remove 1 --video=42
 
 # Delete a playlist
-kvs playlist delete 10
+kvs playlist delete 10 --yes
 ```
 
 ### Output Formats

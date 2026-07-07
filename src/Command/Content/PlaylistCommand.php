@@ -42,6 +42,7 @@ class PlaylistCommand extends BaseCommand
         'description',
         'dir',
         'video',
+        'yes',
         'limit',
     ];
 
@@ -73,6 +74,7 @@ class PlaylistCommand extends BaseCommand
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation of long text fields')
             ->addOption('video', null, InputOption::VALUE_REQUIRED, 'Video ID (required for add/remove actions)')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompt for delete')
             ->setHelp(<<<'HELP'
 Manage KVS playlists.
 
@@ -100,8 +102,8 @@ Manage KVS playlists.
 	  <fg=green>kvs playlist create "Favorites" --user=1 --private</>
 	  <fg=green>kvs playlist show 1</>
 	  <fg=green>kvs playlist add 1 --video=42</>
-	  <fg=green>kvs playlist remove 1 --video=42</>
-  <fg=green>kvs playlist delete 1</>
+          <fg=green>kvs playlist remove 1 --video=42</>
+  <fg=green>kvs playlist delete 1 --yes</>
 
 <fg=yellow>NOTE:</>
   Long text fields (title, description) are truncated in table view.
@@ -816,8 +818,9 @@ HELP
         }
         $title = trim($title);
 
-        $userId = $this->parsePositivePlaylistIdOption($this->getStringOption($input, 'user'), 'User', 'User ID is required (use --user=<id>)');
-        if ($userId === null) {
+        $userInput = $this->getStringOption($input, 'user');
+        if ($userInput === null || trim($userInput) === '') {
+            $this->io()->error('User is required (use --user=<id-or-username>)');
             return self::FAILURE;
         }
 
@@ -848,11 +851,6 @@ HELP
         }
 
         try {
-            if (!$this->userExists($db, $userId)) {
-                $this->io()->error("User not found: $userId");
-                return self::FAILURE;
-            }
-
             $requestedDir = $this->getStringOption($input, 'dir');
             $dir = $this->getUniquePlaylistDir($db, $requestedDir ?? $this->slugifyDirectory($title));
             $description = $this->getStringOption($input, 'description') ?? '';
@@ -861,6 +859,12 @@ HELP
             $restoreSqlMode = $this->relaxSqlMode($db);
             $db->beginTransaction();
             try {
+                $userId = $this->resolveCreatePlaylistUserId($db, $userInput, $now);
+                if ($userId === null) {
+                    $db->rollBack();
+                    return self::FAILURE;
+                }
+
                 $stmt = $db->prepare("
                     INSERT INTO {$this->table('playlists')}
                         (user_id, title, dir, description, status_id, is_private, is_locked,
@@ -891,6 +895,8 @@ HELP
                 $this->restoreSqlMode($db, $restoreSqlMode);
             }
 
+            $this->writeAdminAuditLog($db, 100, (int) $playlistId, Constants::OBJECT_TYPE_PLAYLIST);
+
             $this->io()->success("Playlist created successfully with ID: $playlistId");
             $this->renderTable(
                 ['Property', 'Value'],
@@ -908,6 +914,76 @@ HELP
             $this->io()->error('Failed to create playlist: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    private function resolveCreatePlaylistUserId(\PDO $db, string $userInput, string $addedDate): ?int
+    {
+        $userInput = trim($userInput);
+        if (preg_match('/^[1-9]\d*$/', $userInput) === 1) {
+            $userId = (int) $userInput;
+            if (!$this->userExists($db, $userId)) {
+                $this->io()->error("User not found: $userId");
+                return null;
+            }
+
+            return $userId;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i', $userInput) === 1) {
+            $this->io()->error('Invalid User ID (use: integer >= 1)');
+            return null;
+        }
+
+        $stmt = $db->prepare("SELECT user_id FROM {$this->table('users')} WHERE username = :username");
+        $stmt->execute(['username' => $userInput]);
+        $existingId = $stmt->fetchColumn();
+        if ($existingId !== false) {
+            return (int) $existingId;
+        }
+
+        $stmt = $db->prepare("
+            INSERT INTO {$this->table('users')}
+                (username, status_id, display_name, email, added_date)
+            VALUES
+                (:username, 2, :display_name, :email, :added_date)
+        ");
+        $stmt->execute([
+            'username' => $userInput,
+            'display_name' => $userInput,
+            'email' => $this->generatePlaylistOwnerEmail($db, $userInput),
+            'added_date' => $addedDate,
+        ]);
+
+        return (int) $db->lastInsertId();
+    }
+
+    private function generatePlaylistOwnerEmail(\PDO $db, string $username): string
+    {
+        $localPart = $username;
+        $atPosition = strpos($localPart, '@');
+        if ($atPosition !== false) {
+            $localPart = substr($localPart, 0, $atPosition);
+        }
+        if ($localPart === '') {
+            $localPart = bin2hex(random_bytes(5));
+        }
+
+        $domain = $this->config->get('project_licence_domain', 'localhost');
+        if (!is_string($domain) || $domain === '') {
+            $domain = 'localhost';
+        }
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE email = :email");
+        for ($i = 1; $i < 9999; $i++) {
+            $suffix = $i === 1 ? '' : (string) ($i - 1);
+            $email = $localPart . $suffix . '@' . $domain;
+            $stmt->execute(['email' => $email]);
+            if ((int) $stmt->fetchColumn() === 0) {
+                return $email;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique user email');
     }
 
     private function userExists(\PDO $db, int $userId): bool
@@ -1241,10 +1317,13 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->warning("This will delete playlist #$id using KVS native cleanup");
+        $this->io()->warning("This will delete playlist #$id using KVS-compatible cleanup");
         $this->io()->text("Title: " . $playlist['title']);
 
-        if ($this->io()->confirm('Do you want to continue?', false) !== true) {
+        if (
+            !$this->getBoolOption($input, 'yes')
+            && $this->io()->confirm('Do you want to continue?', false) !== true
+        ) {
             if (!$input->isInteractive()) {
                 $this->io()->error('Playlist deletion cancelled because confirmation was not provided.');
                 return self::FAILURE;
@@ -1256,7 +1335,7 @@ HELP
 
         try {
             $this->deletePlaylistWithKvs($playlistId);
-            $this->io()->success("Playlist #$id deleted with KVS cleanup");
+            $this->io()->success("Playlist #$id deleted with KVS-compatible cleanup");
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -1265,14 +1344,231 @@ HELP
         }
     }
 
+    /**
+     * Mirrors KVS delete_playlists() for one playlist without loading encoded admin PHP.
+     */
     protected function deletePlaylistWithKvs(int $playlistId): void
     {
-        $this->runWithKvsAdminContext(function () use ($playlistId): void {
-            if (!function_exists('delete_playlists')) {
-                throw new \RuntimeException('KVS delete_playlists function is not available');
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            throw new \RuntimeException('Database connection is not available');
+        }
+
+        $startedTransaction = !$db->inTransaction();
+        if ($startedTransaction) {
+            $db->beginTransaction();
+        }
+
+        try {
+            $commentUserIds = $this->fetchPlaylistRelatedIntIds(
+                $db,
+                "SELECT DISTINCT user_id FROM {$this->table('comments')}
+                 WHERE object_id = :playlist_id AND object_type_id = :object_type_id",
+                [
+                    'playlist_id' => $playlistId,
+                    'object_type_id' => Constants::OBJECT_TYPE_PLAYLIST,
+                ]
+            );
+            $categoryIds = $this->fetchPlaylistRelatedIntIds(
+                $db,
+                "SELECT DISTINCT category_id FROM {$this->table('categories_playlists')}
+                 WHERE playlist_id = :playlist_id",
+                ['playlist_id' => $playlistId]
+            );
+            $tagIds = $this->fetchPlaylistRelatedIntIds(
+                $db,
+                "SELECT DISTINCT tag_id FROM {$this->table('tags_playlists')}
+                 WHERE playlist_id = :playlist_id",
+                ['playlist_id' => $playlistId]
+            );
+            $videoIds = $this->fetchPlaylistRelatedIntIds(
+                $db,
+                "SELECT DISTINCT video_id FROM {$this->table('fav_videos')}
+                 WHERE playlist_id = :playlist_id",
+                ['playlist_id' => $playlistId]
+            );
+
+            $cleanupTables = [
+                'fav_videos',
+                'categories_playlists',
+                'tags_playlists',
+                'flags_playlists',
+                'flags_history',
+                'flags_messages',
+                'users_events',
+            ];
+            foreach ($cleanupTables as $table) {
+                $this->deletePlaylistTableRows($db, $table, $playlistId);
             }
 
-            delete_playlists([$playlistId], 'ap');
-        });
+            $stmt = $db->prepare("
+                DELETE FROM {$this->table('comments')}
+                WHERE object_id = :playlist_id AND object_type_id = :object_type_id
+            ");
+            $stmt->execute([
+                'playlist_id' => $playlistId,
+                'object_type_id' => Constants::OBJECT_TYPE_PLAYLIST,
+            ]);
+
+            $stmt = $db->prepare("
+                DELETE FROM {$this->table('users_subscriptions')}
+                WHERE subscribed_object_id = :playlist_id
+                  AND subscribed_object_type_id = :object_type_id
+            ");
+            $stmt->execute([
+                'playlist_id' => $playlistId,
+                'object_type_id' => Constants::OBJECT_TYPE_PLAYLIST,
+            ]);
+
+            $stmt = $db->prepare("DELETE FROM {$this->table('playlists')} WHERE playlist_id = :playlist_id");
+            $stmt->execute(['playlist_id' => $playlistId]);
+
+            $this->writeAdminAuditLog($db, 180, $playlistId, Constants::OBJECT_TYPE_PLAYLIST);
+
+            $this->recountPlaylistCommentUsers($db, $commentUserIds);
+            $this->recountPlaylistCategories($db, $categoryIds);
+            $this->recountPlaylistTags($db, $tagIds);
+            $this->recountPlaylistVideos($db, $videoIds);
+
+            if ($startedTransaction) {
+                $db->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($startedTransaction && $db->inTransaction()) {
+                $db->rollBack();
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * @param array<string, int> $params
+     * @return list<int>
+     */
+    private function fetchPlaylistRelatedIntIds(\PDO $db, string $sql, array $params): array
+    {
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+
+        $ids = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $value) {
+            if (is_numeric($value)) {
+                $ids[(int) $value] = true;
+            }
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    private function deletePlaylistTableRows(\PDO $db, string $table, int $playlistId): void
+    {
+        $stmt = $db->prepare("DELETE FROM {$this->table($table)} WHERE playlist_id = :playlist_id");
+        $stmt->execute(['playlist_id' => $playlistId]);
+    }
+
+    /**
+     * @param list<int> $userIds
+     */
+    private function recountPlaylistCommentUsers(\PDO $db, array $userIds): void
+    {
+        $commentsTable = $this->table('comments');
+        $usersTable = $this->table('users');
+
+        foreach ($userIds as $userId) {
+            $stmt = $db->prepare("
+                UPDATE {$usersTable}
+                SET comments_playlists_count = (
+                        SELECT COUNT(*) FROM {$commentsTable}
+                        WHERE user_id = :playlist_user_id
+                          AND is_approved = 1
+                          AND object_type_id = :playlist_object_type_id
+                    ),
+                    comments_total_count = (
+                        SELECT COUNT(*) FROM {$commentsTable}
+                        WHERE user_id = :total_user_id
+                          AND is_approved = 1
+                    )
+                WHERE user_id = :target_user_id
+            ");
+            $stmt->execute([
+                'playlist_user_id' => $userId,
+                'playlist_object_type_id' => Constants::OBJECT_TYPE_PLAYLIST,
+                'total_user_id' => $userId,
+                'target_user_id' => $userId,
+            ]);
+        }
+    }
+
+    /**
+     * @param list<int> $categoryIds
+     */
+    private function recountPlaylistCategories(\PDO $db, array $categoryIds): void
+    {
+        $categoriesTable = $this->table('categories');
+        $relationsTable = $this->table('categories_playlists');
+
+        foreach ($categoryIds as $categoryId) {
+            $stmt = $db->prepare("
+                UPDATE {$categoriesTable}
+                SET total_playlists = (
+                    SELECT COUNT(*) FROM {$relationsTable}
+                    WHERE category_id = :source_category_id
+                )
+                WHERE category_id = :target_category_id
+            ");
+            $stmt->execute([
+                'source_category_id' => $categoryId,
+                'target_category_id' => $categoryId,
+            ]);
+        }
+    }
+
+    /**
+     * @param list<int> $tagIds
+     */
+    private function recountPlaylistTags(\PDO $db, array $tagIds): void
+    {
+        $tagsTable = $this->table('tags');
+        $relationsTable = $this->table('tags_playlists');
+
+        foreach ($tagIds as $tagId) {
+            $stmt = $db->prepare("
+                UPDATE {$tagsTable}
+                SET total_playlists = (
+                    SELECT COUNT(*) FROM {$relationsTable}
+                    WHERE tag_id = :source_tag_id
+                )
+                WHERE tag_id = :target_tag_id
+            ");
+            $stmt->execute([
+                'source_tag_id' => $tagId,
+                'target_tag_id' => $tagId,
+            ]);
+        }
+    }
+
+    /**
+     * @param list<int> $videoIds
+     */
+    private function recountPlaylistVideos(\PDO $db, array $videoIds): void
+    {
+        $videosTable = $this->table('videos');
+        $favoritesTable = $this->table('fav_videos');
+
+        foreach ($videoIds as $videoId) {
+            $stmt = $db->prepare("
+                UPDATE {$videosTable}
+                SET favourites_count = (
+                    SELECT COUNT(*) FROM {$favoritesTable}
+                    WHERE video_id = :source_video_id
+                )
+                WHERE video_id = :target_video_id
+            ");
+            $stmt->execute([
+                'source_video_id' => $videoId,
+                'target_video_id' => $videoId,
+            ]);
+        }
     }
 }

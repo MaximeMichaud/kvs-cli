@@ -4,6 +4,7 @@ namespace KVS\CLI\Tests;
 
 use KVS\CLI\Command\Content\PlaylistCommand;
 use KVS\CLI\Config\Configuration;
+use KVS\CLI\Constants;
 use PDO;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -15,7 +16,16 @@ class PlaylistCommandCreateTest extends TestCase
         $db = new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER PRIMARY KEY, username TEXT)');
+        $db->exec(
+            'CREATE TABLE ktvs_users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                status_id INTEGER,
+                display_name TEXT,
+                email TEXT,
+                added_date TEXT
+            )'
+        );
         $db->exec('CREATE TABLE ktvs_playlists (
             playlist_id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -37,7 +47,8 @@ class PlaylistCommandCreateTest extends TestCase
         )');
         $db->exec("INSERT INTO ktvs_users (user_id, username) VALUES (7, 'owner')");
 
-        $command = new class (TestHelper::createTestConfiguration(TestHelper::createTestKvsInstallation()), $db) extends PlaylistCommand {
+        $kvsPath = TestHelper::createTestKvsInstallation(['project_licence_domain' => 'example.invalid']);
+        $command = new class (TestHelper::createTestConfiguration($kvsPath), $db) extends PlaylistCommand {
             public function __construct(Configuration $config, private PDO $testDb)
             {
                 parent::__construct($config);
@@ -71,6 +82,56 @@ class PlaylistCommandCreateTest extends TestCase
         $this->assertSame(1, (int) $row['status_id']);
         $this->assertSame(0, (int) $row['is_locked']);
         $this->assertSame('Created by regression test', $row['description']);
+    }
+
+    public function testPlaylistCreateWritesKvsAdminAuditLogLikeKvsAdmin(): void
+    {
+        $db = $this->createPlaylistCreateDatabase();
+        $tester = new CommandTester($this->createPlaylistCreateCommand($db));
+
+        $tester->execute([
+            'action' => 'create',
+            'id' => 'Audited Playlist',
+            '--user' => '7',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(
+            1,
+            (int) $db->query(
+                'SELECT COUNT(*) FROM ktvs_admin_audit_log WHERE username = \'kvs-cli\' ' .
+                'AND action_id = 100 AND object_id = 1 AND object_type_id = ' . Constants::OBJECT_TYPE_PLAYLIST
+            )->fetchColumn()
+        );
+    }
+
+    public function testPlaylistCreateCreatesMissingUsernameOwnerLikeKvsAdmin(): void
+    {
+        $db = $this->createPlaylistCreateDatabase();
+        $tester = new CommandTester($this->createPlaylistCreateCommand($db));
+
+        $tester->execute([
+            'action' => 'create',
+            'id' => 'Username Owner Playlist',
+            '--user' => 'new_owner',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+
+        $row = $db->query(
+            'SELECT p.user_id, u.username, u.status_id, u.display_name, u.email, u.added_date
+             FROM ktvs_playlists p
+             INNER JOIN ktvs_users u ON u.user_id = p.user_id
+             WHERE p.title = \'Username Owner Playlist\''
+        )->fetch();
+
+        $this->assertIsArray($row);
+        $this->assertSame('new_owner', $row['username']);
+        $this->assertSame(2, (int) $row['status_id']);
+        $this->assertSame('new_owner', $row['display_name']);
+        $this->assertSame('new_owner@example.invalid', $row['email']);
+        $this->assertIsString($row['added_date']);
+        $this->assertNotSame('', $row['added_date']);
     }
 
     public function testPlaylistCreateRejectsDecimalUserIdBeforeLookup(): void
@@ -110,7 +171,16 @@ class PlaylistCommandCreateTest extends TestCase
         $db = new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        $db->exec('CREATE TABLE ktvs_users (user_id INTEGER PRIMARY KEY, username TEXT)');
+        $db->exec(
+            'CREATE TABLE ktvs_users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                status_id INTEGER,
+                display_name TEXT,
+                email TEXT,
+                added_date TEXT
+            )'
+        );
         $db->exec('CREATE TABLE ktvs_playlists (
             playlist_id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -130,6 +200,15 @@ class PlaylistCommandCreateTest extends TestCase
             last_content_date TEXT NOT NULL,
             added_date TEXT NOT NULL
         )');
+        $db->exec('CREATE TABLE ktvs_admin_audit_log (
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            action_id INTEGER NOT NULL,
+            object_id INTEGER NOT NULL,
+            object_type_id INTEGER NOT NULL,
+            action_details TEXT NOT NULL,
+            added_date TEXT NOT NULL
+        )');
         $db->exec("INSERT INTO ktvs_users (user_id, username) VALUES (7, 'owner')");
 
         return $db;
@@ -137,7 +216,8 @@ class PlaylistCommandCreateTest extends TestCase
 
     private function createPlaylistCreateCommand(PDO $db): PlaylistCommand
     {
-        return new class (TestHelper::createTestConfiguration(TestHelper::createTestKvsInstallation()), $db) extends PlaylistCommand {
+        $kvsPath = TestHelper::createTestKvsInstallation(['project_licence_domain' => 'example.invalid']);
+        return new class (TestHelper::createTestConfiguration($kvsPath), $db) extends PlaylistCommand {
             public function __construct(Configuration $config, private PDO $testDb)
             {
                 parent::__construct($config);

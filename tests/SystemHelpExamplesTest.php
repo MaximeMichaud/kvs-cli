@@ -527,9 +527,11 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringContainsString('| `--dir=DIR` | - | Playlist directory slug for `create` |', $playlistDoc);
         $this->assertStringContainsString('| `--field=FIELD` | - | Display a single field value |', $playlistDoc);
         $this->assertStringContainsString('| `--video=VIDEO` | - | Video ID, required for `add` and `remove` |', $playlistDoc);
+        $this->assertStringContainsString('| `-y, --yes` | - | Skip confirmation prompt for `delete` |', $playlistDoc);
         $this->assertStringContainsString('kvs playlist create "Favorites" --user=1 --private', $playlistDoc);
         $this->assertStringContainsString('kvs playlist add 1 --video=42', $playlistDoc);
         $this->assertStringContainsString('kvs playlist remove 1 --video=42', $playlistDoc);
+        $this->assertStringContainsString('kvs playlist delete 10 --yes', $playlistDoc);
         $this->assertStringContainsString('kvs playlist list --fields=playlist_id,title,videos_amount,playlist_viewed --format=json', $playlistDoc);
         $this->assertStringContainsString('- `filled/videos`', $playlistDoc);
 
