@@ -115,11 +115,14 @@ class PluginCommandTest extends TestCase
         // Filter options
         $this->assertTrue($definition->hasOption('status'), 'Should have --status option');
         $this->assertTrue($definition->hasOption('type'), 'Should have --type option');
+        $this->assertStringContainsString('api', $definition->getOption('type')->getDescription());
+        $this->assertStringContainsString('process_object', $definition->getOption('type')->getDescription());
 
         // Formatter options
         $this->assertTrue($definition->hasOption('fields'), 'Should have --fields option');
         $this->assertTrue($definition->hasOption('field'), 'Should have --field option');
         $this->assertTrue($definition->hasOption('format'), 'Should have --format option');
+        $this->assertStringContainsString('ids', $definition->getOption('format')->getDescription());
     }
 
     public function testHelpDocumentationCompleteness(): void
@@ -165,9 +168,10 @@ class PluginCommandTest extends TestCase
         // Verify available fields section exists
         $this->assertStringContainsString('AVAILABLE FIELDS', $help);
 
-        // Verify all documented fields
-        $expectedFields = ['id', 'name', 'author', 'version', 'kvs_version',
-                          'status', 'enabled', 'types', 'title', 'description'];
+        // Verify all accepted list fields are documented.
+        $reflection = new \ReflectionClass(PluginCommand::class);
+        $expectedFields = $reflection->getConstant('LIST_FIELDS');
+        $this->assertIsArray($expectedFields);
 
         foreach ($expectedFields as $field) {
             $this->assertStringContainsString(
@@ -210,6 +214,31 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Version', $output);
         $this->assertStringContainsString('Status', $output);
         $this->assertStringContainsString('Types', $output);
+    }
+
+    public function testListSortsByLocalizedTitleLikeKvsAdmin(): void
+    {
+        $this->createPluginFixture(
+            'late_name_plugin',
+            'Zed internal name',
+            'Kernel Team',
+            '1.0.0',
+            '6.0.0',
+            'manual',
+            'Aardvark title',
+            'Title should drive plugin ordering.'
+        );
+
+        $tester = new CommandTester(new PluginCommand($this->config));
+        $exitCode = $tester->execute([
+            'action' => 'list',
+            '--field' => 'title',
+        ]);
+
+        $titles = array_values(array_filter(explode("\n", trim($tester->getDisplay()))));
+
+        $this->assertSame(0, $exitCode, $tester->getDisplay());
+        $this->assertSame('Aardvark title', $titles[0] ?? null);
     }
 
     public function testListWithStatusActive(): void
@@ -323,6 +352,36 @@ class PluginCommandTest extends TestCase
         $this->assertStringContainsString('Id', $output);
         $this->assertStringContainsString('Name', $output);
         $this->assertStringContainsString('Version', $output);
+    }
+
+    public function testDocumentedEnabledFieldIsAvailableForListAndShow(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'list',
+            '--fields' => 'id,enabled,status',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $rowsById = array_column($rows, null, 'id');
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('Yes', $rowsById['backup']['enabled'] ?? null);
+        $this->assertSame('No', $rowsById['analytics']['enabled'] ?? null);
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--fields' => 'id,enabled,status',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertSame('Yes', $rows[0]['enabled'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
     }
 
     public function testListRejectsUnknownFieldsWithoutRawFormatterException(): void
@@ -611,6 +670,63 @@ class PluginCommandTest extends TestCase
         $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
         $this->assertSame('dynamic_status', $rows[0]['id'] ?? null);
         $this->assertSame('Active', $rows[0]['status'] ?? null);
+    }
+
+    public function testShowUsesDataFileForProtectedPluginEnabledStatus(): void
+    {
+        $this->createProtectedDataBackedPluginFixture('protected_dynamic_status', true);
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'protected_dynamic_status',
+            '--format' => 'json',
+            '--fields' => 'id,status,enabled',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('protected_dynamic_status', $rows[0]['id'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
+        $this->assertSame('Yes', $rows[0]['enabled'] ?? null);
+    }
+
+    public function testShowMarksProtectedKvsNewsAsEnabled(): void
+    {
+        $this->createProtectedAlwaysEnabledPluginFixture('kvs_news');
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'kvs_news',
+            '--format' => 'json',
+            '--fields' => 'id,status,enabled',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('kvs_news', $rows[0]['id'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
+        $this->assertSame('Yes', $rows[0]['enabled'] ?? null);
+    }
+
+    public function testShowUsesBackupScheduleForProtectedBackupStatus(): void
+    {
+        $this->createProtectedBackupPluginFixture();
+
+        $exitCode = $this->tester->execute([
+            'action' => 'show',
+            'id' => 'backup',
+            '--format' => 'json',
+            '--fields' => 'id,status,enabled',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertEquals(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame('backup', $rows[0]['id'] ?? null);
+        $this->assertSame('Active', $rows[0]['status'] ?? null);
+        $this->assertSame('Yes', $rows[0]['enabled'] ?? null);
     }
 
     public function testShowRejectsListFilters(): void
@@ -1365,6 +1481,153 @@ PHP
 <?php
 \$lang['plugins']['{$id}']['title'] = 'Dynamic Status';
 \$lang['plugins']['{$id}']['description'] = 'Uses data.dat to determine enabled status.';
+
+PHP
+        );
+    }
+
+    private function createProtectedDataBackedPluginFixture(string $id, bool $enabled): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/' . $id;
+        $dataDir = $this->tempDir . '/admin/data/plugins/' . $id;
+        mkdir($pluginDir . '/langs', 0755, true);
+        mkdir($dataDir, 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.dat',
+            <<<XML
+<plugin>
+    <plugin_name>Protected Dynamic Status</plugin_name>
+    <author>Test</author>
+    <version>1.0.0</version>
+    <kvs_version>6.0.0</kvs_version>
+    <plugin_types>manual,cron</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.php',
+            <<<PHP
+<?php
+// Decoding or modifying this file is prohibited.
+if (extension_loaded('ionCube Loader')) {
+    die('The file ' . __FILE__ . " is corrupted.\n");
+}
+echo "Script error: the ionCube Loader for PHP needs to be installed.\n";
+exit(199);
+?>
+encoded payload
+PHP
+        );
+        file_put_contents($pluginDir . '/' . $id . '.tpl', '');
+        file_put_contents($dataDir . '/data.dat', serialize(['is_enabled' => $enabled ? 1 : 0]));
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['{$id}']['title'] = 'Protected Dynamic Status';
+\$lang['plugins']['{$id}']['description'] = 'Uses protected source and data.dat to determine enabled status.';
+
+PHP
+        );
+    }
+
+    private function createProtectedAlwaysEnabledPluginFixture(string $id): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/' . $id;
+        $dataDir = $this->tempDir . '/admin/data/plugins/' . $id;
+        mkdir($pluginDir . '/langs', 0755, true);
+        mkdir($dataDir, 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.dat',
+            <<<XML
+<plugin>
+    <plugin_name>KVS news</plugin_name>
+    <author>Kernel Team</author>
+    <version>1.15</version>
+    <kvs_version>6.3.0</kvs_version>
+    <plugin_types>cron</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/' . $id . '.php',
+            <<<PHP
+<?php
+// Decoding or modifying this file is prohibited.
+if (extension_loaded('ionCube Loader')) {
+    die('The file ' . __FILE__ . " is corrupted.\n");
+}
+echo "Script error: the ionCube Loader for PHP needs to be installed.\n";
+exit(199);
+?>
+encoded payload
+PHP
+        );
+        file_put_contents($pluginDir . '/' . $id . '.tpl', '');
+        file_put_contents($dataDir . '/data.dat', serialize(['news' => [], 'latest_version' => '']));
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<PHP
+<?php
+\$lang['plugins']['{$id}']['title'] = 'KVS news';
+\$lang['plugins']['{$id}']['description'] = 'Displays KVS news.';
+
+PHP
+        );
+    }
+
+    private function createProtectedBackupPluginFixture(): void
+    {
+        $pluginDir = $this->tempDir . '/admin/plugins/backup';
+        $dataDir = $this->tempDir . '/admin/data/plugins/backup';
+        TestHelper::removeDir($pluginDir);
+        TestHelper::removeDir($dataDir);
+        mkdir($pluginDir . '/langs', 0755, true);
+        mkdir($dataDir, 0755, true);
+
+        file_put_contents(
+            $pluginDir . '/backup.dat',
+            <<<XML
+<plugin>
+    <plugin_name>Backup</plugin_name>
+    <author>Kernel Team</author>
+    <version>1.26</version>
+    <kvs_version>6.0.0</kvs_version>
+    <plugin_types>manual,cron</plugin_types>
+</plugin>
+XML
+        );
+
+        file_put_contents(
+            $pluginDir . '/backup.php',
+            <<<PHP
+<?php
+// Decoding or modifying this file is prohibited.
+if (extension_loaded('ionCube Loader')) {
+    die('The file ' . __FILE__ . " is corrupted.\n");
+}
+echo "Script error: the ionCube Loader for PHP needs to be installed.\n";
+exit(199);
+?>
+encoded payload
+PHP
+        );
+        file_put_contents($pluginDir . '/backup.tpl', '');
+        file_put_contents($dataDir . '/data.dat', serialize([
+            'auto_backup_daily' => 1,
+            'auto_backup_weekly' => 1,
+            'auto_backup_monthly' => 1,
+        ]));
+        file_put_contents(
+            $pluginDir . '/langs/english.php',
+            <<<'PHP'
+<?php
+$lang['plugins']['backup']['title'] = 'Project backup';
+$lang['plugins']['backup']['description'] = 'Creates project backups.';
 
 PHP
         );

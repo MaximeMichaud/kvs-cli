@@ -16,6 +16,20 @@ use Symfony\Component\Console\Output\OutputInterface;
 class PluginCommand extends BaseCommand
 {
     private const HIDDEN_PLUGIN_IDS = ['push_notifications', 'awe_black_label'];
+    private const ALWAYS_ENABLED_PLUGIN_IDS = ['kvs_news'];
+    private const DATA_ENABLED_PLUGIN_FIELDS = [
+        'autoreplace_words' => ['enabled'],
+        'avatars_generation' => ['is_enabled'],
+        'backup' => ['auto_backup_daily', 'auto_backup_weekly', 'auto_backup_monthly'],
+        'categories_autogeneration' => ['enabled'],
+        'digiregs' => ['copyright_is_enabled'],
+        'external_search' => ['enable_external_search', 'enable_external_search_albums', 'enable_external_search_searches'],
+        'models_autogeneration' => ['enabled'],
+        'neuroscore' => ['score_is_enabled', 'title_is_enabled', 'categories_is_enabled', 'models_is_enabled'],
+        'tags_autogeneration' => ['enabled'],
+        'template_cache_cleanup' => ['is_enabled'],
+        'whisper_transcription' => ['is_enabled'],
+    ];
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count', 'ids'];
     private const LIST_FILTER_OPTIONS = ['status', 'type'];
     private const SHOW_FIELDS = [
@@ -30,6 +44,7 @@ class PluginCommand extends BaseCommand
         'syntax_ok',
         'compatible',
         'status',
+        'enabled',
         'description',
         'path',
     ];
@@ -43,6 +58,7 @@ class PluginCommand extends BaseCommand
         'version',
         'kvs_version',
         'status',
+        'enabled',
         'types',
         'files_ok',
         'syntax_ok',
@@ -69,11 +85,12 @@ Manage KVS plugins - list, inspect, and get information about installed plugins.
   --type=<type>         Filter by type (manual|cron|api|process_object)
   --fields=<fields>     Comma-separated fields to display
   --field=<field>       Display single field value
-  --format=<format>     Output format: table, csv, json, yaml, count
+  --format=<format>     Output format: table, csv, json, yaml, count, ids
 
 <info>AVAILABLE FIELDS:</info>
-  id, name, author, version, kvs_version
-  status, enabled, types, title, description
+  id, name, title, author, version, kvs_version
+  status, enabled, types, files_ok, syntax_ok, compatible
+  valid, description, path
 
 <info>EXAMPLES:</info>
   <comment>kvs plugin list</comment>
@@ -92,7 +109,7 @@ HELP
             ->addArgument('action', InputArgument::OPTIONAL, 'Action: list, show, path, status', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Plugin ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|inactive|all)', 'all')
-            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by type (manual|cron)')
+            ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by type (manual|cron|api|process_object)')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields to display')
             ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Display single field value')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count, ids', 'table')
@@ -248,6 +265,7 @@ HELP
             'version' => $this->getPluginStringField($plugin, 'version'),
             'kvs_version' => $this->getPluginStringField($plugin, 'kvs_version'),
             'status' => $isEnabled ? 'Active' : 'Inactive',
+            'enabled' => $isEnabled ? 'Yes' : 'No',
             'types' => $typesStr,
             'files_ok' => $filesOk ? 'Yes' : 'No',
             'syntax_ok' => $syntaxOk ? 'Yes' : 'No',
@@ -564,17 +582,32 @@ HELP
             }
         }
 
-        // Sort by name
+        // Match KVS admin plugins.php sorting, which uses the localized title.
         usort($plugins, function (array $a, array $b): int {
-            $nameA = $a['name'] ?? '';
-            $nameB = $b['name'] ?? '';
+            $titleCompare = strcasecmp(
+                $this->getPluginSortableString($a, 'title'),
+                $this->getPluginSortableString($b, 'title')
+            );
+            if ($titleCompare !== 0) {
+                return $titleCompare;
+            }
+
             return strcasecmp(
-                is_string($nameA) ? $nameA : '',
-                is_string($nameB) ? $nameB : ''
+                $this->getPluginSortableString($a, 'id'),
+                $this->getPluginSortableString($b, 'id')
             );
         });
 
         return $plugins;
+    }
+
+    /**
+     * @param array<string, mixed> $plugin
+     */
+    private function getPluginSortableString(array $plugin, string $field): string
+    {
+        $value = $plugin[$field] ?? '';
+        return is_string($value) ? $value : '';
     }
 
     /**
@@ -711,10 +744,23 @@ HELP
 
         $functionName = preg_quote($id . 'IsEnabled', '/');
         if (preg_match("/function\s+{$functionName}\s*\([^)]*\)\s*(?::\s*[^\\s{]+)?\s*\{(?<body>.*?)\n\}/s", $phpContent, $match) !== 1) {
+            if ($this->isProtectedPluginSource($phpContent)) {
+                if ($this->isAlwaysEnabledPlugin($id)) {
+                    return true;
+                }
+
+                return $this->getKnownDataEnabledPluginStatus($id) ?? $this->checkPluginDataEnabled($id);
+            }
+
             return false;
         }
 
         $body = $match['body'];
+        $knownDataStatus = $this->getKnownDataEnabledPluginStatus($id);
+        if ($knownDataStatus !== null) {
+            return $knownDataStatus;
+        }
+
         if (preg_match('/return\s+true\s*;/i', $body) === 1) {
             return true;
         }
@@ -725,29 +771,95 @@ HELP
         return $this->checkPluginDataEnabled($id, $body);
     }
 
-    private function checkPluginDataEnabled(string $id, string $functionBody): bool
+    private function isProtectedPluginSource(string $phpContent): bool
     {
-        if (preg_match("/['\"]is_enabled['\"]/", $functionBody) !== 1) {
+        $markers = [
+            'ionCube Loader',
+            'ioncube.com',
+            'Decoding or modifying this file is prohibited',
+            'Zend Guard',
+            'SourceGuardian',
+        ];
+
+        foreach ($markers as $marker) {
+            if (stripos($phpContent, $marker) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isAlwaysEnabledPlugin(string $id): bool
+    {
+        return in_array($id, self::ALWAYS_ENABLED_PLUGIN_IDS, true);
+    }
+
+    private function getKnownDataEnabledPluginStatus(string $id): ?bool
+    {
+        $fields = self::DATA_ENABLED_PLUGIN_FIELDS[$id] ?? null;
+        if ($fields === null) {
+            return null;
+        }
+
+        $data = $this->readPluginData($id);
+        if ($data === null) {
+            return null;
+        }
+
+        foreach ($fields as $field) {
+            $value = $data[$field] ?? 0;
+            if (is_numeric($value) && (int) $value > 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function checkPluginDataEnabled(string $id, ?string $functionBody = null): bool
+    {
+        if ($functionBody !== null && preg_match("/['\"]is_enabled['\"]/", $functionBody) !== 1) {
             return false;
         }
 
-        $dataFile = $this->config->getKvsPath() . '/admin/data/plugins/' . $id . '/data.dat';
-        if (!is_file($dataFile)) {
-            return false;
-        }
-
-        $rawData = file_get_contents($dataFile);
-        if (!is_string($rawData) || $rawData === '') {
-            return false;
-        }
-
-        $data = @unserialize($rawData, ['allowed_classes' => false]);
-        if (!is_array($data)) {
+        $data = $this->readPluginData($id);
+        if ($data === null) {
             return false;
         }
 
         $isEnabled = $data['is_enabled'] ?? 0;
 
         return is_numeric($isEnabled) && (int) $isEnabled === 1;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function readPluginData(string $id): ?array
+    {
+        $dataFile = $this->config->getKvsPath() . '/admin/data/plugins/' . $id . '/data.dat';
+        if (!is_file($dataFile)) {
+            return null;
+        }
+
+        $rawData = file_get_contents($dataFile);
+        if (!is_string($rawData) || $rawData === '') {
+            return null;
+        }
+
+        $data = @unserialize($rawData, ['allowed_classes' => false]);
+        if (!is_array($data)) {
+            return null;
+        }
+
+        $normalizedData = [];
+        foreach ($data as $key => $value) {
+            if (is_string($key)) {
+                $normalizedData[$key] = $value;
+            }
+        }
+
+        return $normalizedData;
     }
 }
