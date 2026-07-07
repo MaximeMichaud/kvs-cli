@@ -1154,6 +1154,10 @@ HELP
             $this->io()->error('Username, email, and password are required');
             return self::FAILURE;
         }
+        if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            $this->io()->error('Invalid email address');
+            return self::FAILURE;
+        }
 
         $db = $this->getDatabaseConnection();
         if ($db === null) {
@@ -1161,38 +1165,47 @@ HELP
         }
 
         try {
-            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('users')} WHERE username = :username OR email = :email");
-            $stmt->execute(['username' => $username, 'email' => $email]);
-
-            if ($stmt->fetchColumn() > 0) {
-                $this->io()->error('Username or email already exists');
-                return self::FAILURE;
-            }
-
-            // Relax sql_mode (KVS tables have many NOT NULL without DEFAULT)
-            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
-
-            $stmt = $db->prepare("
-                INSERT INTO {$this->table('users')}
-                    (username, email, pass, display_name,
-                     status_id, added_date, last_login_date, ip)
-                VALUES
-                    (:username, :email, :pass, :display_name,
-                     " . StatusFormatter::USER_ACTIVE . ",
-                     NOW(), NOW(), INET_ATON('127.0.0.1'))
-            ");
-
+            $resolvedDisplayName = (is_string($displayName) && $displayName !== '')
+                ? $displayName
+                : $username;
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM {$this->table('users')}
+                 WHERE username = :username OR email = :email OR display_name = :display_name"
+            );
             $stmt->execute([
                 'username' => $username,
                 'email' => $email,
-                'pass' => $this->generateKvsPasswordHash(is_string($password) ? $password : ''),
-                'display_name' => (is_string($displayName) && $displayName !== '')
-                    ? $displayName : $username,
+                'display_name' => $resolvedDisplayName,
             ]);
 
-            $userId = $db->lastInsertId();
+            if ($stmt->fetchColumn() > 0) {
+                $this->io()->error('Username, email, or display name already exists');
+                return self::FAILURE;
+            }
 
-            $db->exec("SET sql_mode = @old_sql_mode");
+            $restoreSqlMode = $this->relaxSqlMode($db);
+
+            try {
+                $stmt = $db->prepare("
+                    INSERT INTO {$this->table('users')}
+                        (username, email, pass, display_name, status_id, added_date)
+                    VALUES
+                        (:username, :email, :pass, :display_name, :status_id, :added_date)
+                ");
+
+                $stmt->execute([
+                    'username' => $username,
+                    'email' => $email,
+                    'pass' => $this->generateKvsPasswordHash(is_string($password) ? $password : ''),
+                    'display_name' => $resolvedDisplayName,
+                    'status_id' => StatusFormatter::USER_ACTIVE,
+                    'added_date' => date('Y-m-d H:i:s'),
+                ]);
+                $userId = $db->lastInsertId();
+            } finally {
+                $this->restoreSqlMode($db, $restoreSqlMode);
+            }
+
             $this->io()->success("User created successfully with ID: $userId");
         } catch (\Exception $e) {
             $this->io()->error('Failed to create user: ' . $e->getMessage());
@@ -1200,6 +1213,29 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    private function relaxSqlMode(\PDO $db): bool
+    {
+        try {
+            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
+            return true;
+        } catch (\PDOException) {
+            return false;
+        }
+    }
+
+    private function restoreSqlMode(\PDO $db, bool $restore): void
+    {
+        if (!$restore) {
+            return;
+        }
+
+        try {
+            $db->exec('SET sql_mode = @old_sql_mode');
+        } catch (\PDOException) {
+            // Restoring sql_mode is best effort because non-MySQL test drivers do not support it.
+        }
     }
 
     protected function generateKvsPasswordHash(string $password): string
