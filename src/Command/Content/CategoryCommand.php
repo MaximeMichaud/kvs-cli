@@ -701,8 +701,11 @@ HELP
         $titleOption = $this->getStringOption($input, 'title');
         $idArg = $this->getStringArgument($input, 'id');
         $title = $titleOption ?? $idArg;
+        if ($title !== null) {
+            $title = trim($title);
+        }
 
-        if ($title === null) {
+        if ($title === null || $title === '') {
             $this->io()->error('Category title is required');
             $this->io()->text('Usage: kvs content:category create "Category Name"');
             $this->io()->text('   or: kvs content:category create --title="Category Name" --description="..." --group=5');
@@ -724,48 +727,63 @@ HELP
                 return self::FAILURE;
             }
 
-            // Prepare data
             $description = $this->getStringOption($input, 'description') ?? '';
-            $groupId = $this->getCategoryGroupInput($input);
-            $statusId = StatusFormatter::CATEGORY_ACTIVE;
-
-            // KVS category_group_id points to categories_groups, not another category.
-            if ($groupId !== null && $groupId !== '') {
-                $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
-                $stmt->execute(['id' => $groupId]);
-                if ($stmt->fetch() === false) {
-                    $this->io()->error("Category group not found: $groupId");
-                    return self::FAILURE;
-                }
+            $statusId = $this->parseStatusFilterOrFail($input, [
+                'active' => StatusFormatter::CATEGORY_ACTIVE,
+                'inactive' => StatusFormatter::CATEGORY_INACTIVE,
+                'disabled' => StatusFormatter::CATEGORY_INACTIVE,
+            ]);
+            if ($statusId === false) {
+                return self::FAILURE;
             }
+            $statusId ??= StatusFormatter::CATEGORY_ACTIVE;
 
             $dir = $this->getUniqueCategoryDir($db, $this->slugifyCategoryDir($title));
             $now = date('Y-m-d H:i:s');
 
             // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
             $restoreSqlMode = $this->relaxSqlMode($db);
+            $db->beginTransaction();
             try {
+                $createdGroupId = null;
+                $groupId = $this->resolveCreateCategoryGroupInputId($db, $input, $now, $createdGroupId);
+                if ($groupId === false) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    return self::FAILURE;
+                }
+
                 $table = $this->table('categories');
                 $stmt = $db->prepare("
                     INSERT INTO {$table}
                         (title, dir, description, synonyms, category_group_id,
-                         status_id, added_date, last_content_date)
+                         status_id, added_date)
                     VALUES
                         (:title, :dir, :description, '',
-                         :category_group_id, :status_id, :added_date, :last_content_date)
+                         :category_group_id, :status_id, :added_date)
                 ");
 
                 $stmt->execute([
                     'title' => $title,
                     'dir' => $dir,
                     'description' => $description,
-                    'category_group_id' => $groupId !== null && $groupId !== '' ? (int) $groupId : 0,
+                    'category_group_id' => $groupId ?? 0,
                     'status_id' => $statusId,
                     'added_date' => $now,
-                    'last_content_date' => $now,
                 ]);
 
                 $categoryId = $db->lastInsertId();
+                if ($createdGroupId !== null) {
+                    $this->writeAdminAuditLog($db, 100, $createdGroupId, Constants::OBJECT_TYPE_CATEGORY_GROUP);
+                }
+                $this->writeAdminAuditLog($db, 100, (int) $categoryId, Constants::OBJECT_TYPE_CATEGORY);
+                $db->commit();
+            } catch (\Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                throw $e;
             } finally {
                 $this->restoreSqlMode($db, $restoreSqlMode);
             }
@@ -776,9 +794,9 @@ HELP
                 [
                     ['ID', (string) $categoryId],
                     ['Title', $title],
-                    ['Group ID', $groupId ?? 'None'],
+                    ['Group ID', $groupId !== null && $groupId > 0 ? (string) $groupId : 'None'],
                     ['Description', $description !== '' ? $description : 'None'],
-                    ['Status', 'Active'],
+                    ['Status', StatusFormatter::category($statusId, false)],
                 ]
             );
         } catch (\Exception $e) {
@@ -1498,6 +1516,12 @@ HELP
             // Title
             $title = $this->getStringOption($input, 'title');
             if ($title !== null) {
+                $title = trim($title);
+                if ($title === '') {
+                    $this->io()->error('Category title is required');
+                    return self::FAILURE;
+                }
+
                 $stmt = $db->prepare("
                     SELECT category_id
                     FROM {$this->table('categories')}
@@ -1520,25 +1544,6 @@ HELP
                 $params['description'] = $description;
             }
 
-            // Category group
-            $groupId = $this->getCategoryGroupInput($input);
-            if ($groupId !== null) {
-                if ($groupId !== '' && preg_match('/^\d+$/', $groupId) !== 1) {
-                    $this->io()->error('Invalid Category group ID (use: integer >= 0)');
-                    return self::FAILURE;
-                }
-                if ($groupId !== '') {
-                    $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
-                    $stmt->execute(['id' => (int) $groupId]);
-                    if ($stmt->fetch() === false) {
-                        $this->io()->error("Category group not found: $groupId");
-                        return self::FAILURE;
-                    }
-                }
-                $updates[] = 'category_group_id = :category_group_id';
-                $params['category_group_id'] = $groupId !== '' ? (int) $groupId : 0;
-            }
-
             if ($this->getStringOption($input, 'parent') !== null && $this->getStringOption($input, 'group') === null) {
                 $this->io()->warning('--parent is deprecated for categories; KVS uses category groups. Use --group instead.');
             }
@@ -1558,15 +1563,52 @@ HELP
                 $params['status_id'] = $statusId;
             }
 
-            if ($updates === []) {
-                $this->io()->warning('No changes specified. Use --title, --description, --group, or --status options.');
-                return self::FAILURE;
-            }
+            $restoreSqlMode = $this->relaxSqlMode($db);
+            $db->beginTransaction();
+            try {
+                $createdGroupId = null;
+                $groupId = $this->resolveCreateCategoryGroupInputId(
+                    $db,
+                    $input,
+                    date('Y-m-d H:i:s'),
+                    $createdGroupId
+                );
+                if ($groupId === false) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    return self::FAILURE;
+                }
+                if ($groupId !== null) {
+                    $updates[] = 'category_group_id = :category_group_id';
+                    $params['category_group_id'] = $groupId;
+                }
 
-            // Update category
-            $sql = "UPDATE {$this->table('categories')} SET " . implode(', ', $updates) . " WHERE category_id = :id";
-            $stmt = $db->prepare($sql);
-            $stmt->execute($params);
+                if ($updates === []) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    $this->io()->warning('No changes specified. Use --title, --description, --group, or --status options.');
+                    return self::FAILURE;
+                }
+
+                $auditDetails = $this->buildCategoryUpdateAuditDetails($category, $params);
+                $sql = "UPDATE {$this->table('categories')} SET " . implode(', ', $updates) . " WHERE category_id = :id";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($params);
+                if ($createdGroupId !== null) {
+                    $this->writeAdminAuditLog($db, 100, $createdGroupId, Constants::OBJECT_TYPE_CATEGORY_GROUP);
+                }
+                $this->writeAdminAuditLog($db, 150, $categoryId, Constants::OBJECT_TYPE_CATEGORY, $auditDetails);
+                $db->commit();
+            } catch (\Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                throw $e;
+            } finally {
+                $this->restoreSqlMode($db, $restoreSqlMode);
+            }
 
             $this->io()->success("Category updated successfully!");
 
@@ -1586,6 +1628,103 @@ HELP
         }
 
         return $this->getStringOption($input, 'parent');
+    }
+
+    private function resolveCreateCategoryGroupInputId(
+        \PDO $db,
+        InputInterface $input,
+        string $addedDate,
+        ?int &$createdGroupId
+    ): int|false|null {
+        $createdGroupId = null;
+        $groupInput = $this->getCategoryGroupInput($input);
+        if ($groupInput === null) {
+            return null;
+        }
+
+        $value = trim($groupInput);
+        if ($value === '') {
+            return 0;
+        }
+
+        if (preg_match('/^\d+$/', $value) === 1) {
+            $groupId = (int) $value;
+            if ($groupId === 0 || $this->categoryGroupExists($db, $groupId)) {
+                return $groupId;
+            }
+
+            $this->io()->error("Category group not found: $value");
+            return false;
+        }
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $value) === 1) {
+            $this->io()->error('Invalid Category group ID or title');
+            return false;
+        }
+
+        $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE title = :title LIMIT 1");
+        $stmt->execute(['title' => $value]);
+        $groupId = $stmt->fetchColumn();
+        if (is_numeric($groupId)) {
+            return (int) $groupId;
+        }
+
+        $groupDir = $this->getUniqueCategoryGroupDir($db, $this->slugifyCategoryDir($value));
+        $stmt = $db->prepare("
+            INSERT INTO {$this->table('categories_groups')}
+                (title, dir, added_date)
+            VALUES
+                (:title, :dir, :added_date)
+        ");
+        $stmt->execute([
+            'title' => $value,
+            'dir' => $groupDir,
+            'added_date' => $addedDate,
+        ]);
+
+        $createdGroupId = (int) $db->lastInsertId();
+        return $createdGroupId;
+    }
+
+    private function getUniqueCategoryGroupDir(\PDO $db, string $baseDir): string
+    {
+        for ($i = 1; $i < 999999; $i++) {
+            $dir = $i === 1 ? $baseDir : $baseDir . $i;
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$this->table('categories_groups')} WHERE dir = :dir");
+            $stmt->execute(['dir' => $dir]);
+            if ((int) $stmt->fetchColumn() === 0) {
+                return $dir;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique category group directory');
+    }
+
+    private function categoryGroupExists(\PDO $db, int $groupId): bool
+    {
+        $stmt = $db->prepare("SELECT category_group_id FROM {$this->table('categories_groups')} WHERE category_group_id = :id");
+        $stmt->execute(['id' => $groupId]);
+
+        return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * @param array<array-key, mixed> $category
+     * @param array<array-key, mixed> $params
+     */
+    private function buildCategoryUpdateAuditDetails(array $category, array $params): string
+    {
+        $changedFields = [];
+        foreach (['title', 'description', 'category_group_id', 'status_id'] as $field) {
+            if (!array_key_exists($field, $params)) {
+                continue;
+            }
+            if ($this->stringValue($category[$field] ?? '') !== $this->stringValue($params[$field])) {
+                $changedFields[] = $field;
+            }
+        }
+
+        return implode(', ', $changedFields);
     }
 
     /**

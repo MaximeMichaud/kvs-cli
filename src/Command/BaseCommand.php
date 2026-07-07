@@ -1405,7 +1405,7 @@ abstract class BaseCommand extends Command
             'action_id' => $actionId,
             'object_id' => $objectId,
             'object_type_id' => $objectTypeId,
-            'action_details' => $actionDetails,
+            'action_details' => $actionDetails ?? '',
             'added_date' => date('Y-m-d H:i:s'),
         ];
 

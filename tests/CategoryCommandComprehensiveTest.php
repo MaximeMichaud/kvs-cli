@@ -125,6 +125,26 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Category title is required', $output);
     }
 
+    public function testCreateRejectsEmptyTitleLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            '--title' => '   ',
+            '--description' => 'Should not be inserted',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('Category title is required', $output);
+        $this->assertSame(
+            0,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('categories') .
+                " WHERE description = 'Should not be inserted'"
+            )->fetchColumn()
+        );
+    }
+
     public function testCreateWithInvalidParent(): void
     {
         $exitCode = $this->tester->execute([
@@ -151,6 +171,123 @@ class CategoryCommandComprehensiveTest extends TestCase
             'action2',
             $this->db->query('SELECT dir FROM ' . TestHelper::table('categories') . " WHERE title = 'Action!'")
                 ->fetchColumn()
+        );
+    }
+
+    public function testCreateAssignsCategoryGroupByTitleLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Grouped Category',
+            '--group' => 'Genres',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame(
+            2,
+            $this->fetchInt(
+                'SELECT category_group_id FROM ' . TestHelper::table('categories') .
+                " WHERE title = 'Grouped Category'"
+            )
+        );
+    }
+
+    public function testCreateCreatesMissingCategoryGroupLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'New Group Category',
+            '--group' => 'Fresh Group',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+
+        $row = $this->db->query(
+            'SELECT c.category_group_id, g.title, g.dir, g.added_date
+             FROM ' . TestHelper::table('categories') . ' c
+             INNER JOIN ' . TestHelper::table('categories_groups') . ' g
+                 ON g.category_group_id = c.category_group_id
+             WHERE c.title = \'New Group Category\''
+        )->fetch();
+
+        $this->assertIsArray($row);
+        $this->assertSame('Fresh Group', $row['title']);
+        $this->assertSame('fresh-group', $row['dir']);
+        $this->assertIsString($row['added_date']);
+        $this->assertNotSame('', $row['added_date']);
+
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 100 AND object_id = ' .
+                (int) $row['category_group_id'] . ' AND object_type_id = 7'
+            )
+        );
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 100 AND object_type_id = 6'
+            )
+        );
+    }
+
+    public function testCreateHonorsStatusOptionLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Inactive Category',
+            '--status' => 'inactive',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame(
+            0,
+            $this->fetchInt(
+                'SELECT status_id FROM ' . TestHelper::table('categories') .
+                " WHERE title = 'Inactive Category'"
+            )
+        );
+        $this->assertStringContainsString('Inactive', $this->tester->getDisplay());
+    }
+
+    public function testCreateLeavesLastContentDateAtKvsDefault(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Default Last Content Category',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertNull(
+            $this->db->query(
+                'SELECT last_content_date FROM ' . TestHelper::table('categories') .
+                " WHERE title = 'Default Last Content Category'"
+            )->fetchColumn()
+        );
+    }
+
+    public function testCreateWritesKvsAdminAuditLogLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Audited Category',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+
+        $categoryId = (int) $this->db->query(
+            'SELECT category_id FROM ' . TestHelper::table('categories') . " WHERE title = 'Audited Category'"
+        )->fetchColumn();
+
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 100 AND object_id = ' . $categoryId .
+                ' AND object_type_id = 6'
+            )
         );
     }
 
@@ -196,6 +333,24 @@ class CategoryCommandComprehensiveTest extends TestCase
             1,
             (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('categories') . " WHERE title = 'Action'")
             ->fetchColumn()
+        );
+    }
+
+    public function testUpdateRejectsEmptyTitleLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '20',
+            '--title' => '   ',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('Category title is required', $output);
+        $this->assertSame(
+            'Drama',
+            $this->db->query('SELECT title FROM ' . TestHelper::table('categories') . ' WHERE category_id = 20')
+                ->fetchColumn()
         );
     }
 
@@ -464,6 +619,90 @@ class CategoryCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Category: Action', $output);
     }
 
+    public function testUpdateAssignsCategoryGroupByTitleLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '30',
+            '--group' => 'Genres',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame(
+            2,
+            $this->fetchInt('SELECT category_group_id FROM ' . TestHelper::table('categories') . ' WHERE category_id = 30')
+        );
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 150 AND object_id = 30' .
+                ' AND object_type_id = 6 AND action_details = \'category_group_id\''
+            )
+        );
+    }
+
+    public function testUpdateCreatesMissingCategoryGroupLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '30',
+            '--group' => 'Updated Fresh Group',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+
+        $row = $this->db->query(
+            'SELECT c.category_group_id, g.title, g.dir, g.added_date
+             FROM ' . TestHelper::table('categories') . ' c
+             INNER JOIN ' . TestHelper::table('categories_groups') . ' g
+                 ON g.category_group_id = c.category_group_id
+             WHERE c.category_id = 30'
+        )->fetch();
+
+        $this->assertIsArray($row);
+        $this->assertSame('Updated Fresh Group', $row['title']);
+        $this->assertSame('updated-fresh-group', $row['dir']);
+        $this->assertIsString($row['added_date']);
+        $this->assertNotSame('', $row['added_date']);
+
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 100 AND object_id = ' .
+                (int) $row['category_group_id'] . ' AND object_type_id = 7'
+            )
+        );
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 150 AND object_id = 30' .
+                ' AND object_type_id = 6 AND action_details = \'category_group_id\''
+            )
+        );
+    }
+
+    public function testUpdateWritesKvsAdminAuditLogLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--description' => 'Updated description',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame(
+            1,
+            $this->fetchInt(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log') .
+                ' WHERE username = \'kvs-cli\' AND action_id = 150 AND object_id = 10' .
+                ' AND object_type_id = 6 AND action_details = \'description\''
+            )
+        );
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -478,7 +717,12 @@ class CategoryCommandComprehensiveTest extends TestCase
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('categories_groups') . ' (' .
-            'category_group_id INTEGER, title TEXT)'
+            'category_group_id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, dir TEXT, added_date TEXT)'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_audit_log') . ' (' .
+            'user_id INTEGER, username TEXT, action_id INTEGER, object_id INTEGER, object_type_id INTEGER, ' .
+            'action_details TEXT NOT NULL, added_date TEXT)'
         );
 
         foreach ($this->relationTables() as $suffix => $objectColumn) {
@@ -490,7 +734,7 @@ class CategoryCommandComprehensiveTest extends TestCase
 
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories_groups') .
-            " (category_group_id, title) VALUES (2, 'Genres')"
+            " (category_group_id, title, dir, added_date) VALUES (2, 'Genres', 'genres', '2026-05-25 09:00:00')"
         );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('categories') .
@@ -513,6 +757,11 @@ class CategoryCommandComprehensiveTest extends TestCase
         );
 
         return $db;
+    }
+
+    private function fetchInt(string $sql): int
+    {
+        return (int) $this->db->query($sql)->fetchColumn();
     }
 
     /**

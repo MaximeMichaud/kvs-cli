@@ -563,6 +563,43 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertStringContainsString('Tag already exists: 4K', $output);
     }
 
+    public function testCreateRejectsNameMatchingExistingSynonymLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'identifier' => 'Ultra HD',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString(
+            'Tag name duplicates an existing synonym: Ultra HD (tag ID: 10)',
+            $output
+        );
+        $this->assertSame(
+            0,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('tags') . " WHERE tag = 'Ultra HD'"
+            )->fetchColumn()
+        );
+    }
+
+    public function testCreateLeavesLastContentDateAtKvsDefault(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'identifier' => 'Default Last Content Tag',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertNull(
+            $this->db->query(
+                'SELECT last_content_date FROM ' . TestHelper::table('tags') .
+                " WHERE tag = 'Default Last Content Tag'"
+            )->fetchColumn()
+        );
+    }
+
     public function testUpdateUsesUniqueTagDirectoryLikeKvsAdmin(): void
     {
         $exitCode = $this->tester->execute([
@@ -593,6 +630,24 @@ class TagCommandComprehensiveTest extends TestCase
         $this->assertSame(
             1,
             (int) $this->db->query('SELECT status_id FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 10')
+                ->fetchColumn()
+        );
+    }
+
+    public function testUpdateRejectsEmptyNameLikeKvsAdmin(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '20',
+            '--name' => '   ',
+        ]);
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('Tag name is required', $output);
+        $this->assertSame(
+            'unused',
+            $this->db->query('SELECT tag FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 20')
                 ->fetchColumn()
         );
     }

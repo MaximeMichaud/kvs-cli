@@ -501,30 +501,39 @@ HELP
         }
 
         try {
-            // Check if tag already exists
-            $stmt = $db->prepare("SELECT tag_id FROM {$this->table('tags')} WHERE tag = :tag");
-            $stmt->execute(['tag' => $tagName]);
-
-            if ($stmt->fetch() !== false) {
+            $duplicate = $this->findTagNameDuplicate($db, $tagName);
+            if ($duplicate !== null && $duplicate['field'] === 'tag') {
                 $this->io()->error("Tag already exists: $tagName");
+                return self::FAILURE;
+            }
+            if ($duplicate !== null) {
+                $this->io()->error(
+                    "Tag name duplicates an existing synonym: $tagName (tag ID: {$duplicate['tag_id']})"
+                );
                 return self::FAILURE;
             }
 
             $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($tagName));
 
             // Relax sql_mode for INSERT (KVS tables have many NOT NULL without DEFAULT)
-            $db->exec("SET @old_sql_mode = @@sql_mode, sql_mode = ''");
+            $restoreSqlMode = $this->relaxSqlMode($db);
 
-            $stmt = $db->prepare("
-                INSERT INTO {$this->table('tags')} (tag, tag_dir, synonyms, status_id, added_date, last_content_date)
-                VALUES (:tag, :tag_dir, '', 1, NOW(), NOW())
-            ");
+            try {
+                $stmt = $db->prepare("
+                    INSERT INTO {$this->table('tags')} (tag, tag_dir, synonyms, status_id, added_date)
+                    VALUES (:tag, :tag_dir, '', 1, :added_date)
+                ");
 
-            $stmt->execute(['tag' => $tagName, 'tag_dir' => $tagDir]);
+                $stmt->execute([
+                    'tag' => $tagName,
+                    'tag_dir' => $tagDir,
+                    'added_date' => date('Y-m-d H:i:s'),
+                ]);
 
-            $tagId = $db->lastInsertId();
-
-            $db->exec("SET sql_mode = @old_sql_mode");
+                $tagId = $db->lastInsertId();
+            } finally {
+                $this->restoreSqlMode($db, $restoreSqlMode);
+            }
 
             $this->io()->success("Tag created successfully!");
             $this->renderTable(
@@ -541,6 +550,39 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return array{field: 'tag'|'synonym', tag_id: string}|null
+     */
+    private function findTagNameDuplicate(\PDO $db, string $tagName): ?array
+    {
+        $normalizedTagName = mb_strtolower(trim($tagName));
+        $stmt = $db->query("SELECT tag_id, tag, synonyms FROM {$this->table('tags')}");
+        if ($stmt === false) {
+            throw new \RuntimeException('Failed to query existing tags');
+        }
+
+        while (($tag = $stmt->fetch(\PDO::FETCH_ASSOC)) !== false) {
+            if (!is_array($tag)) {
+                continue;
+            }
+
+            $tagId = is_scalar($tag['tag_id'] ?? null) ? (string) $tag['tag_id'] : '';
+            $existingTag = is_scalar($tag['tag'] ?? null) ? (string) $tag['tag'] : '';
+            if (mb_strtolower(trim($existingTag)) === $normalizedTagName) {
+                return ['field' => 'tag', 'tag_id' => $tagId];
+            }
+
+            $synonyms = is_scalar($tag['synonyms'] ?? null) ? (string) $tag['synonyms'] : '';
+            foreach (explode(',', $synonyms) as $synonym) {
+                if (mb_strtolower(trim($synonym)) === $normalizedTagName) {
+                    return ['field' => 'synonym', 'tag_id' => $tagId];
+                }
+            }
+        }
+
+        return null;
     }
 
     private function deleteTag(?string $identifier, InputInterface $input): int
@@ -1081,6 +1123,12 @@ HELP
             // Name
             $name = $this->getStringOption($input, 'name');
             if ($name !== null) {
+                $name = trim($name);
+                if ($name === '') {
+                    $this->io()->error('Tag name is required');
+                    return self::FAILURE;
+                }
+
                 $stmt = $db->prepare("SELECT tag_id, tag FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
                 $existingTag = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -1213,5 +1261,27 @@ HELP
         }
 
         throw new \RuntimeException('Unable to generate unique tag directory');
+    }
+
+    private function relaxSqlMode(\PDO $db): bool
+    {
+        if ($db->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+            return false;
+        }
+
+        $db->exec("SET @kvs_cli_old_sql_mode = @@sql_mode, sql_mode = ''");
+        return true;
+    }
+
+    private function restoreSqlMode(\PDO $db, bool $restore): void
+    {
+        if (!$restore) {
+            return;
+        }
+
+        try {
+            $db->exec('SET sql_mode = @kvs_cli_old_sql_mode');
+        } catch (\Exception) {
+        }
     }
 }

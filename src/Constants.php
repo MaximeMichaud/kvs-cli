@@ -109,6 +109,9 @@ final class Constants
     /** Object type ID for categories */
     public const OBJECT_TYPE_CATEGORY = 6;
 
+    /** Object type ID for category groups */
+    public const OBJECT_TYPE_CATEGORY_GROUP = 7;
+
     /** Object type ID for posts */
     public const OBJECT_TYPE_POST = 12;
 
