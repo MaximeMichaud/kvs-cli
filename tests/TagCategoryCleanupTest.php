@@ -212,6 +212,31 @@ class TagCategoryCleanupTest extends TestCase
         }
     }
 
+    public function testTagMergeCarriesSourceSynonymsAndSourceNameWhenKvsOptionIsEnabled(): void
+    {
+        $db = $this->createDatabase();
+        $this->createTagSchema($db);
+
+        $db->exec(
+            "UPDATE ktvs_options SET value = '1' WHERE variable = 'TAGS_ADD_SYNONYMS_ON_RENAME'"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_tags (tag_id, tag, synonyms) VALUES " .
+            "(1, 'Source', 'legacy source'), (2, 'Target', 'target alias')"
+        );
+
+        $tester = new CommandTester($this->createTagCommand($db));
+        $tester->setInputs(['yes']);
+        $tester->execute(['action' => 'merge', 'identifier' => '1', 'target' => '2']);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_tags WHERE tag_id = 1'));
+        $this->assertSame(
+            'legacy source, target alias, Source',
+            $db->query('SELECT synonyms FROM ktvs_tags WHERE tag_id = 2')->fetchColumn()
+        );
+    }
+
     public function testTagMergeWithoutInteractiveConfirmationFailsWithoutWrites(): void
     {
         $db = $this->createDatabase();
@@ -333,7 +358,9 @@ class TagCategoryCleanupTest extends TestCase
 
     private function createTagSchema(\PDO $db): void
     {
-        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
+        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT, synonyms TEXT)');
+        $db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT)');
+        $db->exec("INSERT INTO ktvs_options (variable, value) VALUES ('TAGS_ADD_SYNONYMS_ON_RENAME', '0')");
         foreach ($this->tagRelationTables() as $suffix => $objectColumn) {
             $db->exec("CREATE TABLE ktvs_tags_{$suffix} (tag_id INTEGER, {$objectColumn} INTEGER)");
         }

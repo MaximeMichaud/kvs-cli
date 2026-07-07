@@ -821,7 +821,7 @@ HELP
 
         try {
             // Verify both tags exist
-            $stmt = $db->prepare("SELECT tag_id, tag FROM {$this->table('tags')} WHERE tag_id IN (:source, :target)");
+            $stmt = $db->prepare("SELECT tag_id, tag, synonyms FROM {$this->table('tags')} WHERE tag_id IN (:source, :target)");
             $stmt->execute(['source' => $sourceId, 'target' => $targetId]);
             $tags = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -857,6 +857,8 @@ HELP
             $targetTagVal = $targetTag['tag'] ?? '';
             $sourceTagName = is_scalar($sourceTagVal) ? (string) $sourceTagVal : '';
             $targetTagName = is_scalar($targetTagVal) ? (string) $targetTagVal : '';
+            $sourceSynonyms = is_scalar($sourceTag['synonyms'] ?? null) ? (string) $sourceTag['synonyms'] : '';
+            $targetSynonyms = is_scalar($targetTag['synonyms'] ?? null) ? (string) $targetTag['synonyms'] : '';
 
             $this->io()->section('Merge Operation');
             $this->io()->text("Source: $sourceTagName (ID: $sourceId)");
@@ -876,6 +878,18 @@ HELP
 
             $db->beginTransaction();
 
+            $mergedSynonyms = $this->getTargetSynonymsAfterTagMerge(
+                $db,
+                $sourceSynonyms,
+                $targetSynonyms,
+                $sourceTagName
+            );
+            if ($mergedSynonyms !== $targetSynonyms) {
+                $db->prepare("UPDATE {$this->table('tags')} SET synonyms = :synonyms WHERE tag_id = :id")->execute([
+                    'synonyms' => $mergedSynonyms,
+                    'id' => $targetId,
+                ]);
+            }
             $this->mergeTagRelations($db, $sourceId, $targetId);
             $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id")->execute(['id' => $sourceId]);
 
@@ -1129,7 +1143,7 @@ HELP
                     return self::FAILURE;
                 }
 
-                $stmt = $db->prepare("SELECT tag_id, tag FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
+                $stmt = $db->prepare("SELECT tag_id, tag, synonyms FROM {$this->table('tags')} WHERE tag = :tag AND tag_id != :id");
                 $stmt->execute(['tag' => $name, 'id' => $id]);
                 $existingTag = $stmt->fetch(\PDO::FETCH_ASSOC);
                 if (is_array($existingTag)) {
@@ -1140,16 +1154,31 @@ HELP
                         return self::FAILURE;
                     }
 
-                    $db->beginTransaction();
-                    $this->mergeTagRelations($db, (string) $tagId, $targetId);
-                    $deleteStmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
-                    $deleteStmt->execute(['id' => $tagId]);
-                    $db->commit();
-
                     $tagValue = $tag['tag'] ?? '';
                     $sourceName = is_scalar($tagValue) ? (string) $tagValue : '';
                     $targetNameValue = $existingTag['tag'] ?? $name;
                     $targetName = is_scalar($targetNameValue) ? (string) $targetNameValue : $name;
+                    $sourceSynonyms = is_scalar($tag['synonyms'] ?? null) ? (string) $tag['synonyms'] : '';
+                    $targetSynonyms = is_scalar($existingTag['synonyms'] ?? null) ? (string) $existingTag['synonyms'] : '';
+
+                    $db->beginTransaction();
+                    $mergedSynonyms = $this->getTargetSynonymsAfterTagMerge(
+                        $db,
+                        $sourceSynonyms,
+                        $targetSynonyms,
+                        $sourceName
+                    );
+                    if ($mergedSynonyms !== $targetSynonyms) {
+                        $stmt = $db->prepare("UPDATE {$this->table('tags')} SET synonyms = :synonyms WHERE tag_id = :id");
+                        $stmt->execute([
+                            'synonyms' => $mergedSynonyms,
+                            'id' => $targetId,
+                        ]);
+                    }
+                    $this->mergeTagRelations($db, (string) $tagId, $targetId);
+                    $deleteStmt = $db->prepare("DELETE FROM {$this->table('tags')} WHERE tag_id = :id");
+                    $deleteStmt->execute(['id' => $tagId]);
+                    $db->commit();
 
                     $this->io()->success('Tags merged successfully!');
                     $this->io()->text("'$sourceName' has been merged into '$targetName'");
@@ -1162,6 +1191,14 @@ HELP
                 $tagDir = $this->getUniqueTagDir($db, $this->slugifyTagDir($name), (string) $tagId);
                 $updates[] = 'tag_dir = :tag_dir';
                 $params['tag_dir'] = $tagDir;
+                $oldName = is_scalar($tag['tag'] ?? null) ? (string) $tag['tag'] : '';
+                if ($oldName !== $name && $this->shouldAddOldTagAsSynonymOnRename($db)) {
+                    $updates[] = 'synonyms = :synonyms';
+                    $params['synonyms'] = $this->mergeTagSynonymLists(
+                        is_scalar($tag['synonyms'] ?? null) ? (string) $tag['synonyms'] : '',
+                        $oldName
+                    );
+                }
             }
 
             // Status
@@ -1210,6 +1247,62 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    private function shouldAddOldTagAsSynonymOnRename(\PDO $db): bool
+    {
+        try {
+            $stmt = $db->prepare("SELECT value FROM {$this->table('options')} WHERE variable = :variable LIMIT 1");
+            $stmt->execute(['variable' => 'TAGS_ADD_SYNONYMS_ON_RENAME']);
+            $value = $stmt->fetchColumn();
+        } catch (\Exception) {
+            return false;
+        }
+
+        return is_numeric($value) && (int) $value === 1;
+    }
+
+    private function getTargetSynonymsAfterTagMerge(
+        \PDO $db,
+        string $sourceSynonyms,
+        string $targetSynonyms,
+        string $sourceName
+    ): string {
+        $shouldAddSourceName = $this->shouldAddOldTagAsSynonymOnRename($db);
+        if ($sourceSynonyms === '' && !$shouldAddSourceName) {
+            return $targetSynonyms;
+        }
+
+        $mergedSynonyms = $this->mergeTagSynonymLists($sourceSynonyms, $targetSynonyms);
+        if ($shouldAddSourceName) {
+            $mergedSynonyms = $this->mergeTagSynonymLists($mergedSynonyms, $sourceName);
+        }
+
+        return $mergedSynonyms;
+    }
+
+    private function mergeTagSynonymLists(string ...$lists): string
+    {
+        $seen = [];
+        $items = [];
+        foreach ($lists as $list) {
+            foreach (explode(',', $list) as $item) {
+                $item = trim($item);
+                if ($item === '') {
+                    continue;
+                }
+
+                $key = mb_strtolower($item);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+
+                $seen[$key] = true;
+                $items[] = $item;
+            }
+        }
+
+        return implode(', ', $items);
     }
 
     /**

@@ -616,6 +616,61 @@ class TagCommandComprehensiveTest extends TestCase
         );
     }
 
+    public function testUpdateAddsOldTagAsSynonymWhenKvsOptionIsEnabled(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('options') .
+            " SET value = '1' WHERE variable = 'TAGS_ADD_SYNONYMS_ON_RENAME'"
+        );
+
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '20',
+            '--name' => 'Renamed Tag',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame(
+            'unused',
+            $this->db->query('SELECT synonyms FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 20')
+                ->fetchColumn()
+        );
+    }
+
+    public function testUpdateMergeCarriesSourceSynonymsAndOldTagWhenKvsOptionIsEnabled(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('options') .
+            " SET value = '1' WHERE variable = 'TAGS_ADD_SYNONYMS_ON_RENAME'"
+        );
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('tags') .
+            " SET synonyms = 'legacy source' WHERE tag_id = 20"
+        );
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('tags') .
+            " SET synonyms = 'target alias' WHERE tag_id = 40"
+        );
+
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'identifier' => '20',
+            '--name' => 'tagged',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertSame(
+            0,
+            (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 20')
+                ->fetchColumn()
+        );
+        $this->assertSame(
+            'legacy source, target alias, unused',
+            $this->db->query('SELECT synonyms FROM ' . TestHelper::table('tags') . ' WHERE tag_id = 40')
+                ->fetchColumn()
+        );
+    }
+
     public function testUpdateRejectsInvalidStatusWithoutChangingTag(): void
     {
         $exitCode = $this->tester->execute([
@@ -911,6 +966,9 @@ class TagCommandComprehensiveTest extends TestCase
             'avg_videos_rating REAL, avg_videos_popularity INTEGER, avg_albums_rating REAL, avg_albums_popularity INTEGER, ' .
             'avg_posts_rating REAL, avg_posts_popularity INTEGER)'
         );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT PRIMARY KEY, value TEXT)'
+        );
 
         foreach ($this->relationTables() as $suffix => $objectColumn) {
             $db->exec(
@@ -919,6 +977,10 @@ class TagCommandComprehensiveTest extends TestCase
             );
         }
 
+        $db->exec(
+            'INSERT INTO ' . TestHelper::table('options') .
+            " (variable, value) VALUES ('TAGS_ADD_SYNONYMS_ON_RENAME', '0')"
+        );
         $db->exec(
             'INSERT INTO ' . TestHelper::table('tags') .
             ' (tag_id, tag, tag_dir, synonyms, custom1, custom2, custom3, custom4, custom5, status_id, ' .
