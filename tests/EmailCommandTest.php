@@ -346,6 +346,66 @@ class EmailCommandTest extends TestCase
         }
     }
 
+    public function testEmailSetDebugEnabledUpdatesKvsDebugNotification(): void
+    {
+        $this->createAdminNotificationsTable();
+        $value = $this->db->query(
+            'SELECT value FROM ' . TestHelper::table('settings') . ' WHERE section = "email"'
+        )->fetchColumn();
+        $settings = is_string($value) ? json_decode($value, true, flags: JSON_THROW_ON_ERROR) : [];
+        $this->assertIsArray($settings);
+        $settings['debug_level'] = '0';
+
+        $stmt = $this->db->prepare(
+            'UPDATE ' . TestHelper::table('settings') . ' SET value = :value WHERE section = "email"'
+        );
+        $stmt->execute(['value' => json_encode($settings, JSON_THROW_ON_ERROR)]);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--debug' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT objects, details FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.email_settings.debug'"
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertIsArray($row);
+        $this->assertSame(1, (int) $row['objects']);
+        $this->assertSame('[]', $row['details']);
+    }
+
+    public function testEmailSetDebugZeroClearsKvsDebugNotificationAndLog(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('admin_notifications') .
+            " (notification_id, objects, details) VALUES ('settings.email_settings.debug', 1, '[]')"
+        );
+        $logPath = $this->emailLogPath();
+        file_put_contents($logPath, 'debug log');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--debug' => '0',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $count = $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.email_settings.debug'"
+        )->fetchColumn();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame(0, (int) $count);
+        $this->assertFileDoesNotExist($logPath);
+    }
+
     public function testEmailLogAction(): void
     {
         $this->tester->execute([
@@ -437,6 +497,19 @@ class EmailCommandTest extends TestCase
         ]);
 
         return $db;
+    }
+
+    private function createAdminNotificationsTable(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_notifications') .
+            ' (notification_id TEXT PRIMARY KEY, objects INTEGER NOT NULL DEFAULT 0, details TEXT NOT NULL DEFAULT "[]")'
+        );
+    }
+
+    private function emailLogPath(): string
+    {
+        return $this->kvsPath . '/admin/logs/email_' . md5((string) $this->config->get('billing_scripts_name', '')) . '.txt';
     }
 
     private function createCommand(PDO $db): EmailCommand

@@ -316,6 +316,191 @@ class OptionsCommandTest extends TestCase
         $this->assertStringNotContainsString('kvs cache clear', $normalizedDisplay);
     }
 
+    public function testSetRotatorScheduleIntervalUpdatesAdminProcessLikeKvs(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_processes') .
+            ' (pid TEXT PRIMARY KEY, exec_interval INTEGER NOT NULL)'
+        );
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('options') .
+            " (variable, value) VALUES ('ROTATOR_SCHEDULE_INTERVAL', '15')"
+        );
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('admin_processes') .
+            " (pid, exec_interval) VALUES ('cron_rotator', 900)"
+        );
+
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'ROTATOR_SCHEDULE_INTERVAL',
+            'value' => '20',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame(
+            1200,
+            (int) $this->db->query(
+                'SELECT exec_interval FROM ' . TestHelper::table('admin_processes') .
+                " WHERE pid = 'cron_rotator'"
+            )->fetchColumn()
+        );
+    }
+
+    public function testSetBackgroundTasksPauseDisabledRemovesPauseFileLikeKvs(): void
+    {
+        $systemDir = $this->kvsPath . '/admin/data/system';
+        self::assertTrue(is_dir($systemDir) || mkdir($systemDir, 0777, true));
+        $pauseFile = $systemDir . '/background_tasks_pause.dat';
+        file_put_contents($pauseFile, '1');
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('options') .
+            " (variable, value) VALUES ('ENABLE_BACKGROUND_TASKS_PAUSE', '1')"
+        );
+
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'ENABLE_BACKGROUND_TASKS_PAUSE',
+            'value' => '0',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertFileDoesNotExist($pauseFile);
+    }
+
+    public function testSetRotatorScreenshotsEnableResetsVideoCountersLikeKvs(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('videos') .
+            ' (video_id INTEGER PRIMARY KEY, rs_dlist INTEGER NOT NULL, rs_ccount INTEGER NOT NULL)'
+        );
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('options') .
+            " (variable, value) VALUES ('ROTATOR_SCREENSHOTS_ENABLE', '0')"
+        );
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('videos') .
+            ' (video_id, rs_dlist, rs_ccount) VALUES (1, 15, 7), (2, 3, 11)'
+        );
+
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'ROTATOR_SCREENSHOTS_ENABLE',
+            'value' => '1',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame(
+            0,
+            (int) $this->db->query(
+                'SELECT COUNT(*) FROM ' . TestHelper::table('videos') .
+                ' WHERE rs_dlist <> 0 OR rs_ccount <> 0'
+            )->fetchColumn()
+        );
+    }
+
+    public function testSetMainServerMinFreeSpaceUpdatesPrimaryDiskNotificationLikeKvs(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('options') .
+            " (variable, value) VALUES ('MAIN_SERVER_MIN_FREE_SPACE_MB', '1')"
+        );
+        $freeBytes = disk_free_space($this->kvsPath);
+        $this->assertNotFalse($freeBytes);
+        $thresholdMb = (string) ((int) ceil($freeBytes / 1024 / 1024) + 1024);
+
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'MAIN_SERVER_MIN_FREE_SPACE_MB',
+            'value' => $thresholdMb,
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT objects, details FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.general.primary_disk_space'"
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertIsArray($row);
+        $this->assertSame(1, (int) $row['objects']);
+        $this->assertSame('[' . $thresholdMb . ']', $row['details']);
+    }
+
+    public function testSetKeepVideoSourceFilesDisabledClearsProtectionNotificationLikeKvs(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('options') .
+            " (variable, value) VALUES ('KEEP_VIDEO_SOURCE_FILES', '1')"
+        );
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('admin_notifications') .
+            " (notification_id, objects, details) VALUES " .
+            "('settings.general.video_source_files_protection', 1, '[]')"
+        );
+
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'KEEP_VIDEO_SOURCE_FILES',
+            'value' => '0',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $count = $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.general.video_source_files_protection'"
+        )->fetchColumn();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame(0, (int) $count);
+    }
+
+    public function testSetGeneralSystemOptionWritesKvsAuditLog(): void
+    {
+        $this->createAdminAuditLogTable();
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('options') .
+            " (variable, value) VALUES ('KEEP_VIDEO_SOURCE_FILES', '1')"
+        );
+
+        $this->tester->execute([
+            'action' => 'set',
+            'name' => 'KEEP_VIDEO_SOURCE_FILES',
+            'value' => '0',
+            '--yes' => true,
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT username, action_id, object_id, object_type_id, action_details FROM ' .
+            TestHelper::table('admin_audit_log')
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertIsArray($row);
+        $this->assertSame('kvs-cli', $row['username']);
+        $this->assertSame(220, (int) $row['action_id']);
+        $this->assertSame(0, (int) $row['object_id']);
+        $this->assertSame(30, (int) $row['object_type_id']);
+        $this->assertSame('KEEP_VIDEO_SOURCE_FILES', $row['action_details']);
+    }
+
     public function testListRejectsConflictingEnabledDisabledFilters(): void
     {
         $this->tester->execute([
@@ -328,5 +513,30 @@ class OptionsCommandTest extends TestCase
 
         $this->assertSame(1, $this->tester->getStatusCode());
         $this->assertStringContainsString('cannot be used together', $this->tester->getDisplay());
+    }
+
+    private function createAdminNotificationsTable(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_notifications') .
+            ' (notification_id TEXT PRIMARY KEY, objects INTEGER NOT NULL DEFAULT 0, details TEXT NOT NULL DEFAULT "[]")'
+        );
+    }
+
+    private function createAdminAuditLogTable(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_audit_log') .
+            ' (
+                record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                action_id INTEGER NOT NULL,
+                object_id INTEGER NOT NULL,
+                object_type_id INTEGER NOT NULL,
+                action_details TEXT NOT NULL,
+                added_date TEXT NOT NULL
+            )'
+        );
     }
 }

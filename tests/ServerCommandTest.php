@@ -10,6 +10,8 @@ use Symfony\Component\Console\Tester\CommandTester;
 
 class ServerCommandTest extends TestCase
 {
+    private const INITIAL_CLUSTER_DATA = 'initial cluster data';
+
     private string $kvsPath;
     private Configuration $config;
     private ServerCommand $command;
@@ -19,6 +21,7 @@ class ServerCommandTest extends TestCase
     protected function setUp(): void
     {
         $this->kvsPath = TestHelper::createTestKvsInstallation();
+        file_put_contents($this->kvsPath . '/admin/data/system/cluster.dat', self::INITIAL_CLUSTER_DATA);
         $this->db = $this->createDatabase();
 
         $this->config = TestHelper::createTestConfiguration($this->kvsPath);
@@ -1134,6 +1137,155 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testServerDisableRejectsOnlyActiveNonBackupServerInGroup(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'disable',
+            'id' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $server = $this->fetchServerRow(1);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Cannot disable the only active non-backup server', $output);
+        $this->assertSame(1, (int) $server['status_id']);
+        $this->assertClusterDataUnchanged();
+    }
+
+    public function testServerDisableRejectsWhenRemainingActiveServersAreCountryRestricted(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            " SET status_id = 1, lb_countries = 'CA' WHERE server_id = 2"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'disable',
+            'id' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $server = $this->fetchServerRow(1);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('without country restrictions', $output);
+        $this->assertSame(1, (int) $server['status_id']);
+        $this->assertClusterDataUnchanged();
+    }
+
+    public function testServerDisableRejectsWhenClusterDataFileIsMissing(): void
+    {
+        unlink($this->kvsPath . '/admin/data/system/cluster.dat');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'disable',
+            'id' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $server = $this->fetchServerRow(1);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Storage cluster data file is not writable', $output);
+        $this->assertSame(1, (int) $server['status_id']);
+        $this->assertFileDoesNotExist($this->kvsPath . '/admin/data/system/cluster.dat');
+    }
+
+    public function testServerDisableUpdatesErrorIterationsAndClusterData(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            " SET status_id = 1, lb_countries = '' WHERE server_id = 2"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'disable',
+            'id' => 1,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $server = $this->fetchServerRow(1);
+        $clusterRows = $this->readClusterRows();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString("Server 'Video Local' disabled successfully", $output);
+        $this->assertSame(0, (int) $server['status_id']);
+        $this->assertSame(1, (int) $server['error_iteration']);
+        $this->assertSame(1, (int) $server['error_streaming_iteration']);
+        $this->assertCount(3, $clusterRows);
+        $this->assertSame(0, (int) $clusterRows[0]['status_id']);
+    }
+
+    public function testServerEnableUpdatesErrorIterationsAndClusterData(): void
+    {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            ' SET error_id = 1, error_iteration = 2, error_streaming_id = 6, error_streaming_iteration = 4 ' .
+            'WHERE server_id = 2'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'enable',
+            'id' => 2,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $server = $this->fetchServerRow(2);
+        $clusterRows = $this->readClusterRows();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString("Server 'Video Disabled' enabled successfully", $output);
+        $this->assertSame(1, (int) $server['status_id']);
+        $this->assertSame(3, (int) $server['error_iteration']);
+        $this->assertSame(5, (int) $server['error_streaming_iteration']);
+        $this->assertCount(3, $clusterRows);
+        $this->assertSame(1, (int) $clusterRows[1]['status_id']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchServerRow(int $serverId): array
+    {
+        $stmt = $this->db->prepare('SELECT * FROM ' . TestHelper::table('admin_servers') . ' WHERE server_id = :id');
+        $stmt->execute(['id' => $serverId]);
+        $row = $stmt->fetch();
+        $this->assertIsArray($row);
+
+        return $row;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function readClusterRows(): array
+    {
+        $clusterFile = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $this->assertFileExists($clusterFile);
+
+        $content = file_get_contents($clusterFile);
+        $this->assertIsString($content);
+        $rows = unserialize($content, ['allowed_classes' => false]);
+        $this->assertIsArray($rows);
+
+        /** @var list<array<string, mixed>> $rows */
+        return $rows;
+    }
+
+    private function assertClusterDataUnchanged(): void
+    {
+        $this->assertSame(
+            self::INITIAL_CLUSTER_DATA,
+            file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat')
+        );
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -1154,7 +1306,9 @@ class ServerCommandTest extends TestCase
             'ftp_port TEXT, ftp_user TEXT, ftp_folder TEXT, ftp_timeout TEXT, ftp_force_ssl INTEGER, ' .
             's3_region TEXT, s3_bucket TEXT, s3_endpoint TEXT, s3_prefix TEXT, s3_api_key TEXT, ' .
             's3_api_secret TEXT, control_script_url TEXT, control_script_url_version TEXT, ' .
-            'control_script_url_lock_ip INTEGER, time_offset REAL, lb_weight REAL, lb_countries TEXT, added_date TEXT)'
+            'control_script_url_lock_ip INTEGER, time_offset REAL, lb_weight REAL, lb_countries TEXT, ' .
+            'streaming_script TEXT, streaming_key TEXT, is_replace_domain_on_satellite INTEGER, warning_id INTEGER, ' .
+            'added_date TEXT)'
         );
         $db->exec('CREATE TABLE ' . TestHelper::table('videos') . ' (server_group_id INTEGER)');
         $db->exec('CREATE TABLE ' . TestHelper::table('albums') . ' (server_group_id INTEGER)');

@@ -7,6 +7,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Output\Formatter;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Yaml\Yaml;
 
 #[CoversClass(Formatter::class)]
 class FormatterTest extends TestCase
@@ -149,6 +150,22 @@ class FormatterTest extends TestCase
         $this->assertStringContainsString('Test Item', $lines[1]);
     }
 
+    public function testCsvKeepsFalseAndArrayFields(): void
+    {
+        $items = [
+            ['server_id' => 1, 'task_types' => [], 'allow_any_tasks' => false],
+        ];
+
+        ob_start();
+        $formatter = new Formatter(['format' => 'csv'], ['server_id', 'task_types', 'allow_any_tasks']);
+        $formatter->display($items, $this->output);
+        $output = ob_get_clean();
+
+        $lines = explode("\n", trim((string) $output));
+        $this->assertSame('server_id,task_types,allow_any_tasks', $lines[0]);
+        $this->assertSame('1,[],false', $lines[1]);
+    }
+
     public function testDisplayYamlFormat(): void
     {
         $items = [
@@ -159,9 +176,8 @@ class FormatterTest extends TestCase
         $formatter->display($items, $this->output);
 
         $output = $this->output->fetch();
-        $this->assertStringContainsString('-', $output);
-        $this->assertStringContainsString('id: 1', $output);
-        $this->assertStringContainsString('title: Test Item', $output);
+        $parsed = Yaml::parse($output);
+        $this->assertSame([['id' => 1, 'title' => 'Test Item']], $parsed);
     }
 
     public function testYamlKeepsEmptyStringFields(): void
@@ -174,8 +190,25 @@ class FormatterTest extends TestCase
         $formatter->display($items, $this->output);
 
         $output = $this->output->fetch();
-        $this->assertStringContainsString('display_value: ""', $output);
-        $this->assertStringNotContainsString('missing:', $output);
+        $parsed = Yaml::parse($output);
+        $this->assertSame('', $parsed[0]['display_value']);
+        $this->assertArrayNotHasKey('missing', $parsed[0]);
+    }
+
+    public function testYamlKeepsFalseAndEmptyArrayFields(): void
+    {
+        $items = [
+            ['server_id' => 1, 'task_types' => [], 'allow_any_tasks' => false],
+        ];
+
+        $formatter = new Formatter(['format' => 'yaml'], ['server_id', 'task_types', 'allow_any_tasks']);
+        $formatter->display($items, $this->output);
+
+        $output = $this->output->fetch();
+        $parsed = Yaml::parse($output);
+        $this->assertSame(1, $parsed[0]['server_id']);
+        $this->assertSame([], $parsed[0]['task_types']);
+        $this->assertFalse($parsed[0]['allow_any_tasks']);
     }
 
     public function testDisplayTableFormat(): void
@@ -459,8 +492,8 @@ class FormatterTest extends TestCase
         $formatter->display($items, $this->output);
 
         $output = $this->output->fetch();
-        // Should be quoted because of colon
-        $this->assertStringContainsString('"Test: with colon"', $output);
+        $parsed = Yaml::parse($output);
+        $this->assertSame('Test: with colon', $parsed[0]['title']);
     }
 
     public function testInvalidFormatThrowsException(): void

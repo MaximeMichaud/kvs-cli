@@ -524,6 +524,7 @@ HELP
         }
 
         try {
+            $auditBefore = $this->loadAntispamAuditState($db);
             $changes = [];
 
             // Clear blacklist options
@@ -641,6 +642,9 @@ HELP
                 return self::SUCCESS;
             }
 
+            $auditAfter = $this->loadAntispamAuditState($db);
+            $this->writeAdminAuditLog($db, 227, 0, 30, $this->buildAntispamAuditDetails($auditBefore, $auditAfter));
+
             $this->io()->success('Anti-spam settings updated:');
             foreach ($changes as $change) {
                 $this->io()->text("  - $change");
@@ -651,6 +655,52 @@ HELP
             $this->io()->error('Failed to update settings: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function loadAntispamAuditState(\PDO $db): array
+    {
+        $stmt = $db->prepare("
+            SELECT variable, value FROM {$this->table('options')}
+            WHERE variable LIKE 'ANTISPAM_%'
+        ");
+        $stmt->execute();
+        /** @var array<string, string> $state */
+        $state = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+
+        $stmt = $db->prepare("SELECT domain FROM {$this->table('users_blocked_domains')} ORDER BY sort_id ASC");
+        $stmt->execute();
+        /** @var list<string> $domains */
+        $domains = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $state['ANTISPAM_BLACKLIST_DOMAINS'] = implode(',', $domains);
+
+        $stmt = $db->prepare("SELECT ip FROM {$this->table('users_blocked_ips')} ORDER BY sort_id ASC");
+        $stmt->execute();
+        /** @var list<string> $ips */
+        $ips = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        $state['ANTISPAM_BLACKLIST_IPS'] = implode(',', $ips);
+
+        return $state;
+    }
+
+    /**
+     * @param array<string, string> $before
+     * @param array<string, string> $after
+     */
+    private function buildAntispamAuditDetails(array $before, array $after): string
+    {
+        $keys = array_values(array_unique(array_merge(array_keys($before), array_keys($after))));
+        $changedKeys = [];
+
+        foreach ($keys as $key) {
+            if (($before[$key] ?? null) !== ($after[$key] ?? null)) {
+                $changedKeys[] = $key;
+            }
+        }
+
+        return implode(', ', $changedKeys);
     }
 
     private function updateOption(\PDO $db, string $variable, string $value): void

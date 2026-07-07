@@ -337,6 +337,31 @@ class AntispamCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testAntispamSetWritesKvsAuditLog(): void
+    {
+        $this->createAdminAuditLogTable();
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--domains' => 'blocked.test',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT username, action_id, object_id, object_type_id, action_details FROM ' .
+            TestHelper::table('admin_audit_log')
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertIsArray($row);
+        $this->assertSame('kvs-cli', $row['username']);
+        $this->assertSame(227, (int) $row['action_id']);
+        $this->assertSame(0, (int) $row['object_id']);
+        $this->assertSame(30, (int) $row['object_type_id']);
+        $this->assertSame('ANTISPAM_BLACKLIST_DOMAINS', $row['action_details']);
+    }
+
     public function testAntispamAddNoOptions(): void
     {
         $this->tester->execute([
@@ -371,6 +396,23 @@ class AntispamCommandTest extends TestCase
         $db->exec('CREATE TABLE ' . TestHelper::table('users_blocked_ips') . ' (ip TEXT, sort_id INTEGER)');
 
         return $db;
+    }
+
+    private function createAdminAuditLogTable(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_audit_log') .
+            ' (
+                record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                action_id INTEGER NOT NULL,
+                object_id INTEGER NOT NULL,
+                object_type_id INTEGER NOT NULL,
+                action_details TEXT NOT NULL,
+                added_date TEXT NOT NULL
+            )'
+        );
     }
 
     private function createCommand(PDO $db): AntispamCommand

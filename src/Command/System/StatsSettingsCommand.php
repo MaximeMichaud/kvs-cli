@@ -21,6 +21,7 @@ class StatsSettingsCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'json'];
+    private const PERFORMANCE_DEBUG_NOTIFICATION_ID = 'settings.stats.performance_debug';
     private const SET_UNSUPPORTED_OPTIONS = ['format'];
     private const SET_OPTIONS = [
         'traffic',
@@ -561,6 +562,7 @@ HELP
             $this->io()->error('Failed to save stats settings. Check file permissions.');
             return self::FAILURE;
         }
+        $this->applyKvsStatsSideEffects($params, $this->buildStatsAuditDetails($params, $rawParams));
 
         $this->io()->success('Stats settings updated:');
         foreach ($changes as $change) {
@@ -568,6 +570,148 @@ HELP
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Mirror the file and notification side effects from KVS admin/options.php.
+     *
+     * @param array<string, mixed> $params
+     */
+    private function applyKvsStatsSideEffects(array $params, string $auditDetails): void
+    {
+        $performanceStats = $this->getParamInt($params, 'collect_performance_stats');
+
+        if ($performanceStats === 0) {
+            $this->removeKvsPerformanceDebugArtifacts();
+        }
+
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            return;
+        }
+
+        $this->writeAdminAuditLog($db, 223, 0, 30, $auditDetails);
+        $this->syncPerformanceDebugNotification($db, $performanceStats);
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     * @param array<string, mixed> $rawParams
+     */
+    private function buildStatsAuditDetails(array $params, array $rawParams): string
+    {
+        $changedKeys = [];
+
+        foreach ($rawParams as $key => $oldValue) {
+            if (
+                $this->normalizeStatsAuditValue($params[$key] ?? null)
+                !== $this->normalizeStatsAuditValue($oldValue)
+            ) {
+                $changedKeys[] = $key;
+            }
+        }
+
+        return implode(', ', $changedKeys);
+    }
+
+    private function normalizeStatsAuditValue(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $normalized = [];
+            foreach ($value as $key => $item) {
+                $normalized[$key] = $this->normalizeStatsAuditValue($item);
+            }
+            return $normalized;
+        }
+
+        if (is_bool($value)) {
+            return $value ? 1 : 0;
+        }
+
+        if (is_string($value) && is_numeric($value)) {
+            return preg_match('/^-?\d+$/', $value) === 1 ? (int) $value : (float) $value;
+        }
+
+        return $value;
+    }
+
+    private function removeKvsPerformanceDebugArtifacts(): void
+    {
+        $adminPath = $this->config->getAdminPath();
+        $this->removeKvsFlatDirectory($adminPath . '/data/analysis/performance');
+
+        $overloadLog = $adminPath . '/logs/overload.txt';
+        if (is_file($overloadLog)) {
+            @unlink($overloadLog);
+        }
+    }
+
+    private function removeKvsFlatDirectory(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $files = scandir($dir);
+        if ($files === false) {
+            return;
+        }
+
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+
+            $path = $dir . '/' . $file;
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+
+        @rmdir($dir);
+    }
+
+    private function syncPerformanceDebugNotification(\PDO $db, int $objects): void
+    {
+        $table = $this->multiTable('admin_notifications');
+        $notificationId = self::PERFORMANCE_DEBUG_NOTIFICATION_ID;
+
+        try {
+            if ($objects > 0) {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE notification_id = :notification_id");
+                $stmt->execute(['notification_id' => $notificationId]);
+
+                if ((int) $stmt->fetchColumn() > 0) {
+                    $stmt = $db->prepare(
+                        "UPDATE {$table} SET objects = :objects, details = :details WHERE notification_id = :notification_id"
+                    );
+                } else {
+                    $stmt = $db->prepare(
+                        "INSERT INTO {$table} (notification_id, objects, details) "
+                        . "VALUES (:notification_id, :objects, :details)"
+                    );
+                }
+                $stmt->execute([
+                    'notification_id' => $notificationId,
+                    'objects' => $objects,
+                    'details' => $this->encodeAdminNotificationDetails([]),
+                ]);
+                return;
+            }
+
+            $stmt = $db->prepare("DELETE FROM {$table} WHERE notification_id = :notification_id");
+            $stmt->execute(['notification_id' => $notificationId]);
+        } catch (\PDOException) {
+            // Minimal or legacy installs may not have the shared notifications table.
+        }
+    }
+
+    /**
+     * @param list<mixed> $details
+     */
+    private function encodeAdminNotificationDetails(array $details): string
+    {
+        return json_encode($details, JSON_THROW_ON_ERROR);
     }
 
     /**

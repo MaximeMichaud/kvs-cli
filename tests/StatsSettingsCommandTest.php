@@ -4,6 +4,7 @@ namespace KVS\CLI\Tests;
 
 use KVS\CLI\Command\System\StatsSettingsCommand;
 use KVS\CLI\Config\Configuration;
+use PDO;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -150,6 +151,111 @@ PHP
         $this->assertArrayNotHasKey('collect_player_stats', $params);
     }
 
+    public function testPerformanceDisabledRemovesKvsDebugArtifacts(): void
+    {
+        $performanceDir = $this->kvsPath . '/admin/data/analysis/performance';
+        self::assertTrue(mkdir($performanceDir, 0777, true));
+        file_put_contents($performanceDir . '/sample.dat', 'debug');
+
+        $overloadLog = $this->kvsPath . '/admin/logs/overload.txt';
+        self::assertTrue(is_dir(dirname($overloadLog)) || mkdir(dirname($overloadLog), 0777, true));
+        file_put_contents($overloadLog, 'overload');
+
+        $this->writeStatsParams([
+            'collect_performance_stats' => 1,
+            'videos_stats_limit_countries_option' => '',
+            'videos_stats_limit_countries' => [],
+        ]);
+
+        $this->tester->execute([
+            'action' => 'set',
+            '--performance' => '0',
+            '--force' => true,
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertDirectoryDoesNotExist($performanceDir);
+        $this->assertFileDoesNotExist($overloadLog);
+    }
+
+    public function testPerformanceSettingMirrorsKvsAdminNotification(): void
+    {
+        $db = $this->createNotificationDatabase();
+        $tester = $this->createTesterWithDatabase($db);
+
+        $tester->execute([
+            'action' => 'set',
+            '--performance' => '1',
+            '--force' => true,
+        ]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $this->assertSame(
+            1,
+            (int) $db->query(
+                "SELECT objects FROM " . TestHelper::table('admin_notifications') .
+                " WHERE notification_id = 'settings.stats.performance_debug'"
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            '[]',
+            $db->query(
+                "SELECT details FROM " . TestHelper::table('admin_notifications') .
+                " WHERE notification_id = 'settings.stats.performance_debug'"
+            )->fetchColumn()
+        );
+
+        $tester->execute([
+            'action' => 'set',
+            '--performance' => '0',
+            '--force' => true,
+        ]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $this->assertSame(
+            0,
+            (int) $db->query(
+                "SELECT COUNT(*) FROM " . TestHelper::table('admin_notifications') .
+                " WHERE notification_id = 'settings.stats.performance_debug'"
+            )->fetchColumn()
+        );
+    }
+
+    public function testSetWritesKvsStatsSettingsAuditLog(): void
+    {
+        $db = $this->createNotificationDatabase();
+        $tester = $this->createTesterWithDatabase($db);
+        $this->writeStatsParams([
+            'collect_performance_stats' => 1,
+            'videos_stats_limit_countries_option' => '',
+            'videos_stats_limit_countries' => [],
+        ]);
+
+        $tester->execute([
+            'action' => 'set',
+            '--performance' => '0',
+            '--force' => true,
+        ]);
+
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+
+        $row = $db->query(
+            'SELECT username, action_id, object_id, object_type_id, action_details FROM ' .
+            TestHelper::table('admin_audit_log')
+        )->fetch();
+
+        $this->assertIsArray($row);
+        $this->assertSame('kvs-cli', $row['username']);
+        $this->assertSame(223, (int) $row['action_id']);
+        $this->assertSame(0, (int) $row['object_id']);
+        $this->assertSame(30, (int) $row['object_type_id']);
+        $this->assertSame('collect_performance_stats', $row['action_details']);
+    }
+
     public function testRejectsUnknownAction(): void
     {
         $this->tester->execute([
@@ -291,5 +397,48 @@ PHP
     private function statsParamsPath(): string
     {
         return $this->kvsPath . '/admin/data/system/stats_params.dat';
+    }
+
+    private function createNotificationDatabase(): PDO
+    {
+        $db = new PDO('sqlite::memory:');
+        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_notifications') .
+            ' (notification_id TEXT PRIMARY KEY, objects INTEGER NOT NULL DEFAULT 0, details TEXT NOT NULL DEFAULT "")'
+        );
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_audit_log') .
+            ' (
+                record_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                action_id INTEGER NOT NULL,
+                object_id INTEGER NOT NULL,
+                object_type_id INTEGER NOT NULL,
+                action_details TEXT NOT NULL,
+                added_date TEXT NOT NULL
+            )'
+        );
+
+        return $db;
+    }
+
+    private function createTesterWithDatabase(PDO $db): CommandTester
+    {
+        $command = new class (new Configuration(['path' => $this->kvsPath]), $db) extends StatsSettingsCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+
+        return new CommandTester($command);
     }
 }

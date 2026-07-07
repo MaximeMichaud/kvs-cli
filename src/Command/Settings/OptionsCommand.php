@@ -20,6 +20,8 @@ class OptionsCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const PRIMARY_DISK_SPACE_NOTIFICATION_ID = 'settings.general.primary_disk_space';
+    private const VIDEO_SOURCE_FILES_PROTECTION_NOTIFICATION_ID = 'settings.general.video_source_files_protection';
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
     private const LIST_FIELDS = ['variable', 'value', 'display_value', 'category'];
     private const LIST_ONLY_OPTIONS = ['prefix', 'category', 'search', 'with-value', 'enabled', 'disabled'];
@@ -496,6 +498,14 @@ HELP
             );
             $stmt->execute(['value' => $value, 'name' => $name]);
             $syncedFiles = $this->writeMirroredSettingsFiles($mirroredSettingsFiles, $name, $value);
+            $this->applyKvsOptionSideEffects($db, $name, $oldValue, $value);
+            $this->writeAdminAuditLog(
+                $db,
+                $this->getKvsOptionsAuditActionId($mirroredSettingsFiles, $name),
+                0,
+                30,
+                $oldValue !== $value ? $name : ''
+            );
 
             $this->io()->success("Option '$name' updated successfully");
             $this->io()->text("Changed from: $oldValue");
@@ -581,6 +591,111 @@ HELP
         }
 
         return $syncedFiles;
+    }
+
+    /**
+     * @param list<array{file: string, path: string, data: array<string, mixed>}> $settingsFiles
+     */
+    private function getKvsOptionsAuditActionId(array $settingsFiles, string $name): int
+    {
+        $files = array_column($settingsFiles, 'file');
+
+        if (in_array('memberzone_params.dat', $files, true)) {
+            return 222;
+        }
+
+        if (array_intersect($files, ['blocked_words.dat', 'website_ui_params.dat']) !== []) {
+            return 221;
+        }
+
+        if (str_starts_with($name, 'ANTISPAM_')) {
+            return 227;
+        }
+
+        return 220;
+    }
+
+    private function applyKvsOptionSideEffects(\PDO $db, string $name, string $oldValue, string $value): void
+    {
+        if ($name === 'ROTATOR_SCHEDULE_INTERVAL') {
+            $stmt = $db->prepare(
+                "UPDATE {$this->multiTable('admin_processes')} SET exec_interval = :interval WHERE pid = 'cron_rotator'"
+            );
+            $stmt->execute(['interval' => (int) $value * 60]);
+        }
+
+        if ($name === 'ENABLE_BACKGROUND_TASKS_PAUSE' && (int) $value === 0) {
+            $pauseFile = $this->config->getAdminPath() . '/data/system/background_tasks_pause.dat';
+            if (is_file($pauseFile)) {
+                @unlink($pauseFile);
+            }
+        }
+
+        if ($name === 'ROTATOR_SCREENSHOTS_ENABLE' && (int) $oldValue === 0 && (int) $value === 1) {
+            $db->exec("UPDATE {$this->table('videos')} SET rs_dlist = 0, rs_ccount = 0");
+        }
+
+        if ($name === 'KEEP_VIDEO_SOURCE_FILES' && (int) $value === 0) {
+            $this->syncAdminNotification($db, self::VIDEO_SOURCE_FILES_PROTECTION_NOTIFICATION_ID, 0);
+        }
+
+        if ($name === 'MAIN_SERVER_MIN_FREE_SPACE_MB') {
+            $this->syncPrimaryDiskSpaceNotification($db, (int) $value);
+        }
+    }
+
+    private function syncPrimaryDiskSpaceNotification(\PDO $db, int $thresholdMb): void
+    {
+        $freeBytes = @disk_free_space($this->config->getKvsPath());
+        $thresholdBytes = $thresholdMb * 1024 * 1024;
+        $objects = $freeBytes !== false && $freeBytes < $thresholdBytes ? 1 : 0;
+
+        $this->syncAdminNotification($db, self::PRIMARY_DISK_SPACE_NOTIFICATION_ID, $objects, [$thresholdMb]);
+    }
+
+    /**
+     * @param list<mixed> $details
+     */
+    private function syncAdminNotification(\PDO $db, string $notificationId, int $objects, array $details = []): void
+    {
+        $table = $this->multiTable('admin_notifications');
+
+        try {
+            if ($objects > 0) {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE notification_id = :notification_id");
+                $stmt->execute(['notification_id' => $notificationId]);
+
+                if ((int) $stmt->fetchColumn() > 0) {
+                    $stmt = $db->prepare(
+                        "UPDATE {$table} SET objects = :objects, details = :details WHERE notification_id = :notification_id"
+                    );
+                } else {
+                    $stmt = $db->prepare(
+                        "INSERT INTO {$table} (notification_id, objects, details) "
+                        . "VALUES (:notification_id, :objects, :details)"
+                    );
+                }
+                $stmt->execute([
+                    'notification_id' => $notificationId,
+                    'objects' => $objects,
+                    'details' => $this->encodeAdminNotificationDetails($details),
+                ]);
+                return;
+            }
+
+            $stmt = $db->prepare("DELETE FROM {$table} WHERE notification_id = :notification_id");
+            $stmt->execute(['notification_id' => $notificationId]);
+        } catch (\PDOException) {
+            // Minimal or legacy installs may not have the shared notifications table.
+        }
+    }
+
+    /**
+     * @param list<mixed> $details
+     */
+    private function encodeAdminNotificationDetails(array $details): string
+    {
+        return json_encode($details, JSON_THROW_ON_ERROR);
     }
 
     private function castMirroredOptionValue(string $value, mixed $currentValue): mixed

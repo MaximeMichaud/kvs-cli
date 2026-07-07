@@ -23,6 +23,10 @@ class ConversionCommand extends BaseCommand
     use ExperimentalCommandTrait;
     use ToggleStatusTrait;
 
+    private const VALIDATION_NOTIFICATION_ID = 'settings.conversion_servers.validation';
+    private const EMPTY_NOTIFICATION_ID = 'settings.conversion_servers.empty';
+    private const DEBUG_NOTIFICATION_ID = 'settings.conversion_servers.debug';
+
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
     private const LIST_ONLY_OPTIONS = ['status', 'errors', 'limit'];
@@ -498,6 +502,8 @@ HELP
             'status_id' => $statusId,
             'is_allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks'),
             'max_tasks_priority' => $this->getNumericField($server, 'max_tasks_priority'),
+            'option_storage_servers' => $this->getNumericField($server, 'option_storage_servers'),
+            'option_pull_source_files' => $this->getNumericField($server, 'option_pull_source_files'),
             'tasks_amount' => $this->getNumericField($server, 'tasks_pending'),
             'finished_tasks_amount' => $this->getNumericField($server, 'tasks_completed'),
             'tasks_pending' => $this->getNumericField($server, 'tasks_pending'),
@@ -511,7 +517,9 @@ HELP
             'ftp_host' => $this->getStringField($server, 'ftp_host'),
             'ftp_port' => $this->getStringField($server, 'ftp_port'),
             'ftp_user' => $this->getStringField($server, 'ftp_user'),
+            'ftp_folder' => $this->getStringField($server, 'ftp_folder'),
             'ftp_timeout' => $this->getStringField($server, 'ftp_timeout'),
+            'ftp_force_ssl' => $this->getNumericField($server, 'ftp_force_ssl'),
             'total_space' => $this->formatBytes($totalSpace),
             'free_space' => $this->formatBytes($freeSpace),
             'free_space_percent' => $computedAdminFields['free_space_percent'],
@@ -1062,7 +1070,7 @@ HELP
             return self::FAILURE;
         }
 
-        return $this->toggleEntityStatus(
+        $result = $this->toggleEntityStatus(
             'Conversion server',
             $this->table('admin_conversion_servers'),
             'server_id',
@@ -1071,6 +1079,11 @@ HELP
             StatusFormatter::CONVERSION_ACTIVE,
             'system:conversion'
         );
+        if ($result === self::SUCCESS) {
+            $this->syncConversionStatusNotifications();
+        }
+
+        return $result;
     }
 
     private function disableServer(?string $id, InputInterface $input): int
@@ -1080,7 +1093,7 @@ HELP
             return self::FAILURE;
         }
 
-        return $this->toggleEntityStatus(
+        $result = $this->toggleEntityStatus(
             'Conversion server',
             $this->table('admin_conversion_servers'),
             'server_id',
@@ -1089,6 +1102,11 @@ HELP
             StatusFormatter::CONVERSION_DISABLED,
             'system:conversion'
         );
+        if ($result === self::SUCCESS) {
+            $this->syncConversionStatusNotifications();
+        }
+
+        return $result;
     }
 
     private function toggleDebug(?string $id, bool $enable, InputInterface $input): int
@@ -1124,6 +1142,11 @@ HELP
             $targetDebug = $enable ? 1 : 0;
 
             if ($currentDebug === $targetDebug) {
+                if (!$enable) {
+                    $this->removeConversionDebugLog($serverId);
+                }
+                $this->syncConversionDebugNotification($db);
+
                 $status = $enable ? 'enabled' : 'disabled';
                 $this->io()->info("Debug is already {$status}");
                 return self::SUCCESS;
@@ -1133,6 +1156,11 @@ HELP
             $stmt = $db->prepare("UPDATE {$this->table('admin_conversion_servers')} SET is_debug_enabled = :debug WHERE server_id = :id");
             $stmt->execute(['debug' => $targetDebug, 'id' => $serverId]);
 
+            if (!$enable) {
+                $this->removeConversionDebugLog($serverId);
+            }
+            $this->syncConversionDebugNotification($db);
+
             $title = $this->getStringField($server, 'title');
             $action = $enable ? 'enabled' : 'disabled';
             $this->io()->success("Debug {$action} for server '{$title}'");
@@ -1141,6 +1169,90 @@ HELP
         } catch (\Exception $e) {
             $this->io()->error('Failed to toggle debug: ' . $e->getMessage());
             return self::FAILURE;
+        }
+    }
+
+    private function syncConversionDebugNotification(\PDO $db): void
+    {
+        try {
+            $stmt = $db->query(
+                "SELECT COUNT(*) FROM {$this->table('admin_conversion_servers')} WHERE is_debug_enabled = 1"
+            );
+            if ($stmt === false) {
+                return;
+            }
+            $debugEnabled = (int) $stmt->fetchColumn();
+
+            $this->syncAdminNotification($db, self::DEBUG_NOTIFICATION_ID, $debugEnabled);
+        } catch (\PDOException) {
+            // Minimal or legacy installs may not have the shared notifications table.
+        }
+    }
+
+    private function syncConversionStatusNotifications(): void
+    {
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            return;
+        }
+
+        try {
+            $validationStmt = $db->query(
+                "SELECT COUNT(*) FROM {$this->table('admin_conversion_servers')} " .
+                "WHERE status_id != 0 AND error_id > 0 AND error_iteration > 1"
+            );
+            $activeStmt = $db->query(
+                "SELECT COUNT(*) FROM {$this->table('admin_conversion_servers')} WHERE status_id > 0"
+            );
+            if ($validationStmt === false || $activeStmt === false) {
+                return;
+            }
+
+            $validationErrors = (int) $validationStmt->fetchColumn();
+            $activeServers = (int) $activeStmt->fetchColumn();
+
+            $this->syncAdminNotification($db, self::VALIDATION_NOTIFICATION_ID, $validationErrors);
+            $this->syncAdminNotification($db, self::EMPTY_NOTIFICATION_ID, $activeServers === 0 ? 1 : 0);
+        } catch (\PDOException) {
+            // Minimal or legacy installs may not have the shared notifications table.
+        }
+    }
+
+    private function syncAdminNotification(\PDO $db, string $notificationId, int $objects): void
+    {
+        $table = $this->multiTable('admin_notifications');
+
+        if ($objects > 0) {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE notification_id = :notification_id");
+            $stmt->execute(['notification_id' => $notificationId]);
+
+            if ((int) $stmt->fetchColumn() > 0) {
+                $stmt = $db->prepare(
+                    "UPDATE {$table} SET objects = :objects, details = :details WHERE notification_id = :notification_id"
+                );
+            } else {
+                $stmt = $db->prepare(
+                    "INSERT INTO {$table} (notification_id, objects, details) "
+                    . "VALUES (:notification_id, :objects, :details)"
+                );
+            }
+            $stmt->execute([
+                'notification_id' => $notificationId,
+                'objects' => $objects,
+                'details' => json_encode([], JSON_THROW_ON_ERROR),
+            ]);
+            return;
+        }
+
+        $stmt = $db->prepare("DELETE FROM {$table} WHERE notification_id = :notification_id");
+        $stmt->execute(['notification_id' => $notificationId]);
+    }
+
+    private function removeConversionDebugLog(int $serverId): void
+    {
+        $debugLog = $this->config->getKvsPath() . '/admin/logs/debug_conversion_server_' . $serverId . '.txt';
+        if (is_file($debugLog)) {
+            @unlink($debugLog);
         }
     }
 

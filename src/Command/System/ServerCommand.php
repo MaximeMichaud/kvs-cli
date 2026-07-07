@@ -4,7 +4,6 @@ namespace KVS\CLI\Command\System;
 
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
-use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
@@ -22,7 +21,6 @@ use Symfony\Component\Console\Output\OutputInterface;
 class ServerCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
-    use ToggleStatusTrait;
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
 
@@ -1471,15 +1469,7 @@ HELP
             return self::FAILURE;
         }
 
-        return $this->toggleEntityStatus(
-            'Server',
-            $this->table('admin_servers'),
-            'server_id',
-            'title',
-            $id,
-            StatusFormatter::SERVER_ACTIVE,
-            'system:server'
-        );
+        return $this->setStorageServerStatus($id, StatusFormatter::SERVER_ACTIVE);
     }
 
     private function disableServer(?string $id, InputInterface $input): int
@@ -1489,15 +1479,199 @@ HELP
             return self::FAILURE;
         }
 
-        return $this->toggleEntityStatus(
-            'Server',
-            $this->table('admin_servers'),
-            'server_id',
-            'title',
-            $id,
-            StatusFormatter::SERVER_DISABLED,
-            'system:server'
-        );
+        return $this->setStorageServerStatus($id, StatusFormatter::SERVER_DISABLED);
+    }
+
+    private function setStorageServerStatus(?string $id, int $status): int
+    {
+        $serverId = $this->getRequiredPositiveId($id, 'Server');
+        if ($serverId === null) {
+            return self::FAILURE;
+        }
+
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $server = $this->fetchStorageServerForMutation($db, $serverId);
+            if ($server === null) {
+                $this->io()->error("Server not found: {$serverId}");
+                return self::FAILURE;
+            }
+
+            $currentStatus = $this->getNumericField($server, 'status_id');
+            if ($currentStatus === $status) {
+                $currentStatusLabel = $status === StatusFormatter::SERVER_ACTIVE ? 'active' : 'inactive';
+                $this->io()->info("Server is already {$currentStatusLabel}");
+                return self::SUCCESS;
+            }
+
+            if (!$this->canWriteStorageClusterData()) {
+                return self::FAILURE;
+            }
+
+            if (
+                $status === StatusFormatter::SERVER_DISABLED
+                && !$this->validateStorageServerCanBeDisabled($db, $server, $serverId)
+            ) {
+                return self::FAILURE;
+            }
+
+            if ($status === StatusFormatter::SERVER_ACTIVE) {
+                $stmt = $db->prepare("
+                    UPDATE {$this->table('admin_servers')}
+                    SET status_id = 1,
+                        error_iteration = CASE WHEN error_id > 0 THEN error_iteration + 1 ELSE error_iteration END,
+                        error_streaming_iteration = CASE
+                            WHEN error_streaming_id > 0 THEN error_streaming_iteration + 1
+                            ELSE error_streaming_iteration
+                        END
+                    WHERE server_id = :id
+                ");
+                $stmt->execute(['id' => $serverId]);
+            } else {
+                $stmt = $db->prepare("
+                    UPDATE {$this->table('admin_servers')}
+                    SET status_id = 0,
+                        error_iteration = CASE WHEN error_id = 1 THEN error_iteration ELSE 1 END,
+                        error_streaming_iteration = CASE WHEN error_streaming_id = 6 THEN error_streaming_iteration ELSE 1 END
+                    WHERE server_id = :id
+                ");
+                $stmt->execute(['id' => $serverId]);
+            }
+
+            $this->writeStorageClusterData($db);
+
+            $title = $this->getStringField($server, 'title', (string) $serverId);
+            $newStatus = $status === StatusFormatter::SERVER_ACTIVE ? 'enabled' : 'disabled';
+            $this->io()->success("Server '{$title}' {$newStatus} successfully!");
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to update Server status: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function fetchStorageServerForMutation(\PDO $db, int $serverId): ?array
+    {
+        $stmt = $db->prepare("SELECT * FROM {$this->table('admin_servers')} WHERE server_id = :id");
+        $stmt->execute(['id' => $serverId]);
+        $server = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!is_array($server)) {
+            return null;
+        }
+
+        $normalizedServer = [];
+        foreach ($server as $key => $value) {
+            $normalizedServer[(string) $key] = $value;
+        }
+
+        return $normalizedServer;
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     */
+    private function validateStorageServerCanBeDisabled(\PDO $db, array $server, int $serverId): bool
+    {
+        $groupId = $this->getNumericField($server, 'group_id');
+
+        $stmt = $db->prepare("
+            SELECT COUNT(*)
+            FROM {$this->table('admin_servers')}
+            WHERE status_id = 1
+              AND streaming_type_id != 5
+              AND group_id = :group_id
+              AND server_id != :server_id
+        ");
+        $stmt->execute(['group_id' => $groupId, 'server_id' => $serverId]);
+
+        if ((int) $stmt->fetchColumn() === 0) {
+            $this->io()->error('Cannot disable the only active non-backup server in this storage group.');
+            return false;
+        }
+
+        $stmt = $db->prepare("
+            SELECT COUNT(*)
+            FROM {$this->table('admin_servers')}
+            WHERE status_id = 1
+              AND streaming_type_id != 5
+              AND group_id = :group_id
+              AND server_id != :server_id
+              AND lb_countries = ''
+        ");
+        $stmt->execute(['group_id' => $groupId, 'server_id' => $serverId]);
+
+        if ((int) $stmt->fetchColumn() === 0) {
+            $this->io()->error(
+                'Cannot disable this server because at least one remaining active server '
+                . 'must be available without country restrictions.'
+            );
+            return false;
+        }
+
+        return true;
+    }
+
+    private function canWriteStorageClusterData(): bool
+    {
+        $clusterFile = $this->getStorageClusterDataFile();
+        $clusterDir = dirname($clusterFile);
+
+        if (!is_dir($clusterDir)) {
+            $this->io()->error("Storage cluster data directory does not exist: {$clusterDir}");
+            return false;
+        }
+
+        if (!is_writable($clusterFile)) {
+            $this->io()->error("Storage cluster data file is not writable: {$clusterFile}");
+            return false;
+        }
+
+        if (!is_writable($clusterDir)) {
+            $this->io()->error("Storage cluster data directory is not writable: {$clusterDir}");
+            return false;
+        }
+
+        return true;
+    }
+
+    private function writeStorageClusterData(\PDO $db): void
+    {
+        $stmt = $db->query("
+            SELECT server_id, group_id, content_type_id, status_id, streaming_type_id,
+                   streaming_script, streaming_key, is_replace_domain_on_satellite,
+                   urls, is_remote, control_script_url, control_script_url_lock_ip,
+                   time_offset, lb_weight, lb_countries, error_streaming_id,
+                   error_streaming_iteration, warning_id
+            FROM {$this->table('admin_servers')}
+            ORDER BY server_id ASC
+        ");
+        if ($stmt === false) {
+            throw new \RuntimeException('Failed to query storage servers for cluster data');
+        }
+
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        if ($rows === []) {
+            return;
+        }
+
+        if (file_put_contents($this->getStorageClusterDataFile(), serialize($rows), LOCK_EX) === false) {
+            throw new \RuntimeException('Failed to write storage cluster data');
+        }
+    }
+
+    private function getStorageClusterDataFile(): string
+    {
+        return $this->config->getAdminPath() . '/data/system/cluster.dat';
     }
 
     private function formatBytes(int $bytes): string

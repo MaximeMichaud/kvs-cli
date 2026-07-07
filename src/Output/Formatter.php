@@ -5,6 +5,7 @@ namespace KVS\CLI\Output;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Yaml\Yaml;
 
 use function KVS\CLI\Utils\pluralize;
 
@@ -391,21 +392,35 @@ class Formatter
 
         // Data rows
         foreach ($items as $item) {
-            /** @var array<int, string|int|float|bool|null> $row */
+            /** @var array<int, string|int|float> $row */
             $row = [];
             foreach ($fields as $field) {
                 $value = $this->getFieldValue($item, $field);
-                // Cast to scalar types that fputcsv accepts (database values are typically strings/ints/null)
-                if (is_scalar($value) || $value === null) {
-                    $row[] = $value;
-                } else {
-                    $row[] = ''; // fallback for non-scalar values
-                }
+                $row[] = $this->formatCsvValue($value);
             }
             fputcsv($handle, $row, ',', '"', '\\');
         }
 
         fclose($handle);
+    }
+
+    private function formatCsvValue(mixed $value): string|int|float
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_int($value) || is_float($value) || is_string($value)) {
+            return $value;
+        }
+
+        $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $json === false ? '' : $json;
     }
 
     /**
@@ -416,30 +431,21 @@ class Formatter
      */
     private function displayYaml(array $items, array $fields, OutputInterface $output): void
     {
-        foreach ($items as $item) {
-            $output->writeln('-');
+        $filtered = array_map(function ($item) use ($fields) {
+            $result = [];
             foreach ($fields as $field) {
-                if (!$this->hasField($item, $field)) {
-                    continue;
-                }
-
-                $value = $this->getFieldValue($item, $field);
-                if ($value === '' || $value === null) {
-                    $output->writeln("  $field: \"\"");
-                    continue;
-                }
-
-                // Convert to string for YAML output (database values are typically strings/ints/null)
-                $stringValue = is_scalar($value) ? (string)$value : '';
-                if ($stringValue !== '') {
-                    // Escape special YAML characters
-                    if (str_contains($stringValue, ':') || str_contains($stringValue, '#')) {
-                        $stringValue = '"' . str_replace('"', '\\"', $stringValue) . '"';
-                    }
-                    $output->writeln("  $field: $stringValue");
+                if ($this->hasField($item, $field)) {
+                    $result[$field] = $this->getFieldValue($item, $field);
                 }
             }
+            return $result;
+        }, $items);
+
+        if ($filtered === []) {
+            return;
         }
+
+        $output->write(Yaml::dump($filtered, 4, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE));
     }
 
     /**

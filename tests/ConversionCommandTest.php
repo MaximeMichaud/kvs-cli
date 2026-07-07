@@ -203,6 +203,43 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('Unknown field(s): ftp_pass', $this->tester->getDisplay());
     }
 
+    public function testConversionShowSupportsRequestedFtpFieldsExceptPassword(): void
+    {
+        $this->db->exec('ALTER TABLE ' . TestHelper::table('admin_conversion_servers') . ' ADD COLUMN ftp_force_ssl INTEGER DEFAULT 0');
+        $this->db->exec('UPDATE ' . TestHelper::table('admin_conversion_servers') . ' SET ftp_force_ssl = 1 WHERE server_id = 2');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '2',
+            '--format' => 'json',
+            '--fields' => 'server_id,ftp_host,ftp_port,ftp_user,ftp_folder,ftp_timeout,ftp_force_ssl',
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('2', $rows[0]['server_id']);
+        $this->assertSame('ftp.example.test', $rows[0]['ftp_host']);
+        $this->assertSame('21', $rows[0]['ftp_port']);
+        $this->assertSame('ftp-user', $rows[0]['ftp_user']);
+        $this->assertSame('/incoming', $rows[0]['ftp_folder']);
+        $this->assertSame('45', $rows[0]['ftp_timeout']);
+        $this->assertSame(1, (int) $rows[0]['ftp_force_ssl']);
+
+        $tester = new CommandTester($this->command);
+        $tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '2',
+            '--format' => 'json',
+            '--fields' => 'server_id,ftp_pass',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Unknown field(s): ftp_pass', $tester->getDisplay());
+    }
+
     public function testConversionListExposesKvsAdminComputedFields(): void
     {
         $logsDir = $this->kvsPath . '/admin/logs';
@@ -411,6 +448,8 @@ class ConversionCommandTest extends TestCase
                 'is_allow_any_tasks',
                 'max_tasks',
                 'max_tasks_priority',
+                'option_storage_servers',
+                'option_pull_source_files',
                 'process_priority',
                 'connection_type_id',
                 'task_types',
@@ -431,6 +470,8 @@ class ConversionCommandTest extends TestCase
         $this->assertSame(0, (int) $rows[0]['is_allow_any_tasks']);
         $this->assertSame('4', (string) $rows[0]['max_tasks']);
         $this->assertSame(1, (int) $rows[0]['max_tasks_priority']);
+        $this->assertSame(1, (int) $rows[0]['option_storage_servers']);
+        $this->assertSame(0, (int) $rows[0]['option_pull_source_files']);
         $this->assertSame(9, (int) $rows[0]['process_priority']);
         $this->assertSame(0, (int) $rows[0]['connection_type_id']);
         $this->assertSame(['video_admins'], $rows[0]['task_types']);
@@ -809,6 +850,139 @@ class ConversionCommandTest extends TestCase
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 
+    public function testConversionDebugOffRemovesDebugLogLikeKvsAdmin(): void
+    {
+        $logsDir = $this->kvsPath . '/admin/logs';
+        self::assertTrue(is_dir($logsDir) || mkdir($logsDir, 0777, true));
+        $debugLog = $logsDir . '/debug_conversion_server_3.txt';
+        file_put_contents($debugLog, 'debug log');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'debug-off',
+            'id' => '3',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $debugStatusQuery = 'SELECT is_debug_enabled FROM ' .
+            TestHelper::table('admin_conversion_servers') .
+            ' WHERE server_id = 3';
+        $this->assertSame(
+            0,
+            (int) $this->db->query($debugStatusQuery)->fetchColumn()
+        );
+        $this->assertFileDoesNotExist($debugLog);
+
+        file_put_contents($debugLog, 'stale debug log');
+        $tester = new CommandTester($this->command);
+        $tester->execute([
+            '--force' => true,
+            'action' => 'debug-off',
+            'id' => '3',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Debug is already disabled', $tester->getDisplay());
+        $this->assertFileDoesNotExist($debugLog);
+    }
+
+    public function testConversionDebugOnUpdatesKvsDebugNotification(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec('UPDATE ' . TestHelper::table('admin_conversion_servers') . ' SET is_debug_enabled = 0');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'debug-on',
+            'id' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT objects, details FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.conversion_servers.debug'"
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertIsArray($row);
+        $this->assertSame(1, (int) $row['objects']);
+        $this->assertSame('[]', $row['details']);
+    }
+
+    public function testConversionDebugOffUpdatesKvsDebugNotification(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec(
+            "INSERT INTO " . TestHelper::table('admin_notifications') .
+            " (notification_id, objects, details) VALUES ('settings.conversion_servers.debug', 1, '[]')"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'debug-off',
+            'id' => '3',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $count = $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.conversion_servers.debug'"
+        )->fetchColumn();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame(0, (int) $count);
+    }
+
+    public function testConversionEnableUpdatesKvsValidationNotification(): void
+    {
+        $this->createAdminNotificationsTable();
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'enable',
+            'id' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT objects, details FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.conversion_servers.validation'"
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertIsArray($row);
+        $this->assertSame(1, (int) $row['objects']);
+        $this->assertSame('[]', $row['details']);
+    }
+
+    public function testConversionDisableUpdatesKvsEmptyNotification(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec('UPDATE ' . TestHelper::table('admin_conversion_servers') . ' SET status_id = 0');
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_conversion_servers') . ' SET status_id = 1 WHERE server_id = 1'
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'disable',
+            'id' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $row = $this->db->query(
+            'SELECT objects, details FROM ' . TestHelper::table('admin_notifications') .
+            " WHERE notification_id = 'settings.conversion_servers.empty'"
+        )->fetch();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertIsArray($row);
+        $this->assertSame(1, (int) $row['objects']);
+        $this->assertSame('[]', $row['details']);
+    }
+
     public function testConversionDebugOnNotFound(): void
     {
         $this->tester->execute([
@@ -1087,6 +1261,14 @@ class ConversionCommandTest extends TestCase
             'title' => $title,
             'path' => $path,
         ]);
+    }
+
+    private function createAdminNotificationsTable(): void
+    {
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('admin_notifications') .
+            ' (notification_id TEXT PRIMARY KEY, objects INTEGER NOT NULL DEFAULT 0, details TEXT NOT NULL DEFAULT "[]")'
+        );
     }
 
     private function createCommand(PDO $db): ConversionCommand

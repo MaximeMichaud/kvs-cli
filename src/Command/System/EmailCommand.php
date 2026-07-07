@@ -19,6 +19,8 @@ class EmailCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
 
+    private const DEBUG_NOTIFICATION_ID = 'settings.email_settings.debug';
+
     private const OUTPUT_FORMATS = ['table', 'json'];
     private const SHOW_UNSUPPORTED_OPTIONS = [
         'smtp-host',
@@ -515,21 +517,14 @@ HELP
                 return self::SUCCESS;
             }
 
-            // Save settings
             $newValue = json_encode($settings);
             if ($newValue === false) {
                 $this->io()->error('Failed to encode settings');
                 return self::FAILURE;
             }
 
-            // Use INSERT ... ON DUPLICATE KEY UPDATE to handle both insert and update cases
-            // The settings table has a unique key on (section, satellite_prefix)
-            $stmt = $db->prepare("
-                INSERT INTO {$this->table('settings')} (section, satellite_prefix, value, added_date, version_control)
-                VALUES ('email', '', :value, NOW(), 1)
-                ON DUPLICATE KEY UPDATE value = :value_update
-            ");
-            $stmt->execute(['value' => $newValue, 'value_update' => $newValue]);
+            $this->saveEmailSettings($db, $newValue);
+            $this->syncEmailDebugSideEffects($db, $settings);
 
             $this->io()->success('Email settings updated:');
             foreach ($changes as $change) {
@@ -540,6 +535,92 @@ HELP
         } catch (\Exception $e) {
             $this->io()->error('Failed to update settings: ' . $e->getMessage());
             return self::FAILURE;
+        }
+    }
+
+    private function saveEmailSettings(\PDO $db, string $value): void
+    {
+        $table = $this->table('settings');
+        $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE section = :section AND satellite_prefix = :prefix");
+        $stmt->execute(['section' => 'email', 'prefix' => '']);
+
+        if ((int) $stmt->fetchColumn() > 0) {
+            $stmt = $db->prepare(
+                "UPDATE {$table} SET value = :value WHERE section = :section AND satellite_prefix = :prefix"
+            );
+            $stmt->execute(['value' => $value, 'section' => 'email', 'prefix' => '']);
+            return;
+        }
+
+        $stmt = $db->prepare(
+            "INSERT INTO {$table} (section, satellite_prefix, value, added_date, version_control) " .
+            "VALUES (:section, :prefix, :value, :added_date, 1)"
+        );
+        $stmt->execute([
+            'section' => 'email',
+            'prefix' => '',
+            'value' => $value,
+            'added_date' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     */
+    private function syncEmailDebugSideEffects(\PDO $db, array $settings): void
+    {
+        $debugLevel = $this->getSettingString($settings, 'debug_level', '0');
+        $debugEnabled = $debugLevel === '0' ? 0 : 1;
+
+        $this->syncAdminNotification($db, self::DEBUG_NOTIFICATION_ID, $debugEnabled);
+
+        if ($debugEnabled === 0) {
+            $this->removeEmailDebugLog();
+        }
+    }
+
+    private function syncAdminNotification(\PDO $db, string $notificationId, int $objects): void
+    {
+        $table = $this->multiTable('admin_notifications');
+
+        try {
+            if ($objects > 0) {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE notification_id = :notification_id");
+                $stmt->execute(['notification_id' => $notificationId]);
+
+                if ((int) $stmt->fetchColumn() > 0) {
+                    $stmt = $db->prepare(
+                        "UPDATE {$table} SET objects = :objects, details = :details WHERE notification_id = :notification_id"
+                    );
+                } else {
+                    $stmt = $db->prepare(
+                        "INSERT INTO {$table} (notification_id, objects, details) " .
+                        "VALUES (:notification_id, :objects, :details)"
+                    );
+                }
+                $stmt->execute([
+                    'notification_id' => $notificationId,
+                    'objects' => $objects,
+                    'details' => json_encode([], JSON_THROW_ON_ERROR),
+                ]);
+                return;
+            }
+
+            $stmt = $db->prepare("DELETE FROM {$table} WHERE notification_id = :notification_id");
+            $stmt->execute(['notification_id' => $notificationId]);
+        } catch (\PDOException) {
+            // Minimal or legacy installs may not have the shared notifications table.
+        }
+    }
+
+    private function removeEmailDebugLog(): void
+    {
+        $billingScriptsName = $this->config->get('billing_scripts_name', '');
+        $billingScriptsName = is_scalar($billingScriptsName) ? (string) $billingScriptsName : '';
+        $debugLog = $this->config->getAdminPath() . '/logs/email_' . md5($billingScriptsName) . '.txt';
+
+        if (is_file($debugLog)) {
+            @unlink($debugLog);
         }
     }
 
