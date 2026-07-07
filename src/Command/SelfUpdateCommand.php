@@ -77,9 +77,6 @@ HELP
         /** @var bool $devOption */
         $devOption = $input->getOption('dev');
         if ($devOption) {
-            if (!$this->ensurePharIsWritable($currentPhar, $io)) {
-                return Command::FAILURE;
-            }
             return $this->updateFromDev($io, $input, $currentPhar);
         }
 
@@ -436,6 +433,18 @@ HELP
             return Command::FAILURE;
         }
 
+        /** @var bool $checkOption */
+        $checkOption = $input->getOption('check');
+        if ($checkOption) {
+            $io->success(sprintf('Latest successful dev build is available from workflow run %s.', $runId));
+            $io->text('Run <info>kvs self-update --dev</info> to install the dev build.');
+            return Command::SUCCESS;
+        }
+
+        if (!$this->ensurePharIsWritable($currentPhar, $io)) {
+            return Command::FAILURE;
+        }
+
         // Download ZIP from nightly.link (auto-cleanup via TempFileManager)
         $tempZip = TempFileManager::create('kvs-dev-', '.zip');
         $nightlyUrl = sprintf(
@@ -534,7 +543,7 @@ HELP
         return Command::SUCCESS;
     }
 
-    private function getLatestWorkflowRunId(SymfonyStyle $io): ?string
+    protected function getLatestWorkflowRunId(SymfonyStyle $io): ?string
     {
         $url = sprintf(
             '%s/repos/%s/actions/workflows/ci.yml/runs?branch=dev&status=success&per_page=1',

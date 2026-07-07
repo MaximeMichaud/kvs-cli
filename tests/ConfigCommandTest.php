@@ -76,7 +76,12 @@ $config["php_path"] = "/usr/bin/php";
 $config["ffmpeg_path"] = "/usr/bin/ffmpeg";
 $config["server_type"] = "nginx";
 $config["memcache_server"] = "127.0.0.1";
+$config["installation_id"] = "secret-installation-id";
+$config["billing_scripts_name"] = "secret-billing-script";
 $config["player_license_code"] = "secret-player-license";
+$config["player_lrc"] = "secret-player-lrc";
+$config["cv"] = "secret-cv";
+$config["ahv"] = "secret-ahv";
 '
         );
 
@@ -143,6 +148,70 @@ $config["player_license_code"] = "secret-player-license";
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('secret-player-license', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    /**
+     * @dataProvider kvsSensitiveConfigKeyProvider
+     */
+    public function testConfigGetMasksKvsSensitiveKeys(string $key, string $secret): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'key' => $key,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('**********', $output);
+        $this->assertStringNotContainsString($secret, $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    /**
+     * @dataProvider kvsSensitiveConfigKeyProvider
+     */
+    public function testConfigGetCanShowProtectedKvsSensitiveKeys(string $key, string $secret): void
+    {
+        $this->tester->execute([
+            'action' => 'get',
+            'key' => $key,
+            '--show-protected' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString($secret, $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    public function testConfigListJsonMasksKvsSensitiveKeys(): void
+    {
+        $this->tester->execute([
+            'action' => 'list',
+            '--json' => true,
+            '--file' => 'main',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertStringContainsString('"main.cv": "**********"', $output);
+        $this->assertStringContainsString('"main.ahv": "**********"', $output);
+        $this->assertStringContainsString('"main.installation_id": "**********"', $output);
+        $this->assertStringContainsString('"main.billing_scripts_name": "**********"', $output);
+        $this->assertStringNotContainsString('secret-cv', $output);
+        $this->assertStringNotContainsString('secret-ahv', $output);
+        $this->assertStringNotContainsString('secret-installation-id', $output);
+        $this->assertStringNotContainsString('secret-billing-script', $output);
+        $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function kvsSensitiveConfigKeyProvider(): iterable
+    {
+        yield 'installation id' => ['main.installation_id', 'secret-installation-id'];
+        yield 'billing script name' => ['main.billing_scripts_name', 'secret-billing-script'];
+        yield 'player lrc' => ['main.player_lrc', 'secret-player-lrc'];
+        yield 'cv' => ['main.cv', 'secret-cv'];
+        yield 'ahv' => ['main.ahv', 'secret-ahv'];
     }
 
     public function testConfigGetRejectsIgnoredOptions(): void
@@ -248,6 +317,29 @@ $config["player_license_code"] = "secret-player-license";
                 exec('rm -rf ' . escapeshellarg($tempDir));
             }
         }
+    }
+
+    public function testConfigEditRequiresEditableFile(): void
+    {
+        $this->tester->execute(['action' => 'edit']);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString(
+            'Config file is required for edit. Use --file=db or --file=main.',
+            $this->tester->getDisplay()
+        );
+    }
+
+    public function testConfigEditRejectsDerivedPathsView(): void
+    {
+        $this->tester->execute([
+            'action' => 'edit',
+            '--file' => 'paths',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $this->assertStringContainsString('The paths view is derived from main config', $this->tester->getDisplay());
+        $this->assertStringContainsString('Use --file=main.', $this->tester->getDisplay());
     }
 
     public function testConfigGetNonExistent(): void

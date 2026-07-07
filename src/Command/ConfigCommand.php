@@ -46,7 +46,7 @@ class ConfigCommand extends BaseCommand
             ->addArgument('action', InputArgument::OPTIONAL, 'Action: get, set, list, edit', 'list')
             ->addArgument('key', InputArgument::OPTIONAL, 'Configuration key (e.g., db.host)')
             ->addArgument('value', InputArgument::OPTIONAL, 'New value for set action')
-            ->addOption('file', 'f', InputOption::VALUE_REQUIRED, 'Config file to use (db, main, paths)', 'all')
+            ->addOption('file', 'f', InputOption::VALUE_REQUIRED, 'Config file to use (list: all|db|main|paths; edit: db|main)', 'all')
             ->addOption('show-protected', null, InputOption::VALUE_NONE, 'Show protected values')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output in JSON format')
             ->addOption('backup', null, InputOption::VALUE_NONE, 'Create backup before changes');
@@ -344,10 +344,19 @@ class ConfigCommand extends BaseCommand
     private function editConfig(InputInterface $input): int
     {
         $file = $this->getStringOptionOrDefault($input, 'file', 'all');
+        if ($file === 'all') {
+            $this->io()->error('Config file is required for edit. Use --file=db or --file=main.');
+            return self::FAILURE;
+        }
+
+        if ($file === 'paths') {
+            $this->io()->error('The paths view is derived from main config and cannot be edited directly. Use --file=main.');
+            return self::FAILURE;
+        }
 
         $filePath = $this->getConfigFilePath($file);
         if ($filePath === null) {
-            $this->io()->error("Unknown config file: $file");
+            $this->io()->error("Unknown or missing config file: $file");
             return self::FAILURE;
         }
 
@@ -523,6 +532,20 @@ class ConfigCommand extends BaseCommand
         }
 
         $keyLower = strtolower($key);
+        $keyName = str_contains($keyLower, '.') ? substr($keyLower, (int) strrpos($keyLower, '.') + 1) : $keyLower;
+        $sensitiveKvsKeys = [
+            'ahv',
+            'billing_scripts_name',
+            'cv',
+            'cvr',
+            'installation_id',
+            'player_lrc',
+        ];
+
+        if (in_array($keyName, $sensitiveKvsKeys, true)) {
+            return true;
+        }
+
         $sensitiveMarkers = [
             'password',
             'pass',

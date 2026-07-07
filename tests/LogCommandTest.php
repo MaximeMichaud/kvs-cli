@@ -275,6 +275,37 @@ class LogCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testLogTailKeepsLastByteWhenFileHasNoTrailingNewline(): void
+    {
+        file_put_contents($this->tempDir . '/admin/logs/system.log', 'abc');
+
+        $this->tester->execute([
+            'type' => 'system',
+            '--tail' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('abc', $output);
+    }
+
+    public function testLogTailReadsSingleByteFile(): void
+    {
+        file_put_contents($this->tempDir . '/admin/logs/system.log', 'x');
+
+        $this->tester->execute([
+            'type' => 'system',
+            '--tail' => '1',
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('x', $output);
+        $this->assertStringNotContainsString('No log entries', $output);
+    }
+
     public function testLogTailRejectsInvalidLineCounts(): void
     {
         foreach (['-1', '0', 'abc', '1.5'] as $tail) {

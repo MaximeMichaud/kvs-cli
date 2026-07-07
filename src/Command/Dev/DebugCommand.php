@@ -55,7 +55,7 @@ class DebugCommand extends BaseCommand
 
         $checks[] = ['PHP Version', $this->getKvsPhpVersion(), 'OK'];
 
-        $requiredExtensions = ['pdo', 'pdo_mysql', 'json', 'mbstring', 'gd', 'curl'];
+        $requiredExtensions = ['mysqli', 'curl', 'zlib', 'simplexml', 'gd', 'mbstring'];
         foreach ($requiredExtensions as $ext) {
             $loaded = $this->isExtensionLoaded($ext);
             $checks[] = [

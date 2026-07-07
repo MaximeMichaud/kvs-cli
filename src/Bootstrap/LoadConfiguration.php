@@ -30,7 +30,11 @@ class LoadConfiguration implements BootstrapStep
         if ($pathOption !== null) {
             $configArray['path'] = $pathOption;
         }
-        if ($this->shouldAllowMissingKvs($input)) {
+        if ($this->isHelpRequest($input)) {
+            $configArray['allow_missing_kvs'] = true;
+            $state->setValue('skip_kvs_context', true);
+            $state->setValue('register_all_commands_for_help', true);
+        } elseif ($this->shouldAllowMissingKvs($input)) {
             $configArray['allow_missing_kvs'] = true;
             $state->setValue('skip_kvs_context', true);
         }
@@ -118,5 +122,29 @@ class LoadConfiguration implements BootstrapStep
         }
 
         return in_array('--skip-kvs', $argv, true);
+    }
+
+    private function isHelpRequest(InputInterface $input): bool
+    {
+        $command = $input->getFirstArgument();
+
+        if ($command === 'help') {
+            return true;
+        }
+
+        try {
+            if ($input->hasParameterOption(['--help', '-h'])) {
+                return true;
+            }
+        } catch (\Exception) {
+            // Input may not be fully parsed yet, fallback to argv below.
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        if (!is_array($argv)) {
+            return false;
+        }
+
+        return in_array('--help', $argv, true) || in_array('-h', $argv, true);
     }
 }

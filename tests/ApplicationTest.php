@@ -122,6 +122,46 @@ class ApplicationTest extends TestCase
         $this->assertStringContainsString('Usage:', $display);
     }
 
+    public function testKvsCommandHelpWorksWithoutKvs(): void
+    {
+        $command = sprintf(
+            'cd %s && KVS_PATH= %s %s check --help --no-ansi 2>&1',
+            escapeshellarg(sys_get_temp_dir()),
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg(__DIR__ . '/../bin/kvs')
+        );
+
+        $output = [];
+        $returnCode = 0;
+        exec($command, $output, $returnCode);
+
+        $display = implode("\n", $output);
+        $this->assertSame(0, $returnCode, $display);
+        $this->assertStringContainsString('Description:', $display);
+        $this->assertStringContainsString('Check KVS configuration and system health', $display);
+        $this->assertStringNotContainsString('KVS installation not found', $display);
+    }
+
+    public function testHelpCommandForKvsCommandWorksWithoutKvs(): void
+    {
+        $command = sprintf(
+            'cd %s && KVS_PATH= %s %s help check --no-ansi 2>&1',
+            escapeshellarg(sys_get_temp_dir()),
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg(__DIR__ . '/../bin/kvs')
+        );
+
+        $output = [];
+        $returnCode = 0;
+        exec($command, $output, $returnCode);
+
+        $display = implode("\n", $output);
+        $this->assertSame(0, $returnCode, $display);
+        $this->assertStringContainsString('Description:', $display);
+        $this->assertStringContainsString('Check KVS configuration and system health', $display);
+        $this->assertStringNotContainsString('KVS installation not found', $display);
+    }
+
     public function testVersionFlagWorksWithoutKvs(): void
     {
         $this->app->setAutoExit(false);

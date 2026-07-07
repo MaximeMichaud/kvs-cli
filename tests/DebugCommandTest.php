@@ -104,8 +104,10 @@ class DebugCommandTest extends TestCase
 
         $output = $tester->getDisplay();
         $this->assertStringContainsString('9.9.9-container', $output);
-        $this->assertMatchesRegularExpression('/PHP Extension: pdo\s*│\s*Missing\s*│\s*ERROR/', $output);
-        $this->assertMatchesRegularExpression('/PHP Extension: json\s*│\s*Installed\s*│\s*OK/', $output);
+        $this->assertMatchesRegularExpression('/PHP Extension: mysqli\s*│\s*Missing\s*│\s*ERROR/', $output);
+        $this->assertMatchesRegularExpression('/PHP Extension: curl\s*│\s*Installed\s*│\s*OK/', $output);
+        $this->assertStringNotContainsString('PHP Extension: pdo', $output);
+        $this->assertStringNotContainsString('PHP Extension: pdo_mysql', $output);
     }
 
     public function testDebugInfoUsesConfiguredPhpRuntimeHelpers(): void
@@ -164,7 +166,7 @@ class DebugCommandTest extends TestCase
 
             protected function isExtensionLoaded(string $extension): bool
             {
-                return $extension !== 'pdo';
+                return $extension !== 'mysqli';
             }
 
             protected function getPhpSetting(string $name): string|false

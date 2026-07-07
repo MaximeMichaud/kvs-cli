@@ -407,36 +407,33 @@ class LogCommand extends BaseCommand
         }
 
         $buffer = 4096;
-        fseek($fp, -1, SEEK_END);
+        fseek($fp, 0, SEEK_END);
+        $position = ftell($fp);
 
-        if (ftell($fp) === 0) {
+        if ($position === 0 || $position === false) {
             fclose($fp);
             return $result;
         }
 
         $output = '';
-        $chunk = '';
 
-        while (ftell($fp) > 0 && count($result) < $lines) {
-            $seek = min(ftell($fp), $buffer);
-            fseek($fp, -$seek, SEEK_CUR);
+        while ($position > 0 && substr_count($output, "\n") <= $lines) {
+            $seek = min($position, $buffer);
+            $position -= $seek;
+            fseek($fp, $position, SEEK_SET);
             $readChunk = fread($fp, $seek);
             if ($readChunk === false) {
                 break;
             }
-            $chunk = $readChunk;
-            $output = $chunk . $output;
-            $chunkLength = mb_strlen($chunk, '8bit');
-            fseek($fp, -$chunkLength, SEEK_CUR);
-
-            $result = explode("\n", $output);
-
-            if (count($result) > $lines) {
-                $result = array_slice($result, -$lines);
-            }
+            $output = $readChunk . $output;
         }
 
         fclose($fp);
+
+        $result = explode("\n", $output);
+        if (str_ends_with($output, "\n") && end($result) === '') {
+            array_pop($result);
+        }
 
         return array_slice($result, -$lines);
     }

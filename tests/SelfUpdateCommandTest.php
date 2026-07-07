@@ -152,6 +152,57 @@ class SelfUpdateCommandTest extends TestCase
         }
     }
 
+    public function testDevCheckDoesNotRequireWritablePhar(): void
+    {
+        $pharPath = tempnam(sys_get_temp_dir(), 'kvs-dev-readonly-');
+        $this->assertIsString($pharPath);
+        file_put_contents($pharPath, 'phar');
+        chmod($pharPath, 0555);
+
+        $previousArgv = $_SERVER['argv'] ?? null;
+        $_SERVER['argv'] = [$pharPath];
+
+        $command = new class extends SelfUpdateCommand {
+            protected function isRunningAsPhar(): bool
+            {
+                return true;
+            }
+
+            protected function getCurrentVersion(): string
+            {
+                return '1.0.0';
+            }
+
+            protected function getLatestWorkflowRunId(SymfonyStyle $io): ?string
+            {
+                return '123456789';
+            }
+        };
+
+        try {
+            $tester = new CommandTester($command);
+            $tester->execute(['--dev' => true, '--check' => true]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(0, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Latest successful dev build is available', $output);
+            $this->assertStringContainsString('123456789', $output);
+            $this->assertStringContainsString('kvs self-update --dev', $output);
+            $this->assertStringNotContainsString('not writable', $output);
+            $this->assertStringNotContainsString('Downloading', $output);
+            $this->assertStringNotContainsString('Installing', $output);
+        } finally {
+            if ($previousArgv === null) {
+                unset($_SERVER['argv']);
+            } else {
+                $_SERVER['argv'] = $previousArgv;
+            }
+
+            chmod($pharPath, 0644);
+            unlink($pharPath);
+        }
+    }
+
     public function testHelpOutput(): void
     {
         $help = $this->command->getHelp();
