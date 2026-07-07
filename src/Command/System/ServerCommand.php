@@ -92,7 +92,7 @@ class ServerCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|enable|disable|stats|group')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|enable|disable|activate|deactivate|stats|group')
             ->addArgument('id', InputArgument::OPTIONAL, 'Server or group ID')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by content type (video|album)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
@@ -111,6 +111,8 @@ Manage KVS storage servers and server groups.
   show <id>   Show server details
   enable <id> Enable/activate a server
   disable <id> Disable/deactivate a server
+  activate <id>   Alias for enable
+  deactivate <id> Alias for disable
   stats       Show storage statistics overview
   group       List or show server groups (use: group, group <id>)
 
@@ -164,7 +166,7 @@ HELP
             default => $this->failUnknownAction(
                 'server',
                 $action,
-                ['list', 'show', 'enable', 'disable', 'stats', 'group']
+                ['list', 'show', 'enable', 'disable', 'activate', 'deactivate', 'stats', 'group']
             ),
         };
     }
@@ -615,7 +617,7 @@ HELP
 
         try {
             $stmt = $db->prepare("
-                SELECT s.*, g.title as group_title
+                SELECT s.*, g.title as group_title, g.status_id as group_status_id
                 FROM {$this->table('admin_servers')} s
                 LEFT JOIN {$this->table('admin_servers_groups')} g ON s.group_id = g.group_id
                 WHERE s.server_id = :id
@@ -628,13 +630,27 @@ HELP
                 $this->io()->error("Server not found: $serverId");
                 return self::FAILURE;
             }
+            $serverRows = $this->addStorageContentCounts($db, [$server]);
+            $server = $serverRows[0] ?? $server;
+            $server = [
+                ...$server,
+                ...$this->buildKvsAdminServerComputedFields(
+                    $server,
+                    $this->getNumericField($server, 'total_space'),
+                    $this->getNumericField($server, 'free_space'),
+                    $this->getServerGroupMinFreeSpaceBytes($db)
+                ),
+            ];
 
             $info = $this->buildServerInfo($server);
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
             if ($this->shouldUseFormattedRows($input)) {
-                return $this->displayDetailRows($input, $info, ['server_id' => (string) $serverId]);
+                return $this->displayDetailRows($input, $info, [
+                    'server_id' => (string) $serverId,
+                    ...$this->getServerShowExtraFields($input, $server),
+                ]);
             }
 
             $this->io()->section("Server #$serverId");
@@ -646,6 +662,73 @@ HELP
             $this->io()->error('Failed to fetch server: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array<string, mixed>
+     */
+    private function getServerShowExtraFields(InputInterface $input, array $server): array
+    {
+        $isRemote = $this->getNumericField($server, 'is_remote');
+        $contentCount = $this->getNumericField($server, 'content_count');
+        $statusId = $this->getNumericField($server, 'status_id');
+        $streamingType = $this->getNumericField($server, 'streaming_type_id');
+        $connectionType = $this->getNumericField($server, 'connection_type_id');
+        $totalSpace = $this->getNumericField($server, 'total_space');
+        $freeSpace = $this->getNumericField($server, 'free_space');
+        $load = $this->getFloatField($server, 'load');
+        $errorIter = $this->getNumericField($server, 'error_iteration');
+        $errorStreamIter = $this->getNumericField($server, 'error_streaming_iteration');
+        $hasError = $errorIter > 1 || $errorStreamIter > 1;
+
+        $controlScriptUrl = $isRemote === 1 ? $this->getStringField($server, 'control_script_url') : '';
+        $controlScriptVersion = $isRemote === 1
+            ? $this->getStringField($server, 'control_script_url_version')
+            : 'N/A';
+
+        return $this->getRequestedDetailFields($input, [
+            'id' => $this->getNumericField($server, 'server_id'),
+            'status_id' => $statusId,
+            'content_type_id' => $this->getNumericField($server, 'content_type_id'),
+            'total_content' => $this->formatStorageContentCount($contentCount, $server['content_type_id'] ?? null),
+            'content_count' => $contentCount,
+            'streaming_type_id' => $streamingType,
+            'control_script_url' => $controlScriptUrl,
+            'control_script_url_version' => $controlScriptVersion,
+            'control_script_url_lock_ip' => $isRemote === 1
+                ? $this->getNumericField($server, 'control_script_url_lock_ip')
+                : 0,
+            'connection_type_id' => $connectionType,
+            'path' => $this->getStringField($server, 'path'),
+            'ftp_host' => $this->getStringField($server, 'ftp_host'),
+            'ftp_port' => $this->getStringField($server, 'ftp_port'),
+            'ftp_user' => $this->getStringField($server, 'ftp_user'),
+            'ftp_folder' => $this->getStringField($server, 'ftp_folder'),
+            'ftp_timeout' => $this->getStringField($server, 'ftp_timeout'),
+            'ftp_force_ssl' => $this->getNumericField($server, 'ftp_force_ssl'),
+            's3_region' => $this->getStringField($server, 's3_region'),
+            's3_endpoint' => $this->getStringField($server, 's3_endpoint'),
+            's3_bucket' => $this->getStringField($server, 's3_bucket'),
+            's3_prefix' => $this->getStringField($server, 's3_prefix'),
+            'time_offset' => $this->getFloatField($server, 'time_offset'),
+            'total_space' => $this->formatBytes($totalSpace),
+            'free_space' => $this->formatBytes($freeSpace),
+            'free_percent' => $totalSpace > 0 ? round(($freeSpace / $totalSpace) * 100, 1) . '%' : '0%',
+            'free_space_percent' => $totalSpace > 0 ? '(' . round(($freeSpace / $totalSpace) * 100, 2) . '%)' : '',
+            'load' => number_format($load, 2),
+            'lb_weight' => $this->getFloatField($server, 'lb_weight'),
+            'lb_countries' => $this->getStringField($server, 'lb_countries'),
+            'is_debug_enabled' => $this->getNumericField($server, 'is_debug_enabled'),
+            'added_date' => $this->getStringField($server, 'added_date'),
+            'group_id' => $this->getNumericField($server, 'group_id'),
+            'group_title' => $this->getStringField($server, 'group_title'),
+            'has_error' => $hasError ? 'Yes' : 'No',
+            'error_text' => $this->getStringField($server, 'error_text'),
+            'is_error' => $this->getNumericField($server, 'is_error'),
+            'is_warning' => $this->getNumericField($server, 'is_warning'),
+            'is_free_space_warning' => $this->getNumericField($server, 'is_free_space_warning'),
+        ]);
     }
 
     /**
@@ -1272,6 +1355,15 @@ HELP
             if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows($input, $info, [
                     'group_id' => $groupId,
+                    ...$this->getServerGroupShowExtraFields(
+                        $input,
+                        $group,
+                        $contentType,
+                        $contentTypeStr,
+                        $contentCount,
+                        $servers,
+                        $this->getServerGroupMinFreeSpaceBytes($db)
+                    ),
                     'servers' => $serverRecords,
                 ]);
             }
@@ -1294,6 +1386,82 @@ HELP
             $this->io()->error('Failed to fetch group: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $group
+     * @param list<array<string, mixed>> $servers
+     * @return array<string, mixed>
+     */
+    private function getServerGroupShowExtraFields(
+        InputInterface $input,
+        array $group,
+        int $contentType,
+        string $contentTypeStr,
+        int $contentCount,
+        array $servers,
+        int $minFreeSpaceBytes
+    ): array {
+        $serverCount = count($servers);
+        $activeCount = 0;
+        $totalSpaceValues = [];
+        $freeSpaceValues = [];
+        $loadSum = 0.0;
+        $loadCount = 0;
+
+        foreach ($servers as $server) {
+            if ($this->getNumericField($server, 'status_id') === StatusFormatter::SERVER_ACTIVE) {
+                $activeCount++;
+            }
+
+            $totalSpace = $this->getNumericField($server, 'total_space');
+            if ($totalSpace > 0) {
+                $totalSpaceValues[] = $totalSpace;
+            }
+
+            $freeSpace = $this->getNumericField($server, 'free_space');
+            if ($freeSpace > 0) {
+                $freeSpaceValues[] = $freeSpace;
+            }
+
+            $loadValue = $server['load'] ?? null;
+            if (is_numeric($loadValue)) {
+                $loadSum += (float) $loadValue;
+                $loadCount++;
+            }
+        }
+
+        $totalSpace = $totalSpaceValues === [] ? 0 : min($totalSpaceValues);
+        $freeSpace = $freeSpaceValues === [] ? 0 : min($freeSpaceValues);
+        $load = $loadCount > 0 ? $loadSum / $loadCount : 0.0;
+        $computedAdminFields = $this->buildKvsAdminServerGroupComputedFields(
+            $this->getNumericField($group, 'status_id'),
+            $totalSpace,
+            $freeSpace,
+            $minFreeSpaceBytes
+        );
+
+        return $this->getRequestedDetailFields($input, [
+            'id' => $this->getNumericField($group, 'group_id'),
+            'status_id' => $this->getNumericField($group, 'status_id'),
+            'content_type_id' => $contentType,
+            ...$computedAdminFields,
+            'server_count' => $serverCount,
+            'servers_count' => $serverCount,
+            'servers_amount' => $serverCount,
+            'total_servers_amount' => $serverCount,
+            'active_count' => $activeCount,
+            'active_servers_amount' => $activeCount,
+            'content_count' => number_format($contentCount),
+            'total_content_count' => $contentCount,
+            'total_content' => number_format($contentCount) . " {$contentTypeStr}",
+            'total_space' => $this->formatBytes($totalSpace),
+            'free_space' => $this->formatBytes($freeSpace),
+            'min_free' => $this->formatBytes($freeSpace),
+            'min_free_space' => $this->formatBytes($freeSpace),
+            'load' => number_format($load, 2),
+            'added_date' => $this->getStringField($group, 'added_date'),
+        ]);
     }
 
     private function enableServer(?string $id, InputInterface $input): int

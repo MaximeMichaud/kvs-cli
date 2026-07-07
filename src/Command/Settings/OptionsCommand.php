@@ -56,6 +56,7 @@ class OptionsCommand extends BaseCommand
             'USER_', 'TOKENS_', 'PREMIUM_', 'PRIVATE_', 'PUBLIC_',
             'AWARDS_', 'FEEDBACK_', 'LIMIT_', 'AFFILIATE_',
             'AUTO_DELETE_', 'GENERATED_USERS_', 'STATUS_AFTER_PREMIUM',
+            'ENABLE_TOKENS_', 'DEFAULT_TOKENS_', 'ACTIVITY_INDEX_',
         ],
         'antispam' => [
             'ANTISPAM_',
@@ -275,6 +276,14 @@ HELP
                 $option['category'] = $this->detectCategory($option['variable']);
                 return $option;
             }, $options);
+
+            if ($category !== null) {
+                $expectedCategory = ucfirst($category);
+                $options = array_values(array_filter(
+                    $options,
+                    static fn (array $option): bool => $option['category'] === $expectedCategory
+                ));
+            }
 
             $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
             $formatter->display($options, $this->io());
@@ -496,7 +505,7 @@ HELP
             }
 
             // Warn about cache
-            $this->io()->note('You may need to clear cache for changes to take effect: kvs cache clear');
+            $this->io()->note('You may need to clear cache for changes to take effect: kvs cache --clear');
 
             return self::SUCCESS;
         } catch (\Exception $e) {
@@ -596,14 +605,19 @@ HELP
      */
     private function detectCategory(string $variable): string
     {
+        $matchedCategory = null;
+        $matchedLength = 0;
+
         foreach (self::CATEGORIES as $category => $prefixes) {
             foreach ($prefixes as $prefix) {
-                if (str_starts_with($variable, $prefix)) {
-                    return ucfirst($category);
+                if (str_starts_with($variable, $prefix) && strlen($prefix) > $matchedLength) {
+                    $matchedCategory = $category;
+                    $matchedLength = strlen($prefix);
                 }
             }
         }
-        return 'Other';
+
+        return $matchedCategory !== null ? ucfirst($matchedCategory) : 'Other';
     }
 
     /**

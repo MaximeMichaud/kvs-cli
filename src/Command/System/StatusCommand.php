@@ -470,9 +470,9 @@ HELP
         }
 
         // Check ImageMagick
-        $convertPath = $this->checkCommand('convert', '--version');
-        if ($convertPath['available']) {
-            $services[] = ['✓', 'ImageMagick', $convertPath['path'], $convertPath['version']];
+        $imageMagickPath = $this->checkCommand($this->config->getImageMagickPath(), '--version');
+        if ($imageMagickPath['available']) {
+            $services[] = ['✓', 'ImageMagick', $imageMagickPath['path'], $imageMagickPath['version']];
         } else {
             $services[] = ['✗', 'ImageMagick', 'Not found', 'N/A'];
         }
@@ -508,13 +508,22 @@ HELP
             'version' => 'N/A'
         ];
 
-        // Check if command exists
-        $which = shell_exec('which ' . escapeshellarg($command) . ' 2>/dev/null');
-        if ($which === null || $which === false || trim($which) === '') {
-            return $result;
+        if (str_contains($command, '/')) {
+            if (!is_file($command) || !is_executable($command)) {
+                return $result;
+            }
+
+            $result['path'] = $command;
+        } else {
+            // Check if command exists
+            $which = shell_exec('which ' . escapeshellarg($command) . ' 2>/dev/null');
+            if ($which === null || $which === false || trim($which) === '') {
+                return $result;
+            }
+
+            $result['path'] = trim($which);
         }
 
-        $result['path'] = trim($which);
         $result['available'] = true;
 
         // Get version

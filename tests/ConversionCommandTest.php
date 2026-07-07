@@ -398,6 +398,49 @@ class ConversionCommandTest extends TestCase
         $this->assertStringNotContainsString('Conversion Server #1', $output);
     }
 
+    public function testConversionShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'status_id',
+                'is_allow_any_tasks',
+                'max_tasks',
+                'max_tasks_priority',
+                'process_priority',
+                'connection_type_id',
+                'task_types',
+                'api_version',
+                'total_space',
+                'free_space',
+                'load',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['server_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(0, (int) $rows[0]['is_allow_any_tasks']);
+        $this->assertSame('4', (string) $rows[0]['max_tasks']);
+        $this->assertSame(1, (int) $rows[0]['max_tasks_priority']);
+        $this->assertSame(9, (int) $rows[0]['process_priority']);
+        $this->assertSame(0, (int) $rows[0]['connection_type_id']);
+        $this->assertSame(['video_admins'], $rows[0]['task_types']);
+        $this->assertSame('7.0.0', $rows[0]['api_version']);
+        $this->assertSame('10 GB', $rows[0]['total_space']);
+        $this->assertSame('6 GB', $rows[0]['free_space']);
+        $this->assertSame('1.25', $rows[0]['load']);
+        $this->assertSame('2026-05-20 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testConversionShowRejectsCountFormat(): void
     {
         $this->tester->execute([
@@ -588,6 +631,8 @@ class ConversionCommandTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Unknown conversion action "unknown_action"', $output);
+        $this->assertStringContainsString('activate', $output);
+        $this->assertStringContainsString('deactivate', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
     }
 

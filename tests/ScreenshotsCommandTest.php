@@ -374,6 +374,60 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertSame(1, (int) $rows[0]['index']);
     }
 
+    public function testListScreenshotsUsesKvsScreenAmountInsteadOfDerivedTimelineFiles(): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, status_id INTEGER, screen_amount INTEGER, screen_main INTEGER)'
+        );
+        $db->exec('INSERT INTO ktvs_videos VALUES (1234, 1, 1, 1)');
+
+        $generatedScreenshotsDir = $this->kvsPath . '/contents/videos_screenshots/' . $this->getBucket('1234') . '/1234';
+        mkdir($generatedScreenshotsDir . '/320x180', 0755, true);
+        mkdir($generatedScreenshotsDir . '/timelines/mp4/182x100', 0755, true);
+
+        $image = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
+            true
+        );
+        $this->assertIsString($image);
+        file_put_contents($generatedScreenshotsDir . '/preview.jpg', $image);
+        file_put_contents($generatedScreenshotsDir . '/preview_720p.mp4.jpg', $image);
+        file_put_contents($generatedScreenshotsDir . '/320x180/0.jpg', $image);
+        for ($i = 1; $i <= 5; $i++) {
+            file_put_contents($generatedScreenshotsDir . "/timelines/mp4/182x100/$i.jpg", $image);
+        }
+
+        $tester = new CommandTester($this->createCommandWithDatabase($db));
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--format' => 'count',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('1', trim($tester->getDisplay()));
+
+        $tester->execute([
+            'action' => 'list',
+            'video_id' => '1234',
+            '--fields' => 'index,filename,formats,is_main',
+            '--format' => 'json',
+        ]);
+
+        $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame([[
+            'index' => 1,
+            'filename' => '1.jpg',
+            'formats' => 0,
+            'is_main' => 1,
+        ]], $rows);
+    }
+
     public function testUnknownActionFailsEvenWithVideoId(): void
     {
         $this->createScreenshotFixture('1234');
@@ -396,6 +450,19 @@ class ScreenshotsCommandTest extends TestCase
         $this->assertTrue($definition->hasOption('count'));
         $this->assertTrue($definition->hasOption('format'));
         $this->assertFalse($definition->hasOption('type'));
+    }
+
+    public function testCommandHelpDescribesCurrentListSurface(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString('--fields=FIELDS', $help);
+        $this->assertStringContainsString('--format=FORMAT', $help);
+        $this->assertStringContainsString('index, filename, formats, size, dimensions, path, is_main', $help);
+        $this->assertStringContainsString('overview screenshot metadata', $help);
+        $this->assertStringContainsString('It does not select timeline screenshots', $help);
+        $this->assertStringNotContainsString('--type', $help);
+        $this->assertStringNotContainsString('This command scans the content directory for screenshot files.', $help);
     }
 
     public function testCommandHasExpectedAliases(): void

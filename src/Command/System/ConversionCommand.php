@@ -90,7 +90,7 @@ class ConversionCommand extends BaseCommand
             ->addArgument(
                 'action',
                 InputArgument::OPTIONAL,
-                'Action: list|show|enable|disable|debug-on|debug-off|log|config|stats'
+                'Action: list|show|enable|disable|activate|deactivate|debug-on|debug-off|log|config|stats'
             )
             ->addArgument('id', InputArgument::OPTIONAL, 'Server ID')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled|init)')
@@ -113,6 +113,8 @@ Manage KVS conversion servers (video/image transcoding).
   show <id>      Show server details (tasks, options, connection)
   enable <id>    Enable/activate a server
   disable <id>   Disable/deactivate a server
+  activate <id>   Alias for enable
+  deactivate <id> Alias for disable
   debug-on <id>  Enable debug mode
   debug-off <id> Disable debug mode
   log <id>       View server conversion log
@@ -169,7 +171,7 @@ HELP
             default => $this->failUnknownAction(
                 'conversion',
                 $action,
-                ['list', 'show', 'enable', 'disable', 'debug-on', 'debug-off', 'log', 'config', 'stats']
+                ['list', 'show', 'enable', 'disable', 'activate', 'deactivate', 'debug-on', 'debug-off', 'log', 'config', 'stats']
             ),
         };
     }
@@ -449,6 +451,7 @@ HELP
                     'server_id' => (string) $serverId,
                     'task_types' => $this->parseTaskTypes($this->getStringField($server, 'task_types')),
                     'allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks') === 1,
+                    ...$this->getConversionShowExtraFields($input, $server),
                 ]);
             }
 
@@ -469,6 +472,60 @@ HELP
             $this->io()->error('Failed to fetch server: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @return array<string, mixed>
+     */
+    private function getConversionShowExtraFields(InputInterface $input, array $server): array
+    {
+        $totalSpace = $this->getNumericField($server, 'total_space');
+        $freeSpace = $this->getNumericField($server, 'free_space');
+        $load = $this->getFloatField($server, 'load');
+        $priority = $this->getNumericField($server, 'process_priority');
+        $errorIter = $this->getNumericField($server, 'error_iteration');
+        $statusId = $this->getNumericField($server, 'status_id');
+        $latestApiVersion = '';
+        $computedAdminFields = $this->buildKvsAdminConversionComputedFields(
+            $server,
+            $totalSpace,
+            $freeSpace,
+            $latestApiVersion
+        );
+
+        return $this->getRequestedDetailFields($input, [
+            'status_id' => $statusId,
+            'is_allow_any_tasks' => $this->getNumericField($server, 'is_allow_any_tasks'),
+            'max_tasks_priority' => $this->getNumericField($server, 'max_tasks_priority'),
+            'tasks_amount' => $this->getNumericField($server, 'tasks_pending'),
+            'finished_tasks_amount' => $this->getNumericField($server, 'tasks_completed'),
+            'tasks_pending' => $this->getNumericField($server, 'tasks_pending'),
+            'tasks_completed' => $this->getNumericField($server, 'tasks_completed'),
+            'heartbeat_date' => $this->getStringField($server, 'heartbeat_date'),
+            'heartbeat' => $this->formatHeartbeat($this->getStringField($server, 'heartbeat_date')),
+            'process_priority' => $priority,
+            'priority' => StatusFormatter::conversionPriority($priority, false),
+            'connection_type_id' => $this->getNumericField($server, 'connection_type_id'),
+            'path' => $this->getStringField($server, 'path'),
+            'ftp_host' => $this->getStringField($server, 'ftp_host'),
+            'ftp_port' => $this->getStringField($server, 'ftp_port'),
+            'ftp_user' => $this->getStringField($server, 'ftp_user'),
+            'ftp_timeout' => $this->getStringField($server, 'ftp_timeout'),
+            'total_space' => $this->formatBytes($totalSpace),
+            'free_space' => $this->formatBytes($freeSpace),
+            'free_space_percent' => $computedAdminFields['free_space_percent'],
+            'load' => number_format($load, 2),
+            'is_debug_enabled' => $this->getNumericField($server, 'is_debug_enabled'),
+            'debug' => $this->getNumericField($server, 'is_debug_enabled') === 1 ? 'On' : 'Off',
+            'added_date' => $this->getStringField($server, 'added_date'),
+            'api_version' => $computedAdminFields['api_version'],
+            'error_text' => $computedAdminFields['error_text'],
+            'has_debug_log' => $computedAdminFields['has_debug_log'],
+            'has_old_api' => $computedAdminFields['has_old_api'],
+            'is_error' => $computedAdminFields['is_error'],
+            'has_error' => $statusId !== 0 && $errorIter > 1 ? 'Yes' : 'No',
+        ]);
     }
 
     /**

@@ -575,6 +575,10 @@ HELP
                 return self::FAILURE;
             }
 
+            $formatRows = $this->addVideoCounts($db, [$format]);
+            $format = $formatRows[0] ?? $format;
+            $deletingProgressByPostfix = $this->getDeletingFormatProgressByPostfix($db);
+            $format = $this->addKvsAdminListComputedFields($format, $deletingProgressByPostfix);
             $format = $this->addKvsFileBackedFields($format);
 
             $statusIdValue = $format['display_status_id'] ?? $format['status_id'] ?? 0;

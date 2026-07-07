@@ -430,6 +430,45 @@ class ServerCommandTest extends TestCase
         $this->assertStringNotContainsString('Server #1', $output);
     }
 
+    public function testServerShowSupportsRequestedAdminListFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '1',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'status_id',
+                'content_type_id',
+                'total_content',
+                'content_count',
+                'streaming_type_id',
+                'control_script_url',
+                'control_script_url_version',
+                'control_script_url_lock_ip',
+                'connection_type_id',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(1, (int) $rows[0]['server_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(1, (int) $rows[0]['content_type_id']);
+        $this->assertSame('3 Videos', $rows[0]['total_content']);
+        $this->assertSame(3, (int) $rows[0]['content_count']);
+        $this->assertSame(0, (int) $rows[0]['streaming_type_id']);
+        $this->assertSame('', $rows[0]['control_script_url']);
+        $this->assertSame('N/A', $rows[0]['control_script_url_version']);
+        $this->assertSame(0, (int) $rows[0]['control_script_url_lock_ip']);
+        $this->assertSame(0, (int) $rows[0]['connection_type_id']);
+        $this->assertSame('2026-05-20 10:00:00', $rows[0]['added_date']);
+    }
+
     public function testServerShowRejectsCountFormat(): void
     {
         $this->tester->execute([
@@ -479,6 +518,38 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
         $this->assertStringContainsString('Content check found errors', $output);
         $this->assertStringNotContainsString('Content availability error', $output);
+    }
+
+    public function testServerShowExposesKvsAdminComputedWarningFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'show',
+            'id' => '3',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'server_id',
+                'free_space_percent',
+                'error_text',
+                'is_error',
+                'is_warning',
+                'is_free_space_warning',
+            ]),
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(3, (int) $rows[0]['server_id']);
+        $this->assertSame('(25%)', $rows[0]['free_space_percent']);
+        $this->assertSame(
+            ' (This server has debug log enabled) (Content path is not writable)',
+            $rows[0]['error_text']
+        );
+        $this->assertSame(1, (int) $rows[0]['is_error']);
+        $this->assertSame(1, (int) $rows[0]['is_warning']);
+        $this->assertSame(0, (int) $rows[0]['is_free_space_warning']);
     }
 
     public function testServerShowRejectsNonIntegerIdBeforeQuery(): void
@@ -844,6 +915,76 @@ class ServerCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    public function testServerGroupShowSupportsRequestedAdminFields(): void
+    {
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'group_id',
+                'status_id',
+                'content_type_id',
+                'servers_count',
+                'active_servers_amount',
+                'total_content',
+                'total_space',
+                'free_space',
+                'load',
+                'added_date',
+            ]),
+        ]);
+
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['group_id']);
+        $this->assertSame(1, (int) $rows[0]['status_id']);
+        $this->assertSame(1, (int) $rows[0]['content_type_id']);
+        $this->assertSame(2, (int) $rows[0]['servers_count']);
+        $this->assertSame(1, (int) $rows[0]['active_servers_amount']);
+        $this->assertSame('3 Videos', $rows[0]['total_content']);
+        $this->assertSame('5 GB', $rows[0]['total_space']);
+        $this->assertSame('2 GB', $rows[0]['free_space']);
+        $this->assertSame('0.75', $rows[0]['load']);
+        $this->assertSame('2026-05-20 10:00:00', $rows[0]['added_date']);
+    }
+
+    public function testServerGroupShowExposesKvsAdminComputedWarningFields(): void
+    {
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('options') . ' (variable TEXT, value TEXT)');
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('options') .
+            " VALUES ('SERVER_GROUP_MIN_FREE_SPACE_MB', '3072')"
+        );
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'group',
+            'id' => '10',
+            '--format' => 'json',
+            '--fields' => implode(',', [
+                'group_id',
+                'free_space_percent',
+                'error_text',
+                'is_warning',
+                'is_free_space_warning',
+            ]),
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame(10, (int) $rows[0]['group_id']);
+        $this->assertSame('(40%)', $rows[0]['free_space_percent']);
+        $this->assertSame(' (No free space is available)', $rows[0]['error_text']);
+        $this->assertSame(1, (int) $rows[0]['is_warning']);
+        $this->assertSame(1, (int) $rows[0]['is_free_space_warning']);
+    }
+
     public function testServerGroupShowNotFound(): void
     {
         $this->tester->execute([
@@ -936,8 +1077,11 @@ class ServerCommandTest extends TestCase
             'action' => 'unknown_action',
         ]);
 
+        $output = $this->tester->getDisplay();
         $this->assertEquals(1, $this->tester->getStatusCode());
-        $this->assertStringContainsString('Unknown server action "unknown_action"', $this->tester->getDisplay());
+        $this->assertStringContainsString('Unknown server action "unknown_action"', $output);
+        $this->assertStringContainsString('activate', $output);
+        $this->assertStringContainsString('deactivate', $output);
     }
 
     public function testServerEnableMissingId(): void

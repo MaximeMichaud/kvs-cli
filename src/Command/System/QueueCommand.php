@@ -43,6 +43,9 @@ class QueueCommand extends BaseCommand
         'content_id',
         'server',
         'error',
+        'format_postfix',
+        'format_size',
+        'is_error',
         'effective_duration_seconds',
         'duration',
     ];
@@ -112,7 +115,7 @@ class QueueCommand extends BaseCommand
                 'status',
                 null,
                 InputOption::VALUE_REQUIRED,
-                'Filter by status (scheduled|pending|in-process|processing|error|failed|completed|cancelled)'
+                'Filter by task status'
             )
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by task type ID')
             ->addOption('error-code', null, InputOption::VALUE_REQUIRED, 'Filter by KVS task error code')
@@ -132,10 +135,18 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   stats    Show queue statistics
   history  Show completed/cancelled/failed tasks history
 
-<fg=yellow>STATUS VALUES:</>
+<fg=yellow>ACTIVE QUEUE STATUS VALUES:</>
   pending     Scheduled tasks waiting to be processed (status_id=0)
   processing  Tasks currently in process (status_id=1)
   failed      Tasks finished with error (status_id=2)
+  Aliases: scheduled, in-process, error, 0, 1, 2
+
+<fg=yellow>HISTORY STATUS VALUES:</>
+  failed      Tasks finished with error (status_id=2)
+  completed   Tasks completed successfully (status_id=3)
+  cancelled   Tasks cancelled or deleted before completion (status_id=4)
+  deleted     Compatibility alias for cancelled history tasks
+  Aliases: error, canceled, 2, 3, 4
 
 <fg=yellow>COMMON TASK TYPES:</>
   1   New video
@@ -154,6 +165,7 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   <fg=green>kvs queue show 123</>                     Show task #123 details
   <fg=green>kvs queue stats</>                        Show queue statistics
   <fg=green>kvs queue history --limit=50</>           Show last 50 history tasks
+  <fg=green>kvs queue history --status=completed</>   Show completed history tasks
   <fg=green>kvs queue history --album=12</>           Show history for album #12
 HELP
             );
@@ -299,7 +311,7 @@ HELP
                 $task['error'] = $errorCode > 0
                     ? (self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}")
                     : '';
-                return $this->hydrateTaskListAppendFields($task, $db);
+                return $this->hydrateTaskAppendFields($task, $db, true);
             }, $tasks);
 
             // Format and display
@@ -337,16 +349,15 @@ HELP
     }
 
     /**
-     * Hydrate append-only fields used by KVS admin background_tasks grid.
+     * Hydrate append-only fields used by KVS admin background task grids.
      *
      * @param array<string, mixed> $task
      * @return array<string, mixed>
      */
-    private function hydrateTaskListAppendFields(array $task, \PDO $db): array
+    private function hydrateTaskAppendFields(array $task, \PDO $db, bool $includeProgress): array
     {
         $task['format_postfix'] = '';
         $task['format_size'] = '';
-        $task['pc_complete'] = '';
         $task['is_error'] = $this->scalarToPositiveInt($task['status_id'] ?? null) === StatusFormatter::TASK_FAILED ? 1 : 0;
 
         $taskData = $this->unserializeTaskData($task['data'] ?? null);
@@ -363,9 +374,12 @@ HELP
             }
         }
 
-        $taskId = $this->scalarToPositiveInt($task['task_id'] ?? null);
-        if ($taskId !== null) {
-            $task['pc_complete'] = $this->readTaskProgressCompletion($taskId);
+        if ($includeProgress) {
+            $task['pc_complete'] = '';
+            $taskId = $this->scalarToPositiveInt($task['task_id'] ?? null);
+            if ($taskId !== null) {
+                $task['pc_complete'] = $this->readTaskProgressCompletion($taskId);
+            }
         }
 
         return $task;
@@ -464,20 +478,15 @@ HELP
             }
 
             [$task, $isHistory] = $result;
+            $task = $this->hydrateTaskAppendFields($task, $db, !$isHistory);
             $info = $this->buildTaskInfo($task, $isHistory);
 
             if ($this->shouldUseFormattedRows($input)) {
-                $extra = [
-                    'task_id' => (string) $taskId,
-                    'is_history' => $isHistory,
-                ];
-                $data = $task['data'] ?? null;
-                if (is_string($data) && $data !== '') {
-                    $unserialized = @unserialize($data, ['allowed_classes' => false]);
-                    $extra['data'] = $unserialized !== false ? $unserialized : $data;
-                }
-
-                return $this->displayDetailRows($input, $info, $extra);
+                return $this->displayDetailRows(
+                    $input,
+                    $info,
+                    $this->getTaskShowExtraFields($input, $task, $taskId, $isHistory)
+                );
             }
 
             $this->io()->title("Task #$taskId" . ($isHistory ? ' (History)' : ''));
@@ -491,6 +500,86 @@ HELP
             $this->io()->error('Failed to fetch task: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     * @return array<string, mixed>
+     */
+    private function getTaskShowExtraFields(InputInterface $input, array $task, int $taskId, bool $isHistory): array
+    {
+        $extra = [
+            'task_id' => (string) $taskId,
+            'is_history' => $isHistory,
+        ];
+
+        $data = $task['data'] ?? null;
+        if (is_string($data) && $data !== '') {
+            $unserialized = @unserialize($data, ['allowed_classes' => false]);
+            $extra['data'] = $unserialized !== false ? $unserialized : $data;
+        }
+
+        $videoId = $this->getTaskNumericField($task, 'video_id');
+        $albumId = $this->getTaskNumericField($task, 'album_id');
+        $objectId = $videoId > 0 ? $videoId : ($albumId > 0 ? $albumId : 0);
+        $objectTypeId = $videoId > 0 ? 1 : ($albumId > 0 ? 2 : 0);
+        $serverId = $this->getTaskNumericField($task, 'server_id');
+        $serverName = $task['server_name'] ?? null;
+        $errorCode = $this->getTaskNumericField($task, 'error_code');
+
+        $adminFields = [
+            'status_id' => $this->getTaskNumericField($task, 'status_id'),
+            'error_code' => $errorCode,
+            'error' => $errorCode > 0 ? (self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}") : '',
+            'message' => $this->getTaskStringField($task, 'message'),
+            'type_id' => $this->getTaskNumericField($task, 'type_id'),
+            'server' => is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : '-'),
+            'content_id' => $videoId > 0 ? "Video #{$videoId}" : ($albumId > 0 ? "Album #{$albumId}" : '-'),
+            'object' => $objectId,
+            'object_id' => $objectId,
+            'object_type_id' => $objectTypeId,
+            'priority' => $this->getTaskNumericField($task, 'priority'),
+            'start_date' => $this->getTaskStringField($task, 'start_date'),
+            'format_postfix' => $this->getTaskStringField($task, 'format_postfix'),
+            'format_size' => $this->getTaskStringField($task, 'format_size'),
+            'is_error' => $this->getTaskNumericField($task, 'is_error'),
+        ];
+
+        if (!$isHistory && array_key_exists('added_date', $task)) {
+            $adminFields['added_date'] = $this->getTaskStringField($task, 'added_date');
+        }
+        if (!$isHistory) {
+            $adminFields['pc_complete'] = $this->getTaskStringField($task, 'pc_complete');
+        }
+
+        if ($isHistory) {
+            $adminFields['end_date'] = $this->getTaskStringField($task, 'end_date');
+            $adminFields['effective_duration'] = $this->formatDuration(
+                $this->getTaskNumericField($task, 'effective_duration')
+            );
+        }
+
+        return [
+            ...$extra,
+            ...$this->getRequestedDetailFields($input, $adminFields),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     */
+    private function getTaskNumericField(array $task, string $key): int
+    {
+        return is_numeric($task[$key] ?? null) ? (int) $task[$key] : 0;
+    }
+
+    /**
+     * @param array<string, mixed> $task
+     */
+    private function getTaskStringField(array $task, string $key): string
+    {
+        $value = $task[$key] ?? '';
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**
@@ -913,7 +1002,9 @@ HELP
             ];
             $statusKey = strtolower($status);
             if (!array_key_exists($statusKey, $statusMap)) {
-                $this->io()->error('Invalid status "' . $status . '". Valid values: error, failed, completed, cancelled');
+                $this->io()->error(
+                    'Invalid status "' . $status . '". Valid values: error, failed, completed, cancelled, canceled, deleted, 2, 3, 4'
+                );
                 return self::FAILURE;
             }
             $fromClause .= " AND bh.status_id = :status";
@@ -974,7 +1065,10 @@ HELP
                 return self::SUCCESS;
             }
 
-            $tasks = array_map(fn (array $task): array => $this->transformHistoryTask($task), $tasks);
+            $tasks = array_map(
+                fn (array $task): array => $this->transformHistoryTask($this->hydrateTaskAppendFields($task, $db, false)),
+                $tasks
+            );
 
             if ($format === 'table' && !$this->hasFieldSelection($input)) {
                 $this->io()->title('Task History');
