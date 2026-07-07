@@ -121,7 +121,11 @@ EOT
             $contentDir = null;
             if (!$noContent) {
                 $this->io()->section('Step 2/3: Copying content files');
-                $contentDir = $this->copyContent($targetConfig, $tempDir);
+                $contentResult = $this->copyContent($targetConfig, $tempDir);
+                if ($contentResult === false) {
+                    return self::FAILURE;
+                }
+                $contentDir = $contentResult;
             } else {
                 $this->io()->section('Step 2/3: Skipping content files');
                 $this->io()->comment('--no-content specified');
@@ -254,12 +258,11 @@ EOT
 
         // Build dump command
         $command = sprintf(
-            '%s --host=%s --port=%d --user=%s --password=%s %s | zstd -%d -o %s',
+            '%s --host=%s --port=%d --user=%s %s | zstd -%d -o %s',
             $dumpCmd,
             escapeshellarg($host),
             $port,
             escapeshellarg($dbConfig['user']),
-            escapeshellarg($dbConfig['password']),
             escapeshellarg($dbConfig['database']),
             $level,
             escapeshellarg($outputFile)
@@ -267,7 +270,7 @@ EOT
 
         $this->io()->text('Dumping database...');
 
-        $process = Process::fromShellCommandline($command);
+        $process = Process::fromShellCommandline($command, null, ['MYSQL_PWD' => $dbConfig['password']]);
         $process->setTimeout(3600); // 1 hour timeout
         $process->run();
 
@@ -291,7 +294,7 @@ EOT
         return $outputFile;
     }
 
-    private function copyContent(Configuration $config, string $tempDir): ?string
+    private function copyContent(Configuration $config, string $tempDir): string|false|null
     {
         $contentPath = $config->getContentPath();
         if (!is_dir($contentPath)) {
@@ -347,6 +350,14 @@ EOT
                 );
                 $process->setTimeout(3600);
                 $process->run();
+            }
+
+            if (!$process->isSuccessful()) {
+                $errorOutput = trim($process->getErrorOutput());
+                $this->io()->error(
+                    'Content copy failed for ' . $dir . ($errorOutput !== '' ? ': ' . $errorOutput : '')
+                );
+                return false;
             }
 
             // Count files

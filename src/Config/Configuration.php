@@ -272,11 +272,27 @@ class Configuration
     {
         $configFile = $this->kvsPath . '/admin/include/setup.php';
         if (file_exists($configFile)) {
-            ob_start();
-            include $configFile;
-            ob_end_clean();
+            $oldCwd = getcwd();
+            if ($oldCwd !== false) {
+                chdir(dirname($configFile));
+            }
+
+            try {
+                ob_start();
+                include $configFile;
+                ob_end_clean();
+            } finally {
+                if ($oldCwd !== false) {
+                    chdir($oldCwd);
+                }
+            }
 
             if (isset($config) && is_array($config)) {
+                $versionFile = dirname($configFile) . '/version.php';
+                if (!array_key_exists('project_version', $config) && file_exists($versionFile)) {
+                    include $versionFile;
+                }
+
                 /** @var array<string, mixed> $config */
                 $this->config = $config;
             }
@@ -404,6 +420,11 @@ class Configuration
         }
 
         return 'ffprobe';
+    }
+
+    public function getImageMagickPath(): string
+    {
+        return $this->getConfiguredExecutablePath('image_magick_path', 'convert');
     }
 
     public function getPhpPath(): string

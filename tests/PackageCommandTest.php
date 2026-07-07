@@ -188,6 +188,66 @@ SH
         }
     }
 
+    public function testPackageDatabaseExportUsesMysqlPwdEnvironment(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-secure-dump';
+        mkdir($toolsDir, 0755, true);
+
+        $argsFile = $this->tempDir . '/dump.args';
+        $envFile = $this->tempDir . '/dump.env';
+        $dump = $toolsDir . '/mariadb-dump';
+        file_put_contents(
+            $dump,
+            "#!/bin/sh\n"
+            . 'printf "%s\n" "$@" > ' . escapeshellarg($argsFile) . "\n"
+            . 'printf "%s\n" "${MYSQL_PWD-}" > ' . escapeshellarg($envFile) . "\n"
+            . "printf '%128s\\n' 'SQL dump'\n"
+        );
+        chmod($dump, 0755);
+
+        $zstd = $toolsDir . '/zstd';
+        file_put_contents(
+            $zstd,
+            <<<'SH'
+#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+cat > "$out"
+SH
+        );
+        chmod($zstd, 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $package = $this->packagePath();
+
+        try {
+            $this->tester->execute(['--no-content' => true, '-o' => $package, '--force' => true]);
+
+            $display = $this->tester->getDisplay();
+            $dbConfig = $this->config->getDatabaseConfig();
+            $password = $dbConfig['password'] ?? '';
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $display);
+            $this->assertFileExists($package);
+            $this->assertStringNotContainsString('--password', (string) file_get_contents($argsFile));
+            $this->assertStringNotContainsString($password, (string) file_get_contents($argsFile));
+            $this->assertSame($password, trim((string) file_get_contents($envFile)));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
     public function testCopyContentDoesNotWriteCarriageReturnProgressInPlainOutput(): void
     {
         $toolsDir = $this->tempDir . '/tools';
@@ -235,6 +295,54 @@ SH
             $this->assertFileExists($contentDir . '/videos_sources/1000/source.mp4');
             $this->assertStringNotContainsString("\r", $display);
             $this->assertStringContainsString('Content copied: 1 files', $display);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testCopyContentFailsWhenRsyncAndFallbackCopyFail(): void
+    {
+        $toolsDir = $this->tempDir . '/copy-fail-tools';
+        mkdir($toolsDir, 0755, true);
+
+        foreach (['rsync', 'cp'] as $tool) {
+            $path = $toolsDir . '/' . $tool;
+            file_put_contents(
+                $path,
+                <<<'SH'
+#!/bin/sh
+echo 'copy denied' >&2
+exit 1
+SH
+            );
+            chmod($path, 0755);
+        }
+
+        mkdir($this->tempDir . '/contents/videos_sources/1000', 0755, true);
+        file_put_contents($this->tempDir . '/contents/videos_sources/1000/source.mp4', 'video');
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $input = new ArrayInput([]);
+            $output = new BufferedOutput(decorated: false);
+
+            $initialize = new \ReflectionMethod($this->command, 'initialize');
+            $initialize->invoke($this->command, $input, $output);
+
+            $copyContent = new \ReflectionMethod($this->command, 'copyContent');
+            $contentDir = $copyContent->invoke($this->command, $this->config, $this->tempDir . '/package-work');
+
+            $display = $output->fetch();
+
+            $this->assertFalse($contentDir, $display);
+            $this->assertStringContainsString('Content copy failed', $display);
+            $this->assertStringContainsString('copy denied', $display);
         } finally {
             if ($previousPath === false) {
                 putenv('PATH');

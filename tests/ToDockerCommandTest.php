@@ -58,6 +58,7 @@ class ToDockerCommandTest extends TestCase
         $this->tester->execute([
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
+            '--target' => $this->tempDir . '/new-target',
             '--dry-run' => true,
             '--force' => true,
         ]);
@@ -72,6 +73,7 @@ class ToDockerCommandTest extends TestCase
         $this->tester->execute([
             '--domain' => 'test.local',
             '--email' => 'test@test.com',
+            '--target' => $this->tempDir . '/new-target',
             '--dry-run' => true,
             '--force' => true,
         ]);
@@ -86,6 +88,22 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('Import database', $output);
     }
 
+    public function testToDockerHelpDryRunExamplesIncludeRequiredEmail(): void
+    {
+        $help = $this->command->getHelp();
+
+        $this->assertStringContainsString(
+            'kvs migrate:to-docker --domain=example.com --email=admin@example.com --ssl=1',
+            $help
+        );
+        $this->assertStringContainsString(
+            'kvs migrate:to-docker /var/www/site -d example.com -e admin@example.com --dry-run',
+            $help
+        );
+        $this->assertStringNotContainsString('kvs migrate:to-docker --domain=example.com --ssl=1', $help);
+        $this->assertStringNotContainsString('kvs migrate:to-docker /var/www/site --dry-run', $help);
+    }
+
     public function testToDockerDryRunUsesProvidedEmail(): void
     {
         $this->tester->execute([
@@ -98,8 +116,51 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('EMAIL=myemail@mycompany.com', $output);
-        $this->assertStringNotContainsString('EMAIL=admin@test.example.com', $output);
+        $this->assertStringContainsString("EMAIL='myemail@mycompany.com'", $output);
+        $this->assertStringNotContainsString("EMAIL='admin@test.example.com'", $output);
+    }
+
+    public function testToDockerDryRunShellQuotesTargetPaths(): void
+    {
+        $targetDir = $this->tempDir . '/target with spaces';
+
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--target' => $targetDir,
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('git clone ', $output);
+        $this->assertStringContainsString(escapeshellarg($targetDir), $output);
+        $this->assertStringContainsString('cd ' . escapeshellarg($targetDir . '/docker') . ' &&', $output);
+        $this->assertStringNotContainsString('git clone https://github.com/MaximeMichaud/KVS-install.git ' . $targetDir, $output);
+        $this->assertStringNotContainsString('cd ' . $targetDir . '/docker &&', $output);
+    }
+
+    public function testToDockerDryRunShowsGitPullForExistingTargetRepository(): void
+    {
+        $targetDir = $this->tempDir . '/existing-target';
+        mkdir($targetDir . '/.git', 0755, true);
+
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--target' => $targetDir,
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('Update existing KVS-Install', $output);
+        $this->assertStringContainsString('cd ' . escapeshellarg($targetDir) . ' && git pull', $output);
+        $this->assertStringNotContainsString('git clone ', $output);
     }
 
     public function testToDockerRejectsInvalidProvidedDomainBeforeDryRun(): void
@@ -157,11 +218,12 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringNotContainsString('Migration Plan', $output);
     }
 
-    public function testToDockerDryRunUsesSanitizedMariaDbContainerName(): void
+    public function testToDockerDryRunUsesKvsInstallDefaultSitePrefix(): void
     {
         $this->tester->execute([
             '--domain' => 'test.example.com',
             '--email' => 'test@test.com',
+            '--target' => $this->tempDir . '/default-prefix-target',
             '--dry-run' => true,
             '--force' => true,
         ]);
@@ -169,8 +231,8 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('docker exec -i kvs-test-example-com-mariadb', $output);
-        $this->assertStringNotContainsString('docker exec -i kvs-test.example.com-mariadb', $output);
+        $this->assertStringContainsString("docker exec -i 'kvs-test-example-mariadb'", $output);
+        $this->assertStringNotContainsString('kvs-test-example-com-mariadb', $output);
     }
 
     public function testToDockerDryRunUsesDomainDatabaseName(): void
@@ -178,6 +240,7 @@ class ToDockerCommandTest extends TestCase
         $this->tester->execute([
             '--domain' => 'test.example.com',
             '--email' => 'test@test.com',
+            '--target' => $this->tempDir . '/domain-database-target',
             '--dry-run' => true,
             '--force' => true,
         ]);
@@ -185,8 +248,38 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString('mariadb test_example_com < /tmp/kvs-migration.sql', $output);
-        $this->assertStringNotContainsString('mariadb kvs < /tmp/kvs-migration.sql', $output);
+        $this->assertStringContainsString("mariadb -u root 'test.example.com' < /tmp/kvs-migration.sql", $output);
+        $this->assertStringNotContainsString("mariadb -u root 'test_example_com' < /tmp/kvs-migration.sql", $output);
+        $this->assertStringNotContainsString('mariadb -u root kvs < /tmp/kvs-migration.sql', $output);
+    }
+
+    public function testToDockerDryRunUsesExistingKvsInstallEnvForImportCommand(): void
+    {
+        $targetDir = $this->tempDir . '/existing-target-env';
+        mkdir($targetDir . '/.git', 0755, true);
+        mkdir($targetDir . '/docker', 0755, true);
+        file_put_contents(
+            $targetDir . '/docker/.env',
+            "SITE_PREFIX=custom-prefix\nMARIADB_DATABASE=custom_db\nDOMAIN=env.example\n"
+        );
+
+        $this->tester->execute([
+            '--domain' => 'test.example.com',
+            '--email' => 'test@test.com',
+            '--target' => $targetDir,
+            '--dry-run' => true,
+            '--force' => true,
+        ]);
+
+        $output = $this->tester->getDisplay();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString(
+            "docker exec -i 'custom-prefix-mariadb' mariadb -u root 'custom_db' < /tmp/kvs-migration.sql",
+            $output
+        );
+        $this->assertStringNotContainsString('kvs-test-example-mariadb', $output);
+        $this->assertStringNotContainsString("mariadb -u root 'test.example.com' < /tmp/kvs-migration.sql", $output);
     }
 
     public function testToDockerDryRunShowsSourceDatabaseConnectionOptions(): void
@@ -214,6 +307,175 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('--user=' . escapeshellarg($dbConfig['user']), $output);
         $this->assertStringContainsString(escapeshellarg($dbConfig['database']) . ' > /tmp/kvs-migration.sql', $output);
         $this->assertStringNotContainsString($dbConfig['password'], $output);
+    }
+
+    public function testToDockerDatabaseExportUsesMysqlPwdEnvironment(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-secure-dump';
+        $targetDir = $this->tempDir . '/target-secure-dump';
+        mkdir($toolsDir, 0755, true);
+        mkdir($targetDir . '/.git', 0755, true);
+        mkdir($targetDir . '/docker', 0755, true);
+        file_put_contents($targetDir . '/docker/setup.sh', "#!/bin/sh\nexit 0\n");
+        chmod($targetDir . '/docker/setup.sh', 0755);
+
+        $argsFile = $this->tempDir . '/to-docker-dump.args';
+        $envFile = $this->tempDir . '/to-docker-dump.env';
+
+        file_put_contents($toolsDir . '/git', "#!/bin/sh\nexit 0\n");
+        file_put_contents(
+            $toolsDir . '/docker',
+            <<<'SH'
+#!/bin/sh
+if [ "$1" = "exec" ]; then
+  cat >/dev/null
+  exit 0
+fi
+exit 0
+SH
+        );
+        file_put_contents(
+            $toolsDir . '/mariadb-dump',
+            "#!/bin/sh\n"
+            . 'printf "%s\n" "$@" > ' . escapeshellarg($argsFile) . "\n"
+            . 'printf "%s\n" "${MYSQL_PWD-}" > ' . escapeshellarg($envFile) . "\n"
+            . "printf '%128s\\n' 'SQL dump'\n"
+        );
+        chmod($toolsDir . '/git', 0755);
+        chmod($toolsDir . '/docker', 0755);
+        chmod($toolsDir . '/mariadb-dump', 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--domain' => 'test.example.com',
+                '--email' => 'test@test.com',
+                '--ssl' => '3',
+                '--target' => $targetDir,
+                '--no-content' => true,
+                '--yes' => true,
+                '--force' => true,
+            ]);
+
+            $display = $this->tester->getDisplay();
+            $dbConfig = $this->config->getDatabaseConfig();
+            $password = $dbConfig['password'] ?? '';
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Migration completed', $display);
+            $this->assertStringNotContainsString('--password', (string) file_get_contents($argsFile));
+            $this->assertStringNotContainsString($password, (string) file_get_contents($argsFile));
+            $this->assertSame($password, trim((string) file_get_contents($envFile)));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testToDockerRejectsTinyDatabaseDumpBeforeImport(): void
+    {
+        $toolsDir = $this->tempDir . '/tools-tiny-dump';
+        $targetDir = $this->tempDir . '/target-tiny-dump';
+        mkdir($toolsDir, 0755, true);
+        mkdir($targetDir . '/.git', 0755, true);
+        mkdir($targetDir . '/docker', 0755, true);
+        file_put_contents($targetDir . '/docker/setup.sh', "#!/bin/sh\nexit 0\n");
+        chmod($targetDir . '/docker/setup.sh', 0755);
+
+        $dockerMarker = $this->tempDir . '/docker-import-called';
+
+        file_put_contents($toolsDir . '/git', "#!/bin/sh\nexit 0\n");
+        file_put_contents(
+            $toolsDir . '/docker',
+            "#!/bin/sh\n"
+            . 'printf called >> ' . escapeshellarg($dockerMarker) . "\n"
+            . "exit 0\n"
+        );
+        file_put_contents($toolsDir . '/mariadb-dump', "#!/bin/sh\nprintf tiny\n");
+        chmod($toolsDir . '/git', 0755);
+        chmod($toolsDir . '/docker', 0755);
+        chmod($toolsDir . '/mariadb-dump', 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $this->tester->execute([
+                '--domain' => 'test.example.com',
+                '--email' => 'test@test.com',
+                '--ssl' => '3',
+                '--target' => $targetDir,
+                '--no-content' => true,
+                '--yes' => true,
+                '--force' => true,
+            ]);
+
+            $display = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $display);
+            $this->assertStringContainsString('Database export failed: dump is empty or incomplete', $display);
+            $this->assertStringNotContainsString('Database imported', $display);
+            $this->assertStringNotContainsString('Migration completed', $display);
+            $this->assertFileDoesNotExist($dockerMarker);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    public function testToDockerDryRunShowsVersionWhenSourceConfigIsLoadedTwice(): void
+    {
+        $sourceDir = TestHelper::createTempDir('kvs-to-docker-source-version-');
+        mkdir($sourceDir . '/admin/include', 0755, true);
+        mkdir($sourceDir . '/contents', 0755, true);
+        TestHelper::createMockDbConfig($sourceDir);
+        file_put_contents(
+            $sourceDir . '/admin/include/version.php',
+            '<?php $config["project_version"] = "7.0.0";'
+        );
+        file_put_contents(
+            $sourceDir . '/admin/include/setup.php',
+            <<<'PHP'
+<?php
+include_once 'version.php';
+if (!isset($config)) {
+    $config = [];
+}
+$config['project_path'] = __DIR__ . '/../..';
+PHP
+        );
+
+        try {
+            $command = new ToDockerCommand(new Configuration(['path' => $sourceDir]));
+            $application = new Application();
+            $application->add($command);
+            $tester = new CommandTester($command);
+
+            $tester->execute([
+                'source' => $sourceDir,
+                '--domain' => 'test.example.com',
+                '--email' => 'test@test.com',
+                '--dry-run' => true,
+                '--force' => true,
+                '--no-content' => true,
+            ]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame(0, $tester->getStatusCode(), $output);
+            $this->assertStringContainsString('KVS Version', $output);
+            $this->assertStringContainsString('7.0.0', $output);
+            $this->assertStringNotContainsString('KVS Version       Unknown', $output);
+        } finally {
+            TestHelper::removeDir($sourceDir);
+        }
     }
 
     public function testToDockerDryRunNoContentDoesNotShowContentCopy(): void

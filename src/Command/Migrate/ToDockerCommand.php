@@ -28,6 +28,8 @@ class ToDockerCommand extends BaseCommand
     use ExperimentalCommandTrait;
     use RsyncProgressTrait;
 
+    private const MIN_DATABASE_DUMP_BYTES = 100;
+
     private const KVS_INSTALL_REPO = 'https://github.com/MaximeMichaud/KVS-install.git';
     private const KVS_INSTALL_DIR = '/opt/kvs';
 
@@ -55,8 +57,8 @@ This command delegates to KVS-Install's setup.sh which handles:
 
 <info>Examples:</info>
   kvs migrate:to-docker /var/www/site -d example.com -e admin@example.com
-  kvs migrate:to-docker --domain=example.com --ssl=1      # Let's Encrypt
-  kvs migrate:to-docker /var/www/site --dry-run           # Preview only
+  kvs migrate:to-docker --domain=example.com --email=admin@example.com --ssl=1
+  kvs migrate:to-docker /var/www/site -d example.com -e admin@example.com --dry-run
 
 <info>SSL options:</info>
   --ssl=1  Let's Encrypt (requires valid DNS + ports 80/443)
@@ -392,8 +394,13 @@ EOT
 
         $dbConfig = $config->getDatabaseConfig();
 
-        $this->io()->text('<comment># 1. Clone KVS-Install</comment>');
-        $this->io()->text("git clone " . self::KVS_INSTALL_REPO . " {$targetDir}");
+        if (is_dir($targetDir . '/.git')) {
+            $this->io()->text('<comment># 1. Update existing KVS-Install</comment>');
+            $this->io()->text('cd ' . escapeshellarg($targetDir) . ' && git pull');
+        } else {
+            $this->io()->text('<comment># 1. Clone KVS-Install</comment>');
+            $this->io()->text('git clone ' . escapeshellarg(self::KVS_INSTALL_REPO) . ' ' . escapeshellarg($targetDir));
+        }
         $this->io()->newLine();
 
         $this->io()->text('<comment># 2. Export source database</comment>');
@@ -401,25 +408,36 @@ EOT
         $this->io()->newLine();
 
         $this->io()->text('<comment># 3. Run KVS-Install setup (headless)</comment>');
-        $this->io()->text("cd {$targetDir}/docker && \\");
+        $this->io()->text('cd ' . escapeshellarg($targetDir . '/docker') . " && \\");
         $this->io()->text("  HEADLESS=y \\");
-        $this->io()->text("  DOMAIN={$domain} \\");
-        $this->io()->text("  EMAIL={$email} \\");
-        $this->io()->text("  SSL_CHOICE={$sslChoice} \\");
-        $this->io()->text("  DB_CHOICE={$dbChoice} \\");
+        $this->io()->text('  DOMAIN=' . escapeshellarg($domain) . " \\");
+        $this->io()->text('  EMAIL=' . escapeshellarg($email) . " \\");
+        $this->io()->text('  SSL_CHOICE=' . escapeshellarg($sslChoice) . " \\");
+        $this->io()->text('  DB_CHOICE=' . escapeshellarg($dbChoice) . " \\");
         $this->io()->text("  STOP_EXISTING=n \\");
         $this->io()->text("  ./setup.sh");
         $this->io()->newLine();
 
         $this->io()->text('<comment># 4. Import database</comment>');
-        $containerPrefix = 'kvs-' . str_replace('.', '-', $domain);
-        $database = str_replace(['.', '-'], '_', $domain);
-        $this->io()->text("docker exec -i {$containerPrefix}-mariadb mariadb {$database} < /tmp/kvs-migration.sql");
+        $containerPrefix = $this->getKvsInstallSitePrefix($domain, $targetDir);
+        $database = $this->getKvsInstallDatabaseName($domain, $targetDir);
+        $this->io()->text(
+            'docker exec -i '
+            . escapeshellarg($containerPrefix . '-mariadb')
+            . ' mariadb -u root '
+            . escapeshellarg($database)
+            . ' < /tmp/kvs-migration.sql'
+        );
         $this->io()->newLine();
 
         if (!$noContent && is_dir($config->getContentPath())) {
             $this->io()->text('<comment># 5. Copy content</comment>');
-            $this->io()->text("rsync -av {$config->getContentPath()}/ /var/www/{$domain}/contents/");
+            $this->io()->text(
+                'rsync -av '
+                . escapeshellarg(rtrim($config->getContentPath(), '/') . '/')
+                . ' '
+                . escapeshellarg("/var/www/{$domain}/contents/")
+            );
         }
     }
 
@@ -488,27 +506,29 @@ EOT
         $outputFile = '/tmp/kvs-migration-' . uniqid() . '.sql';
 
         $command = sprintf(
-            '%s --host=%s --port=%d --user=%s --password=%s %s > %s 2>/dev/null',
+            '%s --host=%s --port=%d --user=%s %s > %s 2>/dev/null',
             $dumpCmd,
             escapeshellarg($connection['host']),
             $connection['port'],
             escapeshellarg($dbConfig['user']),
-            escapeshellarg($dbConfig['password']),
             escapeshellarg($dbConfig['database']),
             escapeshellarg($outputFile)
         );
 
-        $process = Process::fromShellCommandline($command);
+        $process = Process::fromShellCommandline($command, null, ['MYSQL_PWD' => $dbConfig['password']]);
         $process->setTimeout(3600);
         $process->run();
 
-        if (!file_exists($outputFile) || filesize($outputFile) === 0) {
-            $this->io()->error('Database export failed');
+        $size = is_file($outputFile) ? filesize($outputFile) : false;
+        if (!$process->isSuccessful() || $size === false || $size < self::MIN_DATABASE_DUMP_BYTES) {
+            if (is_file($outputFile)) {
+                @unlink($outputFile);
+            }
+            $this->io()->error('Database export failed: dump is empty or incomplete');
             return null;
         }
 
-        $size = filesize($outputFile);
-        $this->io()->text('Exported: ' . ($size !== false ? format_bytes($size) : '0 B'));
+        $this->io()->text('Exported: ' . format_bytes($size));
 
         return $outputFile;
     }
@@ -599,8 +619,7 @@ EOT
         Configuration $sourceConfig,
         bool $noContent
     ): bool {
-        // Determine container prefix (kvs-{domain} format)
-        $containerPrefix = 'kvs-' . str_replace('.', '-', $domain);
+        $containerPrefix = $this->getKvsInstallSitePrefix($domain, $targetDir);
         $mariadbContainer = $containerPrefix . '-mariadb';
 
         // Wait for database
@@ -623,15 +642,7 @@ EOT
             return false;
         }
 
-        // Get database name from .env
-        $envFile = $targetDir . '/docker/.env';
-        $database = str_replace(['.', '-'], '_', $domain);
-        if (file_exists($envFile)) {
-            $content = file_get_contents($envFile);
-            if ($content !== false && preg_match('/^MARIADB_DATABASE=(.+)$/m', $content, $matches) === 1) {
-                $database = trim($matches[1]);
-            }
-        }
+        $database = $this->getKvsInstallDatabaseName($domain, $targetDir);
 
         // Import database
         $this->io()->text('Importing database...');
@@ -706,5 +717,53 @@ EOT
         }
 
         return true;
+    }
+
+    private function getKvsInstallSitePrefix(string $domain, ?string $targetDir = null): string
+    {
+        $sitePrefix = $targetDir !== null ? $this->readKvsInstallEnvValue($targetDir, 'SITE_PREFIX') : null;
+        if ($sitePrefix !== null && $sitePrefix !== '') {
+            return $sitePrefix;
+        }
+
+        $withoutTld = preg_replace('/\.[^.]+\z/', '', $domain);
+        $defaultPrefix = $withoutTld !== null && $withoutTld !== '' ? $withoutTld : $domain;
+        $defaultPrefix = strtolower(str_replace(['.', '_'], '-', $defaultPrefix));
+
+        return 'kvs-' . $defaultPrefix;
+    }
+
+    private function getKvsInstallDatabaseName(string $domain, ?string $targetDir = null): string
+    {
+        $database = $targetDir !== null ? $this->readKvsInstallEnvValue($targetDir, 'MARIADB_DATABASE') : null;
+        if ($database !== null && $database !== '') {
+            return $database;
+        }
+
+        $configuredDomain = $targetDir !== null ? $this->readKvsInstallEnvValue($targetDir, 'DOMAIN') : null;
+        if ($configuredDomain !== null && $configuredDomain !== '') {
+            return $configuredDomain;
+        }
+
+        return $domain;
+    }
+
+    private function readKvsInstallEnvValue(string $targetDir, string $key): ?string
+    {
+        $envFile = $targetDir . '/docker/.env';
+        if (!file_exists($envFile)) {
+            return null;
+        }
+
+        $content = file_get_contents($envFile);
+        if ($content === false) {
+            return null;
+        }
+
+        if (preg_match('/^' . preg_quote($key, '/') . '=(.+)$/m', $content, $matches) !== 1) {
+            return null;
+        }
+
+        return trim($matches[1], " \t\n\r\0\x0B\"'");
     }
 }

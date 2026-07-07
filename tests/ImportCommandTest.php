@@ -4,6 +4,7 @@ namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Migrate\ImportCommand;
+use Symfony\Component\Console\Exception\MissingInputException;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Style\SymfonyStyle;
@@ -181,6 +182,60 @@ class ImportCommandTest extends TestCase
         }
     }
 
+    public function testImportCommandRejectsMissingDomainBeforeReadingPackageInNonInteractiveMode(): void
+    {
+        $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.tar.zst';
+        touch($tempFile);
+
+        try {
+            $this->tester->execute(
+                [
+                    'package' => $tempFile,
+                    '--email' => 'test@test.com',
+                    '--ssl' => '1',
+                    '--force' => true,
+                ],
+                ['interactive' => false]
+            );
+
+            $output = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('The --domain option is required when running non-interactively', $output);
+            $this->assertStringNotContainsString('Reading package', $output);
+            $this->assertStringNotContainsString('Extracting package', $output);
+        } finally {
+            unlink($tempFile);
+        }
+    }
+
+    public function testImportCommandRejectsMissingEmailBeforeReadingPackageInNonInteractiveMode(): void
+    {
+        $tempFile = TestHelper::getProjectTempDir() . '/test-package-' . bin2hex(random_bytes(8)) . '.tar.zst';
+        touch($tempFile);
+
+        try {
+            $this->tester->execute(
+                [
+                    'package' => $tempFile,
+                    '--domain' => 'test.local',
+                    '--ssl' => '1',
+                    '--force' => true,
+                ],
+                ['interactive' => false]
+            );
+
+            $output = $this->tester->getDisplay();
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('The --email option is required when running non-interactively', $output);
+            $this->assertStringNotContainsString('Reading package', $output);
+            $this->assertStringNotContainsString('Extracting package', $output);
+        } finally {
+            unlink($tempFile);
+        }
+    }
+
     public function testImportCommandRejectsNonexistentWithSslOption(): void
     {
         $this->tester->execute([
@@ -220,6 +275,14 @@ class ImportCommandTest extends TestCase
         $this->assertStringContainsString('migrate:package', $help);
         $this->assertStringContainsString('migrate:import', $help);
         $this->assertStringContainsString('SSL options', $help);
+        $this->assertStringContainsString(
+            'kvs migrate:import /tmp/backup.tar.zst --domain=example.com --email=admin@example.com',
+            $help
+        );
+        $this->assertStringNotContainsString(
+            'kvs migrate:import /tmp/backup.tar.zst --domain=example.com' . PHP_EOL,
+            $help
+        );
     }
 
     public function testImportNoInteractionFailsWithoutConfirmation(): void
@@ -300,6 +363,99 @@ SH
             $this->assertStringContainsString('Import cancelled because confirmation was not provided', $output);
             $this->assertDirectoryDoesNotExist($targetDir);
         } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
+    public function testImportCleansExtractedPackageWhenPromptAborts(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-import-prompt-abort-');
+        $toolsDir = $rootDir . '/tools';
+        $packageFile = $rootDir . '/package.tar.zst';
+        mkdir($toolsDir, 0755, true);
+        touch($packageFile);
+
+        file_put_contents($toolsDir . '/docker', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/docker', 0755);
+        file_put_contents($toolsDir . '/git', "#!/bin/sh\nexit 0\n");
+        chmod($toolsDir . '/git', 0755);
+        file_put_contents(
+            $toolsDir . '/zstd',
+            <<<'SH'
+#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+: > "$out"
+SH
+        );
+        chmod($toolsDir . '/zstd', 0755);
+        file_put_contents(
+            $toolsDir . '/tar',
+            <<<'SH'
+#!/bin/sh
+dest=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-C" ]; then
+    shift
+    dest="$1"
+  fi
+  shift
+done
+mkdir -p "$dest"
+cat > "$dest/metadata.json" <<'JSON'
+{
+  "created_at": "2026-07-06T00:00:00Z",
+  "kvs_version": "test",
+  "source_path": "/tmp/source",
+  "database": {"size": 8},
+  "content": {"included": false, "size": 0, "files": 0}
+}
+JSON
+printf 'compressed' > "$dest/database.sql.zst"
+SH
+        );
+        chmod($toolsDir . '/tar', 0755);
+
+        $before = $this->listImportTempDirs();
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $thrown = false;
+            try {
+                $this->tester->execute([
+                    'package' => $packageFile,
+                    '--domain' => 'example.test',
+                    '--ssl' => '3',
+                    '--force' => true,
+                ]);
+            } catch (MissingInputException) {
+                $thrown = true;
+            }
+
+            $output = $this->tester->getDisplay();
+            $after = $this->listImportTempDirs();
+            $newDirs = array_values(array_diff($after, $before));
+
+            $this->assertTrue($thrown, $output);
+            $this->assertStringContainsString('Admin email (for SSL certificates)', $output);
+            $this->assertSame([], $newDirs, 'Extracted package temp dirs should be cleaned on prompt abort.');
+        } finally {
+            $afterCleanup = $this->listImportTempDirs();
+            foreach (array_diff($afterCleanup, $before) as $dir) {
+                TestHelper::removeDir($dir);
+            }
             if ($previousPath === false) {
                 putenv('PATH');
             } else {
@@ -408,6 +564,73 @@ SH
         }
     }
 
+    public function testDatabaseImportUsesKvsInstallSitePrefixAndDomainFallbacks(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-import-kvs-install-env-');
+        $extractDir = $rootDir . '/extract';
+        $targetDir = $rootDir . '/target';
+        $toolsDir = $rootDir . '/tools';
+        mkdir($extractDir, 0755, true);
+        mkdir($targetDir . '/docker', 0755, true);
+        mkdir($toolsDir, 0755, true);
+
+        file_put_contents($extractDir . '/database.sql.zst', 'compressed');
+        file_put_contents($targetDir . '/docker/.env', "DOMAIN=example.com\nSITE_PREFIX=kvs-example\n");
+        $capturedArgs = $rootDir . '/docker-args.log';
+
+        file_put_contents(
+            $toolsDir . '/zstd',
+            <<<'SH'
+#!/bin/sh
+out=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+printf 'CREATE TABLE imported(id int);\n' > "$out"
+SH
+        );
+        chmod($toolsDir . '/zstd', 0755);
+
+        file_put_contents(
+            $toolsDir . '/docker',
+            '#!/bin/sh' . "\n"
+            . 'printf "%s\n" "$*" >> ' . escapeshellarg($capturedArgs) . "\n"
+            . "cat >/dev/null\n"
+            . "exit 0\n"
+        );
+        chmod($toolsDir . '/docker', 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $command = new ImportCommand();
+            $ioProperty = new \ReflectionProperty($command, 'io');
+            $ioProperty->setValue($command, new SymfonyStyle(new ArrayInput([]), new BufferedOutput()));
+
+            $method = new \ReflectionMethod($command, 'importDatabase');
+            $result = $method->invoke($command, $extractDir, $targetDir, 'example.com');
+
+            $this->assertTrue($result);
+            $args = (string) file_get_contents($capturedArgs);
+            $this->assertStringContainsString('exec kvs-example-mariadb mariadb -u root -e SELECT 1', $args);
+            $this->assertStringContainsString('exec -i kvs-example-mariadb mariadb -u root example.com', $args);
+            $this->assertStringNotContainsString('kvs-example-com-mariadb', $args);
+            $this->assertStringNotContainsString('example_com', $args);
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
     public function testImportContentFailsWhenChownFails(): void
     {
         $rootDir = TestHelper::createTempDir('kvs-import-chown-');
@@ -460,5 +683,19 @@ SH
             }
             TestHelper::removeDir($rootDir);
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function listImportTempDirs(): array
+    {
+        $dirs = glob(sys_get_temp_dir() . '/kvs-import-*', GLOB_ONLYDIR);
+        if (!is_array($dirs)) {
+            return [];
+        }
+
+        sort($dirs);
+        return array_values($dirs);
     }
 }

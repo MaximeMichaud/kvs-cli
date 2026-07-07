@@ -236,6 +236,36 @@ PHP
         TestHelper::removeDir($tempDir);
     }
 
+    public function testGetKvsVersionSurvivesRepeatedSetupIncludeOnceLoads(): void
+    {
+        $tempDir = TestHelper::createTempDir();
+        TestHelper::createMockDbConfig($tempDir);
+        file_put_contents(
+            $tempDir . '/admin/include/version.php',
+            '<?php $config["project_version"] = "7.0.0";'
+        );
+        file_put_contents(
+            $tempDir . '/admin/include/setup.php',
+            <<<'PHP'
+<?php
+include_once 'version.php';
+if (!isset($config)) {
+    $config = [];
+}
+$config['tables_prefix'] = 'ktvs_';
+PHP
+        );
+
+        $firstConfig = new Configuration(['path' => $tempDir]);
+        $secondConfig = new Configuration(['path' => $tempDir]);
+
+        $this->assertSame('7.0.0', $firstConfig->getKvsVersion());
+        $this->assertSame('7.0.0', $secondConfig->getKvsVersion());
+        $this->assertSame('ktvs_', $secondConfig->getTablePrefix());
+
+        TestHelper::removeDir($tempDir);
+    }
+
     public function testGetReturnsDefaultForMissingKey(): void
     {
         $tempDir = TestHelper::createTempDir();

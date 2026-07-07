@@ -6,6 +6,8 @@ use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Command\Traits\RsyncProgressTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Exception\MissingInputException;
+use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -118,7 +120,7 @@ This command:
   scp backup.tar.zst user@newserver:/tmp/
 
   # On destination server
-  kvs migrate:import /tmp/backup.tar.zst --domain=example.com
+  kvs migrate:import /tmp/backup.tar.zst --domain=example.com --email=admin@example.com
 
 <info>SSL options:</info>
   --ssl=1  Let's Encrypt (requires valid DNS + ports 80/443)
@@ -159,6 +161,9 @@ EOT
         if (!$this->validateImportOptions($sslChoice, $dbChoice, $domain, $email, $targetDir)) {
             return Command::FAILURE;
         }
+        if (!$this->validateRequiredNonInteractiveOptions($input, $domain, $email)) {
+            return Command::FAILURE;
+        }
 
         $this->io()->title('KVS Migration Import');
 
@@ -182,43 +187,23 @@ EOT
 
         // Step 4: Interactive prompts for missing options
         $helper = $this->getHelper('question');
-
-        if ($domain === null) {
-            $question = new Question('Domain name (e.g., example.com): ');
-            $question->setValidator(function (?string $value): string {
-                if ($value === null || !$this->isValidDomainName($value)) {
-                    throw new \RuntimeException('Invalid domain name');
-                }
-                return $value;
-            });
-            $result = $helper->ask($input, $output, $question);
-            if (!is_string($result)) {
-                $this->cleanup($extractDir);
-                $this->io()->error('Domain is required');
-                return Command::FAILURE;
-            }
-            $domain = $result;
+        if (
+            !$this->completeInteractiveImportOptions(
+                $helper,
+                $input,
+                $output,
+                $extractDir,
+                $domain,
+                $email,
+                $sslChoice
+            )
+        ) {
+            return Command::FAILURE;
         }
-
-        if ($email === null) {
-            $question = new Question('Admin email (for SSL certificates): ');
-            $question->setValidator(function (?string $value): string {
-                if ($value === null || $value === '' || filter_var($value, FILTER_VALIDATE_EMAIL) === false) {
-                    throw new \RuntimeException('Invalid email address');
-                }
-                return $value;
-            });
-            $result = $helper->ask($input, $output, $question);
-            if (!is_string($result)) {
-                $this->cleanup($extractDir);
-                $this->io()->error('Email is required');
-                return Command::FAILURE;
-            }
-            $email = $result;
-        }
-
-        if ($sslChoice === null) {
-            $sslChoice = $this->getSslChoice($helper, $input, $output);
+        if ($domain === null || $email === null || $sslChoice === null) {
+            $this->cleanup($extractDir);
+            $this->io()->error('Import options are incomplete');
+            return Command::FAILURE;
         }
 
         // Step 5: Show import plan
@@ -282,7 +267,10 @@ EOT
             if ($confirmed !== true) {
                 $this->cleanup($extractDir);
                 if (!$input->isInteractive()) {
-                    $this->io()->error('Import cancelled because confirmation was not provided. Use --yes to run non-interactively.');
+                    $this->io()->error([
+                        'Import cancelled because confirmation was not provided.',
+                        'Use --yes to run non-interactively.',
+                    ]);
                     return Command::FAILURE;
                 }
                 $this->io()->warning('Import cancelled');
@@ -557,7 +545,7 @@ EOT
     private function importDatabase(string $extractDir, string $targetDir, string $domain): bool
     {
         $dbFile = $extractDir . '/database.sql.zst';
-        $containerPrefix = 'kvs-' . str_replace('.', '-', $domain);
+        $containerPrefix = $this->getKvsInstallSitePrefix($domain, $targetDir);
         $mariadbContainer = $containerPrefix . '-mariadb';
 
         // Wait for database
@@ -583,15 +571,7 @@ EOT
             return false;
         }
 
-        // Get database name from .env
-        $envFile = $targetDir . '/docker/.env';
-        $database = str_replace(['.', '-'], '_', $domain);
-        if (file_exists($envFile)) {
-            $content = file_get_contents($envFile);
-            if ($content !== false && preg_match('/^MARIADB_DATABASE=(.+)$/m', $content, $matches) === 1) {
-                $database = trim($matches[1]);
-            }
-        }
+        $database = $this->getKvsInstallDatabaseName($domain, $targetDir);
 
         // Decompress and import in two steps to avoid pipeline errors
         $this->io()->text('Importing database...');
@@ -635,6 +615,54 @@ EOT
 
         $this->io()->text('Database imported');
         return true;
+    }
+
+    private function getKvsInstallSitePrefix(string $domain, string $targetDir): string
+    {
+        $sitePrefix = $this->readKvsInstallEnvValue($targetDir, 'SITE_PREFIX');
+        if ($sitePrefix !== null && $sitePrefix !== '') {
+            return $sitePrefix;
+        }
+
+        $withoutTld = preg_replace('/\.[^.]+\z/', '', $domain);
+        $defaultPrefix = $withoutTld !== null && $withoutTld !== '' ? $withoutTld : $domain;
+        $defaultPrefix = strtolower(str_replace(['.', '_'], '-', $defaultPrefix));
+
+        return 'kvs-' . $defaultPrefix;
+    }
+
+    private function getKvsInstallDatabaseName(string $domain, string $targetDir): string
+    {
+        $database = $this->readKvsInstallEnvValue($targetDir, 'MARIADB_DATABASE');
+        if ($database !== null && $database !== '') {
+            return $database;
+        }
+
+        $configuredDomain = $this->readKvsInstallEnvValue($targetDir, 'DOMAIN');
+        if ($configuredDomain !== null && $configuredDomain !== '') {
+            return $configuredDomain;
+        }
+
+        return $domain;
+    }
+
+    private function readKvsInstallEnvValue(string $targetDir, string $key): ?string
+    {
+        $envFile = $targetDir . '/docker/.env';
+        if (!file_exists($envFile)) {
+            return null;
+        }
+
+        $content = file_get_contents($envFile);
+        if ($content === false) {
+            return null;
+        }
+
+        if (preg_match('/^' . preg_quote($key, '/') . '=(.+)$/m', $content, $matches) !== 1) {
+            return null;
+        }
+
+        return trim($matches[1], " \t\n\r\0\x0B\"'");
     }
 
     private function importContent(string $extractDir, string $domain): bool
@@ -691,6 +719,85 @@ EOT
         return true;
     }
 
+    private function completeInteractiveImportOptions(
+        QuestionHelper $helper,
+        InputInterface $input,
+        OutputInterface $output,
+        string $extractDir,
+        ?string &$domain,
+        ?string &$email,
+        ?string &$sslChoice
+    ): bool {
+        try {
+            if ($domain === null && !$this->askDomain($helper, $input, $output, $extractDir, $domain)) {
+                return false;
+            }
+
+            if ($email === null && !$this->askEmail($helper, $input, $output, $extractDir, $email)) {
+                return false;
+            }
+
+            if ($sslChoice === null) {
+                $sslChoice = $this->getSslChoice($helper, $input, $output);
+            }
+        } catch (MissingInputException $e) {
+            $this->cleanup($extractDir);
+            throw $e;
+        }
+
+        return true;
+    }
+
+    private function askDomain(
+        QuestionHelper $helper,
+        InputInterface $input,
+        OutputInterface $output,
+        string $extractDir,
+        ?string &$domain
+    ): bool {
+        $question = new Question('Domain name (e.g., example.com): ');
+        $question->setValidator(function (?string $value): string {
+            if ($value === null || !$this->isValidDomainName($value)) {
+                throw new \RuntimeException('Invalid domain name');
+            }
+            return $value;
+        });
+        $result = $helper->ask($input, $output, $question);
+        if (!is_string($result)) {
+            $this->cleanup($extractDir);
+            $this->io()->error('Domain is required');
+            return false;
+        }
+
+        $domain = $result;
+        return true;
+    }
+
+    private function askEmail(
+        QuestionHelper $helper,
+        InputInterface $input,
+        OutputInterface $output,
+        string $extractDir,
+        ?string &$email
+    ): bool {
+        $question = new Question('Admin email (for SSL certificates): ');
+        $question->setValidator(function (?string $value): string {
+            if ($value === null || $value === '' || filter_var($value, FILTER_VALIDATE_EMAIL) === false) {
+                throw new \RuntimeException('Invalid email address');
+            }
+            return $value;
+        });
+        $result = $helper->ask($input, $output, $question);
+        if (!is_string($result)) {
+            $this->cleanup($extractDir);
+            $this->io()->error('Email is required');
+            return false;
+        }
+
+        $email = $result;
+        return true;
+    }
+
     private function validateOptions(?string $sslChoice, string $dbChoice): bool
     {
         if ($sslChoice !== null && !in_array($sslChoice, ['1', '2', '3'], true)) {
@@ -729,6 +836,25 @@ EOT
 
         if (trim($targetDir) === '') {
             $this->io()->error('The --target option cannot be empty');
+            return false;
+        }
+
+        return true;
+    }
+
+    private function validateRequiredNonInteractiveOptions(InputInterface $input, ?string $domain, ?string $email): bool
+    {
+        if ($input->isInteractive()) {
+            return true;
+        }
+
+        if ($domain === null) {
+            $this->io()->error('The --domain option is required when running non-interactively.');
+            return false;
+        }
+
+        if ($email === null) {
+            $this->io()->error('The --email option is required when running non-interactively.');
             return false;
         }
 
