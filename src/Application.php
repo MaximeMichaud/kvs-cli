@@ -30,6 +30,7 @@ use KVS\CLI\Command\Content\VideoCommand;
 use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Command\Content\CategoryCommand;
+use KVS\CLI\Command\Content\CategoryGroupCommand;
 use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Command\Content\ModelCommand;
@@ -335,6 +336,7 @@ class Application extends BaseApplication
             new UserPurgeCommand($config),
             new AlbumCommand($config),
             new CategoryCommand($config),
+            new CategoryGroupCommand($config),
             new TagCommand($config),
             new CommentCommand($config),
             new ModelCommand($config),

@@ -65,6 +65,7 @@ final class Constants
         'album_id',
         'comment_id',
         'category_id',
+        'category_group_id',
         'tag_id',
         'model_id',
         'dvd_id',
