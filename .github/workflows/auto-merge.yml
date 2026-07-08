@@ -18,9 +18,7 @@ jobs:
   auto-merge:
     name: Auto-merge bot PRs
     runs-on: ubuntu-latest
-    if: >-
-      github.event.pull_request.user.login == 'dependabot[bot]' ||
-      github.event.pull_request.user.login == 'renovate[bot]'
+    if: github.event.pull_request.user.login == 'renovate[bot]'
 
     steps:
       - name: Wait for CI checks

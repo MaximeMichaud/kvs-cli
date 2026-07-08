@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "enabledManagers": ["composer"],
+  "enabledManagers": ["composer", "github-actions"],
   "schedule": ["before 6am on Monday"],
   "labels": ["dependencies"],
   "rangeStrategy": "update-lockfile",
@@ -17,8 +17,14 @@
       "enabled": false
     },
     {
+      "matchManagers": ["composer"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "Composer dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "GitHub Actions"
     }
   ]
 }
