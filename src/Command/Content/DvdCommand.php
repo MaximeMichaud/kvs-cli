@@ -431,7 +431,7 @@ HELP
      */
     private function applyDvdFlagFilter(InputInterface $input, string &$whereClause, array &$params): bool
     {
-        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        $flag = $this->getOptionalNonNegativeIntOption($input, 'flag');
         if ($flag === false) {
             return false;
         }
@@ -442,6 +442,9 @@ HELP
                 $this->io()->error('Option --flag-votes requires --flag');
                 return false;
             }
+            return true;
+        }
+        if ($flag === 0) {
             return true;
         }
 

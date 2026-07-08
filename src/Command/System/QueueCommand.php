@@ -1194,23 +1194,37 @@ HELP
         string $alias,
         array &$params
     ): bool {
-        $errorCode = $this->getOptionalPositiveIntOption($input, 'error-code');
+        $errorCode = $this->getOptionalNonNegativeIntOption($input, 'error-code');
         if ($errorCode === false) {
             return false;
         }
-        if ($errorCode !== null) {
+        if ($errorCode !== null && $errorCode > 0) {
             $fromClause .= sprintf(' AND %s.error_code = :error_code', $alias);
             $params['error_code'] = $errorCode;
         }
 
-        $filters = [
+        $positiveAdminFilters = [
             'type' => ['column' => 'type_id', 'param' => 'type'],
-            'video' => ['column' => 'video_id', 'param' => 'video_id'],
-            'album' => ['column' => 'album_id', 'param' => 'album_id'],
             'server' => ['column' => 'server_id', 'param' => 'server_id'],
         ];
 
-        foreach ($filters as $option => $filter) {
+        foreach ($positiveAdminFilters as $option => $filter) {
+            $value = $this->getOptionalNonNegativeIntOption($input, $option);
+            if ($value === false) {
+                return false;
+            }
+            if ($value !== null && $value > 0) {
+                $fromClause .= sprintf(' AND %s.%s = :%s', $alias, $filter['column'], $filter['param']);
+                $params[$filter['param']] = $value;
+            }
+        }
+
+        $objectFilters = [
+            'video' => ['column' => 'video_id', 'param' => 'video_id'],
+            'album' => ['column' => 'album_id', 'param' => 'album_id'],
+        ];
+
+        foreach ($objectFilters as $option => $filter) {
             $value = $this->getOptionalNonNegativeIntOption($input, $option);
             if ($value === false) {
                 return false;

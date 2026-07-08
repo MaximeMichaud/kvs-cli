@@ -313,7 +313,6 @@ class VideoCommandTest extends TestCase
     {
         $cases = [
             ['--load-type' => '4', 'expected' => 'Invalid value for --load-type'],
-            ['--feed' => '0', 'expected' => 'Invalid value for --feed'],
             ['--server-group' => '0', 'expected' => 'Invalid value for --server-group'],
             ['--format-video-group' => '0', 'expected' => 'Invalid value for --format-video-group'],
             ['--has-errors' => '2', 'expected' => 'Invalid value for --has-errors'],
@@ -337,6 +336,34 @@ class VideoCommandTest extends TestCase
 
             $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
             $this->assertStringContainsString($expected, $tester->getDisplay());
+        }
+    }
+
+    public function testVideoListIgnoresKvsAdminZeroFilterSentinels(): void
+    {
+        $cases = [
+            ['--feed' => '0'],
+            ['--has-errors' => '0'],
+            ['--duration-from' => '0'],
+            ['--duration-to' => '0'],
+            ['--flag' => '0'],
+            ['--flag' => '0', '--flag-votes' => '2'],
+        ];
+
+        foreach ($cases as $options) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$options,
+                '--fields' => 'video_id',
+                '--format' => 'json',
+                '--limit' => 5,
+            ]);
+
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame([30, 20, 10], array_map(static fn (array $row): int => (int) $row['video_id'], $rows));
         }
     }
 

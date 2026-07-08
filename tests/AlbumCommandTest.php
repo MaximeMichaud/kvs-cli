@@ -248,6 +248,30 @@ class AlbumCommandTest extends TestCase
         $this->assertStringContainsString('Option --flag-votes requires --flag', $this->tester->getDisplay());
     }
 
+    public function testAlbumListIgnoresKvsAdminZeroFilterSentinels(): void
+    {
+        $cases = [
+            ['--has-errors' => '0'],
+            ['--flag' => '0'],
+            ['--flag' => '0', '--flag-votes' => '2'],
+        ];
+
+        foreach ($cases as $options) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$options,
+                '--format' => 'json',
+                '--fields' => 'album_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame([20, 10, 5], array_map(static fn (array $row): int => (int) $row['album_id'], $rows));
+        }
+    }
+
     public function testAlbumListRejectsInvalidIpFilter(): void
     {
         foreach (['999.999.999.999', '999999999999'] as $value) {

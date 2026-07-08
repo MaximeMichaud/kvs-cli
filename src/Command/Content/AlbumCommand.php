@@ -438,11 +438,11 @@ HELP
             $whereClause .= ' AND a.is_locked = 0';
         }
 
-        $hasErrors = $this->getOptionalPositiveIntOption($input, 'has-errors');
+        $hasErrors = $this->getOptionalNonNegativeIntOption($input, 'has-errors');
         if ($hasErrors === false) {
             return false;
         }
-        if ($hasErrors !== null) {
+        if ($hasErrors !== null && $hasErrors > 0) {
             $errorMasks = [
                 1 => 1,
                 10 => 2,
@@ -584,7 +584,7 @@ HELP
      */
     private function applyAlbumFlagFilter(InputInterface $input, string &$whereClause, array &$params): bool
     {
-        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        $flag = $this->getOptionalNonNegativeIntOption($input, 'flag');
         if ($flag === false) {
             return false;
         }
@@ -595,6 +595,9 @@ HELP
                 $this->io()->error('Option --flag-votes requires --flag');
                 return false;
             }
+            return true;
+        }
+        if ($flag === 0) {
             return true;
         }
 

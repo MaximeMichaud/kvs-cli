@@ -267,6 +267,24 @@ class DvdCommandTest extends TestCase
         $this->assertStringContainsString('Option --flag-votes requires --flag', $this->tester->getDisplay());
     }
 
+    public function testListDvdsIgnoresKvsAdminZeroFlagSentinel(): void
+    {
+        foreach ([['--flag' => '0'], ['--flag' => '0', '--flag-votes' => '2']] as $options) {
+            $tester = new CommandTester($this->command);
+            $tester->execute([
+                'action' => 'list',
+                ...$options,
+                '--format' => 'json',
+                '--fields' => 'dvd_id',
+                '--limit' => 10,
+            ]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $rows = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame([30, 20, 10], array_map(static fn (array $row): int => (int) $row['dvd_id'], $rows));
+        }
+    }
+
     public function testListDvdsRejectsInvalidGroupIdsBeforeQuery(): void
     {
         foreach (['--group', '--dvd-group'] as $option) {

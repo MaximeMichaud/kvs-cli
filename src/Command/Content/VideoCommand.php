@@ -614,20 +614,20 @@ HELP
             $params['load_type'] = $loadType;
         }
 
-        $feed = $this->getOptionalPositiveIntOption($input, 'feed');
+        $feed = $this->getOptionalNonNegativeIntOption($input, 'feed');
         if ($feed === false) {
             return false;
         }
-        if ($feed !== null) {
+        if ($feed !== null && $feed > 0) {
             $whereSql .= ' AND v.feed_id = :feed';
             $params['feed'] = $feed;
         }
 
-        $hasErrors = $this->getOptionalPositiveIntOption($input, 'has-errors');
+        $hasErrors = $this->getOptionalNonNegativeIntOption($input, 'has-errors');
         if ($hasErrors === false) {
             return false;
         }
-        if ($hasErrors !== null) {
+        if ($hasErrors !== null && $hasErrors > 0) {
             $errorMasks = [
                 1 => 1,
                 10 => 2,
@@ -993,20 +993,20 @@ HELP
             $params['post_date_to'] = $postDateTo . ' 23:59:59';
         }
 
-        $durationFrom = $this->getOptionalPositiveIntOption($input, 'duration-from');
+        $durationFrom = $this->getOptionalNonNegativeIntOption($input, 'duration-from');
         if ($durationFrom === false) {
             return false;
         }
-        if ($durationFrom !== null) {
+        if ($durationFrom !== null && $durationFrom > 0) {
             $whereSql .= ' AND v.duration >= :duration_from';
             $params['duration_from'] = $durationFrom;
         }
 
-        $durationTo = $this->getOptionalPositiveIntOption($input, 'duration-to');
+        $durationTo = $this->getOptionalNonNegativeIntOption($input, 'duration-to');
         if ($durationTo === false) {
             return false;
         }
-        if ($durationTo !== null) {
+        if ($durationTo !== null && $durationTo > 0) {
             $whereSql .= ' AND v.duration <= :duration_to';
             $params['duration_to'] = $durationTo;
         }
@@ -1039,7 +1039,7 @@ HELP
      */
     private function applyVideoFlagFilter(InputInterface $input, string &$whereSql, array &$params): bool
     {
-        $flag = $this->getOptionalPositiveIntOption($input, 'flag');
+        $flag = $this->getOptionalNonNegativeIntOption($input, 'flag');
         if ($flag === false) {
             return false;
         }
@@ -1050,6 +1050,9 @@ HELP
                 $this->io()->error('Option --flag-votes requires --flag');
                 return false;
             }
+            return true;
+        }
+        if ($flag === 0) {
             return true;
         }
 

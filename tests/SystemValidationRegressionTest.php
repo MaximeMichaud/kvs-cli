@@ -81,8 +81,10 @@ class SystemValidationRegressionTest extends TestCase
         }
     }
 
-    public function testQueueRejectsZeroErrorCodeBeforeSql(): void
+    public function testQueueIgnoresZeroErrorCodeLikeKvsAdmin(): void
     {
+        $this->createQueueTables();
+
         foreach (['list', 'history'] as $action) {
             $tester = new CommandTester($this->createQueueCommand());
             $tester->execute([
@@ -92,8 +94,8 @@ class SystemValidationRegressionTest extends TestCase
             ]);
 
             $display = $tester->getDisplay();
-            $this->assertSame(1, $tester->getStatusCode(), "$action --error-code=0: $display");
-            $this->assertStringContainsString('Invalid value for --error-code', $display);
+            $this->assertSame(0, $tester->getStatusCode(), "$action --error-code=0: $display");
+            $this->assertSame("0\n", $display);
             $this->assertStringNotContainsString('no such table', strtolower($display));
         }
     }
@@ -115,8 +117,9 @@ class SystemValidationRegressionTest extends TestCase
         $listTester = new CommandTester($this->createQueueCommand());
         $listTester->execute([
             'action' => 'list',
-            '--album' => '0',
             '--server' => '0',
+            '--type' => '0',
+            '--error-code' => '0',
             '--format' => 'count',
         ]);
         $this->assertSame(0, $listTester->getStatusCode(), $listTester->getDisplay());
@@ -125,9 +128,9 @@ class SystemValidationRegressionTest extends TestCase
         $historyTester = new CommandTester($this->createQueueCommand());
         $historyTester->execute([
             'action' => 'history',
-            '--video' => '0',
-            '--album' => '0',
             '--server' => '0',
+            '--type' => '0',
+            '--error-code' => '0',
             '--format' => 'count',
         ]);
         $this->assertSame(0, $historyTester->getStatusCode(), $historyTester->getDisplay());

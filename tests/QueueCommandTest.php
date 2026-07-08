@@ -922,6 +922,20 @@ class QueueCommandTest extends TestCase
         $this->assertSame('New video', $rows[0]['type']);
     }
 
+    public function testQueueListIgnoresKvsAdminZeroFilterSentinels(): void
+    {
+        foreach (['type', 'server', 'error-code'] as $option) {
+            $this->tester->execute([
+                'action' => 'list',
+                '--' . $option => '0',
+                '--format' => 'count',
+            ]);
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $option . ': ' . $this->tester->getDisplay());
+            $this->assertSame("3\n", $this->tester->getDisplay(), $option);
+        }
+    }
+
     public function testQueueListNamesDeleteTimelineScreenshotsTaskType(): void
     {
         $this->insertTask($this->db, [
@@ -1045,6 +1059,20 @@ class QueueCommandTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame(304, (int) $rows[0]['task_id']);
         $this->assertSame('Error', $rows[0]['status']);
+    }
+
+    public function testQueueHistoryIgnoresKvsAdminZeroFilterSentinels(): void
+    {
+        foreach (['type', 'server', 'error-code'] as $option) {
+            $this->tester->execute([
+                'action' => 'history',
+                '--' . $option => '0',
+                '--format' => 'count',
+            ]);
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $option . ': ' . $this->tester->getDisplay());
+            $this->assertSame("3\n", $this->tester->getDisplay(), $option);
+        }
     }
 
     public function testQueueHistoryWithFailedStatusFilter(): void
