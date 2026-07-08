@@ -7,6 +7,7 @@ use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use KVS\CLI\Docker\DockerDetector;
 use KVS\CLI\Output\Formatter;
+use KVS\CLI\Util\OutputBuffer;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -102,8 +103,8 @@ abstract class BaseCommand extends Command
         ob_start();
         try {
             eval($code);
-            $output = ob_get_clean();
-            return $output !== false && $output !== '' ? $output : null;
+            $output = OutputBuffer::getClean();
+            return $output !== '' ? $output : null;
         } catch (\Throwable $e) {
             ob_end_clean();
             return null;

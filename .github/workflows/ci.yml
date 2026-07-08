@@ -13,7 +13,6 @@ on:
       - '.gitignore'
       - '.editorconfig'
       - '.github/CODEOWNERS'
-      - '.github/dependabot.yml'
   pull_request:
     branches: [main, dev]
     paths-ignore:
@@ -23,7 +22,6 @@ on:
       - '.gitignore'
       - '.editorconfig'
       - '.github/CODEOWNERS'
-      - '.github/dependabot.yml'
 
 jobs:
   test:

@@ -152,9 +152,9 @@ class IonCubeDetector
         // Fallback: parse from phpinfo
         ob_start();
         phpinfo(INFO_MODULES);
-        $info = ob_get_clean();
+        $info = OutputBuffer::getClean();
 
-        if ($info !== false && preg_match('/ionCube.*?Loader.*?v?(\d+\.\d+(?:\.\d+)?)/i', $info, $matches) === 1) {
+        if (preg_match('/ionCube.*?Loader.*?v?(\d+\.\d+(?:\.\d+)?)/i', $info, $matches) === 1) {
             return $matches[1];
         }
 
