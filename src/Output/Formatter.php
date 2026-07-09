@@ -26,7 +26,19 @@ class Formatter
      * When user requests 'id', we also check 'video_id', 'album_id', etc.
      */
     private const FIELD_ALIASES = [
-        'id' => ['video_id', 'album_id', 'user_id', 'category_id', 'category_group_id', 'tag_id', 'model_id', 'dvd_id', 'comment_id'],
+        'id' => [
+            'video_id',
+            'album_id',
+            'user_id',
+            'category_id',
+            'category_group_id',
+            'content_source_id',
+            'content_source_group_id',
+            'tag_id',
+            'model_id',
+            'dvd_id',
+            'comment_id',
+        ],
         'status' => ['status_id'],
         'views' => ['video_viewed', 'album_viewed', 'profile_viewed', 'model_viewed', 'dvd_viewed'],
         'images' => ['image_count', 'photos_amount'],

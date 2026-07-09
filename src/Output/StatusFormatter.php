@@ -43,6 +43,12 @@ class StatusFormatter
     public const TAG_INACTIVE = 0;
     public const TAG_ACTIVE = 1;
 
+    // Content source status constants
+    public const CONTENT_SOURCE_DISABLED = 0;
+    public const CONTENT_SOURCE_ACTIVE = 1;
+    public const CONTENT_SOURCE_GROUP_DISABLED = 0;
+    public const CONTENT_SOURCE_GROUP_ACTIVE = 1;
+
     // Model status constants
     public const MODEL_DISABLED = 0;
     public const MODEL_ACTIVE = 1;
@@ -202,6 +208,40 @@ class StatusFormatter
         $labels = [
             self::CATEGORY_GROUP_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
             self::CATEGORY_GROUP_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for content sources.
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function contentSource(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::CONTENT_SOURCE_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::CONTENT_SOURCE_ACTIVE => ['text' => 'Active', 'color' => 'green'],
+        ];
+
+        return self::format($statusId, $labels, $withColor);
+    }
+
+    /**
+     * Get formatted status label for content source groups.
+     *
+     * @param int $statusId Status ID from database
+     * @param bool $withColor Include color formatting (default: true)
+     * @return string Formatted status label
+     */
+    public static function contentSourceGroup(int $statusId, bool $withColor = true): string
+    {
+        $labels = [
+            self::CONTENT_SOURCE_GROUP_DISABLED => ['text' => 'Disabled', 'color' => 'yellow'],
+            self::CONTENT_SOURCE_GROUP_ACTIVE => ['text' => 'Active', 'color' => 'green'],
         ];
 
         return self::format($statusId, $labels, $withColor);

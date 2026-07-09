@@ -66,6 +66,8 @@ final class Constants
         'comment_id',
         'category_id',
         'category_group_id',
+        'content_source_id',
+        'content_source_group_id',
         'tag_id',
         'model_id',
         'dvd_id',
@@ -112,6 +114,12 @@ final class Constants
 
     /** Object type ID for category groups */
     public const OBJECT_TYPE_CATEGORY_GROUP = 7;
+
+    /** Object type ID for content source groups */
+    public const OBJECT_TYPE_CONTENT_SOURCE_GROUP = 8;
+
+    /** Object type ID for tags */
+    public const OBJECT_TYPE_TAG = 9;
 
     /** Object type ID for posts */
     public const OBJECT_TYPE_POST = 12;

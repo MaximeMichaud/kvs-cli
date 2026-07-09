@@ -31,6 +31,8 @@ use KVS\CLI\Command\Content\UserCommand;
 use KVS\CLI\Command\Content\AlbumCommand;
 use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Command\Content\CategoryGroupCommand;
+use KVS\CLI\Command\Content\ContentSourceCommand;
+use KVS\CLI\Command\Content\ContentSourceGroupCommand;
 use KVS\CLI\Command\Content\TagCommand;
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Command\Content\ModelCommand;
@@ -337,6 +339,8 @@ class Application extends BaseApplication
             new AlbumCommand($config),
             new CategoryCommand($config),
             new CategoryGroupCommand($config),
+            new ContentSourceCommand($config),
+            new ContentSourceGroupCommand($config),
             new TagCommand($config),
             new CommentCommand($config),
             new ModelCommand($config),
