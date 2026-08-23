@@ -7,6 +7,9 @@ use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
+use KVS\CLI\Service\StorageClusterDataPublisher;
+use KVS\CLI\Service\StorageServerWeightException;
+use KVS\CLI\Service\StorageServerWeightManager;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -23,8 +26,21 @@ class ServerCommand extends BaseCommand
     use ExperimentalCommandTrait;
 
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+    private const WEIGHT_OUTPUT_FORMATS = ['table', 'json'];
+    private const WEIGHT_ACTION_OPTIONS = ['weight', 'if-revision', 'ignore-revision', 'dry-run'];
 
-    private const LIST_ONLY_OPTIONS = ['type', 'status', 'connection', 'group', 'errors', 'limit'];
+    private const LIST_ONLY_OPTIONS = [
+        'type',
+        'status',
+        'connection',
+        'group',
+        'errors',
+        'limit',
+        'weight',
+        'if-revision',
+        'ignore-revision',
+        'dry-run',
+    ];
     private const MUTATION_UNSUPPORTED_OPTIONS = [
         'type',
         'status',
@@ -35,9 +51,23 @@ class ServerCommand extends BaseCommand
         'format',
         'fields',
         'no-truncate',
+        'weight',
+        'if-revision',
+        'ignore-revision',
+        'dry-run',
     ];
 
-    private const GROUP_LIST_UNSUPPORTED_OPTIONS = ['type', 'status', 'connection', 'group', 'errors'];
+    private const GROUP_LIST_UNSUPPORTED_OPTIONS = [
+        'type',
+        'status',
+        'connection',
+        'group',
+        'errors',
+        'weight',
+        'if-revision',
+        'ignore-revision',
+        'dry-run',
+    ];
 
     private const LIST_FIELDS = [
         'server_id',
@@ -90,7 +120,11 @@ class ServerCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action: list|show|enable|disable|activate|deactivate|stats|group')
+            ->addArgument(
+                'action',
+                InputArgument::OPTIONAL,
+                'Action: list|show|enable|disable|activate|deactivate|stats|group|weights|set-weights'
+            )
             ->addArgument('id', InputArgument::OPTIONAL, 'Server or group ID')
             ->addOption('type', null, InputOption::VALUE_REQUIRED, 'Filter by content type (video|album)')
             ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Filter by status (active|disabled)')
@@ -101,6 +135,15 @@ class ServerCommand extends BaseCommand
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation')
+            ->addOption(
+                'weight',
+                null,
+                InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+                'Complete server weight entry in SERVER_ID:WEIGHT form (repeatable)'
+            )
+            ->addOption('if-revision', null, InputOption::VALUE_REQUIRED, 'Require the current group SHA-256 revision')
+            ->addOption('ignore-revision', null, InputOption::VALUE_NONE, 'Bypass revision checking for manual recovery')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Validate a complete weight update without publishing it')
             ->setHelp(<<<'HELP'
 Manage KVS storage servers and server groups.
 
@@ -113,6 +156,8 @@ Manage KVS storage servers and server groups.
   deactivate <id> Alias for disable
   stats       Show storage statistics overview
   group       List or show server groups (use: group, group <id>)
+  weights <group-id>     Show a complete group weight vector and revision
+  set-weights <group-id> Apply a complete group weight vector atomically
 
 <fg=yellow>CONTENT TYPES:</>
   video    Video storage servers (content_type_id=1)
@@ -139,6 +184,8 @@ Manage KVS storage servers and server groups.
   <fg=green>kvs server stats</>
   <fg=green>kvs server group</>
   <fg=green>kvs server group 1</>
+  <fg=green>kvs server weights 3 --format=json --force</>
+  <fg=green>kvs server set-weights 3 --weight=12:4 --weight=13:2 --if-revision=SHA256 --force</>
 HELP
             );
         $this->configureExperimentalOption();
@@ -146,12 +193,26 @@ HELP
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        $action = $this->getStringArgument($input, 'action') ?? 'list';
+        if (
+            in_array($action, ['weights', 'set-weights'], true)
+            && $this->getStringOptionOrDefault($input, 'format', 'table') === 'json'
+            && !$this->getBoolOption($input, 'force')
+        ) {
+            return $this->writeWeightError(
+                $input,
+                new StorageServerWeightException(
+                    'experimental_confirmation_required',
+                    'Use --force with --format=json for this experimental command.'
+                )
+            );
+        }
+
         $abort = $this->confirmExperimental($input, $output);
         if ($abort !== null) {
             return $abort;
         }
 
-        $action = $this->getStringArgument($input, 'action') ?? 'list';
         $id = $this->getStringArgument($input, 'id');
 
         return match ($action) {
@@ -161,16 +222,32 @@ HELP
             'disable', 'deactivate' => $this->disableServer($id, $input),
             'stats' => $this->showStats($input),
             'group' => $id !== null ? $this->showGroup($id, $input) : $this->listGroups($input),
+            'weights' => $this->showWeights($id, $input),
+            'set-weights' => $this->setWeights($id, $input),
             default => $this->failUnknownAction(
                 'server',
                 $action,
-                ['list', 'show', 'enable', 'disable', 'activate', 'deactivate', 'stats', 'group']
+                [
+                    'list',
+                    'show',
+                    'enable',
+                    'disable',
+                    'activate',
+                    'deactivate',
+                    'stats',
+                    'group',
+                    'weights',
+                    'set-weights',
+                ]
             ),
         };
     }
 
     private function listServers(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedOptions($input, 'list', self::WEIGHT_ACTION_OPTIONS)) {
+            return self::FAILURE;
+        }
         if ($this->rejectUnsupportedArgument($input, 'list', 'id', 'a server ID argument', 'show', 'a specific server')) {
             return self::FAILURE;
         }
@@ -1462,6 +1539,351 @@ HELP
         ]);
     }
 
+    private function showWeights(?string $id, InputInterface $input): int
+    {
+        try {
+            $this->validateWeightActionFormat($input);
+            $this->rejectWeightActionOptions($input, 'weights', [
+                'type',
+                'status',
+                'connection',
+                'group',
+                'errors',
+                'limit',
+                'fields',
+                'no-truncate',
+                'weight',
+                'if-revision',
+                'ignore-revision',
+                'dry-run',
+            ]);
+            $groupId = $this->requiredWeightGroupId($id);
+            $db = $this->getDatabaseConnection($this->isJsonWeightOutput($input));
+            if ($db === null) {
+                throw new StorageServerWeightException(
+                    'database_connection_failed',
+                    'Could not connect to the KVS database.'
+                );
+            }
+
+            return $this->writeWeightSuccess(
+                $input,
+                $this->createStorageServerWeightManager($db)->read($groupId)
+            );
+        } catch (StorageServerWeightException $e) {
+            return $this->writeWeightError($input, $e);
+        } catch (\Throwable $e) {
+            return $this->writeWeightError(
+                $input,
+                new StorageServerWeightException('weights_failed', 'Failed to read storage server weights: ' . $e->getMessage())
+            );
+        }
+    }
+
+    private function setWeights(?string $id, InputInterface $input): int
+    {
+        try {
+            $this->validateWeightActionFormat($input);
+            $this->rejectWeightActionOptions($input, 'set-weights', [
+                'type',
+                'status',
+                'connection',
+                'group',
+                'errors',
+                'limit',
+                'fields',
+                'no-truncate',
+            ]);
+            $groupId = $this->requiredWeightGroupId($id);
+            $weights = $this->parseWeightVector($input);
+            $expectedRevision = $this->getStringOption($input, 'if-revision');
+            $ignoreRevision = $this->getBoolOption($input, 'ignore-revision');
+            $dryRun = $this->getBoolOption($input, 'dry-run');
+
+            if ($expectedRevision !== null && $ignoreRevision) {
+                throw new StorageServerWeightException(
+                    'conflicting_revision_options',
+                    'Options --if-revision and --ignore-revision cannot be used together.'
+                );
+            }
+            if ($expectedRevision !== null && preg_match('/^[a-f0-9]{64}$/', $expectedRevision) !== 1) {
+                throw new StorageServerWeightException(
+                    'invalid_revision',
+                    'The --if-revision value must be a lowercase SHA-256 hash.'
+                );
+            }
+            if (!$dryRun && !$ignoreRevision && $expectedRevision === null) {
+                throw new StorageServerWeightException(
+                    'revision_required',
+                    'A mutation requires --if-revision or the explicit --ignore-revision recovery option.'
+                );
+            }
+
+            $db = $this->getDatabaseConnection($this->isJsonWeightOutput($input));
+            if ($db === null) {
+                throw new StorageServerWeightException(
+                    'database_connection_failed',
+                    'Could not connect to the KVS database.'
+                );
+            }
+            $result = $this->createStorageServerWeightManager($db)->apply(
+                $groupId,
+                $weights,
+                $expectedRevision,
+                $ignoreRevision,
+                $dryRun
+            );
+
+            return $this->writeWeightSuccess($input, $result);
+        } catch (StorageServerWeightException $e) {
+            return $this->writeWeightError($input, $e);
+        } catch (\Throwable $e) {
+            return $this->writeWeightError(
+                $input,
+                new StorageServerWeightException(
+                    'set_weights_failed',
+                    'Failed to apply storage server weights: ' . $e->getMessage()
+                )
+            );
+        }
+    }
+
+    private function validateWeightActionFormat(InputInterface $input): void
+    {
+        $format = $this->getStringOptionOrDefault($input, 'format', 'table');
+        if (!in_array($format, self::WEIGHT_OUTPUT_FORMATS, true)) {
+            throw new StorageServerWeightException(
+                'invalid_format',
+                'Weight actions support only --format=table or --format=json.'
+            );
+        }
+    }
+
+    /**
+     * @param list<string> $optionNames
+     */
+    private function rejectWeightActionOptions(InputInterface $input, string $action, array $optionNames): void
+    {
+        foreach ($optionNames as $optionName) {
+            if ($this->isOptionExplicitlySet($input, $optionName)) {
+                throw new StorageServerWeightException(
+                    'unsupported_option',
+                    "The {$action} action does not support --{$optionName}."
+                );
+            }
+        }
+    }
+
+    private function requiredWeightGroupId(?string $id): int
+    {
+        if ($id === null || preg_match('/^[1-9]\d*$/', $id) !== 1) {
+            throw new StorageServerWeightException(
+                'invalid_group_id',
+                'A storage server group ID is required and must be an integer greater than zero.'
+            );
+        }
+        $validated = filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!is_int($validated)) {
+            throw new StorageServerWeightException(
+                'invalid_group_id',
+                'A storage server group ID is required and must be an integer greater than zero.'
+            );
+        }
+
+        return $validated;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function parseWeightVector(InputInterface $input): array
+    {
+        $values = $input->getOption('weight');
+        if ($values === []) {
+            throw new StorageServerWeightException(
+                'missing_weight_vector',
+                'At least one --weight=SERVER_ID:WEIGHT entry is required.'
+            );
+        }
+
+        $weights = [];
+        $sum = 0;
+        foreach ($values as $value) {
+            if (preg_match('/^([1-9]\d*):([1-9]\d*)$/', $value, $matches) !== 1) {
+                throw new StorageServerWeightException(
+                    'invalid_weight_entry',
+                    'Each --weight value must use the strict SERVER_ID:WEIGHT form.'
+                );
+            }
+            $serverId = filter_var($matches[1], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            $weight = filter_var(
+                $matches[2],
+                FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1, 'max_range' => StorageServerWeightManager::MAX_WEIGHT]]
+            );
+            if (!is_int($serverId) || !is_int($weight)) {
+                throw new StorageServerWeightException(
+                    'invalid_weight',
+                    'Server IDs must be positive integers and weights must be integers from 1 to '
+                    . StorageServerWeightManager::MAX_WEIGHT . '.'
+                );
+            }
+            if (isset($weights[$serverId])) {
+                throw new StorageServerWeightException(
+                    'duplicate_server_id',
+                    "Weight for storage server {$serverId} was provided more than once."
+                );
+            }
+            $weights[$serverId] = $weight;
+            $sum += $weight;
+            if ($sum > StorageServerWeightManager::MAX_TOTAL_WEIGHT) {
+                throw new StorageServerWeightException(
+                    'excessive_weight_sum',
+                    'The total weight for a storage server group cannot exceed '
+                    . StorageServerWeightManager::MAX_TOTAL_WEIGHT . '.'
+                );
+            }
+        }
+
+        ksort($weights, SORT_NUMERIC);
+
+        return $weights;
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    private function writeWeightSuccess(InputInterface $input, array $result): int
+    {
+        if ($this->isJsonWeightOutput($input)) {
+            $this->io()->writeln(json_encode(
+                $result,
+                Constants::JSON_FLAGS | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+            ));
+            return self::SUCCESS;
+        }
+
+        $action = isset($result['action']) && is_string($result['action']) ? $result['action'] : '';
+        if ($action === 'weights') {
+            $this->io()->title('Storage Server Weights');
+            $this->io()->text('Group: ' . $this->weightOutputString($result['group_id'] ?? null));
+            $this->io()->text('Revision: ' . $this->weightOutputString($result['revision'] ?? null));
+            $rows = [];
+            $weights = $result['weights'] ?? [];
+            if (is_array($weights)) {
+                foreach ($weights as $weight) {
+                    if (!is_array($weight)) {
+                        continue;
+                    }
+                    $countries = $weight['lb_countries'] ?? [];
+                    $rows[] = [
+                        $this->weightOutputInt($weight['server_id'] ?? null),
+                        $this->weightOutputString($weight['weight'] ?? null),
+                        $this->weightOutputInt($weight['status_id'] ?? null),
+                        $this->weightOutputInt($weight['streaming_type_id'] ?? null),
+                        is_array($countries) ? implode(',', array_filter($countries, 'is_string')) : '',
+                        ($weight['eligible'] ?? false) === true ? 'yes' : 'no',
+                    ];
+                }
+            }
+            $this->renderTable(
+                ['Server ID', 'Weight', 'Status ID', 'Streaming Type ID', 'Countries', 'Eligible'],
+                $rows
+            );
+            return self::SUCCESS;
+        }
+
+        if (($result['dry_run'] ?? false) === true) {
+            $this->io()->success('Storage server weight dry-run completed successfully.');
+        } elseif (($result['changed'] ?? false) === true || ($result['cluster_data_updated'] ?? false) === true) {
+            $this->io()->success('Storage server weights were applied successfully.');
+        } else {
+            $this->io()->info('Storage server weights and cluster data are already current.');
+        }
+        $this->io()->text('Revision before: ' . $this->weightOutputString($result['revision_before'] ?? null));
+        $this->io()->text('Revision after:  ' . $this->weightOutputString($result['revision_after'] ?? null));
+
+        $rows = [];
+        $changes = $result['changes'] ?? [];
+        if (is_array($changes)) {
+            foreach ($changes as $change) {
+                if (!is_array($change)) {
+                    continue;
+                }
+                $rows[] = [
+                    $this->weightOutputInt($change['server_id'] ?? null),
+                    $this->weightOutputString($change['old_weight'] ?? null),
+                    $this->weightOutputString($change['new_weight'] ?? null),
+                ];
+            }
+        }
+        if ($rows !== []) {
+            $this->renderTable(['Server ID', 'Old Weight', 'New Weight'], $rows);
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function writeWeightError(InputInterface $input, StorageServerWeightException $error): int
+    {
+        if ($this->isJsonWeightOutput($input)) {
+            $payload = [
+                'ok' => false,
+                'error' => [
+                    'code' => $error->getErrorCode(),
+                    'message' => $error->getMessage(),
+                ],
+            ];
+            if ($error->isRecoveryRequired()) {
+                $payload['recovery_required'] = true;
+            }
+            $this->io()->writeln(json_encode(
+                $payload,
+                Constants::JSON_FLAGS | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+            ));
+        } else {
+            $this->io()->error($error->getMessage());
+            if ($error->isRecoveryRequired()) {
+                $this->io()->error('Automatic recovery failed. Manual recovery is required.');
+            }
+        }
+
+        return self::FAILURE;
+    }
+
+    private function weightOutputString(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    private function weightOutputInt(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function isJsonWeightOutput(InputInterface $input): bool
+    {
+        return $this->getStringOptionOrDefault($input, 'format', 'table') === 'json';
+    }
+
+    protected function createStorageServerWeightManager(\PDO $db): StorageServerWeightManager
+    {
+        $databaseConfig = $this->config->getDatabaseConfig();
+
+        return new StorageServerWeightManager(
+            $db,
+            $this->table('admin_servers'),
+            $this->table('admin_servers_groups'),
+            $databaseConfig['database'] ?? '',
+            $this->createStorageClusterDataPublisher()
+        );
+    }
+
+    protected function createStorageClusterDataPublisher(): StorageClusterDataPublisher
+    {
+        return new StorageClusterDataPublisher($this->getStorageClusterDataFile());
+    }
+
     private function enableServer(?string $id, InputInterface $input): int
     {
         $action = $this->getStringArgument($input, 'action') ?? 'enable';
@@ -1622,51 +2044,30 @@ HELP
 
     private function canWriteStorageClusterData(): bool
     {
-        $clusterFile = $this->getStorageClusterDataFile();
-        $clusterDir = dirname($clusterFile);
-
-        if (!is_dir($clusterDir)) {
-            $this->io()->error("Storage cluster data directory does not exist: {$clusterDir}");
+        try {
+            $this->createStorageClusterDataPublisher()->assertWritable();
+            return true;
+        } catch (\RuntimeException $e) {
+            $this->io()->error($e->getMessage());
             return false;
         }
-
-        if (!is_writable($clusterFile)) {
-            $this->io()->error("Storage cluster data file is not writable: {$clusterFile}");
-            return false;
-        }
-
-        if (!is_writable($clusterDir)) {
-            $this->io()->error("Storage cluster data directory is not writable: {$clusterDir}");
-            return false;
-        }
-
-        return true;
     }
 
     private function writeStorageClusterData(\PDO $db): void
     {
-        $stmt = $db->query("
-            SELECT server_id, group_id, content_type_id, status_id, streaming_type_id,
-                   streaming_script, streaming_key, is_replace_domain_on_satellite,
-                   urls, is_remote, control_script_url, control_script_url_lock_ip,
-                   time_offset, lb_weight, lb_countries, error_streaming_id,
-                   error_streaming_iteration, warning_id
-            FROM {$this->table('admin_servers')}
-            ORDER BY server_id ASC
-        ");
-        if ($stmt === false) {
-            throw new \RuntimeException('Failed to query storage servers for cluster data');
+        $publisher = $this->createStorageClusterDataPublisher();
+        $snapshot = $publisher->snapshot();
+        try {
+            $fields = $publisher->fieldsFromSerializedRows($snapshot['bytes']);
+        } catch (\RuntimeException) {
+            // Preserve the existing enable/disable behavior for legacy or placeholder files.
+            $fields = StorageClusterDataPublisher::FIELDS;
         }
-
-        /** @var list<array<string, mixed>> $rows */
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $rows = $publisher->fetchRows($db, $this->table('admin_servers'), $fields);
         if ($rows === []) {
             return;
         }
-
-        if (file_put_contents($this->getStorageClusterDataFile(), serialize($rows), LOCK_EX) === false) {
-            throw new \RuntimeException('Failed to write storage cluster data');
-        }
+        $publisher->publish($rows, $snapshot['permissions']);
     }
 
     private function getStorageClusterDataFile(): string

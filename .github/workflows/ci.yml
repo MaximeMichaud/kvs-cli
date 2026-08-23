@@ -156,12 +156,57 @@ jobs:
       - name: Run all checks
         run: lefthook run pre-commit --all-files
 
+  server-weights-mariadb:
+    name: Storage server weights - MariaDB
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: kvs_test
+          MARIADB_USER: kvs_user
+          MARIADB_PASSWORD: kvs_pass
+        ports:
+          - 13308:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, ctype, iconv, pdo, pdo_mysql
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Run MariaDB storage weight contract
+        env:
+          KVS_CLI_TEST_SERVER_WEIGHTS_MARIADB: '1'
+          KVS_TEST_DB_HOST: 127.0.0.1
+          KVS_TEST_DB_PORT: '13308'
+          KVS_TEST_DB_USER: kvs_user
+          KVS_TEST_DB_PASS: kvs_pass
+          KVS_TEST_DB_NAME: kvs_test
+        run: vendor/bin/phpunit --configuration phpunit.xml.dist tests/ServerWeightMariaDbIntegrationTest.php
+
   build:
     name: Build PHAR
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, lint, server-weights-mariadb]
 
     steps:
       - name: Checkout code

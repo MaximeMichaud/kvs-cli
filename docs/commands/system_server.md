@@ -10,14 +10,14 @@ kvs system:server [<action>] [<id>] [options]
 
 ## Description
 
-The `system:server` command manages KVS storage servers used for hosting video and album content. It supports listing, viewing, enabling/disabling servers, and viewing statistics.
+The `system:server` command manages KVS storage servers used for hosting video and album content. It supports listing, viewing, enabling/disabling servers, reading and applying group weight vectors, and viewing statistics.
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `action` | No | Action: `list`, `show`, `enable`, `disable`, `activate`, `deactivate`, `stats`, `group` (default: `list`) |
-| `id` | No | Server or group ID (required for `show`, `enable`, `disable`, `activate`, `deactivate`) |
+| `action` | No | Action: `list`, `show`, `enable`, `disable`, `activate`, `deactivate`, `stats`, `group`, `weights`, `set-weights` (default: `list`) |
+| `id` | No | Server or group ID, depending on the action |
 
 ## Options
 
@@ -32,6 +32,10 @@ The `system:server` command manages KVS storage servers used for hosting video a
 | `--format=FORMAT` | Output format: `table`, `csv`, `json`, `yaml`, `count` |
 | `--fields=FIELDS` | Comma-separated list of fields |
 | `--no-truncate` | Disable truncation |
+| `--weight=SERVER_ID:WEIGHT` | Complete group weight entry for `set-weights`; repeat once per server |
+| `--if-revision=SHA256` | Apply weights only if the group still has this revision |
+| `--ignore-revision` | Explicitly bypass revision checking during manual recovery |
+| `--dry-run` | Validate `set-weights`, including temporary-file creation, without changing KVS |
 | `--force` | Skip experimental feature confirmation |
 
 ## Actions
@@ -88,6 +92,36 @@ Alias for `disable`.
 ```bash
 kvs server deactivate 1
 ```
+
+### weights <group-id>
+
+Read every load-balancing weight in a storage server group and calculate its canonical revision.
+
+```bash
+kvs server weights 3 --format=json --force
+```
+
+The revision includes each server's ID, group, status, streaming type, weight, and country pool. Legacy decimal weights are readable, but `set-weights` accepts only new integer values.
+
+### set-weights <group-id>
+
+Apply a complete group weight vector as one guarded operation.
+
+```bash
+kvs server set-weights 3 \
+  --weight=12:4 \
+  --weight=13:2 \
+  --weight=14:1 \
+  --if-revision=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+  --format=json \
+  --force
+```
+
+Every server in the group must appear exactly once. Weights must be integers from `1` to `99999`, and their sum cannot exceed `99999`. Values are relative weights, not percentages.
+
+Use `--dry-run` to validate the complete operation without updating the database or publishing `cluster.dat`. A real mutation requires `--if-revision`, unless `--ignore-revision` is supplied explicitly for manual recovery.
+
+The command uses a MariaDB advisory lock, rechecks the revision immediately before writing, updates only `lb_weight`, publishes `cluster.dat` atomically, verifies both resources, and attempts compensating recovery on failure. It preserves the installed KVS cluster field set and ordering, including version-specific fields that are not present in older KVS releases.
 
 ### stats
 
@@ -202,6 +236,8 @@ kvs server group 1
 - Changes to server configuration take effect immediately
 - Disabling a server stops content delivery from that server
 - Use `--errors` filter to identify problematic servers
+- `set-weights` never changes status, country pools, streaming settings, or error counters
+- JSON output never contains streaming keys or serialized cluster data
 
 ## See Also
 

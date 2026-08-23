@@ -191,7 +191,7 @@ _kvs_complete() {
     local plugin_actions="list show path status"
     local config_actions="list get set edit"
     local queue_actions="list show stats history help-action"
-    local server_actions="list show enable disable activate deactivate stats group"
+    local server_actions="list show enable disable activate deactivate stats group weights set-weights"
     local conversion_actions="list show enable disable activate deactivate debug-on debug-off log config stats"
     local email_actions="show test set log templates"
     local antispam_actions="show set add remove blacklist"
@@ -532,7 +532,7 @@ migrate:package|package|migrate:import|import|migrate:to-docker|to-docker)
                     _arguments '1:action:(list show stats history help-action)'
                     ;;
                 system:server|server|servers)
-                    _arguments '1:action:(list show enable disable activate deactivate stats group)'
+                    _arguments '1:action:(list show enable disable activate deactivate stats group weights set-weights)'
                     ;;
                 system:conversion|conversion)
                     _arguments '1:action:(list show enable disable activate deactivate debug-on debug-off log config stats)'
@@ -716,6 +716,7 @@ complete -c kvs -n "__fish_seen_subcommand_from plugin plugins plug" -a "list sh
 complete -c kvs -n "__fish_seen_subcommand_from config conf cfg" -a "list get set edit"
 complete -c kvs -n "__fish_seen_subcommand_from system:queue queue" -a "list show stats history help-action"
 complete -c kvs -n "__fish_seen_subcommand_from system:server server servers" -a "list show enable disable activate deactivate stats group"
+complete -c kvs -n "__fish_seen_subcommand_from system:server server servers" -a "weights set-weights"
 complete -c kvs -n "__fish_seen_subcommand_from system:conversion conversion" -a "list show enable disable activate deactivate"
 complete -c kvs -n "__fish_seen_subcommand_from system:conversion conversion" -a "debug-on debug-off log config stats"
 complete -c kvs -n "__fish_seen_subcommand_from system:email email" -a "show test set log templates"

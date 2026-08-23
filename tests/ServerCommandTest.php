@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Config\Configuration;
+use KVS\CLI\Service\StorageClusterDataPublisher;
 use PDO;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -1065,6 +1066,20 @@ class ServerCommandTest extends TestCase
         $this->assertContains('servers', $aliases);
     }
 
+    public function testServerWeightActionsAreDocumentedInHelp(): void
+    {
+        $help = $this->command->getHelp();
+        $definition = $this->command->getDefinition();
+
+        $this->assertStringContainsString('weights <group-id>', $help);
+        $this->assertStringContainsString('set-weights <group-id>', $help);
+        $this->assertTrue($definition->hasOption('weight'));
+        $this->assertTrue($definition->getOption('weight')->isArray());
+        $this->assertTrue($definition->hasOption('if-revision'));
+        $this->assertTrue($definition->hasOption('ignore-revision'));
+        $this->assertTrue($definition->hasOption('dry-run'));
+    }
+
     public function testServerDefaultAction(): void
     {
         $this->tester->execute(['--force' => true]);
@@ -1085,6 +1100,603 @@ class ServerCommandTest extends TestCase
         $this->assertStringContainsString('Unknown server action "unknown_action"', $output);
         $this->assertStringContainsString('activate', $output);
         $this->assertStringContainsString('deactivate', $output);
+        $this->assertStringContainsString('weights', $output);
+        $this->assertStringContainsString('set-weights', $output);
+    }
+
+    public function testServerWeightsReturnsCompleteCanonicalVectorWithoutSecrets(): void
+    {
+        $this->prepareWeightFixture();
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') . " SET streaming_key = 'hidden-value' WHERE server_id = 1"
+        );
+
+        [$status, $result, $display] = $this->executeWeightJson([
+            'action' => 'weights',
+            'id' => '10',
+        ]);
+
+        $canonical = [
+            [
+                'server_id' => 1,
+                'group_id' => 10,
+                'status_id' => 1,
+                'streaming_type_id' => 0,
+                'lb_weight' => '1.5',
+                'lb_countries' => [],
+            ],
+            [
+                'server_id' => 2,
+                'group_id' => 10,
+                'status_id' => 0,
+                'streaming_type_id' => 1,
+                'lb_weight' => '1',
+                'lb_countries' => ['CA'],
+            ],
+            [
+                'server_id' => 4,
+                'group_id' => 10,
+                'status_id' => 1,
+                'streaming_type_id' => 4,
+                'lb_weight' => '2',
+                'lb_countries' => ['CA'],
+            ],
+            [
+                'server_id' => 5,
+                'group_id' => 10,
+                'status_id' => 1,
+                'streaming_type_id' => 4,
+                'lb_weight' => '3',
+                'lb_countries' => ['US'],
+            ],
+            [
+                'server_id' => 6,
+                'group_id' => 10,
+                'status_id' => 1,
+                'streaming_type_id' => 5,
+                'lb_weight' => '1',
+                'lb_countries' => [],
+            ],
+        ];
+        $expectedRevision = hash(
+            'sha256',
+            json_encode($canonical, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
+        );
+
+        $this->assertSame(0, $status, $display);
+        $this->assertTrue($result['ok']);
+        $this->assertSame('weights', $result['action']);
+        $this->assertSame(10, $result['group_id']);
+        $this->assertSame($expectedRevision, $result['revision']);
+        $this->assertCount(5, $result['weights']);
+        $this->assertSame([1, 2, 4, 5, 6], array_column($result['weights'], 'server_id'));
+        $this->assertSame(1.5, $result['weights'][0]['weight']);
+        $this->assertSame([true, false, true, true, false], array_column($result['weights'], 'eligible'));
+        $this->assertStringNotContainsString('streaming_key', $display);
+        $this->assertStringNotContainsString('hidden-value', $display);
+        $this->assertSame($result, json_decode(trim($display), true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    public function testServerSetWeightsRejectsMalformedValues(): void
+    {
+        $invalidValues = ['1', '1:', ':1', '0:1', '1:0', '1:-1', '1:+1', '1:1.5', '1:100000', ' 1:2'];
+
+        foreach ($invalidValues as $invalidValue) {
+            [$status, $result, $display] = $this->executeWeightJson([
+                'action' => 'set-weights',
+                'id' => '10',
+                '--weight' => [$invalidValue],
+                '--dry-run' => true,
+            ]);
+
+            $this->assertSame(1, $status, $invalidValue . ': ' . $display);
+            $this->assertFalse($result['ok']);
+            $this->assertContains($result['error']['code'], ['invalid_weight_entry', 'invalid_weight']);
+        }
+    }
+
+    public function testServerSetWeightsRejectsDuplicateIdsAndExcessiveSum(): void
+    {
+        [$duplicateStatus, $duplicate] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => ['1:4', '1:5'],
+            '--dry-run' => true,
+        ]);
+        [$sumStatus, $sum] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => ['1:60000', '2:40000'],
+            '--dry-run' => true,
+        ]);
+
+        $this->assertSame(1, $duplicateStatus);
+        $this->assertSame('duplicate_server_id', $duplicate['error']['code']);
+        $this->assertSame(1, $sumStatus);
+        $this->assertSame('excessive_weight_sum', $sum['error']['code']);
+    }
+
+    public function testServerSetWeightsValidatesGroupAndCompleteMembership(): void
+    {
+        $weights = $this->prepareWeightFixture();
+
+        [$missingGroupStatus, $missingGroup] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '999',
+            '--weight' => ['1:1'],
+            '--dry-run' => true,
+        ]);
+        [$missingServerStatus, $missingServer] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => [...$this->weightOptions($weights), '999:1'],
+            '--dry-run' => true,
+        ]);
+        [$outOfGroupStatus, $outOfGroup] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => [...$this->weightOptions($weights), '3:1'],
+            '--dry-run' => true,
+        ]);
+        unset($weights[6]);
+        [$incompleteStatus, $incomplete] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--dry-run' => true,
+        ]);
+
+        $this->assertSame(1, $missingGroupStatus);
+        $this->assertSame('group_not_found', $missingGroup['error']['code']);
+        $this->assertSame(1, $missingServerStatus);
+        $this->assertSame('server_not_found', $missingServer['error']['code']);
+        $this->assertSame(1, $outOfGroupStatus);
+        $this->assertSame('server_out_of_group', $outOfGroup['error']['code']);
+        $this->assertSame(1, $incompleteStatus);
+        $this->assertSame('incomplete_weight_vector', $incomplete['error']['code']);
+    }
+
+    public function testServerSetWeightsRequiresAndChecksRevision(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+
+        [$requiredStatus, $required] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+        ]);
+        [$conflictStatus, $conflict] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => str_repeat('0', 64),
+        ]);
+        $revision = $this->readWeightRevision();
+        [$validStatus, $valid] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $revision,
+            '--dry-run' => true,
+        ]);
+
+        $this->assertSame(1, $requiredStatus);
+        $this->assertSame('revision_required', $required['error']['code']);
+        $this->assertSame(1, $conflictStatus);
+        $this->assertSame('revision_conflict', $conflict['error']['code']);
+        $this->assertSame(0, $validStatus);
+        $this->assertTrue($valid['dry_run']);
+    }
+
+    public function testServerSetWeightsRechecksRevisionImmediatelyBeforeWriting(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $revision = $this->readWeightRevision();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $serverTable = TestHelper::table('admin_servers');
+        $publisher = new class (
+            $this->kvsPath . '/admin/data/system/cluster.dat',
+            $this->db,
+            $serverTable
+        ) extends StorageClusterDataPublisher {
+            private bool $changed = false;
+
+            public function __construct(
+                string $clusterFile,
+                private PDO $db,
+                private string $serverTable
+            ) {
+                parent::__construct($clusterFile);
+            }
+
+            public function fieldsFromSerializedRows(string $bytes): array
+            {
+                $fields = parent::fieldsFromSerializedRows($bytes);
+                if (!$this->changed) {
+                    $this->changed = true;
+                    $this->db->exec("UPDATE {$this->serverTable} SET status_id = 1 WHERE server_id = 2");
+                }
+
+                return $fields;
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        [$status, $result, $display] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $revision,
+        ]);
+
+        $this->assertSame(1, $status, $display);
+        $this->assertSame('revision_conflict', $result['error']['code']);
+        $this->assertSame($databaseBefore, $this->fetchWeightRows());
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+        $this->assertSame(1, (int) $this->fetchServerRow(2)['status_id']);
+    }
+
+    public function testServerSetWeightsDryRunLeavesDatabaseAndClusterDataUnchanged(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+
+        [$status, $result, $display] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+            '--dry-run' => true,
+        ]);
+
+        $this->assertSame(0, $status, $display);
+        $this->assertTrue($result['dry_run']);
+        $this->assertTrue($result['changed']);
+        $this->assertFalse($result['cluster_data_updated']);
+        $this->assertSame($databaseBefore, $this->fetchWeightRows());
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+    }
+
+    public function testServerSetWeightsUpdatesVectorCoherentlyAndPreservesOtherFields(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $before = $this->fetchServerRowsWithoutWeights(10);
+
+        [$status, $result, $display] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(0, $status, $display);
+        $this->assertTrue($result['changed']);
+        $this->assertTrue($result['cluster_data_updated']);
+        $this->assertSame($weights, $this->fetchWeightMap(10));
+        $this->assertSame($before, $this->fetchServerRowsWithoutWeights(10));
+        $this->assertSame(
+            [1, 2, 3, 4, 5, 6],
+            array_map('intval', array_column($this->readClusterRows(), 'server_id'))
+        );
+        foreach ($this->readClusterRows() as $clusterRow) {
+            $this->assertSame(StorageClusterDataPublisher::FIELDS, array_keys($clusterRow));
+        }
+    }
+
+    public function testServerSetWeightsPreservesInstalledClusterFieldSet(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $serverTable = TestHelper::table('admin_servers');
+        $this->db->exec("ALTER TABLE {$serverTable} ADD COLUMN control_script_url_ttl INTEGER DEFAULT 0");
+        $this->db->exec("ALTER TABLE {$serverTable} ADD COLUMN control_script_url_pattern TEXT DEFAULT ''");
+        $this->db->exec(
+            "UPDATE {$serverTable} SET control_script_url_ttl = server_id * 10, "
+            . "control_script_url_pattern = 'pattern-' || server_id"
+        );
+        $fields = [
+            'server_id',
+            'group_id',
+            'content_type_id',
+            'status_id',
+            'streaming_type_id',
+            'streaming_script',
+            'streaming_key',
+            'is_replace_domain_on_satellite',
+            'urls',
+            'is_remote',
+            'control_script_url',
+            'control_script_url_version',
+            'control_script_url_lock_ip',
+            'control_script_url_ttl',
+            'control_script_url_pattern',
+            'time_offset',
+            'lb_weight',
+            'lb_countries',
+            'error_streaming_id',
+            'error_streaming_iteration',
+            'warning_id',
+            'is_debug_enabled',
+        ];
+        $publisher = new StorageClusterDataPublisher($this->kvsPath . '/admin/data/system/cluster.dat');
+        $installedRows = $publisher->fetchRows($this->db, $serverTable, $fields);
+        file_put_contents(
+            $this->kvsPath . '/admin/data/system/cluster.dat',
+            $publisher->serializeRows($installedRows)
+        );
+
+        [$status, , $display] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(0, $status, $display);
+        $publishedRows = $this->readClusterRows();
+        foreach ($publishedRows as $index => $row) {
+            $this->assertSame($fields, array_keys($row));
+            $this->assertSame(
+                $installedRows[$index]['control_script_url_version'],
+                $row['control_script_url_version']
+            );
+            $this->assertSame($installedRows[$index]['control_script_url_ttl'], $row['control_script_url_ttl']);
+            $this->assertSame(
+                $installedRows[$index]['control_script_url_pattern'],
+                $row['control_script_url_pattern']
+            );
+            $this->assertSame($installedRows[$index]['is_debug_enabled'], $row['is_debug_enabled']);
+        }
+    }
+
+    public function testServerSetWeightsIsIdempotent(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        [, $first] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+
+        [$status, $second, $display] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $first['revision_after'],
+        ]);
+
+        $this->assertSame(0, $status, $display);
+        $this->assertFalse($second['changed']);
+        $this->assertFalse($second['cluster_data_updated']);
+        $this->assertSame([], $second['changes']);
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+    }
+
+    public function testServerSetWeightsRejectsGroupWithoutUnrestrictedEligibleServer(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') . " SET lb_countries = 'FR' WHERE server_id = 1"
+        );
+        $this->writeCurrentClusterData();
+
+        [$status, $result] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--dry-run' => true,
+        ]);
+
+        $this->assertSame(1, $status);
+        $this->assertSame('no_unrestricted_active_server', $result['error']['code']);
+    }
+
+    public function testServerSetWeightsSupportsExplicitManualRecoveryOverride(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+
+        [$status, $result, $display] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--ignore-revision' => true,
+        ]);
+
+        $this->assertSame(0, $status, $display);
+        $this->assertTrue($result['changed']);
+        $this->assertSame($weights, $this->fetchWeightMap(10));
+    }
+
+    public function testServerSetWeightsRollsBackDatabaseUpdateFailure(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $this->db->exec(
+            'CREATE TRIGGER fail_weight_update BEFORE UPDATE OF lb_weight ON '
+            . TestHelper::table('admin_servers')
+            . " BEGIN SELECT RAISE(FAIL, 'forced database failure'); END"
+        );
+
+        [$status, $result] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(1, $status);
+        $this->assertSame('set_weights_failed', $result['error']['code']);
+        $this->assertArrayNotHasKey('recovery_required', $result);
+        $this->assertSame($databaseBefore, $this->fetchWeightRows());
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+    }
+
+    public function testServerSetWeightsRollsBackTemporaryFileWriteFailure(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $publisher = new class ($this->kvsPath . '/admin/data/system/cluster.dat') extends StorageClusterDataPublisher {
+            private bool $failNextWrite = true;
+
+            protected function writeFile(string $path, string $bytes): int|false
+            {
+                if ($this->failNextWrite) {
+                    $this->failNextWrite = false;
+                    return false;
+                }
+
+                return parent::writeFile($path, $bytes);
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        [$status, $result] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(1, $status);
+        $this->assertSame('set_weights_failed', $result['error']['code']);
+        $this->assertArrayNotHasKey('recovery_required', $result);
+        $this->assertSame($databaseBefore, $this->fetchWeightRows());
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+    }
+
+    public function testServerSetWeightsRollsBackAtomicRenameFailure(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $publisher = new class ($this->kvsPath . '/admin/data/system/cluster.dat') extends StorageClusterDataPublisher {
+            private bool $failNextRename = true;
+
+            protected function renameFile(string $source, string $target): bool
+            {
+                if ($this->failNextRename) {
+                    $this->failNextRename = false;
+                    return false;
+                }
+
+                return parent::renameFile($source, $target);
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        [$status, $result] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(1, $status);
+        $this->assertArrayNotHasKey('recovery_required', $result);
+        $this->assertSame($databaseBefore, $this->fetchWeightRows());
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+    }
+
+    public function testServerSetWeightsRollsBackFinalVerificationFailure(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $publisher = new class ($this->kvsPath . '/admin/data/system/cluster.dat') extends StorageClusterDataPublisher {
+            private bool $failNextVerification = true;
+
+            public function readRows(): array
+            {
+                if ($this->failNextVerification) {
+                    $this->failNextVerification = false;
+                    throw new \RuntimeException('Forced final verification failure');
+                }
+
+                return parent::readRows();
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        [$status, $result] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(1, $status);
+        $this->assertArrayNotHasKey('recovery_required', $result);
+        $this->assertSame($databaseBefore, $this->fetchWeightRows());
+        $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+    }
+
+    public function testServerSetWeightsReportsRollbackFailure(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $publisher = new class ($this->kvsPath . '/admin/data/system/cluster.dat') extends StorageClusterDataPublisher {
+            private bool $failNextVerification = true;
+
+            public function readRows(): array
+            {
+                if ($this->failNextVerification) {
+                    $this->failNextVerification = false;
+                    throw new \RuntimeException('Forced final verification failure');
+                }
+
+                return parent::readRows();
+            }
+        };
+        $this->useClusterPublisher($publisher);
+        $this->db->exec(
+            'CREATE TRIGGER fail_weight_rollback BEFORE UPDATE OF lb_weight ON '
+            . TestHelper::table('admin_servers')
+            . " WHEN OLD.server_id = 1 AND NEW.lb_weight = 1.5 "
+            . "BEGIN SELECT RAISE(FAIL, 'forced rollback failure'); END"
+        );
+
+        [$status, $result] = $this->executeWeightJson([
+            'action' => 'set-weights',
+            'id' => '10',
+            '--weight' => $this->weightOptions($weights),
+            '--if-revision' => $this->readWeightRevision(),
+        ]);
+
+        $this->assertSame(1, $status);
+        $this->assertTrue($result['recovery_required']);
+        $this->assertSame($weights, $this->fetchWeightMap(10));
+    }
+
+    public function testServerWeightsJsonRequiresForceWithoutAdditionalOutput(): void
+    {
+        $this->prepareWeightFixture();
+        $tester = new CommandTester($this->command);
+        $tester->setInputs([]);
+        $tester->execute([
+            'action' => 'weights',
+            'id' => '10',
+            '--format' => 'json',
+        ], ['interactive' => false]);
+
+        $decoded = json_decode($tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertSame('experimental_confirmation_required', $decoded['error']['code']);
+        $this->assertSame($decoded, json_decode(trim($tester->getDisplay()), true, flags: JSON_THROW_ON_ERROR));
     }
 
     public function testServerEnableMissingId(): void
@@ -1286,6 +1898,145 @@ class ServerCommandTest extends TestCase
         );
     }
 
+    /**
+     * @return array<int, int>
+     */
+    private function prepareWeightFixture(): array
+    {
+        $table = TestHelper::table('admin_servers');
+        $this->db->exec(
+            "UPDATE {$table} SET status_id = 1, lb_weight = 1.5, lb_countries = '', "
+            . "error_iteration = 7, error_streaming_iteration = 8 WHERE server_id = 1"
+        );
+        $this->db->exec(
+            "UPDATE {$table} SET status_id = 0, lb_weight = 1, lb_countries = 'CA', "
+            . "error_iteration = 9, error_streaming_iteration = 10 WHERE server_id = 2"
+        );
+        $this->db->exec(
+            "INSERT INTO {$table} "
+            . '(server_id, group_id, content_type_id, title, status_id, connection_type_id, streaming_type_id, '
+            . 'is_remote, error_iteration, error_streaming_iteration, error_id, error_streaming_id, '
+            . 'streaming_script, streaming_key, is_replace_domain_on_satellite, urls, control_script_url, '
+            . 'control_script_url_lock_ip, time_offset, lb_weight, lb_countries, warning_id, added_date) VALUES '
+            . "(4, 10, 1, 'Canada CDN', 1, 0, 4, 0, 11, 12, 0, 0, '', 'country-secret-a', 0, "
+            . "'https://ca.example.test', '', 0, 0, 2, 'CA', 0, '2026-05-23 10:00:00'), "
+            . "(5, 10, 1, 'US CDN', 1, 0, 4, 0, 13, 14, 0, 0, '', 'country-secret-b', 0, "
+            . "'https://us.example.test', '', 0, 0, 3, 'US', 0, '2026-05-24 10:00:00'), "
+            . "(6, 10, 1, 'Backup', 1, 0, 5, 0, 15, 16, 0, 0, '', 'backup-secret', 0, "
+            . "'', '', 0, 0, 1, '', 0, '2026-05-25 10:00:00')"
+        );
+
+        return [1 => 4, 2 => 2, 4 => 3, 5 => 1, 6 => 1];
+    }
+
+    /**
+     * @param array<int, int> $weights
+     * @return list<string>
+     */
+    private function weightOptions(array $weights): array
+    {
+        $options = [];
+        foreach ($weights as $serverId => $weight) {
+            $options[] = $serverId . ':' . $weight;
+        }
+
+        return $options;
+    }
+
+    /**
+     * @param array<string, mixed> $arguments
+     * @return array{int, array<string, mixed>, string}
+     */
+    private function executeWeightJson(array $arguments): array
+    {
+        $tester = new CommandTester($this->command);
+        $tester->execute([
+            '--force' => true,
+            '--format' => 'json',
+            ...$arguments,
+        ]);
+        $display = $tester->getDisplay();
+        $decoded = json_decode($display, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($decoded);
+
+        /** @var array<string, mixed> $decoded */
+        return [$tester->getStatusCode(), $decoded, $display];
+    }
+
+    private function readWeightRevision(): string
+    {
+        [$status, $result, $display] = $this->executeWeightJson([
+            'action' => 'weights',
+            'id' => '10',
+        ]);
+        $this->assertSame(0, $status, $display);
+        $revision = $result['revision'] ?? null;
+        $this->assertIsString($revision);
+
+        return $revision;
+    }
+
+    private function writeCurrentClusterData(): void
+    {
+        $publisher = new StorageClusterDataPublisher($this->kvsPath . '/admin/data/system/cluster.dat');
+        $rows = $publisher->fetchRows($this->db, TestHelper::table('admin_servers'));
+        file_put_contents($this->kvsPath . '/admin/data/system/cluster.dat', serialize($rows));
+    }
+
+    private function useClusterPublisher(StorageClusterDataPublisher $publisher): void
+    {
+        $this->command = $this->createCommand($this->db, $publisher);
+        $this->tester = new CommandTester($this->command);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchWeightRows(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT server_id, lb_weight FROM ' . TestHelper::table('admin_servers') . ' ORDER BY server_id'
+        );
+        $this->assertNotFalse($stmt);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return $rows;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function fetchWeightMap(int $groupId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT server_id, lb_weight FROM ' . TestHelper::table('admin_servers')
+            . ' WHERE group_id = :group_id ORDER BY server_id'
+        );
+        $stmt->execute(['group_id' => $groupId]);
+        $weights = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $weights[(int) $row['server_id']] = (int) $row['lb_weight'];
+        }
+
+        return $weights;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fetchServerRowsWithoutWeights(int $groupId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT server_id, group_id, status_id, streaming_type_id, lb_countries, streaming_script, '
+            . 'streaming_key, is_replace_domain_on_satellite, urls, error_iteration, error_streaming_iteration, '
+            . 'error_id, error_streaming_id, warning_id FROM ' . TestHelper::table('admin_servers')
+            . ' WHERE group_id = :group_id ORDER BY server_id'
+        );
+        $stmt->execute(['group_id' => $groupId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -1363,11 +2114,14 @@ class ServerCommandTest extends TestCase
         );
     }
 
-    private function createCommand(PDO $db): ServerCommand
+    private function createCommand(PDO $db, ?StorageClusterDataPublisher $publisher = null): ServerCommand
     {
-        return new class ($this->config, $db) extends ServerCommand {
-            public function __construct(Configuration $config, private PDO $testDb)
-            {
+        return new class ($this->config, $db, $publisher) extends ServerCommand {
+            public function __construct(
+                Configuration $config,
+                private PDO $testDb,
+                private ?StorageClusterDataPublisher $testPublisher
+            ) {
                 parent::__construct($config);
                 $this->setName('system:server');
                 $this->setDescription('[EXPERIMENTAL] Manage KVS storage servers');
@@ -1377,6 +2131,11 @@ class ServerCommandTest extends TestCase
             protected function getDatabaseConnection(bool $quiet = false): ?PDO
             {
                 return $this->testDb;
+            }
+
+            protected function createStorageClusterDataPublisher(): StorageClusterDataPublisher
+            {
+                return $this->testPublisher ?? parent::createStorageClusterDataPublisher();
             }
         };
     }
