@@ -1037,7 +1037,10 @@ HELP
         return (int) $sort;
     }
 
-    private function failInvalidStatus(string $status): false
+    /**
+     * @return false
+     */
+    private function failInvalidStatus(string $status): bool
     {
         $this->io()->error(sprintf(
             'Invalid status "%s". Valid values: active, inactive, disabled, 1, 0.',
