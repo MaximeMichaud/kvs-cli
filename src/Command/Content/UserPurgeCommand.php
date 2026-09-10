@@ -27,7 +27,7 @@ Purge users based on specified criteria using KVS's native delete_users() functi
 
 <info>FILTERS:</info>
   --removal-requested    Users who requested account deletion
-  --no-content           Users with 0 videos and 0 comments
+  --no-content           Users with no videos, albums, posts, playlists, or comments
   --inactive-days=N      Users who haven't logged in for N days
   --min-age=N            Accounts older than N days
 
@@ -55,7 +55,7 @@ Purge users based on specified criteria using KVS's native delete_users() functi
 HELP
             )
             ->addOption('removal-requested', null, InputOption::VALUE_NONE, 'Filter users who requested account deletion')
-            ->addOption('no-content', null, InputOption::VALUE_NONE, 'Filter users with 0 videos and 0 comments')
+            ->addOption('no-content', null, InputOption::VALUE_NONE, 'Filter users with no videos, albums, posts, playlists, or comments')
             ->addOption('inactive-days', null, InputOption::VALUE_REQUIRED, 'Filter users inactive for N days')
             ->addOption('min-age', null, InputOption::VALUE_REQUIRED, 'Filter accounts older than N days')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Maximum number of users to process', 1000)
@@ -105,8 +105,7 @@ HELP
         }
 
         if ($noContent) {
-            $conditions[] = 'total_videos_count = 0';
-            $conditions[] = 'comments_total_count = 0';
+            $conditions = array_merge($conditions, $this->getNoContentConditions());
         }
 
         if ($inactiveDays !== null) {
@@ -121,7 +120,7 @@ HELP
 
         $whereClause = implode(' AND ', $conditions);
         $query = "SELECT user_id, username, email, last_login_date, added_date, removal_reason
-                  FROM {$this->table('users')}
+                  FROM {$this->table('users')} u
                   WHERE $whereClause
                   ORDER BY added_date ASC
                   LIMIT :limit";
@@ -172,9 +171,13 @@ HELP
                 }
             }
 
+            if ($noContent) {
+                $this->assertUsersStillHaveNoContent($db, $userIds);
+            }
+
             $this->io()->text(sprintf('Deleting %s...', $this->formatUserCount($count)));
 
-            $this->deleteUsersWithKvs($userIds);
+            $this->deleteUsersWithKvs($userIds, !$noContent);
 
             $remaining = $this->countRemainingUsers($db, $userIds);
             if ($remaining > 0) {
@@ -191,6 +194,44 @@ HELP
                 $this->io()->text($e->getTraceAsString());
             }
             return self::FAILURE;
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getNoContentConditions(): array
+    {
+        $conditions = [];
+        // KVS counters omit inactive videos and unapproved comments, so inspect ownership directly.
+        foreach (['videos', 'albums', 'posts', 'playlists', 'comments'] as $table) {
+            $conditions[] = "NOT EXISTS (SELECT 1 FROM {$this->table($table)} c WHERE c.user_id = u.user_id)";
+        }
+
+        return $conditions;
+    }
+
+    /**
+     * @param list<int> $userIds
+     */
+    private function assertUsersStillHaveNoContent(\PDO $db, array $userIds): void
+    {
+        if ($userIds === []) {
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $conditions = implode(' AND ', $this->getNoContentConditions());
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) FROM {$this->table('users')} u WHERE u.user_id IN ($placeholders) AND $conditions"
+        );
+        foreach ($userIds as $index => $userId) {
+            $stmt->bindValue($index + 1, $userId, \PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        if ((int) $stmt->fetchColumn() !== count($userIds)) {
+            throw new \RuntimeException('Selected users no longer match --no-content. Run the preview again.');
         }
     }
 
@@ -273,13 +314,13 @@ HELP
      *
      * @param list<int> $userIds
      */
-    protected function deleteUsersWithKvs(array $userIds): void
+    protected function deleteUsersWithKvs(array $userIds, bool $withContent = true): void
     {
-        $this->runWithKvsAdminContext(function () use ($userIds): void {
+        $this->runWithKvsAdminContext(function () use ($userIds, $withContent): void {
             if (!function_exists('delete_users')) {
                 throw new \RuntimeException('KVS delete_users function is not available');
             }
-            delete_users($userIds, true, 'ap');
+            delete_users($userIds, $withContent, 'ap');
         });
     }
 
