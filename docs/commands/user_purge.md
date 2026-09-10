@@ -22,7 +22,7 @@ counters, messages, comments, and subscriptions.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--removal-requested` | - | Match users who requested account deletion |
-| `--no-content` | - | Match users with 0 videos and 0 comments |
+| `--no-content` | - | Match users with no videos, albums, posts, playlists, or comments |
 | `--inactive-days=N` | - | Match users who have not logged in for N days |
 | `--min-age=N` | - | Match accounts older than N days |
 | `--limit=N` | 1000 | Maximum number of users to process |
@@ -31,6 +31,17 @@ counters, messages, comments, and subscriptions.
 
 At least one filter is required. Without `--confirm`, the command only displays
 the matched users.
+
+`--no-content` checks content ownership directly, regardless of publication,
+processing, privacy, or approval status. It does not rely on cached user counters,
+which can omit inactive videos and unapproved comments. All filters are combined
+with AND and applied before `--limit`.
+
+With `--no-content --confirm`, content ownership is checked again after confirmation.
+If a selected account no longer qualifies, the command stops before calling KVS
+cleanup. Native cleanup runs with content deletion disabled, so KVS also excludes
+accounts that own videos, albums, posts, or public playlists at cleanup time.
+Without `--no-content`, native cleanup can delete the selected users' content.
 
 ## Examples
 
