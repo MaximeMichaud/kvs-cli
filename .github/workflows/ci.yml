@@ -206,6 +206,16 @@ jobs:
           KVS_TEST_DB_NAME: kvs_test
         run: vendor/bin/phpunit --configuration phpunit.xml.dist tests/ServerWeightMariaDbIntegrationTest.php
 
+      - name: Run MariaDB queue retry contract
+        env:
+          KVS_CLI_TEST_QUEUE_MARIADB: '1'
+          KVS_TEST_DB_HOST: 127.0.0.1
+          KVS_TEST_DB_PORT: '13308'
+          KVS_TEST_DB_USER: kvs_user
+          KVS_TEST_DB_PASS: kvs_pass
+          KVS_TEST_DB_NAME: kvs_test
+        run: vendor/bin/phpunit --configuration phpunit.xml.dist tests/QueueRetryMariaDbIntegrationTest.php
+
   build:
     name: Build PHAR
     permissions:

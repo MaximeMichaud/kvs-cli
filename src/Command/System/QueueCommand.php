@@ -6,7 +6,9 @@ use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\Formatter;
 use KVS\CLI\Output\StatusFormatter;
+use KVS\CLI\Service\QueueRetryService;
 use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\SignalableCommandInterface;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
@@ -19,9 +21,15 @@ use function KVS\CLI\Utils\pluralize;
     description: 'Manage KVS background tasks queue',
     aliases: ['queue']
 )]
-class QueueCommand extends BaseCommand
+class QueueCommand extends BaseCommand implements SignalableCommandInterface
 {
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
+    private const RETRY_OPTIONS = ['dry-run', 'yes'];
+    private const WAIT_OPTIONS = ['timeout', 'interval'];
+    private const HISTORY_GRACE_SECONDS = 2.0;
+
+    private bool $waiting = false;
+    private ?int $waitSignal = null;
 
     private const LIST_ONLY_OPTIONS = ['status', 'type', 'error-code', 'video', 'album', 'server', 'limit'];
     private const LIST_COMPUTED_FIELDS = [
@@ -109,7 +117,7 @@ class QueueCommand extends BaseCommand
     protected function configure(): void
     {
         $this
-            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats|history)', 'list')
+            ->addArgument('action', InputArgument::OPTIONAL, 'Action to perform (list|show|stats|history|retry|wait)', 'list')
             ->addArgument('id', InputArgument::OPTIONAL, 'Task ID')
             ->addOption(
                 'status',
@@ -126,6 +134,10 @@ class QueueCommand extends BaseCommand
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: table, csv, json, yaml, count', 'table')
             ->addOption('fields', null, InputOption::VALUE_REQUIRED, 'Comma-separated list of fields')
             ->addOption('no-truncate', null, InputOption::VALUE_NONE, 'Disable truncation')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview retry without changing the task')
+            ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Retry without confirmation')
+            ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Wait timeout in seconds (0 checks once)', '300')
+            ->addOption('interval', null, InputOption::VALUE_REQUIRED, 'Wait polling interval in seconds (0.1 to 60)', '1')
             ->setHelp(<<<'HELP'
 Manage KVS background tasks queue (video/album conversion, processing, etc.).
 
@@ -134,6 +146,15 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   show     Show details for a specific task
   stats    Show queue statistics
   history  Show completed/cancelled/failed tasks history
+  retry    Requeue one failed active task, preserving the native KVS restart behavior
+  wait     Wait for one task to complete, fail, or be cancelled
+
+<fg=yellow>RETRY AND WAIT:</>
+  Both actions require a task ID and support --format=table|json.
+  retry accepts --dry-run and --yes. Only failed tasks in the active queue can be retried.
+  wait accepts --timeout (default 300 seconds) and --interval (default 1 second).
+  wait exit codes: 0 completed, 1 failed/error, 2 not found, 3 cancelled, 124 timeout.
+  Interrupting wait never cancels the KVS task (130 for SIGINT, 143 for SIGTERM).
 
 <fg=yellow>ACTIVE QUEUE STATUS VALUES:</>
   pending     Scheduled tasks waiting to be processed (status_id=0)
@@ -167,6 +188,9 @@ Manage KVS background tasks queue (video/album conversion, processing, etc.).
   <fg=green>kvs queue history --limit=50</>           Show last 50 history tasks
   <fg=green>kvs queue history --status=completed</>   Show completed history tasks
   <fg=green>kvs queue history --album=12</>           Show history for album #12
+  <fg=green>kvs queue retry 123 --dry-run</>          Preview a failed task restart
+  <fg=green>kvs queue retry 123 --yes --format=json</>
+  <fg=green>kvs queue wait 123 --timeout=1800 --format=json</>
 HELP
             );
     }
@@ -175,18 +199,235 @@ HELP
     {
         $action = $this->getStringArgument($input, 'action') ?? 'list';
 
+        if (
+            ($action !== 'retry' && $this->rejectUnsupportedOptions($input, $action, self::RETRY_OPTIONS))
+            || ($action !== 'wait' && $this->rejectUnsupportedOptions($input, $action, self::WAIT_OPTIONS))
+        ) {
+            return self::FAILURE;
+        }
+
         return match ($action) {
             'list' => $this->listTasks($input),
             'show' => $this->showTask($this->getStringArgument($input, 'id'), $input),
             'stats' => $this->showStats($input),
             'history' => $this->showHistory($input),
+            'retry' => $this->retryTask($input, $output),
+            'wait' => $this->waitForTask($input, $output),
             'help-action' => $this->showHelp(),
             default => $this->failUnknownAction(
                 'queue',
                 $action,
-                ['list', 'show', 'stats', 'history', 'help-action']
+                ['list', 'show', 'stats', 'history', 'retry', 'wait', 'help-action']
             ),
         };
+    }
+
+    private function retryTask(InputInterface $input, OutputInterface $output): int
+    {
+        $taskId = $this->validateTaskAction($input, 'retry');
+        if ($taskId === null) {
+            return self::FAILURE;
+        }
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+        $service = new QueueRetryService(
+            $db,
+            $this->config->getTablePrefix(),
+            $this->config->getMultiTablePrefix(),
+            $this->config->getKvsPath()
+        );
+        try {
+            $task = $service->preview($taskId);
+            if ($this->getBoolOption($input, 'dry-run')) {
+                return $this->displayTaskActionResult($input, $output, [
+                    'task_id' => $taskId,
+                    'outcome' => 'dry-run',
+                    ...$task,
+                    'next_status_id' => 0,
+                    'message' => 'Would requeue the failed task. No changes were made.',
+                ], self::SUCCESS);
+            }
+            if (!$this->getBoolOption($input, 'yes')) {
+                // Keep machine-readable stdout clean and make unattended mutations explicit.
+                if (!$input->isInteractive() || $this->getStringOption($input, 'format') === 'json') {
+                    throw new \RuntimeException('Use --yes to retry without an interactive confirmation, or --dry-run to preview.');
+                }
+                if (!$this->io()->confirm("Retry failed task #$taskId?", false)) {
+                    return $this->displayTaskActionResult($input, $output, [
+                        'task_id' => $taskId,
+                        'outcome' => 'declined',
+                        'message' => 'Retry cancelled. No changes were made.',
+                    ], self::SUCCESS);
+                }
+            }
+            $task = $service->retry($taskId);
+            return $this->displayTaskActionResult($input, $output, [
+                ...$task,
+                'outcome' => 'retried',
+                'message' => 'Task requeued. KVS workers will process it; use queue wait to track completion.',
+            ], self::SUCCESS);
+        } catch (\Throwable $e) {
+            return $this->displayTaskActionResult($input, $output, [
+                'task_id' => $taskId,
+                'outcome' => 'error',
+                'message' => $e->getMessage(),
+            ], self::FAILURE);
+        }
+    }
+
+    private function validateTaskAction(InputInterface $input, string $action): ?int
+    {
+        if (
+            $this->rejectUnsupportedOptions($input, $action, [...self::LIST_ONLY_OPTIONS, 'fields', 'no-truncate'])
+            || $this->validateOutputFormat($input, ['table', 'json']) === null
+        ) {
+            return null;
+        }
+        return $this->getRequiredPositiveId($this->getStringArgument($input, 'id'), 'Task');
+    }
+
+    private function waitForTask(InputInterface $input, OutputInterface $output): int
+    {
+        $taskId = $this->validateTaskAction($input, 'wait');
+        if ($taskId === null) {
+            return self::FAILURE;
+        }
+        $timeout = $this->getOptionalNonNegativeIntOption($input, 'timeout');
+        $intervalValue = $this->getStringOptionOrDefault($input, 'interval', '1');
+        if ($timeout === false || $timeout === null) {
+            return self::FAILURE;
+        }
+        if (
+            preg_match('/\A[0-9]+(?:\.[0-9]+)?\z/D', $intervalValue) !== 1
+            || (float) $intervalValue < 0.1
+            || (float) $intervalValue > 60
+        ) {
+            $this->io()->error('Invalid --interval. Use a number from 0.1 to 60 seconds.');
+            return self::FAILURE;
+        }
+        $db = $this->getDatabaseConnection();
+        if ($db === null) {
+            return self::FAILURE;
+        }
+
+        $this->waiting = true;
+        $this->waitSignal = null;
+        $started = $this->waitClock();
+        $missingSince = null;
+        $lastTask = [];
+        $isHistory = false;
+        try {
+            while (true) {
+                if ($this->waitSignal !== null) {
+                    return $this->finishWait($input, $output, $taskId, 'interrupted', 128 + $this->waitSignal, $lastTask, $isHistory, $started);
+                }
+                $result = $this->fetchTask($db, $taskId);
+                $now = $this->waitClock();
+                if ($result !== null) {
+                    [$lastTask, $isHistory] = $result;
+                    $missingSince = null;
+                    $status = $this->getTaskNumericField($lastTask, 'status_id');
+                    $terminal = match ($status) {
+                        StatusFormatter::TASK_COMPLETED => ['completed', self::SUCCESS],
+                        StatusFormatter::TASK_FAILED => ['failed', self::FAILURE],
+                        StatusFormatter::TASK_CANCELLED => ['cancelled', 3],
+                        StatusFormatter::TASK_PENDING, StatusFormatter::TASK_PROCESSING => null,
+                        default => ['unknown-status', self::FAILURE],
+                    };
+                    if ($terminal !== null) {
+                        return $this->finishWait($input, $output, $taskId, $terminal[0], $terminal[1], $lastTask, $isHistory, $started);
+                    }
+                } else {
+                    // KVS deletes active rows before inserting history. Allow this short handover gap.
+                    $missingSince ??= $now;
+                    if ($now - $missingSince >= self::HISTORY_GRACE_SECONDS || $now - $started >= $timeout) {
+                        return $this->finishWait($input, $output, $taskId, 'not-found', 2, [], false, $started);
+                    }
+                }
+                $remaining = $timeout - ($now - $started);
+                if ($remaining <= 0) {
+                    return $this->finishWait($input, $output, $taskId, 'timeout', 124, $lastTask, $isHistory, $started);
+                }
+                $pollInterval = (float) $intervalValue;
+                if ($missingSince !== null) {
+                    $pollInterval = min($pollInterval, self::HISTORY_GRACE_SECONDS - ($now - $missingSince));
+                }
+                $this->waitSleep(min($pollInterval, $remaining));
+            }
+        } catch (\Throwable $e) {
+            return $this->displayTaskActionResult($input, $output, [
+                'task_id' => $taskId,
+                'outcome' => 'error',
+                'message' => $e->getMessage(),
+            ], self::FAILURE);
+        } finally {
+            $this->waiting = false;
+        }
+    }
+
+    /** @param array<string, mixed> $task */
+    private function finishWait(
+        InputInterface $input,
+        OutputInterface $output,
+        int $taskId,
+        string $outcome,
+        int $exitCode,
+        array $task,
+        bool $isHistory,
+        float $started
+    ): int {
+        return $this->displayTaskActionResult($input, $output, [
+            'task_id' => $taskId,
+            'outcome' => $outcome,
+            'status_id' => $task === [] ? null : $this->getTaskNumericField($task, 'status_id'),
+            'is_history' => $isHistory,
+            'error_code' => $this->getTaskNumericField($task, 'error_code'),
+            'message' => $this->getTaskStringField($task, 'message'),
+            'elapsed_seconds' => round($this->waitClock() - $started, 3),
+        ], $exitCode);
+    }
+
+    /** @param array<string, int|float|string|bool|null> $result */
+    private function displayTaskActionResult(InputInterface $input, OutputInterface $output, array $result, int $exitCode): int
+    {
+        $result['exit_code'] = $exitCode;
+        if ($this->getStringOption($input, 'format') === 'json') {
+            $output->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        } else {
+            $rows = [];
+            foreach ($result as $key => $value) {
+                $rows[] = [$key, is_bool($value) ? ($value ? 'yes' : 'no') : (string) $value];
+            }
+            $this->io()->table(['Property', 'Value'], $rows);
+        }
+        return $exitCode;
+    }
+
+    protected function waitClock(): float
+    {
+        return hrtime(true) / 1_000_000_000;
+    }
+
+    protected function waitSleep(float $seconds): void
+    {
+        usleep((int) ceil($seconds * 1_000_000));
+    }
+
+    /** @return list<int> */
+    public function getSubscribedSignals(): array
+    {
+        return extension_loaded('pcntl') ? [SIGINT, SIGTERM] : [];
+    }
+
+    public function handleSignal(int $signal, int|false $previousExitCode = 0): int|false
+    {
+        if ($this->waiting) {
+            $this->waitSignal = $signal;
+            return false;
+        }
+        return 128 + $signal;
     }
 
     private function listTasks(InputInterface $input): int
@@ -1171,6 +1412,8 @@ HELP
             'show <id> : Show details for a specific task',
             'stats : Show queue statistics',
             'history : Show completed/cancelled/failed tasks history',
+            'retry <id> : Requeue one failed active task (--dry-run, --yes)',
+            'wait <id> : Wait for task completion (--timeout, --interval)',
         ]);
 
         $this->io()->section('Examples');

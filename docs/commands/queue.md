@@ -18,6 +18,8 @@ kvs queue <action> [id] [options]
 | `show` | Show details for a specific task |
 | `stats` | Show queue statistics |
 | `history` | Show completed/cancelled/failed task history |
+| `retry <id>` | Requeue one failed task from the active queue |
+| `wait <id>` | Wait for a task to reach a terminal state |
 
 ## Options
 
@@ -25,11 +27,73 @@ kvs queue <action> [id] [options]
 |--------|-------------|
 | `--status=<status>` | Filter by task status. Active queue values differ from history values. |
 | `--type=<id>` | Filter by task type ID |
+| `--error-code=<id>` | Filter by native KVS task error code |
 | `--video=<id>` | Filter by video ID |
 | `--album=<id>` | Filter by album ID |
 | `--server=<id>` | Filter by conversion server ID |
 | `--limit=<n>` | Number of results (default: 20) |
-| `--format=<format>` | Output format: `table`, `csv`, `json`, `yaml`, `count` |
+| `--format=<format>` | Read actions: `table`, `csv`, `json`, `yaml`, `count`. Retry and wait: `table`, `json`. |
+| `--dry-run` | Retry only: preview the restart without changing the database or logs |
+| `--yes`, `-y` | Retry only: skip confirmation; required for unattended or JSON retries |
+| `--timeout=<seconds>` | Wait only: non-negative integer, default `300`; `0` checks once |
+| `--interval=<seconds>` | Wait only: polling interval from `0.1` to `60`, default `1` |
+
+List filters, `--fields`, and `--no-truncate` are not accepted by retry or wait.
+
+## Retry a failed task
+
+```bash
+kvs queue retry 123 --dry-run
+kvs queue retry 123 --yes --format=json
+kvs queue wait 123 --timeout=1800 --format=json
+```
+
+Retry accepts exactly one task ID. It refuses pending, processing, missing, and
+archived tasks, including archived failures. Fix the underlying conversion or
+storage problem before retrying.
+
+The restart follows the native KVS admin behavior: failed associated content
+returns to processing, the task returns to pending, the previous server moves to
+`last_server_id`, `times_restarted` increases, and the task message is cleared.
+The payload, priority, timestamps, and previous error code are preserved, as in
+KVS. Task and content logs and the failed-task notification are updated too.
+
+Retry requires writable KVS task/content logs and InnoDB tables for the affected
+rows. Changes are committed together; a log or database error rolls back the
+restart. Run the CLI as a user that can write the installation's existing logs.
+Concurrent CLI retries are serialized with a database advisory lock so the
+shared failed-task count stays consistent. A busy retry waits up to ten seconds
+before returning an error without changing the task.
+The JSON response describes the committed restart, not conversion completion:
+workers may immediately claim the task. Use `wait` for the final result.
+
+## Wait for completion
+
+```bash
+kvs queue wait 123 --timeout=600 --interval=0.5
+kvs queue wait 123 --timeout=0 --format=json
+```
+
+Wait checks both the active queue and task history. It tolerates a short gap of
+up to two seconds while KVS moves a task between them. It does not run cron,
+restart a task, or change task state. A timeout or Ctrl+C stops the CLI only;
+the KVS task continues independently. Polling never sleeps beyond the timeout.
+
+| Exit code | Result |
+|-----------|--------|
+| `0` | Completed successfully |
+| `1` | Task failed, invalid input/state, or another command error |
+| `2` | Task not found in the active queue or history |
+| `3` | Task was cancelled |
+| `124` | Timeout while the task remained pending or processing |
+| `130` | Interrupted by SIGINT |
+| `143` | Interrupted by SIGTERM |
+
+Retry and wait emit one JSON object when `--format=json` is used. Wait includes
+`task_id`, `outcome`, `status_id`, `is_history`, `error_code`, `message`,
+`elapsed_seconds`, and `exit_code`. Native error details are retained on failure.
+Retry returns exit code `0` after a restart, preview, or declined confirmation,
+and `1` on failure; its `outcome` distinguishes these results.
 
 ## Active Queue Status Values
 
@@ -88,15 +152,15 @@ kvs queue <action> [id] [options]
 
 | Code | Error |
 |------|-------|
-| 1 | General Failure |
-| 2 | Download Failed |
-| 3 | Conversion Failed |
-| 4 | Upload Failed |
-| 5 | File System Error |
-| 6 | Format Error |
-| 7 | Manual Cancellation |
-| 8 | Plugin Error |
-| 9 | Server Error |
+| 1 | Database consistency error |
+| 2 | Conversion server connection error |
+| 3 | Unexpected error |
+| 4 | Storage server connection error |
+| 5 | Filesystem error |
+| 6 | Unexpected error |
+| 7 | Conversion error |
+| 8 | Screenshots error |
+| 9 | Source file error |
 
 ## Examples
 

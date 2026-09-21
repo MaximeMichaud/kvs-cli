@@ -85,7 +85,7 @@ class CompletionCommandTest extends TestCase
         $this->assertStringContainsString('user:purge', $bashOutput);
         $this->assertStringContainsString('migrate:scan', $bashOutput);
         $this->assertStringContainsString('local video_actions="list show delete stats"', $bashOutput);
-        $this->assertStringContainsString('local queue_actions="list show stats history help-action"', $bashOutput);
+        $this->assertStringContainsString('local queue_actions="list show stats history retry wait help-action"', $bashOutput);
         $this->assertStringContainsString(
             'local server_actions="list show enable disable activate deactivate stats group weights set-weights"',
             $bashOutput

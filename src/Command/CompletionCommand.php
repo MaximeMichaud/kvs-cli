@@ -190,7 +190,7 @@ _kvs_complete() {
     local playlist_actions="list show create add remove delete"
     local plugin_actions="list show path status"
     local config_actions="list get set edit"
-    local queue_actions="list show stats history help-action"
+    local queue_actions="list show stats history retry wait help-action"
     local server_actions="list show enable disable activate deactivate stats group weights set-weights"
     local conversion_actions="list show enable disable activate deactivate debug-on debug-off log config stats"
     local email_actions="show test set log templates"
@@ -529,7 +529,7 @@ migrate:package|package|migrate:import|import|migrate:to-docker|to-docker)
                     _arguments '1:action:(list get set edit)'
                     ;;
                 system:queue|queue)
-                    _arguments '1:action:(list show stats history help-action)'
+                    _arguments '1:action:(list show stats history retry wait help-action)'
                     ;;
                 system:server|server|servers)
                     _arguments '1:action:(list show enable disable activate deactivate stats group weights set-weights)'
@@ -714,7 +714,7 @@ complete -c kvs -n "__fish_seen_subcommand_from content:dvd dvd dvds channel cha
 complete -c kvs -n "__fish_seen_subcommand_from content:playlist playlist playlists" -a "list show create add remove delete"
 complete -c kvs -n "__fish_seen_subcommand_from plugin plugins plug" -a "list show path status"
 complete -c kvs -n "__fish_seen_subcommand_from config conf cfg" -a "list get set edit"
-complete -c kvs -n "__fish_seen_subcommand_from system:queue queue" -a "list show stats history help-action"
+complete -c kvs -n "__fish_seen_subcommand_from system:queue queue" -a "list show stats history retry wait help-action"
 complete -c kvs -n "__fish_seen_subcommand_from system:server server servers" -a "list show enable disable activate deactivate stats group"
 complete -c kvs -n "__fish_seen_subcommand_from system:server server servers" -a "weights set-weights"
 complete -c kvs -n "__fish_seen_subcommand_from system:conversion conversion" -a "list show enable disable activate deactivate"
