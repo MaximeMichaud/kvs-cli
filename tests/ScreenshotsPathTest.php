@@ -182,6 +182,344 @@ class ScreenshotsPathTest extends TestCase
         }
     }
 
+    public function testGenerateUsesKvsTmpSourceVideo(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+    }
+
+    public function testGenerateFallsBackToKvsTmp2SourceVideo(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp2']);
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+    }
+
+    public function testGeneratePrefersKvsTmpSourceVideoOverTmp2(): void
+    {
+        $ffprobeScript = <<<'SH'
+#!/bin/sh
+last=''
+for arg in "$@"; do
+  last="$arg"
+done
+case "$last" in
+  */1234.tmp)
+    echo '12.0'
+    exit 0
+    ;;
+esac
+exit 1
+SH;
+
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['1234.tmp', '1234.tmp2'],
+            $ffprobeScript
+        );
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+    }
+
+    public function testGenerateRejectsZeroByteFfmpegOutput(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['1234.tmp'],
+            ffmpegScript: $this->createZeroByteFfmpegScript()
+        );
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Failed to generate 1 screenshots', $tester->getDisplay());
+        $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/1.jpg');
+    }
+
+    public function testGenerateRefusesExistingScreenshotSymlinkWithoutChangingItsTarget(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath, 0755, true);
+        $outsideFile = $this->tempDir . '/outside-generate.jpg';
+        file_put_contents($outsideFile, 'outside screenshot');
+        $this->assertTrue(symlink($outsideFile, $screenshotsPath . '/1.jpg'));
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('symbolic link', $tester->getDisplay());
+        $this->assertSame('outside screenshot', file_get_contents($outsideFile));
+        $this->assertTrue(is_link($screenshotsPath . '/1.jpg'));
+    }
+
+    public function testGeneratePublishesMatchingImagesAndPreservesOtherFiles(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath, 0755, true);
+        file_put_contents($screenshotsPath . '/1.jpg', 'old first image');
+        file_put_contents($screenshotsPath . '/2.jpg', 'retained second image');
+        file_put_contents($screenshotsPath . '/info.dat', 'retained metadata');
+
+        $tester->execute(['action' => 'generate', 'video_id' => '1234', '--count' => '1']);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('jpg', file_get_contents($screenshotsPath . '/1.jpg'));
+        $this->assertSame('retained second image', file_get_contents($screenshotsPath . '/2.jpg'));
+        $this->assertSame('retained metadata', file_get_contents($screenshotsPath . '/info.dat'));
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testGenerateKeepsAllExistingImagesWhenLaterFrameFails(): void
+    {
+        $ffmpeg = <<<'SH'
+#!/bin/sh
+previous=''
+for arg in "$@"; do
+  if [ "$arg" = '-y' ]; then
+    case "$previous" in
+      */1.jpg) printf 'new image' > "$previous"; exit 0 ;;
+      *) exit 1 ;;
+    esac
+  fi
+  previous="$arg"
+done
+exit 1
+SH;
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp'], ffmpegScript: $ffmpeg);
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath, 0755, true);
+        file_put_contents($screenshotsPath . '/1.jpg', 'old first image');
+        file_put_contents($screenshotsPath . '/2.jpg', 'old second image');
+
+        $tester->execute(['action' => 'generate', 'video_id' => '1234', '--count' => '2']);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('old first image', file_get_contents($screenshotsPath . '/1.jpg'));
+        $this->assertSame('old second image', file_get_contents($screenshotsPath . '/2.jpg'));
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testGenerateRefusesExistingScreenshotHardLinkWithoutChangingSharedContent(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath, 0755, true);
+        $outsideFile = $this->tempDir . '/outside-generate-hardlink.jpg';
+        file_put_contents($outsideFile, 'outside screenshot');
+        $this->assertTrue(link($outsideFile, $screenshotsPath . '/1.jpg'));
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Refusing screenshots', $tester->getDisplay());
+        $this->assertSame('outside screenshot', file_get_contents($outsideFile));
+        $this->assertSame('outside screenshot', file_get_contents($screenshotsPath . '/1.jpg'));
+        $this->assertSame(2, lstat($outsideFile)['nlink'] ?? null);
+    }
+
+    public function testGenerateRejectsSymbolicLinkCreatedByFfmpegWithoutChangingItsTarget(): void
+    {
+        $outsideFile = $this->tempDir . '/outside-generated-link.jpg';
+        file_put_contents($outsideFile, 'outside screenshot');
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['1234.tmp'],
+            ffmpegScript: $this->createSymlinkFfmpegScript($outsideFile)
+        );
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('non-regular output', $tester->getDisplay());
+        $this->assertSame('outside screenshot', file_get_contents($outsideFile));
+        $this->assertDirectoryDoesNotExist($sourcesPath . '/1000/1234/screenshots');
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testGenerateRejectsFifoOutputWithoutBlocking(): void
+    {
+        $ffmpegScript = <<<'SH'
+#!/bin/sh
+previous=''
+for arg in "$@"; do
+  if [ "$arg" = '-y' ]; then
+    mkfifo "$previous"
+    exit 0
+  fi
+  previous="$arg"
+done
+exit 1
+SH;
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['1234.tmp'],
+            ffmpegScript: $ffmpegScript
+        );
+
+        $tester->execute([
+            'action' => 'generate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('non-regular output', $tester->getDisplay());
+        $this->assertDirectoryDoesNotExist($sourcesPath . '/1000/1234/screenshots');
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testRegenerateKeepsExistingScreenshotsWhenFfmpegCreatesZeroByteOutput(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['1234.tmp'],
+            ffmpegScript: $this->createZeroByteFfmpegScript()
+        );
+
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath, 0755, true);
+        file_put_contents($screenshotsPath . '/2.jpg', 'old source screenshot');
+
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Existing screenshots were not changed.', $tester->getDisplay());
+        $this->assertSame('old source screenshot', file_get_contents($screenshotsPath . '/2.jpg'));
+        $this->assertFileDoesNotExist($screenshotsPath . '/1.jpg');
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-regenerate-*') ?: []);
+    }
+
+    public function testRegenerateRefusesScreenshotSymlinkWithoutDeletingItsTarget(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath, 0755, true);
+        $outsideFile = $this->tempDir . '/outside-regenerate.jpg';
+        file_put_contents($outsideFile, 'outside screenshot');
+        $this->assertTrue(symlink($outsideFile, $screenshotsPath . '/1.jpg'));
+
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('symbolic link', $tester->getDisplay());
+        $this->assertSame('outside screenshot', file_get_contents($outsideFile));
+        $this->assertTrue(is_link($screenshotsPath . '/1.jpg'));
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testRegenerateRefusesSymlinkedScreenshotsDirectoryWithoutChangingItsTarget(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+
+        $outsideDirectory = $this->tempDir . '/outside-screenshots';
+        mkdir($outsideDirectory, 0755, true);
+        file_put_contents($outsideDirectory . '/1.jpg', 'outside screenshot');
+        $this->assertTrue(symlink($outsideDirectory, $sourcesPath . '/1000/1234/screenshots'));
+
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('symbolic link', $tester->getDisplay());
+        $this->assertSame('outside screenshot', file_get_contents($outsideDirectory . '/1.jpg'));
+        $this->assertTrue(is_link($sourcesPath . '/1000/1234/screenshots'));
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testRegenerateRejectsSymbolicLinkCreatedByFfmpegWithoutMovingItsTarget(): void
+    {
+        $outsideFile = $this->tempDir . '/outside-' . str_repeat('x', 160) . '.jpg';
+        file_put_contents($outsideFile, 'outside screenshot');
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['1234.tmp'],
+            ffmpegScript: $this->createSymlinkFfmpegScript($outsideFile)
+        );
+
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '1',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('non-regular output', $tester->getDisplay());
+        $this->assertSame('outside screenshot', file_get_contents($outsideFile));
+        $this->assertDirectoryDoesNotExist($sourcesPath . '/1000/1234/screenshots');
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
+    public function testRegenerateRestoresExistingScreenshotsWhenPublicationFails(): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
+
+        $screenshotsPath = $sourcesPath . '/1000/1234/screenshots';
+        mkdir($screenshotsPath . '/2.jpg', 0755, true);
+        file_put_contents($screenshotsPath . '/2.jpg/keep.txt', 'keep');
+        file_put_contents($screenshotsPath . '/3.jpg', 'old source screenshot');
+
+        $tester->execute([
+            'action' => 'regenerate',
+            'video_id' => '1234',
+            '--count' => '2',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Failed to replace screenshot', $tester->getDisplay());
+        $this->assertSame('old source screenshot', file_get_contents($screenshotsPath . '/3.jpg'));
+        $this->assertFileDoesNotExist($screenshotsPath . '/1.jpg');
+        $this->assertDirectoryExists($screenshotsPath . '/2.jpg');
+        $this->assertSame([], glob($sourcesPath . '/1000/1234/.screenshots-*') ?: []);
+    }
+
     public function testRegenerateReplacesSourceScreenshotsWithoutDeletingGeneratedFormats(): void
     {
         [$ffmpeg, $ffprobe] = $this->createMockVideoTools();
@@ -344,5 +682,70 @@ SH
         chmod($ffmpeg, 0755);
 
         return [$ffmpeg, $ffprobe];
+    }
+
+    /**
+     * @param list<string> $sourceFilenames
+     * @return array{0: CommandTester, 1: string}
+     */
+    private function createGenerateFixture(
+        array $sourceFilenames,
+        ?string $ffprobeScript = null,
+        ?string $ffmpegScript = null
+    ): array {
+        [$ffmpeg, $ffprobe] = $this->createMockVideoTools($ffmpegScript, $ffprobeScript);
+
+        $sourcesPath = $this->tempDir . '/contents/videos_sources';
+        $videoPath = $sourcesPath . '/1000/1234';
+        mkdir($videoPath, 0755, true);
+        foreach ($sourceFilenames as $sourceFilename) {
+            file_put_contents($videoPath . '/' . $sourceFilename, 'video');
+        }
+
+        TestHelper::createMockSetupConfig($this->tempDir, [
+            'content_path_videos_sources' => $sourcesPath,
+            'content_path_videos_screenshots' => $this->tempDir . '/contents/videos_screenshots',
+            'ffmpeg_path' => $ffmpeg,
+            'ffprobe_path' => $ffprobe,
+        ]);
+
+        $command = new ScreenshotsCommand(new Configuration(['path' => $this->tempDir]));
+
+        return [new CommandTester($command), $sourcesPath];
+    }
+
+    private function createZeroByteFfmpegScript(): string
+    {
+        return <<<'SH'
+#!/bin/sh
+previous=''
+for arg in "$@"; do
+  if [ "$arg" = '-y' ]; then
+    : > "$previous"
+    exit 0
+  fi
+  previous="$arg"
+done
+exit 1
+SH;
+    }
+
+    private function createSymlinkFfmpegScript(string $target): string
+    {
+        return sprintf(
+            <<<'SH'
+#!/bin/sh
+previous=''
+for arg in "$@"; do
+  if [ "$arg" = '-y' ]; then
+    ln -s -- %s "$previous"
+    exit 0
+  fi
+  previous="$arg"
+done
+exit 1
+SH,
+            escapeshellarg($target)
+        );
     }
 }

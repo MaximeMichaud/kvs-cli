@@ -333,6 +333,10 @@ PHP;
      */
     public static function removeDir(string $dir): void
     {
+        if (is_link($dir)) {
+            unlink($dir);
+            return;
+        }
         if (!is_dir($dir)) {
             return;
         }

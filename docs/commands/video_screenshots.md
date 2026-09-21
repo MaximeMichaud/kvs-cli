@@ -39,7 +39,7 @@ kvs video:screenshots generate <video_id> [options]
 
 ### regenerate
 
-Delete existing screenshots and generate new ones.
+Generate a complete replacement before replacing existing source screenshots.
 
 ```bash
 kvs video:screenshots regenerate <video_id> [options]
@@ -97,6 +97,17 @@ kvs video:screenshots generate 123 --count=20
 
 This writes source overview screenshots to `contents/videos_sources/<bucket>/<video_id>/screenshots/`
 and requires FFmpeg and FFprobe to be configured.
+The source lookup supports KVS `<video_id>.tmp` and `<video_id>.tmp2` files,
+followed by conventional video filenames.
+
+New images are generated in a private temporary directory and published only
+when every image succeeds. Empty files, symbolic links, hard links, and special
+files are refused. Existing images remain unchanged if generation fails;
+a failed replacement restores the images already moved aside.
+
+`generate` replaces matching numbered images and keeps other existing images.
+`regenerate` replaces all source images. Neither action updates KVS database
+metadata or schedules conversion of the resized formats.
 
 ### Regenerate Screenshots
 

@@ -17,6 +17,10 @@ use function KVS\CLI\Utils\format_bytes;
 )]
 class ScreenshotsCommand extends BaseCommand
 {
+    private const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'avif'];
+    private const FILE_TYPE_MASK = 0170000;
+    private const FILE_TYPE_DIRECTORY = 0040000;
+    private const FILE_TYPE_REGULAR = 0100000;
     private const OUTPUT_FORMATS = ['table', 'csv', 'json', 'yaml', 'count'];
     private const GENERATE_UNSUPPORTED_OPTIONS = ['fields', 'format', 'no-truncate'];
     private const LOGICAL_LIST_DEFAULT_FIELDS = ['index', 'filename', 'formats', 'dimensions'];
@@ -171,10 +175,9 @@ HELP
         }
 
         // Scan for screenshot files (common extensions)
-        $extensions = ['jpg', 'jpeg', 'png', 'webp', 'avif'];
         $files = [];
 
-        $files = $this->findImageFiles($screenshotsPath, $extensions);
+        $files = $this->findImageFiles($screenshotsPath, self::IMAGE_EXTENSIONS);
 
         if ($files === []) {
             if (!$this->ensureVideoIsManageableInKvs($videoId)) {
@@ -523,11 +526,31 @@ HELP
         }
 
         $screenshotsPath = $plan['screenshots_path'];
-        if (!$this->ensureDirectoryExists($screenshotsPath)) {
+        if (!$this->validateScreenshotMutationPath($plan['sources_path'], $screenshotsPath)) {
             return self::FAILURE;
         }
 
-        return $this->generateScreenshotsToDirectory($plan, $screenshotsPath);
+        $stagingPath = $this->createTemporarySiblingDirectory($screenshotsPath, 'generate');
+        if ($stagingPath === null) {
+            return self::FAILURE;
+        }
+
+        try {
+            $result = $this->generateScreenshotsToDirectory($plan, $stagingPath);
+            if ($result !== self::SUCCESS) {
+                return $result;
+            }
+
+            if (!$this->validateScreenshotMutationPath($plan['sources_path'], $screenshotsPath)) {
+                return self::FAILURE;
+            }
+
+            return $this->publishScreenshotsFromStaging($stagingPath, $screenshotsPath, false) !== null
+                ? self::SUCCESS
+                : self::FAILURE;
+        } finally {
+            $this->removeDirectoryTree($stagingPath);
+        }
     }
 
     private function regenerateScreenshots(InputInterface $input, ?string $videoId): int
@@ -558,6 +581,10 @@ HELP
         }
 
         $screenshotsPath = $plan['screenshots_path'];
+        if (!$this->validateScreenshotMutationPath($plan['sources_path'], $screenshotsPath)) {
+            return self::FAILURE;
+        }
+
         $stagingPath = $this->createTemporarySiblingDirectory($screenshotsPath, 'regenerate');
         if ($stagingPath === null) {
             return self::FAILURE;
@@ -571,7 +598,11 @@ HELP
             }
 
             $this->io()->text('Replacing existing screenshots...');
-            $deleted = $this->replaceScreenshotsWithStaging($stagingPath, $screenshotsPath);
+            if (!$this->validateScreenshotMutationPath($plan['sources_path'], $screenshotsPath)) {
+                return self::FAILURE;
+            }
+
+            $deleted = $this->publishScreenshotsFromStaging($stagingPath, $screenshotsPath, true);
             if ($deleted === null) {
                 return self::FAILURE;
             }
@@ -584,7 +615,14 @@ HELP
     }
 
     /**
-     * @return array{ffmpeg_path: string, video_file: string, screenshots_path: string, duration: float, count: int}|null
+     * @return array{
+     *     ffmpeg_path: string,
+     *     video_file: string,
+     *     sources_path: string,
+     *     screenshots_path: string,
+     *     duration: float,
+     *     count: int
+     * }|null
      */
     private function prepareScreenshotGeneration(string $videoId, int $count): ?array
     {
@@ -612,6 +650,9 @@ HELP
 
         $videoPath = $this->getVideoContentDir($videoSourcesPath, $videoId);
         $screenshotsPath = $videoPath . '/screenshots';
+        if (!$this->validateScreenshotMutationPath($videoSourcesPath, $screenshotsPath)) {
+            return null;
+        }
 
         // Find video source file
         $videoFile = $this->findVideoFile($videoPath);
@@ -631,6 +672,7 @@ HELP
         return [
             'ffmpeg_path' => $ffmpegPath,
             'video_file' => $videoFile,
+            'sources_path' => $videoSourcesPath,
             'screenshots_path' => $screenshotsPath,
             'duration' => $duration,
             'count' => $count,
@@ -638,7 +680,14 @@ HELP
     }
 
     /**
-     * @param array{ffmpeg_path: string, video_file: string, screenshots_path: string, duration: float, count: int} $plan
+     * @param array{
+     *     ffmpeg_path: string,
+     *     video_file: string,
+     *     sources_path: string,
+     *     screenshots_path: string,
+     *     duration: float,
+     *     count: int
+     * } $plan
      */
     private function generateScreenshotsToDirectory(array $plan, string $screenshotsPath): int
     {
@@ -659,6 +708,12 @@ HELP
             $filename = "$i.jpg";
             $outputFile = "$screenshotsPath/$filename";
 
+            if ($this->getPathStat($outputFile) !== false) {
+                $failed++;
+                $this->io()->text("  ✗ Refused pre-existing output $filename");
+                continue;
+            }
+
             $cmd = sprintf(
                 '%s -ss %.2f -i %s -vframes 1 -q:v 2 %s -y 2>&1',
                 escapeshellarg($ffmpegPath),
@@ -667,14 +722,26 @@ HELP
                 escapeshellarg($outputFile)
             );
 
+            $output = [];
+            $returnCode = 0;
             exec($cmd, $output, $returnCode);
+            clearstatcache(true, $outputFile);
+            $outputStat = $this->getPathStat($outputFile);
+            $isRegularOutput = $this->isSafeRegularFileStat($outputStat, false);
+            $hasOutputContent = is_array($outputStat)
+                && $outputStat['size'] > 0;
 
-            if ($returnCode === 0 && file_exists($outputFile)) {
+            if ($returnCode === 0 && $isRegularOutput && $hasOutputContent) {
                 $success++;
                 $this->io()->text("  ✓ Generated $filename");
             } else {
+                $nonRegularOutput = $outputStat !== false && !$isRegularOutput;
+                if ($outputStat !== false && !$this->isDirectoryStat($outputStat)) {
+                    @unlink($outputFile);
+                }
                 $failed++;
-                $this->io()->text("  ✗ Failed to generate $filename");
+                $suffix = $nonRegularOutput ? ' (non-regular output)' : '';
+                $this->io()->text("  ✗ Failed to generate $filename$suffix");
             }
         }
 
@@ -696,6 +763,14 @@ HELP
     private function findVideoFile(string $videoPath): ?string
     {
         $extensions = ['mp4', 'webm', 'mkv', 'avi', 'flv', 'm4v'];
+
+        $videoId = basename(rtrim($videoPath, '/'));
+        foreach (["$videoId.tmp", "$videoId.tmp2"] as $filename) {
+            $sourceFile = "$videoPath/$filename";
+            if (is_file($sourceFile)) {
+                return $sourceFile;
+            }
+        }
 
         // Prefer source file
         foreach ($extensions as $ext) {
@@ -741,7 +816,8 @@ HELP
      */
     private function findImageFiles(string $path, array $extensions): array
     {
-        if (!is_dir($path)) {
+        $rootStat = $this->getPathStat($path);
+        if (!$this->isDirectoryStat($rootStat)) {
             return [];
         }
 
@@ -752,7 +828,13 @@ HELP
         );
 
         foreach ($iterator as $file) {
-            if (!$file instanceof \SplFileInfo || !$file->isFile()) {
+            if (!$file instanceof \SplFileInfo) {
+                continue;
+            }
+
+            $filePath = $file->getPathname();
+            $fileStat = $this->getPathStat($filePath);
+            if (!$this->isRegularFileStat($fileStat)) {
                 continue;
             }
 
@@ -761,23 +843,75 @@ HELP
                 continue;
             }
 
-            $realPath = $file->getRealPath();
-            if (is_string($realPath)) {
-                $files[] = $realPath;
-            }
+            $files[] = $filePath;
         }
 
         return $files;
     }
 
-    private function ensureDirectoryExists(string $path): bool
+    /** @phpstan-impure */
+    private function validateScreenshotMutationPath(string $sourcesPath, string $screenshotsPath): bool
     {
-        if (is_dir($path)) {
-            return true;
+        $root = rtrim($sourcesPath, '/');
+        $prefix = $root . '/';
+        if ($root === '' || !str_starts_with($screenshotsPath, $prefix)) {
+            $this->io()->error('Screenshots path is outside the configured video sources directory');
+            return false;
         }
 
-        if (!mkdir($path, 0755, true)) {
+        if (!is_dir($root)) {
+            $this->io()->error("Video sources directory not found: $root");
+            return false;
+        }
+
+        $relative = substr($screenshotsPath, strlen($prefix));
+        $current = $root;
+        foreach (explode('/', $relative) as $component) {
+            if ($component === '' || $component === '.' || $component === '..') {
+                $this->io()->error('Screenshots path contains an unsafe component');
+                return false;
+            }
+
+            $current .= '/' . $component;
+            $stat = $this->getPathStat($current);
+            if ($stat === false) {
+                continue;
+            }
+            if (is_link($current)) {
+                $this->io()->error("Screenshots path contains a symbolic link: $current");
+                return false;
+            }
+            if (!$this->isDirectoryStat($stat)) {
+                $this->io()->error("Screenshots path component is not a directory: $current");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function ensureDirectoryExists(string $path): bool
+    {
+        $stat = $this->getPathStat($path);
+        if ($stat !== false) {
+            if ($this->isDirectoryStat($stat) && !is_link($path)) {
+                return true;
+            }
+
+            $kind = is_link($path) ? 'symbolic link' : 'non-directory entry';
+            $this->io()->error("Refusing screenshots directory $kind: $path");
+            return false;
+        }
+
+        $parentStat = $this->getPathStat(dirname($path));
+        if (!$this->isDirectoryStat($parentStat) || is_link(dirname($path)) || !@mkdir($path, 0755)) {
             $this->io()->error("Failed to create screenshots directory: $path");
+            return false;
+        }
+
+        $createdStat = $this->getPathStat($path);
+        if (!$this->isDirectoryStat($createdStat) || is_link($path)) {
+            $this->io()->error("Created screenshots path is unsafe: $path");
             return false;
         }
 
@@ -788,15 +922,25 @@ HELP
     private function createTemporarySiblingDirectory(string $path, string $purpose): ?string
     {
         $parent = dirname($path);
-        if (!is_dir($parent) && !mkdir($parent, 0755, true)) {
+        $parentStat = $this->getPathStat($parent);
+        if (!$this->isDirectoryStat($parentStat) || is_link($parent)) {
             $this->io()->error("Failed to create temporary screenshots parent directory: $parent");
             return null;
         }
 
         for ($i = 0; $i < 10; $i++) {
-            $suffix = str_replace('.', '', uniqid('', true));
+            try {
+                $suffix = bin2hex(random_bytes(12));
+            } catch (\Throwable) {
+                $this->io()->error('Failed to generate a private screenshots directory name');
+                return null;
+            }
             $candidate = $parent . '/.' . basename($path) . '-' . $purpose . '-' . $suffix;
-            if (@mkdir($candidate, 0700)) {
+            if (
+                @mkdir($candidate, 0700)
+                && $this->isDirectoryStat($this->getPathStat($candidate))
+                && !is_link($candidate)
+            ) {
                 return $candidate;
             }
         }
@@ -805,14 +949,35 @@ HELP
         return null;
     }
 
-    private function replaceScreenshotsWithStaging(string $stagingPath, string $screenshotsPath): ?int
-    {
-        $extensions = ['jpg', 'jpeg', 'png', 'webp', 'avif'];
-        $existingFiles = $this->findImageFiles($screenshotsPath, $extensions);
+    private function publishScreenshotsFromStaging(
+        string $stagingPath,
+        string $screenshotsPath,
+        bool $replaceAll
+    ): ?int {
         $backupPath = null;
+        $existingMoved = [];
         $generatedMoved = [];
 
         try {
+            $generatedFiles = $this->inspectScreenshotTree($stagingPath, true);
+            if ($generatedFiles === []) {
+                throw new \RuntimeException('No safe generated screenshots were found for publication');
+            }
+
+            $existingFiles = $this->inspectScreenshotTree($screenshotsPath, false);
+            if (!$replaceAll) {
+                $generatedRelativePaths = [];
+                foreach ($generatedFiles as $file) {
+                    $generatedRelativePaths[$this->getRelativePath($stagingPath, $file)] = true;
+                }
+                $existingFiles = array_values(array_filter(
+                    $existingFiles,
+                    fn (string $file): bool => isset(
+                        $generatedRelativePaths[$this->getRelativePath($screenshotsPath, $file)]
+                    )
+                ));
+            }
+
             if ($existingFiles !== []) {
                 $backupPath = $this->createTemporarySiblingDirectory($screenshotsPath, 'backup');
                 if ($backupPath === null) {
@@ -820,122 +985,203 @@ HELP
                 }
 
                 foreach ($existingFiles as $file) {
-                    $this->moveFilePreservingRelativePath($file, $screenshotsPath, $backupPath);
+                    $existingMoved[] = $this->moveFilePreservingRelativePath(
+                        $file,
+                        $screenshotsPath,
+                        $backupPath
+                    );
                 }
 
                 $this->removeEmptyDirectories($screenshotsPath);
             }
 
-            if (!is_dir($screenshotsPath) && !mkdir($screenshotsPath, 0755, true)) {
-                throw new \RuntimeException("Failed to create screenshots directory: $screenshotsPath");
+            if (!$this->ensureDirectoryExists($screenshotsPath)) {
+                throw new \RuntimeException("Failed to prepare screenshots directory: $screenshotsPath");
             }
 
-            foreach ($this->findAllFiles($stagingPath) as $file) {
+            foreach ($generatedFiles as $file) {
                 $generatedMoved[] = $this->moveFilePreservingRelativePath($file, $stagingPath, $screenshotsPath);
             }
 
             if ($backupPath !== null) {
-                $this->removeDirectoryTree($backupPath);
+                if (!$this->removeDirectoryTree($backupPath)) {
+                    $this->io()->warning("Could not remove screenshots backup directory: $backupPath");
+                }
             }
 
             return count($existingFiles);
         } catch (\RuntimeException $exception) {
+            $rollbackOk = true;
             foreach ($generatedMoved as $relativePath) {
-                @unlink($screenshotsPath . '/' . $relativePath);
+                $publishedPath = $screenshotsPath . '/' . $relativePath;
+                $publishedStat = $this->getPathStat($publishedPath);
+                if (
+                    $publishedStat !== false
+                    && (!$this->isRegularFileStat($publishedStat) || !@unlink($publishedPath))
+                ) {
+                    $rollbackOk = false;
+                }
             }
 
             if ($backupPath !== null) {
-                $this->restoreFilesFromDirectory($backupPath, $screenshotsPath);
-                $this->removeDirectoryTree($backupPath);
+                $restored = $this->restoreFilesFromDirectory($backupPath, $screenshotsPath, $existingMoved);
+                $rollbackOk = $restored && $rollbackOk;
+                if ($restored) {
+                    $this->removeDirectoryTree($backupPath);
+                } else {
+                    $this->io()->error("Screenshot rollback is incomplete; backup retained at: $backupPath");
+                }
             }
 
             $this->io()->error($exception->getMessage());
+            if (!$rollbackOk) {
+                $this->io()->error('Existing screenshots could not be restored completely');
+            }
             return null;
         }
     }
 
-    private function moveFilePreservingRelativePath(string $file, string $sourceBasePath, string $targetBasePath): string
-    {
+    private function moveFilePreservingRelativePath(
+        string $file,
+        string $sourceBasePath,
+        string $targetBasePath
+    ): string {
+        $sourceStat = $this->getPathStat($file);
+        if (!$this->isSafeRegularFileStat($sourceStat, false)) {
+            throw new \RuntimeException("Refusing non-regular screenshot source: $file");
+        }
+
         $relativePath = $this->getRelativePath($sourceBasePath, $file);
         $target = $targetBasePath . '/' . $relativePath;
         $targetDir = dirname($target);
 
-        if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true)) {
+        if (!$this->ensureSafeRelativeDirectory($targetBasePath, dirname($relativePath))) {
             throw new \RuntimeException("Failed to create screenshots directory: $targetDir");
         }
 
-        if (file_exists($target) && !unlink($target)) {
-            throw new \RuntimeException("Failed to replace screenshot: $target");
+        $targetStat = $this->getPathStat($target);
+        if ($targetStat !== false) {
+            if ($this->isDirectoryStat($targetStat) || !@unlink($target)) {
+                throw new \RuntimeException("Failed to replace screenshot: $target");
+            }
         }
 
-        if (!rename($file, $target)) {
+        if (!@rename($file, $target)) {
             throw new \RuntimeException("Failed to move screenshot into place: $target");
         }
 
         return $relativePath;
     }
 
-    private function restoreFilesFromDirectory(string $sourceBasePath, string $targetBasePath): void
-    {
-        foreach ($this->findAllFiles($sourceBasePath) as $file) {
+    /**
+     * @param list<string> $relativePaths
+     */
+    private function restoreFilesFromDirectory(
+        string $sourceBasePath,
+        string $targetBasePath,
+        array $relativePaths
+    ): bool {
+        $success = true;
+        foreach ($relativePaths as $relativePath) {
+            $file = $sourceBasePath . '/' . $relativePath;
             try {
                 $this->moveFilePreservingRelativePath($file, $sourceBasePath, $targetBasePath);
-            } catch (\RuntimeException) {
+            } catch (\RuntimeException $exception) {
+                $this->io()->error($exception->getMessage());
+                $success = false;
             }
         }
+
+        return $success;
     }
 
     /**
      * @return list<string>
      */
-    private function findAllFiles(string $path): array
+    private function inspectScreenshotTree(string $path, bool $imagesOnly): array
     {
-        if (!is_dir($path)) {
+        $rootStat = $this->getPathStat($path);
+        if ($rootStat === false) {
             return [];
+        }
+        if (is_link($path)) {
+            throw new \RuntimeException("Refusing screenshots symbolic link: $path");
+        }
+        if (!$this->isDirectoryStat($rootStat)) {
+            throw new \RuntimeException("Refusing non-directory screenshots path: $path");
         }
 
         $files = [];
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS)
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
         );
 
         foreach ($iterator as $file) {
-            if (!$file instanceof \SplFileInfo || !$file->isFile()) {
+            if (!$file instanceof \SplFileInfo) {
                 continue;
             }
 
-            $realPath = $file->getRealPath();
-            if (is_string($realPath)) {
-                $files[] = $realPath;
+            $filePath = $file->getPathname();
+            $stat = $this->getPathStat($filePath);
+            if ($stat === false) {
+                throw new \RuntimeException("Screenshot entry disappeared during validation: $filePath");
             }
+            if ($this->isDirectoryStat($stat) && !is_link($filePath)) {
+                continue;
+            }
+            if (!$this->isSafeRegularFileStat($stat, false)) {
+                $kind = is_link($filePath) ? 'symbolic link' : 'non-regular entry';
+                throw new \RuntimeException("Refusing screenshots $kind: $filePath");
+            }
+
+            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+            if (!in_array($extension, self::IMAGE_EXTENSIONS, true)) {
+                if ($imagesOnly) {
+                    throw new \RuntimeException("Refusing unexpected generated screenshot entry: $filePath");
+                }
+                continue;
+            }
+
+            $files[] = $filePath;
         }
 
         return $files;
     }
 
-    private function removeEmptyDirectories(string $path): void
+    private function ensureSafeRelativeDirectory(string $basePath, string $relativeDirectory): bool
     {
-        if (!is_dir($path)) {
-            return;
+        if (!$this->ensureDirectoryExists($basePath)) {
+            return false;
+        }
+        if ($relativeDirectory === '.' || $relativeDirectory === '') {
+            return true;
         }
 
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-
-        foreach ($iterator as $file) {
-            if (!$file instanceof \SplFileInfo || !$file->isDir()) {
-                continue;
+        $current = rtrim($basePath, '/');
+        foreach (explode('/', $relativeDirectory) as $component) {
+            if ($component === '' || $component === '.' || $component === '..') {
+                return false;
             }
-
-            @rmdir($file->getPathname());
+            $current .= '/' . $component;
+            $stat = $this->getPathStat($current);
+            if ($stat === false) {
+                if (!@mkdir($current, 0755)) {
+                    return false;
+                }
+                $stat = $this->getPathStat($current);
+            }
+            if (!$this->isDirectoryStat($stat) || is_link($current)) {
+                return false;
+            }
         }
+
+        return true;
     }
 
-    private function removeDirectoryTree(string $path): void
+    private function removeEmptyDirectories(string $path): void
     {
-        if (!is_dir($path)) {
+        if (!$this->isDirectoryStat($this->getPathStat($path)) || is_link($path)) {
             return;
         }
 
@@ -949,21 +1195,111 @@ HELP
                 continue;
             }
 
-            if ($file->isDir()) {
-                @rmdir($file->getPathname());
+            $entryPath = $file->getPathname();
+            if ($this->isDirectoryStat($this->getPathStat($entryPath)) && !is_link($entryPath)) {
+                @rmdir($entryPath);
+            }
+        }
+    }
+
+    private function removeDirectoryTree(string $path): bool
+    {
+        $rootStat = $this->getPathStat($path);
+        if ($rootStat === false) {
+            return true;
+        }
+        if (!$this->isDirectoryStat($rootStat) || is_link($path)) {
+            return @unlink($path);
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file instanceof \SplFileInfo) {
                 continue;
             }
 
-            @unlink($file->getPathname());
+            $entryPath = $file->getPathname();
+            $entryStat = $this->getPathStat($entryPath);
+            if ($entryStat === false) {
+                continue;
+            }
+            if ($this->isDirectoryStat($entryStat) && !is_link($entryPath)) {
+                @rmdir($entryPath);
+            } else {
+                @unlink($entryPath);
+            }
         }
 
-        @rmdir($path);
+        return @rmdir($path) || $this->getPathStat($path) === false;
     }
 
     private function getRelativePath(string $basePath, string $file): string
     {
-        $relative = substr($file, strlen(rtrim($basePath, '/')) + 1);
-        return $relative !== '' ? $relative : basename($file);
+        $prefix = rtrim($basePath, '/') . '/';
+        if (!str_starts_with($file, $prefix)) {
+            throw new \RuntimeException("Screenshot path is outside its expected directory: $file");
+        }
+
+        $relative = substr($file, strlen($prefix));
+        $components = explode('/', $relative);
+        if (
+            $relative === ''
+            || in_array('', $components, true)
+            || in_array('.', $components, true)
+            || in_array('..', $components, true)
+        ) {
+            throw new \RuntimeException("Screenshot has an unsafe relative path: $file");
+        }
+
+        return $relative;
+    }
+
+    /**
+     * @return array{mode: int, nlink: int, size: int}|false
+     * @phpstan-impure
+     */
+    private function getPathStat(string $path): array|false
+    {
+        clearstatcache(true, $path);
+        $stat = @lstat($path);
+        if ($stat === false) {
+            return false;
+        }
+
+        return ['mode' => $stat['mode'], 'nlink' => $stat['nlink'], 'size' => $stat['size']];
+    }
+
+    /**
+     * @param array{mode: int, nlink?: int, size?: int}|false $stat
+     */
+    private function isRegularFileStat(array|false $stat): bool
+    {
+        return is_array($stat)
+            && (($stat['mode'] & self::FILE_TYPE_MASK) === self::FILE_TYPE_REGULAR);
+    }
+
+    /**
+     * @param array{mode: int, nlink?: int, size?: int}|false $stat
+     */
+    private function isSafeRegularFileStat(array|false $stat, bool $requireContent = true): bool
+    {
+        return $this->isRegularFileStat($stat)
+            && isset($stat['nlink'], $stat['size'])
+            && $stat['nlink'] === 1
+            && (!$requireContent || $stat['size'] > 0);
+    }
+
+    /**
+     * @param array{mode: int, nlink?: int, size?: int}|false $stat
+     */
+    private function isDirectoryStat(array|false $stat): bool
+    {
+        return is_array($stat)
+            && (($stat['mode'] & self::FILE_TYPE_MASK) === self::FILE_TYPE_DIRECTORY);
     }
 
     /**
