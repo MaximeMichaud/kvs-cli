@@ -143,9 +143,26 @@ class CheckCommandTest extends TestCase
 
     public function testQuietOkOmitsEmptySectionHeaders(): void
     {
-        $this->tester->execute(['--quiet-ok' => true]);
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            "<?php \$config['memcache_server'] = '127.0.0.1'; \$config['memcache_port'] = 0;"
+        );
+        $command = new class (new Configuration(['path' => $this->tempDir])) extends CheckCommand {
+            protected function isDockerMode(): bool
+            {
+                return false;
+            }
 
-        $output = $this->tester->getDisplay();
+            protected function isExtensionLoaded(string $extension): bool
+            {
+                return true;
+            }
+        };
+        $command->setName('system:check');
+        $tester = new CommandTester($command);
+        $tester->execute(['--quiet-ok' => true]);
+
+        $output = $tester->getDisplay();
 
         $this->assertStringNotContainsString("PHP Extensions\n--------------", $output);
         $this->assertStringNotContainsString("IonCube\n-------", $output);

@@ -125,7 +125,7 @@ HELP
         };
     }
 
-    private function getInstallPath(string $shell): ?string
+    protected function getInstallPath(string $shell): ?string
     {
         $homeEnv = getenv('HOME');
         $home = is_string($homeEnv) ? $homeEnv : '/root';

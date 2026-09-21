@@ -50,7 +50,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
-          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, dom, filter, json
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, pdo_sqlite, dom, filter, json, gd, mysqli
           coverage: ${{ matrix.coverage && 'xdebug' || 'none' }}
           tools: composer:v2
         env:
@@ -58,6 +58,11 @@ jobs:
 
       - name: Validate composer.json
         run: composer validate --strict
+
+      - name: Install test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client fish zsh bash-completion
 
       - name: Get Composer cache directory
         id: composer-cache
@@ -94,7 +99,7 @@ jobs:
         run: composer coverage
 
       - name: Upload coverage to Codecov
-        if: matrix.coverage
+        if: matrix.coverage && !env.ACT
         uses: codecov/codecov-action@v6
         with:
           use_oidc: true

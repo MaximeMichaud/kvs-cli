@@ -31,24 +31,27 @@ class DockerDetectorTest extends TestCase
 
     public function testGetContainerPrefixReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->getContainerPrefix());
     }
 
     public function testIsKvsInDockerReturnsFalseWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertFalse($detector->isKvsInDocker());
     }
 
     public function testIsRunningReturnsFalseWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertFalse($detector->isRunning('php'));
         $this->assertFalse($detector->isRunning('mariadb'));
@@ -57,8 +60,9 @@ class DockerDetectorTest extends TestCase
 
     public function testGetContainerNameReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->getContainerName('php'));
         $this->assertNull($detector->getContainerName('mariadb'));
@@ -66,16 +70,18 @@ class DockerDetectorTest extends TestCase
 
     public function testGetCacheContainerReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->getCacheContainer());
     }
 
     public function testGetRunningContainersReturnsEmptyArrayWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertSame([], $detector->getRunningContainers());
     }
@@ -104,8 +110,9 @@ class DockerDetectorTest extends TestCase
 
     public function testGetSummaryStructure(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $summary = $detector->getSummary();
 
@@ -156,8 +163,9 @@ class DockerDetectorTest extends TestCase
 
     public function testCheckCacheReturnsUnavailableWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $result = $detector->checkCache();
 
@@ -198,48 +206,54 @@ class DockerDetectorTest extends TestCase
 
     public function testExecReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->exec('php', 'echo test'));
     }
 
     public function testExecPhpReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->execPhp('echo "test";'));
     }
 
     public function testGetPhpVersionReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->getPhpVersion());
     }
 
     public function testGetPhpIniReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->getPhpIni('memory_limit'));
     }
 
     public function testIsPhpExtensionLoadedReturnsNullWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $this->assertNull($detector->isPhpExtensionLoaded('opcache'));
     }
 
     public function testGetPhpInfoReturnsEmptyWithoutDocker(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
 
         $result = $detector->getPhpInfo(['memory_limit'], ['opcache']);
 
@@ -253,8 +267,9 @@ class DockerDetectorTest extends TestCase
 
     public function testGetCacheMemoryViaPhpReturnsNullWithoutPhpContainer(): void
     {
-        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'execPhp']);
+        $detector = $this->createPartialMock(DockerDetector::class, ['isDockerAvailable', 'isCurrentProcessInContainer', 'execPhp']);
         $detector->method('isDockerAvailable')->willReturn(false);
+        $detector->method('isCurrentProcessInContainer')->willReturn(false);
         $detector->method('execPhp')->willReturn(null);
 
         $this->assertNull($detector->getCacheMemoryViaPhp('memcached', 11211));

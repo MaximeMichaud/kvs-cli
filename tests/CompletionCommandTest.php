@@ -543,7 +543,13 @@ ZSH
         $this->assertStringContainsString('Restart your terminal or run: source ~/.zshrc', $zsh->getDisplay());
         $this->assertStringNotContainsString('source ~/.bashrc', $zsh->getDisplay());
 
-        $bash = new CommandTester(new CompletionCommand());
+        $command = $this->getMockBuilder(CompletionCommand::class)
+            ->enableOriginalConstructor()
+            ->onlyMethods(['getInstallPath'])
+            ->getMock();
+        $command->setName('completion');
+        $command->method('getInstallPath')->willReturn($this->tempDir . '/.bash_completion');
+        $bash = new CommandTester($command);
         $bash->execute([
             'shell' => 'bash',
             '--install' => true,
