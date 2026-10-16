@@ -43,6 +43,11 @@ if ($args[0] === 'inspect') {
     exit(0);
 }
 if ($args[0] === 'cp') {
+    if ((int) getenv('MOCK_CP_EXIT') !== 0) {
+        fwrite(STDERR, "Copy failed\n");
+    } elseif (stream_isatty(STDOUT) && !in_array('-q', $args, true)) {
+        echo "Successfully copied fixture PHAR\n";
+    }
     exit((int) getenv('MOCK_CP_EXIT'));
 }
 if ($args[0] === 'exec') {
@@ -57,6 +62,19 @@ if ($args[0] === 'exec') {
         exit(0);
     }
     if (in_array('php', $args, true)) {
+        if (getenv('MOCK_RUN_PHP') === '1') {
+            $phpArgs = array_slice($args, array_search('php', $args, true) + 1);
+            $phpArgs = array_map(static fn(string $arg): string =>
+                $arg === '/runtime/kvs-cli-test/kvs.phar' ? getenv('MOCK_ROOT') . '/kvs.phar' : $arg,
+                $phpArgs
+            );
+            $process = proc_open(array_merge([PHP_BINARY], $phpArgs), [STDIN, STDOUT, STDERR], $pipes);
+            exit(proc_close($process));
+        }
+        if (getenv('MOCK_SKIP_INPUT') === '1') {
+            echo "KVS CLI fixture version\n";
+            exit(0);
+        }
         echo 'stdin=' . stream_get_contents(STDIN);
         exit((int) getenv('MOCK_EXIT'));
     }
@@ -86,11 +104,15 @@ PHP;
         $this->assertSame(17, $process->getExitCode(), $process->getErrorOutput());
         $this->assertSame('stdin=sentinel input', $process->getOutput());
         $calls = $this->dockerCalls();
-        $this->assertContains([
+        $executions = array_values(array_filter($calls, static fn(array $call): bool => in_array('php', $call, true)));
+        $this->assertSame([
             'exec', '-i', '-e', 'KVS_CLI_DOCKER_LAUNCHER=1', '-e', 'KVS_PATH=/srv/site',
-            '-w', '/srv/site', 'first-php', 'php', '/runtime/kvs-cli-test/kvs.phar',
+            '-w', '/srv/site', 'first-php', 'php',
+        ], array_slice($executions[0], 0, 10));
+        $this->assertSame([
+            '/runtime/kvs-cli-test/kvs.phar',
             '--path=/srv/site', '--version', 'value with spaces; $(false)',
-        ], $calls);
+        ], array_slice($executions[0], -4));
         $this->assertSame(['exec', 'first-php', 'rm', '-rf', '--', '/runtime/kvs-cli-test'], end($calls));
     }
 
@@ -103,6 +125,41 @@ PHP;
         $this->assertSame([], $this->copyCalls());
     }
 
+    public function testInteractiveVersionDoesNotPrintDockerCopyProgress(): void
+    {
+        if (!Process::isPtySupported()) {
+            $this->markTestSkipped('PTY support is required to reproduce interactive Docker progress.');
+        }
+        $process = $this->launch(['--version'], ['MOCK_SKIP_INPUT' => '1'], '', true);
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString('KVS CLI fixture version', $process->getOutput());
+        $this->assertStringNotContainsString('Successfully copied', $process->getOutput());
+    }
+
+    public function testPhpHelpUsesPublicCommandNameAndPreservesArgvAndStdin(): void
+    {
+        file_put_contents($this->directory . '/kvs.phar', <<<'PHP'
+<?php
+echo json_encode([
+    'self' => $_SERVER['PHP_SELF'],
+    'argv' => $_SERVER['argv'],
+    'argc' => $_SERVER['argc'],
+    'global_argc' => $argc,
+    'input' => stream_get_contents(STDIN),
+], JSON_THROW_ON_ERROR);
+PHP);
+        $process = $this->launch(['help', 'list'], ['MOCK_RUN_PHP' => '1']);
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $output = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('kvs', $output['self']);
+        $this->assertSame([$this->directory . '/kvs.phar', '--path=/srv/site', 'help', 'list'], $output['argv']);
+        $this->assertSame(4, $output['argc']);
+        $this->assertSame(4, $output['global_argc']);
+        $this->assertSame('sentinel input', $output['input']);
+    }
+
     public function testHostPathSelectsSiteAndBecomesContainerPath(): void
     {
         $process = $this->launch(['--path', $this->directory . '/other', 'video', 'list'], [
@@ -111,7 +168,7 @@ PHP;
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $this->assertSame([
-            'cp', '-L', '--', $this->directory . '/kvs.phar',
+            'cp', '-q', '-L', '--', $this->directory . '/kvs.phar',
             'second-php:/runtime/kvs-cli-test/kvs.phar',
         ], $this->copyCalls()[0]);
         $this->assertStringNotContainsString('--path=' . $this->directory, file_get_contents($this->directory . '/calls'));
@@ -122,7 +179,7 @@ PHP;
         $process = $this->launch(['--version'], ['MOCK_CONTAINERS' => $this->twoSites()], '/other');
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
-        $this->assertStringStartsWith('second-php:', $this->copyCalls()[0][4]);
+        $this->assertStringStartsWith('second-php:', $this->copyCalls()[0][5]);
     }
 
     public function testPathOptionOverridesEnvironment(): void
@@ -133,7 +190,7 @@ PHP;
         ]);
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
-        $this->assertStringStartsWith('second-php:', $this->copyCalls()[0][4]);
+        $this->assertStringStartsWith('second-php:', $this->copyCalls()[0][5]);
     }
 
     public function testComposeLabelSupportsCustomContainerNames(): void
@@ -141,7 +198,7 @@ PHP;
         $process = $this->launch(['--version'], ['MOCK_CONTAINERS' => "custom-runtime\tphp-fpm\n"]);
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
-        $this->assertStringStartsWith('custom-runtime:', $this->copyCalls()[0][4]);
+        $this->assertStringStartsWith('custom-runtime:', $this->copyCalls()[0][5]);
     }
 
     public function testLegacyContainerWithoutComposeLabelIsSupported(): void
@@ -149,7 +206,7 @@ PHP;
         $process = $this->launch(['--version'], ['MOCK_CONTAINERS' => "legacy-php\t\n"]);
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
-        $this->assertStringStartsWith('legacy-php:', $this->copyCalls()[0][4]);
+        $this->assertStringStartsWith('legacy-php:', $this->copyCalls()[0][5]);
     }
 
     public function testExplicitContainerSupportsOtherNames(): void
@@ -157,7 +214,7 @@ PHP;
         $process = $this->launch(['--version'], ['KVS_DOCKER_CONTAINER' => 'chosen-runtime']);
 
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
-        $this->assertStringStartsWith('chosen-runtime:', $this->copyCalls()[0][4]);
+        $this->assertStringStartsWith('chosen-runtime:', $this->copyCalls()[0][5]);
     }
 
     public function testUnknownPathDoesNotFallBackToAnotherSite(): void
@@ -174,6 +231,7 @@ PHP;
         $process = $this->launch(['--version'], ['MOCK_CP_EXIT' => '23']);
 
         $this->assertSame(23, $process->getExitCode());
+        $this->assertStringContainsString('Copy failed', $process->getErrorOutput());
         $calls = $this->dockerCalls();
         $this->assertSame(['exec', 'first-php', 'rm', '-rf', '--', '/runtime/kvs-cli-test'], end($calls));
         foreach ($calls as $call) {
@@ -219,7 +277,7 @@ PHP;
      * @param list<string> $args
      * @param array<string, string> $environment
      */
-    private function launch(array $args, array $environment = [], string $cwd = ''): Process
+    private function launch(array $args, array $environment = [], string $cwd = '', bool $pty = false): Process
     {
         $process = new Process(array_merge([__DIR__ . '/../bin/kvs-docker'], $args), $this->directory . $cwd, array_merge([
             'PATH' => $this->directory . '/bin',
@@ -232,7 +290,8 @@ PHP;
             'MOCK_CP_EXIT' => '0',
             'MOCK_PS_EXIT' => '0',
         ], $environment));
-        $process->setInput('sentinel input');
+        $process->setPty($pty);
+        $process->setInput($pty ? null : 'sentinel input');
         $process->run();
         return $process;
     }

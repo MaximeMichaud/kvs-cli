@@ -129,10 +129,21 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-docker cp -L -- "$phar" "$container:$runtime_dir/kvs.phar"
+docker cp -q -L -- "$phar" "$container:$runtime_dir/kvs.phar"
 exec_options=(-i)
 if [[ -t 0 && -t 1 ]]; then
     exec_options+=(-t)
 fi
+# Symfony uses PHP_SELF in help examples; keep the public command name while
+# preserving the actual PHAR path in argv for commands that inspect their runtime.
+# shellcheck disable=SC2016
+php_bootstrap='
+array_shift($argv);
+$argc = count($argv);
+$_SERVER["argv"] = $argv;
+$_SERVER["argc"] = $argc;
+$_SERVER["PHP_SELF"] = "kvs";
+require $argv[0];
+'
 docker exec "${exec_options[@]}" -e KVS_CLI_DOCKER_LAUNCHER=1 -e "KVS_PATH=$container_path" \
-    -w "$container_path" "$container" php "$runtime_dir/kvs.phar" --path="$container_path" "${args[@]}"
+    -w "$container_path" "$container" php -r "$php_bootstrap" "$runtime_dir/kvs.phar" --path="$container_path" "${args[@]}"
