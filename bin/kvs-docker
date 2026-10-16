@@ -134,6 +134,13 @@ exec_options=(-i)
 if [[ -t 0 && -t 1 ]]; then
     exec_options+=(-t)
 fi
+for kvs_variable in KVS_DB_HOST KVS_DB_USER KVS_DB_PASS KVS_DB_NAME KVS_DB_PORT \
+    KVS_ENV KVS_ALLOW_EVAL KVS_BENCHMARK_API_URL; do
+    if [[ ${!kvs_variable+x} ]]; then
+        # Passing only the name keeps the value out of Docker's argument list.
+        exec_options+=(-e "$kvs_variable")
+    fi
+done
 # Symfony uses PHP_SELF in help examples; keep the public command name while
 # preserving the actual PHAR path in argv for commands that inspect their runtime.
 # shellcheck disable=SC2016

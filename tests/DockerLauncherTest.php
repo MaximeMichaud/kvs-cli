@@ -63,12 +63,38 @@ if ($args[0] === 'exec') {
     }
     if (in_array('php', $args, true)) {
         if (getenv('MOCK_RUN_PHP') === '1') {
+            $environment = getenv();
+            foreach (['KVS_DB_HOST', 'KVS_DB_USER', 'KVS_DB_PASS', 'KVS_DB_NAME', 'KVS_DB_PORT',
+                'KVS_ENV', 'KVS_ALLOW_EVAL', 'KVS_BENCHMARK_API_URL'] as $variable) {
+                unset($environment[$variable]);
+            }
+            $environment['KVS_DB_NAME'] = 'container_fixture';
+            $environment['KVS_DB_PASS'] = 'container_fixture';
+            foreach ($args as $index => $argument) {
+                if ($argument !== '-e') {
+                    continue;
+                }
+                $setting = $args[$index + 1];
+                if (str_contains($setting, '=')) {
+                    [$name, $value] = explode('=', $setting, 2);
+                } else {
+                    $name = $setting;
+                    $value = getenv($name);
+                }
+                if ($value !== false) {
+                    $environment[$name] = $value;
+                }
+            }
             $phpArgs = array_slice($args, array_search('php', $args, true) + 1);
             $phpArgs = array_map(static fn(string $arg): string =>
                 $arg === '/runtime/kvs-cli-test/kvs.phar' ? getenv('MOCK_ROOT') . '/kvs.phar' : $arg,
                 $phpArgs
             );
-            $process = proc_open(array_merge([PHP_BINARY], $phpArgs), [STDIN, STDOUT, STDERR], $pipes);
+            $environmentPairs = [];
+            foreach ($environment as $name => $value) {
+                $environmentPairs[] = $name . '=' . $value;
+            }
+            $process = proc_open(array_merge([PHP_BINARY], $phpArgs), [STDIN, STDOUT, STDERR], $pipes, null, $environmentPairs);
             exit(proc_close($process));
         }
         if (getenv('MOCK_SKIP_INPUT') === '1') {
@@ -158,6 +184,40 @@ PHP);
         $this->assertSame(4, $output['argc']);
         $this->assertSame(4, $output['global_argc']);
         $this->assertSame('sentinel input', $output['input']);
+    }
+
+    public function testDocumentedEnvironmentReachesContainerWithoutValuesInArguments(): void
+    {
+        $variables = [
+            'KVS_DB_HOST' => '127.0.0.9',
+            'KVS_DB_USER' => 'requested_user',
+            'KVS_DB_NAME' => 'requested_database',
+            'KVS_DB_PASS' => bin2hex(random_bytes(12)) . " ' \" $ ;\n",
+            'KVS_DB_PORT' => '13306',
+            'KVS_ENV' => 'test',
+            'KVS_ALLOW_EVAL' => 'true',
+            'KVS_BENCHMARK_API_URL' => 'http://fixture.invalid/api',
+        ];
+        file_put_contents($this->directory . '/kvs.phar', '<?php echo json_encode(getenv());');
+        $process = $this->launch(['--version'], array_merge($variables, ['MOCK_RUN_PHP' => '1']));
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $environment = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($variables as $name => $value) {
+            $this->assertSame($value, $environment[$name]);
+        }
+        $this->assertStringNotContainsString($variables['KVS_DB_PASS'], file_get_contents($this->directory . '/calls'));
+    }
+
+    public function testUnsetEnvironmentKeepsContainerValuesAndEmptyValuesOverrideThem(): void
+    {
+        file_put_contents($this->directory . '/kvs.phar', '<?php echo json_encode(getenv());');
+        $process = $this->launch(['--version'], ['MOCK_RUN_PHP' => '1', 'KVS_DB_PASS' => '']);
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $environment = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('container_fixture', $environment['KVS_DB_NAME']);
+        $this->assertSame('', $environment['KVS_DB_PASS']);
     }
 
     public function testHostPathSelectsSiteAndBecomesContainerPath(): void
@@ -275,7 +335,7 @@ PHP);
 
     /**
      * @param list<string> $args
-     * @param array<string, string> $environment
+     * @param array<string, string|false> $environment
      */
     private function launch(array $args, array $environment = [], string $cwd = '', bool $pty = false): Process
     {
@@ -284,6 +344,14 @@ PHP);
             'KVS_CLI_PHAR' => $this->directory . '/kvs.phar',
             'KVS_PATH' => '',
             'KVS_DOCKER_CONTAINER' => '',
+            'KVS_DB_HOST' => false,
+            'KVS_DB_USER' => false,
+            'KVS_DB_PASS' => false,
+            'KVS_DB_NAME' => false,
+            'KVS_DB_PORT' => false,
+            'KVS_ENV' => false,
+            'KVS_ALLOW_EVAL' => false,
+            'KVS_BENCHMARK_API_URL' => false,
             'MOCK_ROOT' => $this->directory,
             'MOCK_LOG' => $this->directory . '/calls',
             'MOCK_EXIT' => '0',

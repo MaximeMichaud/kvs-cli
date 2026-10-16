@@ -116,6 +116,11 @@ container mount. Other file arguments, such as import/export paths and eval
 scripts, are paths **inside the container**. Stdin and the command exit status
 are preserved; interactive terminals receive a Docker TTY.
 
+Host overrides `KVS_DB_HOST`, `KVS_DB_USER`, `KVS_DB_PASS`, `KVS_DB_NAME`,
+`KVS_DB_PORT`, `KVS_ENV`, `KVS_ALLOW_EVAL`, and `KVS_BENCHMARK_API_URL` are
+forwarded when set. Unset variables retain the container's environment; an
+explicitly empty value is forwarded as empty. Other host variables are not copied.
+
 Set `KVS_CLI_PHAR=/absolute/path/kvs.phar` if the archive is not beside the launcher.
 For a user-local install, put both files in `~/.local/bin`, naming the launcher
 `kvs` and the archive `kvs.phar`.
