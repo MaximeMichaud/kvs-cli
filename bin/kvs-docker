@@ -44,7 +44,7 @@ while (($#)); do
 done
 
 # Older PHAR releases do not know that their container copy is temporary.
-for arg in "${args[@]}"; do
+for arg in ${args[@]+"${args[@]}"}; do
     [[ $arg == -* ]] && continue
     case $arg in
         sel|self|self-*|selfu*|self:*)
@@ -79,7 +79,7 @@ matched_containers=()
 matched_paths=()
 local_containers=()
 local_paths=()
-for candidate in "${candidates[@]}"; do
+for candidate in ${candidates[@]+"${candidates[@]}"}; do
     mounts=$(docker inspect --format '{{range .Mounts}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}' "$candidate") ||
         fail "Cannot inspect container: $candidate"
     while IFS=$'\t' read -r source destination; do
@@ -231,7 +231,7 @@ require $argv[0];
 # the asynchronous Docker client while wait remains interruptible.
 exec 3<&0
 docker exec "${exec_options[@]}" -e KVS_CLI_DOCKER_LAUNCHER=1 -e "KVS_PATH=$container_path" \
-    -w "$container_path" "$container" php -r "$php_bootstrap" "$runtime_dir/kvs.phar" --path="$container_path" "${args[@]}" <&3 &
+    -w "$container_path" "$container" php -r "$php_bootstrap" "$runtime_dir/kvs.phar" --path="$container_path" ${args[@]+"${args[@]}"} <&3 &
 execution_pid=$!
 exec 3<&-
 status=0

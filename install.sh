@@ -65,12 +65,21 @@ release_url=${KVS_RELEASE_URL:-https://github.com/MaximeMichaud/kvs-cli/releases
 launcher_url=${KVS_LAUNCHER_URL:-https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/bin/kvs-docker}
 temporary_dir=$(mktemp -d)
 destination_stage=
-privilege=()
+install_with_sudo=false
+run_install_command() {
+    if [[ $install_with_sudo == true ]]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
 cleanup() {
+    local original_status=$?
     rm -rf -- "$temporary_dir"
     if [[ -n $destination_stage ]]; then
-        "${privilege[@]}" rm -rf -- "$destination_stage"
+        run_install_command rm -rf -- "$destination_stage"
     fi
+    return "$original_status"
 }
 trap cleanup EXIT
 trap 'exit 129' HUP
@@ -103,17 +112,17 @@ while [[ ! -d $parent ]]; do
 done
 if [[ ! -w $parent ]]; then
     command -v sudo >/dev/null 2>&1 || fail "Cannot write to $install_dir and sudo is unavailable. Use --install-dir."
-    privilege=(sudo)
+    install_with_sudo=true
 fi
-"${privilege[@]}" mkdir -p -- "$install_dir"
-destination_stage=$("${privilege[@]}" mktemp -d "$install_dir/.kvs-install.XXXXXXXXXX")
+run_install_command mkdir -p -- "$install_dir"
+destination_stage=$(run_install_command mktemp -d "$install_dir/.kvs-install.XXXXXXXXXX")
 if [[ $runtime == docker ]]; then
-    "${privilege[@]}" install -m 0644 "$temporary_dir/kvs.phar" "$destination_stage/kvs.phar"
-    "${privilege[@]}" install -m 0755 "$temporary_dir/kvs" "$destination_stage/kvs"
-    "${privilege[@]}" mv -f -- "$destination_stage/kvs.phar" "$install_dir/kvs.phar"
+    run_install_command install -m 0644 "$temporary_dir/kvs.phar" "$destination_stage/kvs.phar"
+    run_install_command install -m 0755 "$temporary_dir/kvs" "$destination_stage/kvs"
+    run_install_command mv -f -- "$destination_stage/kvs.phar" "$install_dir/kvs.phar"
 else
-    "${privilege[@]}" install -m 0755 "$temporary_dir/kvs.phar" "$destination_stage/kvs"
+    run_install_command install -m 0755 "$temporary_dir/kvs.phar" "$destination_stage/kvs"
 fi
-"${privilege[@]}" mv -f -- "$destination_stage/kvs" "$install_dir/kvs"
+run_install_command mv -f -- "$destination_stage/kvs" "$install_dir/kvs"
 printf 'Installed KVS CLI (%s runtime) at %s/kvs.\n' "$runtime" "$install_dir"
 printf 'Run: %s/kvs --version\n' "$install_dir"

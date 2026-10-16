@@ -24,6 +24,17 @@ on:
       - '.github/CODEOWNERS'
 
 jobs:
+  shell:
+    name: Shell compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Test installer and launcher with system Bash
+        run: bash tests/installer-shell.sh
+      - name: Test installer and launcher with Bash 3.2
+        run: docker run --rm --network none --mount "type=bind,src=$PWD,dst=/repo,readonly" bash:3.2 /repo/tests/installer-shell.sh
+
   test:
     name: PHP ${{ matrix.php-version }} - ${{ matrix.deps }}
     runs-on: ubuntu-latest
@@ -221,7 +232,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    needs: [test, lint, server-weights-mariadb]
+    needs: [test, lint, server-weights-mariadb, shell]
 
     steps:
       - name: Checkout code

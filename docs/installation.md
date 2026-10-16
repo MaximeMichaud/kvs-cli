@@ -29,6 +29,7 @@ The installer checks the PHAR SHA256 checksum before replacing an existing
 installation. It uses local PHP 8.1+ with `phar`, `mbstring`, `json`, and `pdo_mysql`
 when available; otherwise it installs the Docker launcher. Bash, curl, and
 `sha256sum` or `shasum` are required. It does not install system packages.
+The installer and Docker launcher support Bash 3.2 and newer.
 
 The default destination is `/usr/local/bin`, with `sudo` when necessary. Options
 can be passed after `bash -s --`:
