@@ -262,12 +262,19 @@ jobs:
         run: php -d phar.readonly=0 build.php
 
       - name: Verify PHAR
-        run: ./kvs.phar --version
+        run: |
+          ./kvs.phar --version
+          bash -n bin/kvs-docker
+          bash -n install.sh
+          cp bin/kvs-docker kvs-docker
 
       - name: Upload PHAR artifact
         uses: actions/upload-artifact@v7
         with:
           name: kvs-cli-phar
-          path: kvs.phar
+          path: |
+            kvs.phar
+            kvs-docker
+            install.sh
           retention-days: 30
           compression-level: 9

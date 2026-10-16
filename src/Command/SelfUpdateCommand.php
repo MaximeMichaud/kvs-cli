@@ -57,6 +57,11 @@ HELP
     {
         $io = new SymfonyStyle($input, $output);
 
+        if (getenv('KVS_CLI_DOCKER_LAUNCHER') === '1') {
+            $io->error('Update kvs.phar and the Docker launcher on the host using the Docker installation instructions.');
+            return Command::FAILURE;
+        }
+
         // Check if running as PHAR
         if (!$this->isRunningAsPhar()) {
             $io->error('Self-update only works for PHAR installations.');

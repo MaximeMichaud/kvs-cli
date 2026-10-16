@@ -18,18 +18,27 @@ Tested with KVS 6.3.2, 6.4.0, 7.0.0.
 - **Advanced eval** - Execute PHP with Model helpers, DB queries, and KVS context variables
 - **Shell completion** - Tab completion for bash, zsh, and fish
 - **Self-update** - Update directly from CLI with stable, preview, or dev builds
-- **PHAR distribution** - Single executable file, no dependencies required
+- **PHAR distribution** - Bundled PHP dependencies
+- **Docker launcher** - Use the PHP runtime of KVS-install without PHP on the host
 
 ## Installation
 
+One installer works with PHP on the host and Docker-only KVS-install setups:
+
 ```bash
-curl -sL $(curl -s https://api.github.com/repos/MaximeMichaud/kvs-cli/releases | grep -o 'https://[^"]*kvs\.phar' | head -1) -o kvs.phar
-chmod +x kvs.phar
-sudo mv kvs.phar /usr/local/bin/kvs
+curl -fsSL https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/install.sh | bash
 kvs --version
 ```
 
-> **Note**: Requires PHP 8.1+ with `phar` extension enabled.
+The installer verifies the PHAR checksum and uses local PHP 8.1+ when its required
+extensions are available. Otherwise, it installs a launcher that runs PHP inside
+an existing KVS container. It uses `sudo` only when the installation directory
+requires it. No PHP packages are installed on the host.
+
+For a Docker site when PHP is also installed on the host, append `-s -- --docker`
+to `bash`. With several Docker sites, select one using `--path=/host/path/to/site`
+or `KVS_DOCKER_CONTAINER`. See [installation options](docs/installation.md) for
+user-local installation and manual PHAR downloads.
 
 ## Usage
 
@@ -47,6 +56,12 @@ kvs system:status
 ```
 
 ## Updating
+
+Repeat the installation command to update any installation. For Docker launcher
+installations, this updates both files on the host; `self-update` is unavailable
+through the launcher.
+
+For native PHAR installations:
 
 ```bash
 kvs self-update              # Check and update to latest version

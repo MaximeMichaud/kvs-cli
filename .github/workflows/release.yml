@@ -50,7 +50,13 @@ jobs:
           echo "PHAR size: $(du -h kvs.phar | cut -f1)"
 
       - name: Generate SHA256 checksum
-        run: sha256sum kvs.phar > kvs.phar.sha256
+        run: |
+          cp bin/kvs-docker kvs-docker
+          bash -n kvs-docker
+          bash -n install.sh
+          sha256sum kvs.phar > kvs.phar.sha256
+          sha256sum kvs-docker > kvs-docker.sha256
+          sha256sum install.sh > install.sh.sha256
 
       - name: Upload PHAR artifact
         uses: actions/upload-artifact@v7
@@ -59,6 +65,10 @@ jobs:
           path: |
             kvs.phar
             kvs.phar.sha256
+            kvs-docker
+            kvs-docker.sha256
+            install.sh
+            install.sh.sha256
 
   release:
     name: Create Release
@@ -100,5 +110,9 @@ jobs:
           files: |
             kvs.phar
             kvs.phar.sha256
+            kvs-docker
+            kvs-docker.sha256
+            install.sh
+            install.sh.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

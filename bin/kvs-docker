@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+
+# Run the PHAR with the PHP runtime and network of an existing KVS container.
+set -euo pipefail
+
+fail() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+command -v docker >/dev/null 2>&1 || fail 'Docker is required by the Docker launcher.'
+
+launcher_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+phar=${KVS_CLI_PHAR:-$launcher_dir/kvs.phar}
+if [[ -z ${KVS_CLI_PHAR:-} && ! -f $phar && -f $launcher_dir/../kvs.phar ]]; then
+    phar=$launcher_dir/../kvs.phar
+fi
+[[ -f $phar && -r $phar ]] || fail "PHAR not found: $phar. Place kvs.phar beside the launcher or set KVS_CLI_PHAR."
+phar=$(cd -- "$(dirname -- "$phar")" && printf '%s/%s' "$PWD" "$(basename -- "$phar")")
+
+requested_path=${KVS_PATH:-}
+args=()
+while (($#)); do
+    case $1 in
+        --path)
+            (($# >= 2)) && [[ -n $2 ]] || fail '--path requires a directory.'
+            requested_path=$2
+            shift 2
+            ;;
+        --path=*)
+            requested_path=${1#--path=}
+            [[ -n $requested_path ]] || fail '--path requires a directory.'
+            shift
+            ;;
+        --)
+            args+=("$@")
+            break
+            ;;
+        *)
+            args+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Older PHAR releases do not know that their container copy is temporary.
+for arg in "${args[@]}"; do
+    [[ $arg == -* ]] && continue
+    case $arg in
+        sel|self|self-*|selfu*|self:*)
+            fail 'Update kvs.phar and the Docker launcher on the host using the Docker installation instructions.'
+            ;;
+    esac
+    break
+done
+
+if [[ -n $requested_path && -d $requested_path ]]; then
+    requested_path=$(cd -- "$requested_path" && pwd -P)
+fi
+[[ $requested_path == / ]] || requested_path=${requested_path%/}
+current_dir=$(pwd -P)
+
+candidates=()
+if [[ -n ${KVS_DOCKER_CONTAINER:-} ]]; then
+    [[ $(docker inspect --format '{{.State.Running}}' "$KVS_DOCKER_CONTAINER") == true ]] ||
+        fail "Container is not running: $KVS_DOCKER_CONTAINER"
+    candidates+=("$KVS_DOCKER_CONTAINER")
+else
+    containers=$(docker ps --format '{{.Names}}\t{{.Label "com.docker.compose.service"}}') ||
+        fail 'Cannot list Docker containers. Check the Docker daemon and permissions.'
+    while IFS=$'\t' read -r name service; do
+        if [[ -n $name && ( $service == php-fpm || $name == *-php ) ]]; then
+            candidates+=("$name")
+        fi
+    done <<< "$containers"
+fi
+
+matched_containers=()
+matched_paths=()
+local_containers=()
+local_paths=()
+for candidate in "${candidates[@]}"; do
+    mounts=$(docker inspect --format '{{range .Mounts}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}' "$candidate") ||
+        fail "Cannot inspect container: $candidate"
+    while IFS=$'\t' read -r source destination; do
+        [[ -n $source && -n $destination ]] || continue
+        if [[ -d $source ]]; then
+            source=$(cd -- "$source" && pwd -P)
+        fi
+        if [[ -n $requested_path && $requested_path != "$source" && $requested_path != "$destination" ]]; then
+            continue
+        fi
+        if ! docker exec "$candidate" test -f "${destination%/}/admin/include/setup.php" </dev/null; then
+            continue
+        fi
+        matched_containers+=("$candidate")
+        matched_paths+=("$destination")
+        if [[ $current_dir == "$source" || $current_dir == "${source%/}/"* ]]; then
+            local_containers+=("$candidate")
+            local_paths+=("$destination")
+        fi
+    done <<< "$mounts"
+done
+
+if [[ -z $requested_path && ${#local_containers[@]} -gt 0 ]]; then
+    matched_containers=("${local_containers[@]}")
+    matched_paths=("${local_paths[@]}")
+fi
+if ((${#matched_containers[@]} == 0)); then
+    fail 'No matching running KVS PHP container. Use --path=/host/site or set KVS_DOCKER_CONTAINER.'
+fi
+if ((${#matched_containers[@]} != 1)); then
+    printf 'Error: Multiple KVS sites match. Use --path=/host/site or set KVS_DOCKER_CONTAINER:\n' >&2
+    printf '  %s\n' "${matched_containers[@]}" >&2
+    exit 1
+fi
+
+container=${matched_containers[0]}
+container_path=${matched_paths[0]}
+runtime_dir=$(docker exec "$container" mktemp -d -t kvs-cli.XXXXXXXXXX) ||
+    fail "Cannot create a temporary directory in $container."
+[[ $runtime_dir == /* && $runtime_dir != / && $runtime_dir != *$'\n'* ]] ||
+    fail 'Docker returned an invalid temporary directory.'
+cleanup() {
+    docker exec "$container" rm -rf -- "$runtime_dir" </dev/null >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+docker cp -L -- "$phar" "$container:$runtime_dir/kvs.phar"
+exec_options=(-i)
+if [[ -t 0 && -t 1 ]]; then
+    exec_options+=(-t)
+fi
+docker exec "${exec_options[@]}" -e KVS_CLI_DOCKER_LAUNCHER=1 -e "KVS_PATH=$container_path" \
+    -w "$container_path" "$container" php "$runtime_dir/kvs.phar" --path="$container_path" "${args[@]}"

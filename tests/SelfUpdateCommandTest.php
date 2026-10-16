@@ -87,6 +87,20 @@ class SelfUpdateCommandTest extends TestCase
         $this->assertEquals(1, $this->commandTester->getStatusCode());
     }
 
+    public function testDockerLauncherCannotUpdateTemporaryContainerCopy(): void
+    {
+        $previous = getenv('KVS_CLI_DOCKER_LAUNCHER');
+        putenv('KVS_CLI_DOCKER_LAUNCHER=1');
+        try {
+            $this->commandTester->execute(['--yes' => true]);
+
+            $this->assertSame(1, $this->commandTester->getStatusCode());
+            $this->assertStringContainsString('on the host', $this->commandTester->getDisplay());
+        } finally {
+            putenv($previous === false ? 'KVS_CLI_DOCKER_LAUNCHER' : 'KVS_CLI_DOCKER_LAUNCHER=' . $previous);
+        }
+    }
+
     public function testCheckOptionWithNonPhar(): void
     {
         $this->commandTester->execute(['--check' => true]);

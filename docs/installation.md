@@ -4,7 +4,7 @@ This guide covers all methods of installing KVS-CLI.
 
 ## Requirements
 
-- **PHP 8.1+**
+- **PHP 8.1+**, on the host or in a running KVS PHP container
 - **KVS 6.x** installation
 - **MySQL 8.0+ or MariaDB 10.6+**
 - **Linux or macOS** (Windows users should use WSL)
@@ -18,9 +18,37 @@ This guide covers all methods of installing KVS-CLI.
 
 ## Installation Methods
 
-### Method 1: PHAR (Recommended)
+### Method 1: Automatic (Recommended)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/install.sh | bash
+kvs --version
+```
+
+The installer checks the PHAR SHA256 checksum before replacing an existing
+installation. It uses local PHP 8.1+ with `phar`, `mbstring`, `json`, and `pdo_mysql`
+when available; otherwise it installs the Docker launcher. Bash, curl, and
+`sha256sum` or `shasum` are required. It does not install system packages.
+
+The default destination is `/usr/local/bin`, with `sudo` when necessary. Options
+can be passed after `bash -s --`:
+
+```bash
+# User-local installation, without sudo
+curl -fsSL https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/install.sh | bash -s -- --install-dir "$HOME/.local/bin"
+
+# Use the site's Docker runtime even when local PHP is available
+curl -fsSL https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/install.sh | bash -s -- --docker
+```
+
+Add `~/.local/bin` to `PATH` for a user-local installation. Repeat the same command
+to update. Existing releases without a launcher asset use the repository launcher.
+
+#### Manual PHAR Installation (Requires Host PHP)
 
 The PHAR archive is a self-contained executable that includes all dependencies.
+It still requires a PHP interpreter on the host. For Docker-only installations,
+use the launcher below.
 
 ```bash
 # Download the latest stable release
@@ -54,6 +82,46 @@ mv kvs.phar ~/.local/bin/kvs
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
+
+#### Docker-only Hosts (KVS-install)
+
+KVS-install keeps PHP inside its PHP-FPM container. Executing the PHAR directly
+on such a host fails with `env: 'php': No such file or directory` before any
+application code can detect Docker. Use the Bash launcher instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/install.sh | bash
+kvs --version
+```
+
+The host needs Bash and access to the Docker daemon. The selected container
+needs PHP 8.1+ and the required PHP extensions. The launcher uses that container's
+PHP configuration, network, and mounted KVS files. It copies the PHAR to a unique
+temporary directory for each invocation and removes the copy afterwards.
+
+With one running KVS PHP container, selection is automatic. With several sites,
+select the host directory, run from that site's host directory, or specify the
+container explicitly:
+
+```bash
+kvs --path=/host/path/to/site system:status
+KVS_PATH=/host/path/to/site kvs video list
+KVS_DOCKER_CONTAINER=site-php kvs --version
+```
+
+The launcher recognizes the Compose service `php-fpm` and legacy names ending
+in `-php`, then checks their mounts for `admin/include/setup.php`. It refuses
+ambiguous matches. `--path` overrides `KVS_PATH` and is translated to the matching
+container mount. Other file arguments, such as import/export paths and eval
+scripts, are paths **inside the container**. Stdin and the command exit status
+are preserved; interactive terminals receive a Docker TTY.
+
+Set `KVS_CLI_PHAR=/absolute/path/kvs.phar` if the archive is not beside the launcher.
+For a user-local install, put both files in `~/.local/bin`, naming the launcher
+`kvs` and the archive `kvs.phar`.
+
+To update, repeat the installer command. `self-update` is unavailable through
+this launcher because the container copy is temporary.
 
 ### Method 2: From Source (Development)
 
@@ -146,6 +214,9 @@ This is useful for connecting to different databases without modifying KVS confi
 ## Updating KVS-CLI
 
 ### PHAR Installation
+
+Docker launcher installations use the automatic installer command above.
+The following commands apply to native PHAR installations:
 
 ```bash
 # Check for updates
