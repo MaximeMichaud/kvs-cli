@@ -117,17 +117,80 @@ fi
 
 container=${matched_containers[0]}
 container_path=${matched_paths[0]}
-runtime_dir=$(docker exec "$container" mktemp -d -t kvs-cli.XXXXXXXXXX) ||
+runtime_dir=$(docker exec "$container" sh -c '
+runtime_dir=$(mktemp -d -t kvs-cli.XXXXXXXXXX) || exit 1
+if ! : > "$runtime_dir/pending"; then
+    rm -rf -- "$runtime_dir"
+    exit 1
+fi
+printf "%s\n" "$runtime_dir"
+') ||
     fail "Cannot create a temporary directory in $container."
 [[ $runtime_dir == /* && $runtime_dir != / && $runtime_dir != *$'\n'* ]] ||
     fail 'Docker returned an invalid temporary directory.'
+execution_pid=
+keep_runtime=false
+# The pending token prevents a canceled invocation from starting PHP work later.
+# shellcheck disable=SC2016
+stop_php='
+runtime_dir=$1
+signal=$2
+if mv "$runtime_dir/pending" "$runtime_dir/canceled" 2>/dev/null; then
+    exit 0
+fi
+[ -e "$runtime_dir/running" ] || exit 0
+read -r pid started < "$runtime_dir/php.pid" || exit 1
+case $pid in ""|0|1|*[!0-9]*) exit 1 ;; esac
+case $started in ""|*[!0-9]*) exit 1 ;; esac
+is_running() {
+    [ -r "/proc/$pid/stat" ] || return 1
+    stat=$(cat "/proc/$pid/stat" 2>/dev/null) || return 1
+    stat=${stat##*) }
+    state=${stat%% *}
+    case $state in Z|X) return 1 ;; esac
+    current_started=$(printf "%s\n" "$stat" | cut -d " " -f 20)
+    [ "$current_started" = "$started" ]
+}
+is_running || exit 0
+kill -s "$signal" "$pid" 2>/dev/null || true
+attempt=0
+while is_running && [ "$attempt" -lt 50 ]; do
+    sleep 0.1
+    attempt=$((attempt + 1))
+done
+if is_running; then
+    kill -KILL "$pid" 2>/dev/null || true
+    attempt=0
+    while is_running && [ "$attempt" -lt 20 ]; do
+        sleep 0.1
+        attempt=$((attempt + 1))
+    done
+fi
+! is_running
+'
+# shellcheck disable=SC2329
 cleanup() {
-    docker exec "$container" rm -rf -- "$runtime_dir" </dev/null >/dev/null 2>&1 || true
+    if [[ $keep_runtime == false ]]; then
+        docker exec "$container" rm -rf -- "$runtime_dir" </dev/null >/dev/null 2>&1 || true
+    fi
+}
+# shellcheck disable=SC2329
+interrupt() {
+    trap '' HUP INT TERM
+    if ! docker exec "$container" sh -c "$stop_php" sh "$runtime_dir" "$1" </dev/null; then
+        keep_runtime=true
+        printf 'Error: Could not stop container PHP; runtime retained at %s:%s.\n' "$container" "$runtime_dir" >&2
+    fi
+    if [[ -n $execution_pid ]]; then
+        kill -TERM "$execution_pid" 2>/dev/null || true
+        wait "$execution_pid" 2>/dev/null || true
+    fi
+    exit "$2"
 }
 trap cleanup EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'interrupt HUP 129' HUP
+trap 'interrupt INT 130' INT
+trap 'interrupt TERM 143' TERM
 
 docker cp -q -L -- "$phar" "$container:$runtime_dir/kvs.phar"
 exec_options=(-i)
@@ -150,7 +213,28 @@ $argc = count($argv);
 $_SERVER["argv"] = $argv;
 $_SERVER["argc"] = $argc;
 $_SERVER["PHP_SELF"] = "kvs";
+$runtimeDirectory = dirname($argv[0]);
+$processStat = @file_get_contents("/proc/self/stat");
+if ($processStat === false || ($statEnd = strrpos($processStat, ") ")) === false) {
+    exit(1);
+}
+$processFields = explode(" ", substr($processStat, $statEnd + 2));
+$processIdentity = getmypid() . " " . $processFields[19] . "\n";
+if (@file_put_contents($runtimeDirectory . "/php.pid.tmp", $processIdentity) === false ||
+    !@rename($runtimeDirectory . "/php.pid.tmp", $runtimeDirectory . "/php.pid") ||
+    !@rename($runtimeDirectory . "/pending", $runtimeDirectory . "/running")) {
+    exit(1);
+}
 require $argv[0];
 '
+# An explicit stdin descriptor keeps pipes and interactive input available to
+# the asynchronous Docker client while wait remains interruptible.
+exec 3<&0
 docker exec "${exec_options[@]}" -e KVS_CLI_DOCKER_LAUNCHER=1 -e "KVS_PATH=$container_path" \
-    -w "$container_path" "$container" php -r "$php_bootstrap" "$runtime_dir/kvs.phar" --path="$container_path" "${args[@]}"
+    -w "$container_path" "$container" php -r "$php_bootstrap" "$runtime_dir/kvs.phar" --path="$container_path" "${args[@]}" <&3 &
+execution_pid=$!
+exec 3<&-
+status=0
+wait "$execution_pid" || status=$?
+execution_pid=
+exit "$status"

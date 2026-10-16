@@ -121,6 +121,11 @@ Host overrides `KVS_DB_HOST`, `KVS_DB_USER`, `KVS_DB_PASS`, `KVS_DB_NAME`,
 forwarded when set. Unset variables retain the container's environment; an
 explicitly empty value is forwarded as empty. Other host variables are not copied.
 
+Interruptions (HUP, INT, and TERM) are forwarded to the PHP process for that
+invocation before its temporary files are removed. PHP that does not terminate
+within five seconds is killed. A canceled invocation cannot start application
+code later, and other invocations are left running.
+
 Set `KVS_CLI_PHAR=/absolute/path/kvs.phar` if the archive is not beside the launcher.
 For a user-local install, put both files in `~/.local/bin`, naming the launcher
 `kvs` and the archive `kvs.phar`.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Process\Process;
 
 class DockerLauncherTest extends TestCase
@@ -18,7 +19,7 @@ class DockerLauncherTest extends TestCase
         mkdir($this->directory . '/site', 0700);
         mkdir($this->directory . '/other', 0700);
         file_put_contents($this->directory . '/kvs.phar', 'synthetic PHAR');
-        foreach (['bash', 'dirname', 'basename'] as $command) {
+        foreach (['bash', 'dirname', 'basename', 'sh', 'cat', 'cut', 'sleep', 'mv'] as $command) {
             $which = new Process(['which', $command]);
             $which->mustRun();
             symlink(trim($which->getOutput()), $this->directory . '/bin/' . $command);
@@ -48,13 +49,19 @@ if ($args[0] === 'cp') {
     } elseif (stream_isatty(STDOUT) && !in_array('-q', $args, true)) {
         echo "Successfully copied fixture PHAR\n";
     }
+    if ((int) getenv('MOCK_CP_EXIT') === 0 && getenv('MOCK_RUN_PHP') === '1') {
+        copy(getenv('MOCK_ROOT') . '/kvs.phar', getenv('MOCK_ROOT') . '/runtime/kvs.phar');
+    }
     exit((int) getenv('MOCK_CP_EXIT'));
 }
 if ($args[0] === 'exec') {
     if (in_array('test', $args, true)) {
         exit(0);
     }
-    if (in_array('mktemp', $args, true)) {
+    if (in_array('mktemp', $args, true) ||
+        (in_array('-c', $args, true) && str_contains($args[array_search('-c', $args, true) + 1], 'mktemp -d -t kvs-cli.'))) {
+        mkdir(getenv('MOCK_ROOT') . '/runtime');
+        touch(getenv('MOCK_ROOT') . '/runtime/pending');
         echo "/runtime/kvs-cli-test\n";
         exit(0);
     }
@@ -63,6 +70,9 @@ if ($args[0] === 'exec') {
     }
     if (in_array('php', $args, true)) {
         if (getenv('MOCK_RUN_PHP') === '1') {
+            if (getenv('MOCK_CANCEL_PENDING') === '1') {
+                rename(getenv('MOCK_ROOT') . '/runtime/pending', getenv('MOCK_ROOT') . '/runtime/canceled');
+            }
             $environment = getenv();
             foreach (['KVS_DB_HOST', 'KVS_DB_USER', 'KVS_DB_PASS', 'KVS_DB_NAME', 'KVS_DB_PORT',
                 'KVS_ENV', 'KVS_ALLOW_EVAL', 'KVS_BENCHMARK_API_URL'] as $variable) {
@@ -87,14 +97,18 @@ if ($args[0] === 'exec') {
             }
             $phpArgs = array_slice($args, array_search('php', $args, true) + 1);
             $phpArgs = array_map(static fn(string $arg): string =>
-                $arg === '/runtime/kvs-cli-test/kvs.phar' ? getenv('MOCK_ROOT') . '/kvs.phar' : $arg,
+                $arg === '/runtime/kvs-cli-test/kvs.phar' ? getenv('MOCK_ROOT') . '/runtime/kvs.phar' : $arg,
                 $phpArgs
             );
             $environmentPairs = [];
             foreach ($environment as $name => $value) {
                 $environmentPairs[] = $name . '=' . $value;
             }
-            $process = proc_open(array_merge([PHP_BINARY], $phpArgs), [STDIN, STDOUT, STDERR], $pipes, null, $environmentPairs);
+            $command = array_merge([PHP_BINARY], $phpArgs);
+            if (getenv('MOCK_DETACHED_PHP') === '1') {
+                array_unshift($command, 'setsid');
+            }
+            $process = proc_open($command, [STDIN, STDOUT, STDERR], $pipes, null, $environmentPairs);
             exit(proc_close($process));
         }
         if (getenv('MOCK_SKIP_INPUT') === '1') {
@@ -103,6 +117,15 @@ if ($args[0] === 'exec') {
         }
         echo 'stdin=' . stream_get_contents(STDIN);
         exit((int) getenv('MOCK_EXIT'));
+    }
+    if (in_array('sh', $args, true)) {
+        $command = array_slice($args, array_search('sh', $args, true));
+        $command = array_map(static fn(string $arg): string =>
+            $arg === '/runtime/kvs-cli-test' ? getenv('MOCK_ROOT') . '/runtime' : $arg,
+            $command
+        );
+        $process = proc_open($command, [STDIN, STDOUT, STDERR], $pipes);
+        exit(proc_close($process));
     }
 }
 fwrite(STDERR, 'Unexpected Docker invocation');
@@ -180,7 +203,7 @@ PHP);
         $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
         $output = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('kvs', $output['self']);
-        $this->assertSame([$this->directory . '/kvs.phar', '--path=/srv/site', 'help', 'list'], $output['argv']);
+        $this->assertSame([$this->directory . '/runtime/kvs.phar', '--path=/srv/site', 'help', 'list'], $output['argv']);
         $this->assertSame(4, $output['argc']);
         $this->assertSame(4, $output['global_argc']);
         $this->assertSame('sentinel input', $output['input']);
@@ -218,6 +241,60 @@ PHP);
         $environment = json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
         $this->assertSame('container_fixture', $environment['KVS_DB_NAME']);
         $this->assertSame('', $environment['KVS_DB_PASS']);
+    }
+
+    /** @return array<string, array{int, int}> */
+    public static function interruptionSignals(): array
+    {
+        return ['TERM' => [15, 143], 'INT' => [2, 130], 'HUP' => [1, 129]];
+    }
+
+    #[DataProvider('interruptionSignals')]
+    public function testInterruptStopsDetachedPhpBeforeItCanWriteAgain(int $signal, int $exitCode): void
+    {
+        $setsid = new Process(['which', 'setsid']);
+        $setsid->run();
+        if (!$setsid->isSuccessful()) {
+            $this->markTestSkipped('setsid is required to simulate a container process.');
+        }
+        symlink(trim($setsid->getOutput()), $this->directory . '/bin/setsid');
+        file_put_contents($this->directory . '/kvs.phar', <<<'PHP'
+<?php
+if (function_exists('cli_set_process_title')) {
+    cli_set_process_title('fixture worker with a custom title');
+}
+file_put_contents(dirname(__DIR__) . '/started', 'started');
+sleep(2);
+file_put_contents(dirname(__DIR__) . '/finished', 'late write');
+PHP);
+        $process = $this->createProcess(['eval'], ['MOCK_RUN_PHP' => '1', 'MOCK_DETACHED_PHP' => '1']);
+        $process->start();
+        try {
+            $deadline = microtime(true) + 5;
+            while (!is_file($this->directory . '/started') && microtime(true) < $deadline && $process->isRunning()) {
+                usleep(10000);
+            }
+            $this->assertFileExists($this->directory . '/started', $process->getErrorOutput());
+            $process->signal($signal);
+            $process->wait();
+            $this->assertSame($exitCode, $process->getExitCode(), $process->getErrorOutput());
+            usleep(2200000);
+            $this->assertFileDoesNotExist($this->directory . '/finished');
+        } finally {
+            $process->stop(0.5);
+        }
+    }
+
+    public function testCancellationBeforePhpStartupPreventsApplicationExecution(): void
+    {
+        file_put_contents($this->directory . '/kvs.phar', <<<'PHP'
+<?php
+file_put_contents(dirname(__DIR__) . '/finished', 'should not run');
+PHP);
+        $process = $this->launch(['eval'], ['MOCK_RUN_PHP' => '1', 'MOCK_CANCEL_PENDING' => '1']);
+
+        $this->assertSame(1, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertFileDoesNotExist($this->directory . '/finished');
     }
 
     public function testHostPathSelectsSiteAndBecomesContainerPath(): void
@@ -339,6 +416,17 @@ PHP);
      */
     private function launch(array $args, array $environment = [], string $cwd = '', bool $pty = false): Process
     {
+        $process = $this->createProcess($args, $environment, $cwd, $pty);
+        $process->run();
+        return $process;
+    }
+
+    /**
+     * @param list<string> $args
+     * @param array<string, string|false> $environment
+     */
+    private function createProcess(array $args, array $environment = [], string $cwd = '', bool $pty = false): Process
+    {
         $process = new Process(array_merge([__DIR__ . '/../bin/kvs-docker'], $args), $this->directory . $cwd, array_merge([
             'PATH' => $this->directory . '/bin',
             'KVS_CLI_PHAR' => $this->directory . '/kvs.phar',
@@ -360,7 +448,6 @@ PHP);
         ], $environment));
         $process->setPty($pty);
         $process->setInput($pty ? null : 'sentinel input');
-        $process->run();
         return $process;
     }
 
