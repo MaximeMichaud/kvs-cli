@@ -623,7 +623,8 @@ class BenchmarkRunner
             $name = isset($data['name']) && is_string($data['name']) ? $data['name'] : (string) $key;
             $avgMs = isset($data['avg_ms']) && is_numeric($data['avg_ms']) ? (float) $data['avg_ms'] : 0.0;
             $queriesSec = isset($data['queries_sec']) && is_numeric($data['queries_sec']) ? (float) $data['queries_sec'] : 0.0;
-            $samples = isset($data['samples']) && is_numeric($data['samples']) ? (int) $data['samples'] : 0;
+            $sampleCount = $data['total_queries'] ?? $data['samples'] ?? 0;
+            $samples = is_numeric($sampleCount) ? (int) $sampleCount : 0;
             $result->recordDb((string) $key, $name, $avgMs, $queriesSec, $samples);
         }
     }

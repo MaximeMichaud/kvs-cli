@@ -209,6 +209,14 @@ class BenchmarkCommand extends BaseCommand
             return self::FAILURE;
         }
 
+        if (
+            $input->getOption('submit') === true
+            && $this->getLowBenchmarkIterationWarnings($dbIterations, $cacheIterations, $fileIterations, $cpuIterations) !== []
+        ) {
+            $this->io()->error('Cannot submit a provisional score. Use the default iteration counts or higher.');
+            return self::FAILURE;
+        }
+
         $mcHostOption = $input->getOption('memcached-host');
         $mcHost = $mcHostOption;
 
@@ -378,17 +386,6 @@ class BenchmarkCommand extends BaseCommand
         // Capture command line options for reproducibility
         $experiment->setCommandLine($this->buildCommandLine($input));
 
-        // Calculate and set additional scores for API submission
-        $cpuCores = 1;
-        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
-            $cpuCores = max(1, (int) ($detection['cpu']['cores'] ?? 1));
-        }
-        $rawScore = $result->calculateScore();
-        $efficiencyPerCore = $rawScore / $cpuCores;
-        $baselineEfficiency = 250.0;
-        $efficiencyScore = (int) round(($efficiencyPerCore / $baselineEfficiency) * 1000);
-
-        $experiment->setEfficiencyScore($efficiencyScore);
         $experiment->setStackScore($stackScore);
         $experiment->setConfigScore($configScore);
 
@@ -415,6 +412,10 @@ class BenchmarkCommand extends BaseCommand
 
         // Submit if requested
         if ($input->getOption('submit') === true) {
+            if (!$result->getScoringDetails()['comparable']) {
+                $this->io()->error('Cannot submit a provisional score. Run the complete benchmark with default iteration counts.');
+                return self::FAILURE;
+            }
             $this->submitBenchmark($experiment, $exportPath !== false);
         }
 
@@ -1005,17 +1006,6 @@ class BenchmarkCommand extends BaseCommand
         $rating = $result->getRating();
         $hasInsufficientData = $result->hasWarnings();
 
-        // Get CPU cores for efficiency calculation
-        $cpuCores = 1;
-        if (isset($detection['cpu']) && is_array($detection['cpu'])) {
-            $cpuCores = max(1, (int) ($detection['cpu']['cores'] ?? 1));
-        }
-
-        // Calculate efficiency score (pts per vCPU)
-        $efficiencyPerCore = $rawScore / $cpuCores;
-        $baselineEfficiency = 250.0;
-        $efficiencyScore = (int) round(($efficiencyPerCore / $baselineEfficiency) * 1000);
-
         $stackTotal = (int) ($stackScore['total'] ?? 0);
         $configTotal = (int) ($configScore['total'] ?? 0);
 
@@ -1050,13 +1040,20 @@ class BenchmarkCommand extends BaseCommand
             }
         }
 
-        // Efficiency Score
-        $effPts = str_pad(number_format($efficiencyScore) . ' pts', 7);
-        $this->io()->writeln(sprintf(
-            '  <fg=white>Efficiency Score:</>  <fg=cyan;options=bold>%s</>  %s',
-            $effPts,
-            $this->getEfficiencyMiniRating($efficiencyScore)
-        ));
+        $scoring = $result->getScoringDetails();
+        $this->io()->writeln('  Scoring Method:    v' . $scoring['version']);
+        foreach ($scoring['category_scores'] as $category => $categoryScore) {
+            $this->io()->writeln(sprintf('  %-18s %s pts', ucfirst($category) . ':', number_format($categoryScore)));
+        }
+        if (!$scoring['comparable']) {
+            $this->io()->warning('Provisional score: incomplete suite or insufficient samples. Not eligible for submission.');
+            if ($scoring['missing_tests'] !== []) {
+                $this->io()->text('Missing tests: ' . implode(', ', $scoring['missing_tests']));
+            }
+            if ($scoring['insufficient_samples'] !== []) {
+                $this->io()->text('Insufficient samples: ' . implode(', ', $scoring['insufficient_samples']));
+            }
+        }
 
         // Stack Score
         $stackColor = $stackTotal >= 70 ? 'green' : ($stackTotal >= 40 ? 'yellow' : 'red');
@@ -1083,7 +1080,9 @@ class BenchmarkCommand extends BaseCommand
         }
 
         // Baseline comparison
-        if ($baseline !== null) {
+        if ($baseline !== null && $baseline->getScoringVersion() !== $result->getScoringVersion()) {
+            $this->io()->warning('Score comparison skipped: baseline uses a different scoring method.');
+        } elseif ($baseline !== null) {
             $baselineScore = $baseline->calculateScore();
             $this->displayScoreComparison($rawScore, $baselineScore);
         }
@@ -1934,23 +1933,6 @@ class BenchmarkCommand extends BaseCommand
             return '★★☆☆☆ Outdated';
         }
         return '★☆☆☆☆ Critical';
-    }
-
-    /**
-     * Get mini rating for efficiency score (for summary box)
-     */
-    private function getEfficiencyMiniRating(int $score): string
-    {
-        if ($score >= 1500) {
-            return '★★★★★ Excellent';
-        } elseif ($score >= 1200) {
-            return '★★★★☆ Very Good';
-        } elseif ($score >= 900) {
-            return '★★★☆☆ Good';
-        } elseif ($score >= 600) {
-            return '★★☆☆☆ Fair';
-        }
-        return '★☆☆☆☆ Needs Improvement';
     }
 
     /**

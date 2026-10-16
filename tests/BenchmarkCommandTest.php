@@ -70,6 +70,21 @@ class BenchmarkCommandTest extends TestCase
         $this->assertSame([], $command->lowIterationWarningsForTest(10, 100, 100, 1000));
     }
 
+    public function testRejectsSubmittingAShortRunBeforeExecutingBenchmarks(): void
+    {
+        $command = new BenchmarkCommand(new Configuration(['path' => $this->kvsPath]));
+        $tester = new CommandTester($command);
+        $tester->execute([
+            '--skip-version-check' => true,
+            '--cli' => true,
+            '--submit' => true,
+            '--cpu-iterations' => '10',
+        ]);
+        $this->assertSame(1, $tester->getStatusCode());
+        $this->assertStringContainsString('Cannot submit a provisional score', $tester->getDisplay());
+        $this->assertStringNotContainsString('Testing CPU performance', $tester->getDisplay());
+    }
+
     /**
      * @dataProvider provideMalformedNumericOptions
      */

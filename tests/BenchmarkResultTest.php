@@ -448,7 +448,7 @@ class BenchmarkResultTest extends TestCase
         $this->assertEquals($this->result->hasDbResults(), $restored->hasDbResults());
     }
 
-    public function testCalculateScoreWithCacheResults(): void
+    public function testIncompleteCacheCategoryDoesNotReceiveAScore(): void
     {
         $this->result->recordCache('simple_get', 'Simple Get', [
             'avg' => 0.025, 'min' => 0.01, 'max' => 0.05,
@@ -457,10 +457,10 @@ class BenchmarkResultTest extends TestCase
         ]);
 
         $score = $this->result->calculateScore();
-        $this->assertGreaterThan(0, $score);
+        $this->assertSame(0, $score);
     }
 
-    public function testCalculateScoreWithCpuResults(): void
+    public function testIncompleteCpuCategoryDoesNotReceiveAScore(): void
     {
         $this->result->recordCpu('md5_simple', 'MD5 Simple', [
             'avg' => 0.033, 'min' => 0.02, 'max' => 0.05,
@@ -469,10 +469,10 @@ class BenchmarkResultTest extends TestCase
         ]);
 
         $score = $this->result->calculateScore();
-        $this->assertGreaterThan(0, $score);
+        $this->assertSame(0, $score);
     }
 
-    public function testCalculateScoreWithFileIOResults(): void
+    public function testIncompleteFileCategoryDoesNotReceiveAScore(): void
     {
         $this->result->recordFileIO('read_1k', 'Read 1KB', [
             'avg' => 0.0083, 'min' => 0.005, 'max' => 0.015,
@@ -480,6 +480,6 @@ class BenchmarkResultTest extends TestCase
         ]);
 
         $score = $this->result->calculateScore();
-        $this->assertGreaterThan(0, $score);
+        $this->assertSame(0, $score);
     }
 }

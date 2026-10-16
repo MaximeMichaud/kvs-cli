@@ -25,6 +25,8 @@ kvs system:benchmark [options]
 | `-t, --tag=<tag>` | Tag/label for this benchmark run | - |
 | `-e, --export=<file>` | Export results to JSON file | - |
 | `-c, --compare=<file>` | Compare with baseline JSON file | - |
+| `--cli` | Run the shared workload suite in CLI instead of PHP-FPM | Off |
+| `-S, --submit` | Submit a complete, sufficiently sampled scoring v2 result | Off |
 | `--php-container=<name>` | Docker container name for PHP-FPM config | Auto-detect |
 
 ## Benchmark Categories
@@ -151,6 +153,34 @@ The benchmark displays:
    - Total benchmark time
    - Performance score
    - Rating (Excellent/Good/Fair/Poor)
+
+## Scoring Method v2
+
+CLI and PHP-FPM execute the same CPU, cache, database, and file workloads. Each
+measurement is divided by its versioned reference rate and multiplied by 1,000.
+A category uses the geometric mean of its required tests. The overall score is
+an arithmetic weighted sum: database 35%, cache 25%, CPU 25%, files 15%.
+
+All 24 CPU tests, 8 cache tests, 15 file tests, and the 3 indexed/synthetic database
+tests participate. Catalog-dependent SQL and HTTP timings are diagnostic only.
+The reference rates define a fixed scale, not a measured universal server.
+Durable file writes use a separate reference of 500 operations/s (2 ms per write).
+
+Missing tests make their category score zero; its weight is never redistributed.
+A run is provisional if any required test is missing, failed, or undersampled.
+It can be exported locally, but `--submit` refuses it. Use at least the default
+iteration counts for publication. Bulk cache operations collect at least ten
+batches even when the requested cache iteration count is small.
+
+Exports include `results.scoring`: the method version, category scores, missing
+tests, insufficient samples, completeness, and ranking eligibility. The machine-readable
+contract is `resources/benchmark-scoring-v2.json`. Compare overall scores only
+within the same method. Changing a workload or reference rate requires a new
+method version. Legacy imports retain the v1 calculation; the dashboard
+keeps them in its archive rather than mixing them into current rankings.
+
+The workload is sequential. The score does not measure aggregate multicore
+throughput, and no efficiency score is derived by dividing it by the CPU count.
 
 ## Comparison Mode
 

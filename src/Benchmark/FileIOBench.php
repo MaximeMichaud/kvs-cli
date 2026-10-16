@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace KVS\CLI\Benchmark;
 
-use KVS\CLI\Compat\KvsCompatibility;
 use KVS\CLI\Service\TempFileManager;
 
 /**
@@ -304,7 +303,7 @@ class FileIOBench
         return [
             'project_path' => '/var/www/kvs',
             'project_url' => 'https://example.com',
-            'project_version' => KvsCompatibility::MAX_TESTED_VERSION,
+            'project_version' => '7.0.0',
             'content_url_videos_sources' => 'https://cdn.example.com/videos',
             'cv' => md5('test_key'),
             'locale' => 'english',
