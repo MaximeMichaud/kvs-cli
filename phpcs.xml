@@ -21,8 +21,8 @@
     <!-- Exclude patterns -->
     <exclude-pattern>*/vendor/*</exclude-pattern>
     <exclude-pattern>*/node_modules/*</exclude-pattern>
-    <exclude-pattern>*.js</exclude-pattern>
-    <exclude-pattern>*.css</exclude-pattern>
+    <exclude-pattern>\.js$</exclude-pattern>
+    <exclude-pattern>\.css$</exclude-pattern>
     <!-- Exclude test scripts (not PSR-12 compliant by design) -->
     <exclude-pattern>tests/test-cli.php</exclude-pattern>
     <exclude-pattern>tests/bootstrap_plugin_test.php</exclude-pattern>
