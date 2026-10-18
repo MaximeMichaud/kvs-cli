@@ -17,13 +17,13 @@ The `db:import` command imports a SQL dump into your KVS database. It automatica
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `file` | Yes | Path to SQL file |
 
 ## Supported Formats
 
 | Extension | Format |
-|-----------|--------|
+| ----------- | -------- |
 | `.sql` | Uncompressed SQL |
 | `.gz`, `.gzip` | Gzip compressed |
 | `.zst`, `.zstd` | Zstandard compressed |
@@ -40,7 +40,7 @@ kvs db:import backup.sql
 
 Output:
 
-```
+```text
 Importing database from backup.sql...
  Size: 245.6 MB
  ⚠ This will overwrite all existing data!

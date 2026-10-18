@@ -342,7 +342,12 @@ SH
         chmod($toolsDir . '/tar', 0755);
 
         $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
 
         try {
             foreach (['1', '2', '3', '4'] as $dbChoice) {
@@ -371,6 +376,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
             }
             TestHelper::removeDir($rootDir);
         }
@@ -433,7 +448,12 @@ SH
 
         $before = $this->listImportTempDirs();
         $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
 
         try {
             $thrown = false;
@@ -464,6 +484,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
             }
             TestHelper::removeDir($rootDir);
         }
@@ -544,7 +574,12 @@ SH
         chmod($toolsDir . '/docker', 0755);
 
         $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
 
         try {
             $command = new ImportCommand();
@@ -563,6 +598,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
             }
             TestHelper::removeDir($rootDir);
         }
@@ -609,7 +654,12 @@ SH
         chmod($toolsDir . '/docker', 0755);
 
         $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
 
         try {
             $command = new ImportCommand();
@@ -632,6 +682,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
             }
             TestHelper::removeDir($rootDir);
         }

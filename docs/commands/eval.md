@@ -23,19 +23,19 @@ These commands require an allowed development or test environment, or an explici
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `code` | Yes | PHP code to execute |
 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--skip-kvs` | Skip loading KVS context |
 
 ## Available Variables
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `$kvsPath` | Path to KVS installation |
 | `$kvsConfig` | KVS CLI configuration object |
 | `$db` | MySQLi connection, or `null` when unavailable |
@@ -46,7 +46,7 @@ These commands require an allowed development or test environment, or an explici
 ## Available Classes
 
 | Class | Description |
-|-------|-------------|
+| ------- | ------------- |
 | `Video` | Video model |
 | `User` | User model |
 | `Album` | Album model |

@@ -15,14 +15,14 @@ The `album` command allows you to list, view, and delete photo album content.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `delete` (default: `list`) |
 | `id` | Conditional | Album ID, required for `show` and `delete` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `error`, `processing`, `deleting`, `deleted`) |
 | `--limit=N` | 20 | Number of results |
 | `--user=USER` | - | Filter by user ID or username |
@@ -99,7 +99,7 @@ first if you need to confirm the target album.
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `album_id` | `id` | Album ID |
 | `title` | - | Album title |
 | `dir` | - | Directory slug |

@@ -202,6 +202,7 @@ phar.readonly = Off
 ### "Cannot create phar"
 
 Check:
+
 - Directory is writable
 - No existing kvs.phar that's locked
 - PHP has phar extension enabled
@@ -222,7 +223,7 @@ php -r "var_dump((new Phar('kvs.phar'))->getSignature());"
 ### Size Comparison
 
 | Build Type | Size |
-|------------|------|
+| ------------ | ------ |
 | Development (with tests) | ~8 MB |
 | Production (no dev) | ~2 MB |
 | Compressed (gzip) | ~1.3 MB |

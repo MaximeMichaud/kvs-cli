@@ -15,13 +15,13 @@ The `migrate:package` command creates a portable migration package containing yo
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `path` | No | Path to KVS installation (defaults to current installation) |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output=FILE` | Auto-generated | Output file path |
 | `--no-content` | - | Skip content files (database only) |
 | `-c, --compression=LEVEL` | 3 | Compression level (1-19) |
@@ -38,7 +38,7 @@ The generated package contains:
 ## Compression Levels
 
 | Level | Speed | Size | Use Case |
-|-------|-------|------|----------|
+| ------- | ------- | ------ | ---------- |
 | 1-3 | Fast | Large | Quick backups (default: 3) |
 | 4-9 | Balanced | Medium | Normal use |
 | 10-19 | Slow | Small | Long-term storage |

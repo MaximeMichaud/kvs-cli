@@ -42,7 +42,7 @@ kvs video:formats available
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--fields=<fields>` | - | Comma-separated fields |
 | `--format=<format>` | table | Output format: `table`, `csv`, `json`, `yaml` |
 

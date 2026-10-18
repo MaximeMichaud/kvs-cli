@@ -16,14 +16,14 @@ video content.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `delete`, `stats` (default: `list`) |
 | `id` | Conditional | Video ID, required for `show` and `delete` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `error`, `processing`, `deleting`, `deleted`) |
 | `--limit=N` | 20 | Number of results to show |
 | `--search=TEXT` | - | Search in titles, directories, descriptions, URLs, and custom fields |
@@ -123,7 +123,7 @@ target video.
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `video_id` | `id` | Video ID |
 | `title` | - | Video title |
 | `dir` | - | Directory slug |

@@ -4,7 +4,7 @@ This document describes the internal architecture of KVS-CLI.
 
 ## Directory Structure
 
-```
+```text
 kvs-cli/
 ├── bin/
 │   └── kvs                     # CLI entry point
@@ -62,6 +62,7 @@ class Application extends \Symfony\Component\Console\Application
 ```
 
 **Responsibilities:**
+
 - Bootstrap process coordination
 - Command registration
 - Global option handling (`--path`)
@@ -113,6 +114,7 @@ class Configuration
 ```
 
 **Path Detection Priority:**
+
 1. `--path` CLI option
 2. `KVS_PATH` environment variable
 3. Current working directory (walks up tree)
@@ -135,6 +137,7 @@ abstract class BaseCommand extends Command
 ```
 
 **Provides:**
+
 - Database connection management
 - Styled output (`$io`)
 - Configuration access (`$config`)
@@ -226,7 +229,7 @@ function report_batch_operation_results(...): array;
 
 Located in `src/Command/Content/`:
 
-```
+```text
 VideoCommand     - video list, show
 AlbumCommand     - album list, show
 UserCommand      - user list, show
@@ -242,7 +245,7 @@ DvdCommand       - dvd list
 
 Located in `src/Command/System/`:
 
-```
+```text
 StatusCommand      - system:status
 CheckCommand       - system:check
 CacheCommand       - system:cache
@@ -274,7 +277,7 @@ Used by `CategoryCommand` and `TagCommand` for enable/disable operations.
 
 ## Data Flow
 
-```
+```text
 User Input
     ↓
 bin/kvs (entry point)
@@ -318,6 +321,7 @@ The `table()` method adds the configured prefix (default: `ktvs_`).
 ### Bootstrap Errors
 
 If KVS is not found, the application:
+
 1. Shows helpful error message with solutions
 2. Lists standalone commands that work without KVS
 3. Exits with failure code

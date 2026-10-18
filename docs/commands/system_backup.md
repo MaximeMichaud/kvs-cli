@@ -15,7 +15,7 @@ The `system:backup` command allows you to create full or partial backups of your
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--create` | Create a new backup |
 | `--list` | List available backups |
 | `--type=<type>` | Backup type: full, db, files |
@@ -25,7 +25,7 @@ The `system:backup` command allows you to create full or partial backups of your
 ## Backup Types
 
 | Type | Description |
-|------|-------------|
+| ------ | ------------- |
 | `full` | Database + all files (default) |
 | `db` | Database only |
 | `files` | Files only (content, config) |
@@ -40,7 +40,7 @@ kvs backup --create
 
 Output:
 
-```
+```text
 Creating full backup...
  ✓ Exporting database... (45.2 MB)
  ✓ Archiving files... (1.2 GB)
@@ -70,7 +70,7 @@ kvs backup --list
 
 Output:
 
-```
+```text
 Backup File                         Size      Created
 kvs_backup_full_20240115.tar.gz      892.3 MB  2024-01-15 14:30:22
 kvs_backup_db_20240113.sql.gz        45.2 MB   2024-01-13 02:00:00

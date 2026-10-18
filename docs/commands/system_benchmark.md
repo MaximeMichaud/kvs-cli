@@ -13,7 +13,7 @@ kvs system:benchmark [options]
 ## Options
 
 | Option | Description | Default |
-|--------|-------------|---------|
+| -------- | ------------- | --------- |
 | `-u, --url=<url>` | Base URL for HTTP tests | Auto-detect from config |
 | `-s, --samples=<n>` | Number of HTTP samples per endpoint | 5 |
 | `--db-iterations=<n>` | Number of iterations for DB tests | 10 |
@@ -45,6 +45,7 @@ Tests PHP-specific operations commonly used in KVS:
 ### HTTP Response Times
 
 Measures page load times for KVS endpoints:
+
 - Homepage
 - Video pages
 - Category pages
@@ -53,6 +54,7 @@ Measures page load times for KVS endpoints:
 ### Database Performance
 
 Tests common database operations:
+
 - Simple SELECT queries
 - JOIN queries
 - COUNT operations
@@ -61,6 +63,7 @@ Tests common database operations:
 ### Cache Performance (Memcached)
 
 Tests Memcached operations:
+
 - SET operations (various sizes)
 - GET operations
 - DELETE operations
@@ -69,6 +72,7 @@ Tests Memcached operations:
 ### File I/O Performance
 
 Tests filesystem operations:
+
 - Small file read/write
 - Large file read/write
 - Directory operations
@@ -185,6 +189,7 @@ throughput, and no efficiency score is derived by dividing it by the CPU count.
 ## Comparison Mode
 
 When using `--compare`, the output shows percentage differences:
+
 - Green: Performance improvement
 - Yellow: Minor degradation (<10%)
 - Red: Significant degradation (>10%)

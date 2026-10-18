@@ -15,14 +15,14 @@ The `system:conversion` command manages KVS conversion servers responsible for v
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `enable`, `disable`, `activate`, `deactivate`, `debug-on`, `debug-off`, `log`, `config`, `stats` |
 | `id` | Conditional | Server ID (required for most actions except `list` and `stats`) |
 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--status=STATUS` | Filter by status (`active`, `disabled`, `init`) |
 | `--errors` | Show only servers with errors |
 | `--limit=N` | Number of results (default: 50) |
@@ -43,7 +43,7 @@ kvs conversion list --status=active
 kvs conversion list --errors
 ```
 
-### show <id>
+### show `<id>`
 
 Show detailed server information including tasks, options, and connection details.
 
@@ -51,7 +51,7 @@ Show detailed server information including tasks, options, and connection detail
 kvs conversion show 1
 ```
 
-### enable <id>
+### enable `<id>`
 
 Enable/activate a conversion server.
 
@@ -59,7 +59,7 @@ Enable/activate a conversion server.
 kvs conversion enable 1
 ```
 
-### disable <id>
+### disable `<id>`
 
 Disable/deactivate a conversion server.
 
@@ -67,7 +67,7 @@ Disable/deactivate a conversion server.
 kvs conversion disable 1
 ```
 
-### activate <id>
+### activate `<id>`
 
 Alias for `enable`.
 
@@ -75,7 +75,7 @@ Alias for `enable`.
 kvs conversion activate 1
 ```
 
-### deactivate <id>
+### deactivate `<id>`
 
 Alias for `disable`.
 
@@ -83,7 +83,7 @@ Alias for `disable`.
 kvs conversion deactivate 1
 ```
 
-### debug-on <id>
+### debug-on `<id>`
 
 Enable debug mode for detailed conversion logging.
 
@@ -91,7 +91,7 @@ Enable debug mode for detailed conversion logging.
 kvs conversion debug-on 1
 ```
 
-### debug-off <id>
+### debug-off `<id>`
 
 Disable debug mode.
 
@@ -99,7 +99,7 @@ Disable debug mode.
 kvs conversion debug-off 1
 ```
 
-### log <id>
+### log `<id>`
 
 View the conversion server log.
 
@@ -107,7 +107,7 @@ View the conversion server log.
 kvs conversion log 1
 ```
 
-### config <id>
+### config `<id>`
 
 View server configuration including libraries and paths.
 
@@ -126,7 +126,7 @@ kvs conversion stats
 ## Status Values
 
 | ID | Status | Description |
-|----|--------|-------------|
+| ---- | -------- | ------------- |
 | 0 | Disabled | Server is inactive |
 | 1 | Active | Server is processing conversions |
 | 2 | Initializing | Server is starting up |
@@ -134,7 +134,7 @@ kvs conversion stats
 ## Priority Levels
 
 | ID | Level | Use Case |
-|----|-------|----------|
+| ---- | ------- | ---------- |
 | 0 | Realtime | User uploads (immediate processing) |
 | 4 | High | Important content |
 | 9 | Medium | Normal content (default) |
@@ -144,7 +144,7 @@ kvs conversion stats
 ## Error Codes
 
 | Code | Error | Description |
-|------|-------|-------------|
+| ------ | ------- | ------------- |
 | 1 | Write error | Cannot write output files |
 | 2 | Heartbeat | Lost connection to server |
 | 3 | Heartbeat timeout | Server not responding |
@@ -209,7 +209,7 @@ kvs conversion debug-off 1
 
 ### List
 
-```
+```text
 Conversion Servers
 ==================
 
@@ -221,7 +221,7 @@ Conversion Servers
 
 ### Show
 
-```
+```text
 Conversion Server #1
 ====================
 

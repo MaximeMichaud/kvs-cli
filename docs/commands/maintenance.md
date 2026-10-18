@@ -15,7 +15,7 @@ The `maintenance` command allows you to enable or disable maintenance mode on yo
 ## Actions
 
 | Action | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `on` | Enable maintenance mode |
 | `off` | Disable maintenance mode |
 | `status` | Check current status |
@@ -30,7 +30,7 @@ kvs maintenance on
 
 Output:
 
-```
+```text
 Maintenance mode enabled.
 Visitors will now see the maintenance page.
 ```
@@ -43,7 +43,7 @@ kvs maintenance off
 
 Output:
 
-```
+```text
 Maintenance mode disabled.
 Website is now accessible to visitors.
 ```
@@ -56,14 +56,14 @@ kvs maintenance status
 
 Output:
 
-```
+```text
 Maintenance mode: DISABLED
 Website is accessible to visitors.
 ```
 
 Or:
 
-```
+```text
 Maintenance mode: ENABLED
 Visitors are seeing the maintenance page.
 ```

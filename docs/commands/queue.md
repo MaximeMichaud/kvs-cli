@@ -13,7 +13,7 @@ kvs queue <action> [id] [options]
 ## Actions
 
 | Action | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `list` | List active tasks in queue (default) |
 | `show` | Show details for a specific task |
 | `stats` | Show queue statistics |
@@ -24,7 +24,7 @@ kvs queue <action> [id] [options]
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--status=<status>` | Filter by task status. Active queue values differ from history values. |
 | `--type=<id>` | Filter by task type ID |
 | `--error-code=<id>` | Filter by native KVS task error code |
@@ -80,7 +80,7 @@ restart a task, or change task state. A timeout or Ctrl+C stops the CLI only;
 the KVS task continues independently. Polling never sleeps beyond the timeout.
 
 | Exit code | Result |
-|-----------|--------|
+| ----------- | -------- |
 | `0` | Completed successfully |
 | `1` | Task failed, invalid input/state, or another command error |
 | `2` | Task not found in the active queue or history |
@@ -98,7 +98,7 @@ and `1` on failure; its `outcome` distinguishes these results.
 ## Active Queue Status Values
 
 | Status | Aliases | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `pending` | `scheduled`, `0` | Tasks waiting to be processed (status_id=0) |
 | `processing` | `in-process`, `in_process`, `1` | Tasks currently being processed (status_id=1) |
 | `failed` | `error`, `2` | Tasks that failed with error (status_id=2) |
@@ -106,7 +106,7 @@ and `1` on failure; its `outcome` distinguishes these results.
 ## History Status Values
 
 | Status | Aliases | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `failed` | `error`, `2` | Tasks that failed with error (status_id=2) |
 | `completed` | `3` | Tasks completed successfully (status_id=3) |
 | `cancelled` | `canceled`, `deleted`, `4` | Tasks cancelled or deleted before completion (status_id=4) |
@@ -114,7 +114,7 @@ and `1` on failure; its `outcome` distinguishes these results.
 ## Common Task Types
 
 | ID | Type |
-|----|------|
+| ---- | ------ |
 | 1 | New Video (full conversion) |
 | 2 | Delete Video |
 | 3 | Upload Video Format |
@@ -151,7 +151,7 @@ and `1` on failure; its `outcome` distinguishes these results.
 ## Error Codes
 
 | Code | Error |
-|------|-------|
+| ------ | ------- |
 | 1 | Database consistency error |
 | 2 | Conversion server connection error |
 | 3 | Unexpected error |
@@ -207,6 +207,7 @@ kvs queue stats
 ```
 
 Output includes:
+
 - Queue status breakdown (pending/processing/failed)
 - Tasks by type (top 10)
 - Failed tasks by error code

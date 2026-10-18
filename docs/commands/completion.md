@@ -15,13 +15,13 @@ The `completion` command generates shell completion scripts for bash, zsh, and f
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `shell` | No | Shell type: bash, zsh, fish (auto-detected if omitted) |
 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `-i, --install` | Install the completion script for the selected shell |
 
 ## Installation

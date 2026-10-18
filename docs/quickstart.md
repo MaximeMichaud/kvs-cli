@@ -29,7 +29,7 @@ kvs system:status
 
 You should see output like:
 
-```
+```text
 KVS System Status
 =================
 
@@ -75,7 +75,7 @@ kvs video show 123
 
 Output:
 
-```
+```text
 Video #123
 ==========
  ID        123
@@ -122,6 +122,7 @@ kvs check
 ```
 
 This checks:
+
 - PHP version and extensions
 - Database connectivity
 - Required tools (FFmpeg, ImageMagick)
@@ -208,7 +209,7 @@ kvs shell
 
 Then:
 
-```
+```text
 kvs>>> Video::count()
 => 1523
 

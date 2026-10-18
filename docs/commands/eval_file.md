@@ -23,13 +23,13 @@ These commands require an allowed development or test environment, or an explici
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `file` | Yes | Path to PHP file |
 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--skip-kvs` | Skip loading KVS context (faster, for standalone scripts) |
 | `--args=VALUE` | Arguments to pass to the script (can be used multiple times) |
 
@@ -38,7 +38,7 @@ These commands require an allowed development or test environment, or an explici
 The following variables are available in your script:
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `$kvsPath` | Path to KVS installation |
 | `$kvsConfig` | KVS CLI configuration object |
 | `$db` | MySQLi connection, or `null` when unavailable |
@@ -48,6 +48,7 @@ The following variables are available in your script:
 ## Available Classes
 
 Same as [`eval`](eval.md) command:
+
 - `Video`, `User`, `Album`, `Category`, `Tag`, `DVD`, `Model_`
 - `DB::query()`, `DB::escape()`, `DB::exec()`
 
@@ -63,12 +64,14 @@ echo "First arg: " . ($argv[1] ?? 'none') . "\n";
 ```
 
 Run:
+
 ```bash
 kvs eval-file script.php --args="arg1" --args="arg2"
 ```
 
 Output:
-```
+
+```text
 Arguments: script.php, arg1, arg2
 First arg: arg1
 ```

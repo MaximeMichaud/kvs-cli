@@ -25,14 +25,14 @@ These commands require an allowed development or test environment, or an explici
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `-i, --includes=<file>` | Additional files to include (can be used multiple times) |
 | `-b, --bootstrap=<file>` | Bootstrap file to load |
 
 ## Available Variables
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `$kvsConfig` | KVS CLI configuration object |
 | `$kvsPath` | Path to KVS installation |
 | `$db` | MySQLi connection, when available |
@@ -42,7 +42,7 @@ These commands require an allowed development or test environment, or an explici
 ## Available Classes
 
 | Class | Description |
-|-------|-------------|
+| ------- | ------------- |
 | `Video` | Video model |
 | `User` | User model |
 | `Album` | Album model |
@@ -57,7 +57,7 @@ The model classes and `DB` methods are lightweight helpers described under [`eva
 ## Built-in Commands
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `help` | Show PsySH help |
 | `exit` or `quit` | Exit the shell |
 | `clear` | Clear the screen |
@@ -74,7 +74,7 @@ kvs shell
 
 Output:
 
-```
+```text
 ========================================
          KVS Interactive Shell
 ========================================
@@ -234,6 +234,7 @@ kvs>>> foreach ($videos as $v) {
 ### Tab Completion
 
 Press Tab for auto-completion of:
+
 - Variable names
 - Class names
 - Method names

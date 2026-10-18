@@ -15,13 +15,13 @@ The `migrate:scan` command analyzes a KVS installation to assess its structure, 
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `path` | No | Path to KVS installation (defaults to current installation) |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--json` | - | Output results as JSON |
 | `--force` | - | Skip experimental feature confirmation |
 
@@ -65,7 +65,7 @@ kvs migrate:scan /var/www/oldsite
 
 ## Sample Output
 
-```
+```text
 KVS Installation Scan
 =====================
 

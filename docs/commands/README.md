@@ -7,7 +7,7 @@ Complete reference for all KVS-CLI commands.
 ### Content Management
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`video`](video.md) | `videos`, `content:video` | Manage videos |
 | [`album`](album.md) | `albums`, `gallery`, `content:album` | Manage photo albums |
 | [`user`](user.md) | `users`, `member`, `members`, `content:user` | Manage users |
@@ -22,7 +22,7 @@ Complete reference for all KVS-CLI commands.
 ### System Administration
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`system:status`](system_status.md) | `status` | Show system status |
 | [`system:check`](system_check.md) | `check` | Run health checks |
 | [`system:cache`](system_cache.md) | `cache` | Manage cache |
@@ -41,28 +41,28 @@ Complete reference for all KVS-CLI commands.
 ### Settings
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`settings:options`](settings_options.md) | `options`, `option` | [EXPERIMENTAL] Manage system options |
 | [`settings:video-format`](settings_video_format.md) | `video-format`, `vformat` | [EXPERIMENTAL] Manage video format settings |
 
 ### Video Operations
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`video:formats`](video_formats.md) | `formats` | Manage video formats |
 | [`video:screenshots`](video_screenshots.md) | `screenshots` | Manage screenshots |
 
 ### Database Operations
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`db:export`](db_export.md) | `database:export`, `db:dump` | Export database |
 | [`db:import`](db_import.md) | `database:import`, `db:restore` | Import database |
 
 ### Development Tools
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`eval`](eval.md) | `eval-php` | Execute PHP code |
 | [`eval-file`](eval_file.md) | `eval:file` | Execute PHP file |
 | [`shell`](shell.md) | `console`, `repl` | Interactive shell |
@@ -74,7 +74,7 @@ Complete reference for all KVS-CLI commands.
 ### Migration Tools
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`migrate:scan`](migrate_scan.md) | `scan` | [EXPERIMENTAL] Scan installation for migration |
 | [`migrate:package`](migrate_package.md) | `package` | [EXPERIMENTAL] Create migration package |
 | [`migrate:import`](migrate_import.md) | `import` | [EXPERIMENTAL] Import migration package |
@@ -83,7 +83,7 @@ Complete reference for all KVS-CLI commands.
 ### Utility Commands
 
 | Command | Aliases | Description |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | [`cli:info`](cli_info.md) | `info` | Display CLI environment info |
 | [`self-update`](self_update.md) | `selfupdate`, `self:update` | Update KVS-CLI |
 | [`completion`](completion.md) | - | Shell completion |
@@ -92,7 +92,7 @@ Complete reference for all KVS-CLI commands.
 
 All commands support:
 
-```
+```text
 -h, --help            Display help for the command
 -q, --quiet           Suppress non-essential output
 -v, --verbose         Increase verbosity (-v, -vv, -vvv)
@@ -106,7 +106,7 @@ All commands support:
 
 Most list commands support:
 
-```
+```text
 --format=FORMAT       Output format (table, json, csv, yaml, count, ids)
 --fields=FIELDS       Comma-separated list of fields
 --limit=N             Limit number of results (default: 20)
@@ -117,7 +117,7 @@ Most list commands support:
 ## Output Formats
 
 | Format | Description | Use Case |
-|--------|-------------|----------|
+| -------- | ------------- | ---------- |
 | `table` | Formatted table (default) | Human reading |
 | `json` | Pretty JSON | Scripting, APIs |
 | `csv` | CSV with headers | Spreadsheets |
@@ -128,6 +128,7 @@ Most list commands support:
 ## Status Values
 
 ### Video Status
+
 - `active` / `1` - Active
 - `disabled` / `0` - Disabled
 - `error` / `2` - Error
@@ -136,6 +137,7 @@ Most list commands support:
 - `deleted` / `5` - Deleted
 
 ### User Status
+
 - `disabled` / `0` - Disabled
 - `not-confirmed`, `unconfirmed` / `1` - Not confirmed
 - `active` / `2` - Active
@@ -145,6 +147,7 @@ Most list commands support:
 - `webmaster` / `6` - Webmaster
 
 ### Album Status
+
 - `active` / `1` - Active
 - `disabled` / `0` - Disabled
 - `error` / `2` - Error
@@ -153,10 +156,12 @@ Most list commands support:
 - `deleted` / `5` - Deleted
 
 ### Model Status
+
 - `active` / `1` - Active
 - `disabled`, `inactive` / `0` - Disabled
 
 ### Category/Tag Status
+
 - `active` / `1` - Active
 - `inactive` / `0` - Inactive
 

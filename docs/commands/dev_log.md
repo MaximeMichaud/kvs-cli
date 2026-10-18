@@ -15,13 +15,13 @@ The `dev:log` command allows you to view and manage KVS log files.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `type` | No | Log type to view |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-t, --tail=<n>` | 50 | Show last N lines |
 | `-f, --follow` | - | Follow log output (like `tail -f`) |
 | `--clear` | - | Clear log file |
@@ -30,7 +30,7 @@ The `dev:log` command allows you to view and manage KVS log files.
 ## Log Types
 
 | Type | Description |
-|------|-------------|
+| ------ | ------------- |
 | `cron` | Cron job execution logs |
 | `api` | API request logs |
 | `uploader` | Content upload logs |
@@ -47,7 +47,7 @@ kvs log --list
 
 Output:
 
-```
+```text
 Available Log Files
 ===================
 
@@ -89,7 +89,7 @@ kvs log cron --clear
 
 Output:
 
-```
+```text
 Cleared cron log (was 12.3 MB)
 ```
 

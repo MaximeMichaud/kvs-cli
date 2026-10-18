@@ -15,13 +15,13 @@ The `migrate:import` command imports a migration package (created by `migrate:pa
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `package` | Yes | Path to migration package (.tar.zst file) |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-d, --domain=DOMAIN` | - | Target domain name (required) |
 | `-e, --email=EMAIL` | - | Admin email for SSL certificates (required) |
 | `-t, --target=PATH` | /opt/kvs | KVS-Install directory |
@@ -33,7 +33,7 @@ The `migrate:import` command imports a migration package (created by `migrate:pa
 ## SSL Options
 
 | Type | Value | Description | Requirements |
-|------|-------|-------------|--------------|
+| ------ | ------- | ------------- | -------------- |
 | Let's Encrypt | `--ssl=1` | Free trusted SSL | Valid DNS + ports 80/443 |
 | ZeroSSL | `--ssl=2` | Alternative free SSL | Valid DNS + ports 80/443 |
 | Self-signed | `--ssl=3` | Testing only | None (browser warnings) |
@@ -169,6 +169,7 @@ kvs --path=/opt/kvs/kvs system:status
 ### Port Conflicts
 
 If ports 80/443 are in use:
+
 ```bash
 # Check what's using the ports
 sudo lsof -i :80
@@ -182,6 +183,7 @@ sudo systemctl stop nginx
 ### DNS Not Ready
 
 If using Let's Encrypt before DNS propagates:
+
 ```bash
 # Use self-signed for initial testing
 kvs migrate:import backup.tar.zst -d example.com -e admin@example.com --ssl=3

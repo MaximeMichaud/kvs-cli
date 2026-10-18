@@ -17,13 +17,13 @@ This command delegates to KVS-Install's `setup.sh` which handles port detection,
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `source` | No | Source KVS installation path (defaults to current) |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-d, --domain=DOMAIN` | - | Target domain name (required) |
 | `-e, --email=EMAIL` | - | Admin email for SSL certificates (required) |
 | `-t, --target=PATH` | /opt/kvs | KVS-Install directory |
@@ -37,7 +37,7 @@ This command delegates to KVS-Install's `setup.sh` which handles port detection,
 ## SSL Options
 
 | Type | Value | Description | Requirements |
-|------|-------|-------------|--------------|
+| ------ | ------- | ------------- | -------------- |
 | Let's Encrypt | `--ssl=1` | Free trusted SSL | Valid DNS + ports 80/443 |
 | ZeroSSL | `--ssl=2` | Alternative free SSL | Valid DNS + ports 80/443 |
 | Self-signed | `--ssl=3` | Testing only | None (browser warnings) |
@@ -148,6 +148,7 @@ kvs migrate:to-docker \
 ### Strategy 1: Direct Migration (This Command)
 
 Best for:
+
 - Single server migration
 - Migrating on same server
 - Quick migration without intermediate files
@@ -161,6 +162,7 @@ kvs migrate:to-docker /var/www/oldsite \
 ### Strategy 2: Package + Import
 
 Best for:
+
 - Server-to-server migration
 - Creating backups
 - Multiple imports
@@ -232,6 +234,7 @@ sudo systemctl stop apache2 nginx
 ### DNS Not Configured
 
 If using Let's Encrypt before DNS:
+
 ```bash
 # Option 1: Wait for DNS propagation
 dig +short example.com

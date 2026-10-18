@@ -15,7 +15,7 @@ The `dev:debug` command provides debugging information about your KVS installati
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--check` | Run system checks |
 | `--info` | Show debug information |
 | `--test-db` | Test database connection |
@@ -30,7 +30,7 @@ kvs debug --info
 
 Output:
 
-```
+```text
 Debug Information
 =================
 
@@ -64,7 +64,7 @@ kvs debug --test-db
 
 Output:
 
-```
+```text
 Testing database connection...
 
 Connection: OK

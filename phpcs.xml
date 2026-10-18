@@ -17,6 +17,7 @@
     <!-- Paths to check -->
     <file>src/</file>
     <file>tests/</file>
+    <file>tools/</file>
 
     <!-- Exclude patterns -->
     <exclude-pattern>*/vendor/*</exclude-pattern>
@@ -60,7 +61,7 @@
     <!-- <rule ref="PSR12.Files.FileHeader.IncorrectOrder"/> -->
 
     <!-- Function complexity warnings -->
-    <!-- TODO: Remettre absoluteComplexity à 15 après refactoring (PluginCommand:38, etc.) -->
+    <!-- TODO: Restore absoluteComplexity to 15 after refactoring (PluginCommand:38, etc.) -->
     <rule ref="Generic.Metrics.CyclomaticComplexity">
         <properties>
             <property name="complexity" value="10"/>

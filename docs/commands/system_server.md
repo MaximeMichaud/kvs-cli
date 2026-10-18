@@ -15,14 +15,14 @@ The `system:server` command manages KVS storage servers used for hosting video a
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `enable`, `disable`, `activate`, `deactivate`, `stats`, `group`, `weights`, `set-weights` (default: `list`) |
 | `id` | No | Server or group ID, depending on the action |
 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--type=TYPE` | Filter by content type (`video`, `album`) |
 | `--status=STATUS` | Filter by status (`active`, `disabled`) |
 | `--connection=TYPE` | Filter by connection type (`local`, `mount`, `ftp`, `s3`) |
@@ -52,7 +52,7 @@ kvs server list --connection=s3
 kvs server list --errors
 ```
 
-### show <id>
+### show `<id>`
 
 Display detailed information about a specific server.
 
@@ -61,7 +61,7 @@ kvs server show 1
 kvs server show 3
 ```
 
-### enable <id>
+### enable `<id>`
 
 Enable/activate a storage server.
 
@@ -69,7 +69,7 @@ Enable/activate a storage server.
 kvs server enable 1
 ```
 
-### disable <id>
+### disable `<id>`
 
 Disable/deactivate a storage server.
 
@@ -77,7 +77,7 @@ Disable/deactivate a storage server.
 kvs server disable 1
 ```
 
-### activate <id>
+### activate `<id>`
 
 Alias for `enable`.
 
@@ -85,7 +85,7 @@ Alias for `enable`.
 kvs server activate 1
 ```
 
-### deactivate <id>
+### deactivate `<id>`
 
 Alias for `disable`.
 
@@ -93,7 +93,7 @@ Alias for `disable`.
 kvs server deactivate 1
 ```
 
-### weights <group-id>
+### weights `<group-id>`
 
 Read every load-balancing weight in a storage server group and calculate its canonical revision.
 
@@ -103,7 +103,7 @@ kvs server weights 3 --format=json --force
 
 The revision includes each server's ID, group, status, streaming type, weight, and country pool. Legacy decimal weights are readable, but `set-weights` accepts only new integer values.
 
-### set-weights <group-id>
+### set-weights `<group-id>`
 
 Apply a complete group weight vector as one guarded operation.
 
@@ -131,7 +131,7 @@ Show storage statistics overview across all servers.
 kvs server stats
 ```
 
-### group [<id>]
+### group `[<id>]`
 
 List server groups or show details of a specific group.
 
@@ -143,14 +143,14 @@ kvs server group 1         # Show group 1 details
 ## Content Types
 
 | Type | Description | Content Type ID |
-|------|-------------|-----------------|
+| ------ | ------------- | ----------------- |
 | `video` | Video storage servers | 1 |
 | `album` | Album/image storage servers | 2 |
 
 ## Connection Types
 
 | Type | Description |
-|------|-------------|
+| ------ | ------------- |
 | `local` | Local filesystem |
 | `mount` | Mounted/network filesystem |
 | `ftp` | FTP connection |
@@ -159,7 +159,7 @@ kvs server group 1         # Show group 1 details
 ## Streaming Types
 
 | ID | Type | Description |
-|----|------|-------------|
+| ---- | ------ | ------------- |
 | 0 | Nginx | Nginx streaming server |
 | 1 | Apache | Apache streaming server |
 | 4 | CDN | Content Delivery Network |

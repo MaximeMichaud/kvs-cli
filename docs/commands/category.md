@@ -16,7 +16,7 @@ bulk-assign content categories.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `tree`, `show`, `create`, `delete`, `update`, `enable`, `disable`, `merge`, `assign-group` (default: `list`) |
 | `id` | Conditional | Category ID, title, source category ID, or category group ID |
 | `values` | Conditional | Target category ID or category IDs for merge and assign-group |
@@ -24,7 +24,7 @@ bulk-assign content categories.
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--title=TITLE` | - | Category title for `create` or `update` |
 | `--description=DESCRIPTION` | - | Category description for `create` or `update` |
 | `--group=GROUP` | - | Filter by, or assign to, category group ID or title |
@@ -130,7 +130,7 @@ bulk reassignment before writing changes.
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `category_id` | `id` | Category ID |
 | `title` | - | Category title |
 | `dir` | - | URL slug |

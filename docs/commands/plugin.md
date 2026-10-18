@@ -26,7 +26,7 @@ kvs plugin list [options]
 **Options:**
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=<status>` | all | Filter by status: `active`, `inactive`, `all` |
 | `--type=<type>` | - | Filter by type: `manual`, `cron`, `api`, `process_object` |
 | `--fields=<fields>` | `id,name,version,status,types` | Comma-separated fields |
@@ -93,7 +93,7 @@ kvs plugin list
 
 Output:
 
-```
+```text
 Installed Plugins
 =================
 

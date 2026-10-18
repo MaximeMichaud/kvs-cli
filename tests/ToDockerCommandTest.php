@@ -361,7 +361,12 @@ SH
         chmod($toolsDir . '/mariadb-dump', 0755);
 
         $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
 
         try {
             $this->tester->execute([
@@ -388,6 +393,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
             }
         }
     }
@@ -417,7 +432,12 @@ SH
         chmod($toolsDir . '/mariadb-dump', 0755);
 
         $previousPath = getenv('PATH');
-        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
 
         try {
             $this->tester->execute([
@@ -442,6 +462,16 @@ SH
                 putenv('PATH');
             } else {
                 putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
             }
         }
     }

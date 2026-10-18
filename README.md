@@ -203,23 +203,42 @@ Priority order:
 
 ### Setup
 
+Install PHP 8.1+, Composer, Python 3, [pre-commit](https://pre-commit.com/),
+Docker, and the test prerequisites: a MySQL/MariaDB client, Fish, Zsh, and Bash completion.
+The PHP test runtime needs PDO MySQL, PDO SQLite, MySQLi, GD, Intl, Mbstring, and XML.
+SQLite 3.44+ is required by tests that use ordered aggregate functions.
+Then install the project dependencies and activate the hooks:
+
 ```bash
 composer install
+composer prepare
 ```
 
-Git hooks are installed automatically via the `composer install` post-install script.
+`composer prepare` runs `pre-commit install --install-hooks`. Hook tools use pinned
+versions in isolated environments; no global PHP or Python dependencies are installed.
+The Bash compatibility check runs the `bash:3.2` Docker image. The minimum dependency
+check builds the PHP 8.1 test image from `tools/php81.Dockerfile`; subsequent runs
+reuse Docker layers and the Composer download cache. It has no access to the host
+Docker socket.
 
 ### Git Hooks
 
-This project uses [lefthook](https://github.com/evilmartians/lefthook) to run checks automatically:
+Every commit and push runs all repository checks: PHP syntax, PHPCS, PHPStan level 10,
+EditorConfig, ShellCheck, Bash style, Markdown, JSON/YAML/XML validation, secret
+scanning, Composer validation and audit, the complete PHPUnit suite, the lowest
+dependency analysis and test suite on PHP 8.1 in a temporary Docker container, and installer tests on
+native Bash and Bash 3.2.
+The commit message and pushed commits must follow Conventional Commits.
 
-- **pre-commit** — PHPCS (PSR-12), PHPStan (level 10), EditorConfig, YAML/JSON lint
-- **pre-push** — PHPUnit
+The commit hook temporarily stashes unstaged tracked changes and checks all tracked
+files, so a working copy cannot hide an error in the staged commit. A failed check
+blocks the commit. Formatting hooks may update files; review and stage those changes
+before trying again.
 
-To run all checks manually:
+To run the repository checks manually:
 
 ```bash
-lefthook run pre-commit --all-files
+pre-commit run --all-files --hook-stage manual --show-diff-on-failure
 ```
 
 ### Testing

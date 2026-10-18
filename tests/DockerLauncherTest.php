@@ -69,7 +69,9 @@ if ($args[0] === 'exec') {
     }
     if (in_array('mktemp', $args, true) ||
         (in_array('-c', $args, true) && str_contains($args[array_search('-c', $args, true) + 1], 'mktemp -d -t kvs-cli.'))) {
-        mkdir(getenv('MOCK_ROOT') . '/runtime');
+        if (!is_dir(getenv('MOCK_ROOT') . '/runtime')) {
+            mkdir(getenv('MOCK_ROOT') . '/runtime');
+        }
         touch(getenv('MOCK_ROOT') . '/runtime/pending');
         echo "/runtime/kvs-cli-test\n";
         exit(0);

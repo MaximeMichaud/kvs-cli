@@ -300,17 +300,20 @@ kvs completion fish > ~/.config/fish/completions/kvs.fish
 KVS-CLI couldn't detect your installation. Solutions:
 
 1. Navigate to the KVS directory:
+
    ```bash
    cd /path/to/kvs
    kvs system:status
    ```
 
 2. Use the `--path` option:
+
    ```bash
    kvs --path=/path/to/kvs system:status
    ```
 
 3. Set the environment variable:
+
    ```bash
    export KVS_PATH=/path/to/kvs
    ```

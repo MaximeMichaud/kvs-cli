@@ -21,14 +21,14 @@ settings, and usage count.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `groups` (default: `list`) |
 | `id` | Conditional | Format ID, required for `show` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status: `disabled`, `required`, `optional`, `deleting`, `error`, `conditional` |
 | `--group=GROUP` | - | Filter by group ID |
 | `--search=TEXT` | - | Search in title, postfix, and FFmpeg options |
@@ -40,7 +40,7 @@ settings, and usage count.
 ## Status Values
 
 | Status | ID | Description |
-|--------|----|-------------|
+| -------- | ---- | ------------- |
 | `disabled` | 0 | Format is disabled |
 | `required` | 1 | Always converted for every video |
 | `optional` | 2 | Converted if source quality allows |
@@ -51,7 +51,7 @@ settings, and usage count.
 ## Access Levels
 
 | Level | ID | Description |
-|-------|----|-------------|
+| ------- | ---- | ------------- |
 | `any` | 0 | Available to guests |
 | `member` | 1 | Requires membership |
 | `premium` | 2 | Premium members only |
@@ -300,7 +300,7 @@ kvs video-format list --status=deleting
 ## Difference: settings:video-format vs video:formats
 
 | Command | Purpose | Scope |
-|---------|---------|-------|
+| --------- | --------- | ------- |
 | `settings:video-format` | Inspect format **configuration** | Admin settings |
 | `video:formats` | Check actual video **files** | Individual videos |
 

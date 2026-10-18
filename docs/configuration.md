@@ -7,17 +7,20 @@ KVS-CLI is designed to work with minimal configuration by automatically detectin
 KVS-CLI searches for your KVS installation in this order:
 
 1. **`--path` CLI option** (highest priority)
+
    ```bash
    kvs --path=/var/www/kvs system:status
    ```
 
 2. **`KVS_PATH` environment variable**
+
    ```bash
    export KVS_PATH=/var/www/kvs
    kvs system:status
    ```
 
 3. **Current directory** (walks up the directory tree)
+
    ```bash
    cd /var/www/kvs
    kvs system:status
@@ -36,7 +39,7 @@ export KVS_PATH=/var/www/kvs
 
 KVS-CLI reads database credentials from your KVS installation:
 
-```
+```text
 /path/to/kvs/admin/include/setup_db.php
 ```
 
@@ -54,7 +57,7 @@ define('DB_DEVICE', 'kvs_database');
 Override database settings without modifying KVS files:
 
 | Variable | Description | Example |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `KVS_DB_HOST` | Database host | `127.0.0.1` |
 | `KVS_DB_PORT` | Database port | `3306` |
 | `KVS_DB_USER` | Database username | `kvs_user` |
@@ -94,7 +97,7 @@ kvs-staging check
 All commands support these global options:
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--path=<path>` | Path to KVS installation |
 | `--help` | Display help for the command |
 | `--quiet` | Suppress non-essential output |
@@ -108,7 +111,7 @@ All commands support these global options:
 Most list commands support:
 
 | Option | Values | Description |
-|--------|--------|-------------|
+| -------- | -------- | ------------- |
 | `--format` | `table`, `json`, `csv`, `yaml`, `count`, `ids` | Output format |
 | `--fields` | Comma-separated | Fields to display |
 | `--no-truncate` | - | Don't truncate long values |
@@ -148,7 +151,7 @@ kvs video list --fields=id,title,views
 **Field Aliases:**
 
 | Alias | Resolves to |
-|-------|-------------|
+| ------- | ------------- |
 | `id` | `video_id`, `album_id`, `user_id`, etc. |
 | `status` | `status_id` |
 | `views` | `video_viewed`, `album_viewed`, etc. |
@@ -156,7 +159,7 @@ kvs video list --fields=id,title,views
 ## Pagination Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--limit` | 20 | Maximum results |
 
 ```bash
@@ -174,7 +177,7 @@ Most content commands support `--status`:
 ### Video Status
 
 | Value | Status | Description |
-|-------|--------|-------------|
+| ------- | -------- | ------------- |
 | 0 | Disabled | Video is disabled |
 | 1 | Active | Video is active |
 | 2 | Error | Video has processing errors |
@@ -182,7 +185,7 @@ Most content commands support `--status`:
 ### User Status
 
 | Value | Status | Description |
-|-------|--------|-------------|
+| ------- | -------- | ------------- |
 | 0 | Disabled | Account disabled |
 | 1 | Not Confirmed | Email not confirmed |
 | 2 | Active | Active user |
@@ -193,14 +196,14 @@ Most content commands support `--status`:
 ### Album Status
 
 | Value | Status | Description |
-|-------|--------|-------------|
+| ------- | -------- | ------------- |
 | 0 | Disabled | Album is disabled |
 | 1 | Active | Album is active |
 
 ### Category/Tag Status
 
 | Value | Status | Description |
-|-------|--------|-------------|
+| ------- | -------- | ------------- |
 | 0 | Inactive | Not displayed |
 | 1 | Active | Displayed |
 
@@ -211,7 +214,7 @@ Most content commands support `--status`:
 KVS-CLI reads these files from your KVS installation:
 
 | File | Purpose |
-|------|---------|
+| ------ | --------- |
 | `admin/include/setup_db.php` | Database credentials |
 | `admin/include/setup.php` | Main configuration |
 | `admin/include/version.php` | KVS version |
@@ -237,7 +240,7 @@ kvs config list --json
 **Database (`db.*`):**
 
 | Key | Description |
-|-----|-------------|
+| ----- | ------------- |
 | `db.host` | Database server |
 | `db.login` | Username |
 | `db.pass` | Password (protected) |
@@ -246,7 +249,7 @@ kvs config list --json
 **Main Configuration (`main.*`):**
 
 | Key | Description |
-|-----|-------------|
+| ----- | ------------- |
 | `main.project_version` | KVS version |
 | `main.project_url` | Site URL |
 | `main.project_path` | Installation path |
@@ -369,15 +372,18 @@ kvs check
 ### Common Issues
 
 **"KVS installation not found":**
+
 - Verify KVS_PATH is set correctly
 - Check that `admin/include/setup_db.php` exists
 - Use `--path` to specify explicitly
 
 **"Database connection failed":**
+
 - Check credentials in `setup_db.php`
 - Verify MySQL/MariaDB is running
 - Test with `kvs config get db.host`
 
 **"Permission denied":**
+
 - Run with appropriate user (`www-data`, etc.)
 - Check file permissions on KVS directory

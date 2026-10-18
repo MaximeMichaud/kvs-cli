@@ -16,14 +16,14 @@ model/performer profiles.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `stats` (default: `list`) |
 | `id` | Conditional | Model ID, required for `show` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `inactive`) |
 | `--limit=N` | 20 | Number of results to show |
 | `--search=TEXT` | - | Search in model names, directories, descriptions, aliases, and gallery URLs |
@@ -67,7 +67,7 @@ kvs model stats
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `model_id` | `id` | Model ID |
 | `title` | - | Model name |
 | `dir` | - | Directory slug |

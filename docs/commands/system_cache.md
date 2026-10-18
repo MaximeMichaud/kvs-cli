@@ -25,13 +25,13 @@ kvs cache --clear [options]
 **Options:**
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--type=<type>` | all | Cache type to clear (`file` or `db`) |
 
 **Cache Types:**
 
 | Type | Description |
-|------|-------------|
+| ------ | ------------- |
 | `file` | Clear filesystem caches |
 | `db` | Clear database cache tables |
 
@@ -53,7 +53,7 @@ kvs cache --clear
 
 Output:
 
-```
+```text
 Cleared 156 files from engine
 Cleared 89 files from template-c
 Cache cleared successfully.
@@ -77,7 +77,7 @@ kvs cache --stats
 
 Output:
 
-```
+```text
 Cache Statistics
 ================
 
