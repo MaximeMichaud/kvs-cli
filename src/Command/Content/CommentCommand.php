@@ -998,6 +998,9 @@ HELP
             $decorateOutput = $format === 'table' && !$this->hasFieldSelection($input);
 
             if ($format === 'count') {
+                if ($this->rejectFieldSelectionForCountFormat($input)) {
+                    return self::FAILURE;
+                }
                 $stmt = $db->prepare(
                     "SELECT COUNT(*) FROM {$this->table('comments')} c $countJoinSql WHERE $whereClause"
                 );

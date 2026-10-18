@@ -1003,6 +1003,26 @@ class CommentCommandTest extends TestCase
         $this->assertSame('2', trim($this->tester->getDisplay()));
     }
 
+    public function testPendingCountRejectsFieldSelection(): void
+    {
+        foreach (['--field' => ['comment', ''], '--fields' => ['comment_id', 'unknown_field', '']] as $option => $values) {
+            foreach ($values as $value) {
+                $tester = new CommandTester($this->createCommand($this->db));
+                $tester->execute([
+                    'action' => 'pending',
+                    '--format' => 'count',
+                    $option => $value,
+                ]);
+
+                $this->assertSame(1, $tester->getStatusCode(), "$option=$value: " . $tester->getDisplay());
+                $this->assertStringContainsString(
+                    "The count format does not support $option.",
+                    $tester->getDisplay()
+                );
+            }
+        }
+    }
+
     public function testDefaultActionIsList(): void
     {
         $this->tester->execute([]);
