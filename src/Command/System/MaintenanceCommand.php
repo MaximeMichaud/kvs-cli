@@ -47,28 +47,34 @@ EOT
         $settingsDir = dirname($settingsFile);
 
         // Create directory if it doesn't exist
-        if (!is_dir($settingsDir)) {
-            mkdir($settingsDir, 0755, true);
+        if (!is_dir($settingsDir) && !@mkdir($settingsDir, 0755, true)) {
+            $this->io()->error('Failed to create maintenance settings directory: ' . $settingsDir);
+            return self::FAILURE;
         }
 
-        switch (strtolower($mode)) {
-            case 'status':
-                return $this->showStatus($output, $settingsFile);
+        try {
+            switch (strtolower($mode)) {
+                case 'status':
+                    return $this->showStatus($output, $settingsFile);
 
-            case 'on':
-                return $this->enableMaintenance($output, $settingsFile);
+                case 'on':
+                    return $this->enableMaintenance($output, $settingsFile);
 
-            case 'off':
-                return $this->disableMaintenance($output, $settingsFile);
+                case 'off':
+                    return $this->disableMaintenance($output, $settingsFile);
 
-            default:
-                $this->io()->error('Invalid action: ' . $mode);
-                $this->io()->newLine();
-                $this->io()->text('<info>Usage:</info>');
-                $this->io()->text('  kvs maintenance <comment>on</comment>      - Enable maintenance mode');
-                $this->io()->text('  kvs maintenance <comment>off</comment>     - Disable maintenance mode');
-                $this->io()->text('  kvs maintenance <comment>status</comment>  - Check maintenance status');
-                return self::FAILURE;
+                default:
+                    $this->io()->error('Invalid action: ' . $mode);
+                    $this->io()->newLine();
+                    $this->io()->text('<info>Usage:</info>');
+                    $this->io()->text('  kvs maintenance <comment>on</comment>      - Enable maintenance mode');
+                    $this->io()->text('  kvs maintenance <comment>off</comment>     - Disable maintenance mode');
+                    $this->io()->text('  kvs maintenance <comment>status</comment>  - Check maintenance status');
+                    return self::FAILURE;
+            }
+        } catch (\RuntimeException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
         }
     }
 
@@ -113,17 +119,9 @@ EOT
 
     private function getMaintenanceStatus(string $settingsFile): bool
     {
-        if (!file_exists($settingsFile)) {
-            return false;
-        }
-
-        $content = file_get_contents($settingsFile);
-        if ($content === false) {
-            return false;
-        }
-        $settings = unserialize($content);
+        $settings = $this->loadSettings($settingsFile);
         // DISABLE_WEBSITE = 1 means maintenance ON, 0 means OFF
-        if (!is_array($settings) || !isset($settings['DISABLE_WEBSITE'])) {
+        if (!isset($settings['DISABLE_WEBSITE'])) {
             return false;
         }
         $value = $settings['DISABLE_WEBSITE'];
@@ -136,13 +134,13 @@ EOT
     private function loadSettings(string $settingsFile): array
     {
         if (file_exists($settingsFile)) {
-            $content = file_get_contents($settingsFile);
+            $content = @file_get_contents($settingsFile);
             if ($content === false) {
-                return [];
+                throw new \RuntimeException('Failed to read maintenance settings: ' . $settingsFile);
             }
-            $result = unserialize($content);
+            $result = @unserialize($content, ['allowed_classes' => false]);
             if (!is_array($result)) {
-                return [];
+                throw new \RuntimeException('Invalid maintenance settings: ' . $settingsFile);
             }
             /** @var array<string, mixed> $result */
             return $result;
@@ -156,6 +154,9 @@ EOT
      */
     private function saveSettings(string $settingsFile, array $settings): void
     {
-        file_put_contents($settingsFile, serialize($settings));
+        $contents = serialize($settings);
+        if (@file_put_contents($settingsFile, $contents) !== strlen($contents)) {
+            throw new \RuntimeException('Failed to write maintenance settings: ' . $settingsFile);
+        }
     }
 }
