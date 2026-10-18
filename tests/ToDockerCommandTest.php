@@ -251,9 +251,9 @@ class ToDockerCommandTest extends TestCase
         $output = $this->tester->getDisplay();
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
-        $this->assertStringContainsString("mariadb -u root 'test.example.com' < /tmp/kvs-migration.sql", $output);
-        $this->assertStringNotContainsString("mariadb -u root 'test_example_com' < /tmp/kvs-migration.sql", $output);
-        $this->assertStringNotContainsString('mariadb -u root kvs < /tmp/kvs-migration.sql', $output);
+        $this->assertStringContainsString("mariadb 'test.example.com' < /tmp/kvs-migration.sql", $output);
+        $this->assertStringNotContainsString("mariadb 'test_example_com' < /tmp/kvs-migration.sql", $output);
+        $this->assertStringNotContainsString('mariadb kvs < /tmp/kvs-migration.sql', $output);
     }
 
     public function testToDockerDryRunUsesExistingKvsInstallEnvForImportCommand(): void
@@ -278,11 +278,12 @@ class ToDockerCommandTest extends TestCase
 
         $this->assertSame(0, $this->tester->getStatusCode(), $output);
         $this->assertStringContainsString(
-            "docker exec -i 'custom-prefix-mariadb' mariadb -u root 'custom_db' < /tmp/kvs-migration.sql",
+            "mariadb 'custom_db' < /tmp/kvs-migration.sql",
             $output
         );
+        $this->assertStringContainsString("docker exec -i 'custom-prefix-mariadb' sh -c", $output);
         $this->assertStringNotContainsString('kvs-test-example-mariadb', $output);
-        $this->assertStringNotContainsString("mariadb -u root 'test.example.com' < /tmp/kvs-migration.sql", $output);
+        $this->assertStringNotContainsString("mariadb 'test.example.com' < /tmp/kvs-migration.sql", $output);
     }
 
     public function testToDockerDryRunShowsSourceDatabaseConnectionOptions(): void
@@ -737,6 +738,72 @@ SH
                 $this->assertSame($choice, trim((string) file_get_contents($dockerDir . '/captured-db-choice')));
             }
         } finally {
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
+    public function testDatabaseImportAuthenticatesInTheContainerAndPreservesSqlErrors(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-authenticated-import-');
+        mkdir($rootDir . '/target/docker', 0755, true);
+        mkdir($rootDir . '/extract', 0755, true);
+        file_put_contents(
+            $rootDir . '/target/docker/.env',
+            "SITE_PREFIX=fixture\nMARIADB_DATABASE=fixture_db\n"
+        );
+        file_put_contents($rootDir . '/extract/database.sql.zst', 'compressed');
+        file_put_contents($rootDir . '/dump.sql', \KVS\CLI\Tests\Support\MigrationDatabaseFixture::SQL);
+        $tools = \KVS\CLI\Tests\Support\MigrationDatabaseFixture::create($rootDir);
+        $previousPath = getenv('PATH');
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $tools . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
+
+        try {
+            $output = new BufferedOutput();
+            $ioProperty = new \ReflectionProperty(\KVS\CLI\Command\BaseCommand::class, 'io');
+            $ioProperty->setValue($this->command, new SymfonyStyle(new ArrayInput([]), $output));
+            $method = new \ReflectionMethod($this->command, 'importData');
+            $arguments = [$rootDir . '/target', 'example.test', $rootDir . '/dump.sql', $this->config, true];
+            $result = $method->invoke($this->command, ...$arguments);
+
+            $this->assertTrue($result, $output->fetch());
+            $this->assertSame(
+                \KVS\CLI\Tests\Support\MigrationDatabaseFixture::SQL,
+                (string) file_get_contents($rootDir . '/captured.sql')
+            );
+            $this->assertSame("true\ntrue\n", file_get_contents($rootDir . '/auth.log'));
+            $this->assertStringNotContainsString(
+                \KVS\CLI\Tests\Support\MigrationDatabaseFixture::PASSWORD,
+                (string) file_get_contents($rootDir . '/args.log')
+            );
+
+            file_put_contents($rootDir . '/reject-import', 'reject');
+            file_put_contents($rootDir . '/captured.sql', 'output sentinel');
+            $result = $method->invoke($this->command, ...$arguments);
+
+            $this->assertFalse($result);
+            $this->assertStringContainsString('SQL rejected', $output->fetch());
+            $this->assertSame('output sentinel', file_get_contents($rootDir . '/captured.sql'));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
+            }
             TestHelper::removeDir($rootDir);
         }
     }

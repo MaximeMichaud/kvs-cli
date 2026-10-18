@@ -32,6 +32,8 @@ class ToDockerCommand extends BaseCommand
 
     private const KVS_INSTALL_REPO = 'https://github.com/MaximeMichaud/KVS-install.git';
     private const KVS_INSTALL_DIR = '/opt/kvs';
+    private const MARIADB_CLIENT_COMMAND =
+        'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -u root "$@"';
 
     protected function configure(): void
     {
@@ -420,7 +422,7 @@ EOT
         $this->io()->text(
             'docker exec -i '
             . escapeshellarg($containerPrefix . '-mariadb')
-            . ' mariadb -u root '
+            . ' sh -c ' . escapeshellarg(self::MARIADB_CLIENT_COMMAND) . ' mariadb '
             . escapeshellarg($database)
             . ' < /tmp/kvs-migration.sql'
         );
@@ -622,7 +624,10 @@ EOT
         $this->io()->text('Waiting for database...');
         $ready = false;
         for ($i = 0; $i < 30; $i++) {
-            $process = new Process(['docker', 'exec', $mariadbContainer, 'mariadb', '-u', 'root', '-e', 'SELECT 1']);
+            $process = new Process([
+                'docker', 'exec', $mariadbContainer,
+                'sh', '-c', self::MARIADB_CLIENT_COMMAND, 'mariadb', '-e', 'SELECT 1',
+            ]);
             $process->run();
             if ($process->isSuccessful()) {
                 $ready = true;
@@ -643,8 +648,9 @@ EOT
         // Import database
         $this->io()->text('Importing database...');
         $command = sprintf(
-            'docker exec -i %s mariadb -u root %s < %s',
+            'docker exec -i %s sh -c %s mariadb %s < %s',
             escapeshellarg($mariadbContainer),
+            escapeshellarg(self::MARIADB_CLIENT_COMMAND),
             escapeshellarg($database),
             escapeshellarg($dbDumpFile)
         );
