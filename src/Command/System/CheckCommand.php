@@ -1668,12 +1668,13 @@ HELP
             return $result;
         }
 
-        $url = 'https://cloudflare.com/cdn-cgi/trace';
+        $url = $this->getInternetCheckUrl();
         $start = microtime(true);
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
-            CURLOPT_NOBODY => true,
+            // The trace endpoint returns 404 for HEAD even when GET succeeds.
+            CURLOPT_HTTPGET => true,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => self::INTERNET_TIMEOUT,
             CURLOPT_CONNECTTIMEOUT => self::INTERNET_TIMEOUT,
@@ -1705,6 +1706,11 @@ HELP
         }
 
         return $result;
+    }
+
+    protected function getInternetCheckUrl(): string
+    {
+        return 'https://cloudflare.com/cdn-cgi/trace';
     }
 
     private function printSection(string $title): void
