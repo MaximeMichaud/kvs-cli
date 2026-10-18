@@ -479,7 +479,12 @@ HELP
 
         $files = [];
         foreach ($backupDirs as $backupDir) {
-            $files = array_merge($files, $this->findBackupFiles($backupDir));
+            $found = $this->findBackupFiles($backupDir);
+            if ($found === false) {
+                $this->io()->error('Cannot read backup directory: ' . $backupDir);
+                return self::FAILURE;
+            }
+            $files = array_merge($files, $found);
         }
 
         if ($files === []) {
@@ -525,13 +530,13 @@ HELP
     }
 
     /**
-     * @return list<string>
+     * @return list<string>|false
      */
-    private function findBackupFiles(string $backupDir): array
+    private function findBackupFiles(string $backupDir): array|false
     {
-        $entries = scandir($backupDir);
+        $entries = @scandir($backupDir);
         if ($entries === false) {
-            return [];
+            return false;
         }
 
         $files = [];

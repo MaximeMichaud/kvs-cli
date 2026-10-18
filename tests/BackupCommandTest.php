@@ -6,6 +6,7 @@ use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\BackupCommand;
 use KVS\CLI\Config\Configuration;
+use org\bovigo\vfs\vfsStream;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Process\Process;
@@ -790,6 +791,25 @@ SH
         yield 'files success' => ['files', false];
         yield 'full success' => ['full', false];
         yield 'full database failure' => ['full', true];
+    }
+
+    public function testBackupListFailsWhenDirectoryCannotBeRead(): void
+    {
+        $root = vfsStream::setup('backup-list');
+        $directory = vfsStream::newDirectory('archives', 0000)->at($root);
+        vfsStream::newFile('existing.sql.gz')->withContent('preserved archive')->at($directory);
+
+        @$this->tester->execute(['--list' => true, '--format' => 'json', '--output' => $directory->url()]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Cannot read backup directory', $this->tester->getDisplay());
+        $this->assertNotSame("[]\n", $this->tester->getDisplay());
+
+        $directory->chmod(0755);
+        $this->tester->execute(['--list' => true, '--format' => 'json', '--output' => $directory->url()]);
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $decoded = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame('existing.sql.gz', $decoded[0]['file']);
     }
 
     private function writeTool(string $toolsDir, string $name, string $script): void
