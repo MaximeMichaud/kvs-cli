@@ -14,6 +14,14 @@ The `shell` command starts an interactive PHP REPL (Read-Eval-Print Loop) with t
 
 Powered by [PsySH](https://psysh.org/).
 
+For local development, enable code execution in the current shell:
+
+```bash
+export KVS_ENV=dev
+```
+
+These commands require an allowed development or test environment, or an explicit `KVS_ALLOW_EVAL=true` override. The shell uses the same environment check as `eval` and `eval-file`.
+
 ## Options
 
 | Option | Description |
@@ -25,9 +33,11 @@ Powered by [PsySH](https://psysh.org/).
 
 | Variable | Description |
 |----------|-------------|
-| `$kvsConfig` | Configuration object |
+| `$kvsConfig` | KVS CLI configuration object |
 | `$kvsPath` | Path to KVS installation |
-| `$db` | PDO database connection |
+| `$db` | MySQLi connection, when available |
+| `$kvs_db` | Alias for `$db`, when available |
+| `$config` | KVS CMS configuration array |
 
 ## Available Classes
 
@@ -41,6 +51,8 @@ Powered by [PsySH](https://psysh.org/).
 | `DVD` | DVD model |
 | `Model_` | Model (performer) model |
 | `DB` | Database helper |
+
+The model classes and `DB` methods are lightweight helpers described under [`eval`](eval.md). `DB::query()` returns rows as associative arrays for SELECT queries, and may print an error and return `false`; check failures explicitly in scripts.
 
 ## Built-in Commands
 
@@ -111,12 +123,13 @@ kvs>>> Video::all(5)
 ### Database Queries
 
 ```php
-kvs>>> DB::query("SELECT COUNT(*) as total FROM ktvs_videos")
+kvs>>> $prefix = $kvsConfig->getTablePrefix();
+kvs>>> DB::query("SELECT COUNT(*) as total FROM {$prefix}videos")
 => [
      ["total" => "15432"]
    ]
 
-kvs>>> $db->query("SHOW TABLES")->fetchAll()
+kvs>>> $db->query("SHOW TABLES")->fetch_all(MYSQLI_ASSOC)
 => [
      ["Tables_in_kvs" => "ktvs_videos"],
      ["Tables_in_kvs" => "ktvs_users"],
@@ -185,6 +198,8 @@ function format_video($video) {
 }
 ```
 
+Bootstrap files are loaded as normal PHP files, so `__DIR__` refers to the bootstrap file's own directory.
+
 Run:
 
 ```bash
@@ -231,5 +246,5 @@ Press Tab for auto-completion of:
 ## See Also
 
 - [`eval`](eval.md) - Execute inline PHP code
-- [`eval-file`](eval-file.md) - Execute PHP file
+- [`eval-file`](eval_file.md) - Execute PHP file
 - [`config`](config.md) - View configuration

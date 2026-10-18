@@ -12,6 +12,14 @@ kvs eval-file <file> [options]
 
 The `eval-file` command executes a PHP file with the KVS context pre-loaded. This is useful for running scripts, migrations, or maintenance tasks.
 
+For local development, enable code execution in the current shell:
+
+```bash
+export KVS_ENV=dev
+```
+
+These commands require an allowed development or test environment, or an explicit `KVS_ALLOW_EVAL=true` override. The environment check also applies to `--skip-kvs`.
+
 ## Arguments
 
 | Argument | Required | Description |
@@ -32,9 +40,10 @@ The following variables are available in your script:
 | Variable | Description |
 |----------|-------------|
 | `$kvsPath` | Path to KVS installation |
-| `$kvsConfig` | Configuration object |
-| `$db` | PDO database connection |
-| `$config` | Configuration array |
+| `$kvsConfig` | KVS CLI configuration object |
+| `$db` | MySQLi connection, or `null` when unavailable |
+| `$kvs_db` | Alias for `$db` |
+| `$config` | KVS CMS configuration array |
 
 ## Available Classes
 
@@ -143,14 +152,14 @@ Create `migration.php`:
 
 echo "Running migration...\n";
 
-// Add new column
-$sql = "ALTER TABLE ktvs_videos ADD COLUMN custom_field VARCHAR(255)";
-try {
-    $db->exec($sql);
-    echo "✓ Column added\n";
-} catch (PDOException $e) {
-    echo "✗ Error: " . $e->getMessage() . "\n";
+// Add new column using the configured table prefix.
+$prefix = $kvsConfig->getTablePrefix();
+$sql = "ALTER TABLE {$prefix}videos ADD COLUMN custom_field VARCHAR(255)";
+if ($db->query($sql) === false) {
+    fwrite(STDERR, "Error: " . $db->error . "\n");
+    exit(1);
 }
+echo "Column added\n";
 ```
 
 Run:
@@ -215,15 +224,20 @@ Create `cleanup.php`:
 <?php
 // cleanup.php
 
-// Find orphaned records
+// Find orphaned records using the configured table prefix.
+$prefix = $kvsConfig->getTablePrefix();
 $sql = "SELECT v.video_id, v.title
-        FROM ktvs_videos v
-        LEFT JOIN ktvs_users u ON v.user_id = u.user_id
+        FROM {$prefix}videos v
+        LEFT JOIN {$prefix}users u ON v.user_id = u.user_id
         WHERE u.user_id IS NULL";
 
 $orphans = DB::query($sql);
+if ($orphans === false) {
+    fwrite(STDERR, "Failed to query videos.\n");
+    exit(1);
+}
 
-if (empty($orphans)) {
+if ($orphans === []) {
     echo "No orphaned videos found.\n";
     exit;
 }
@@ -233,10 +247,6 @@ foreach ($orphans as $video) {
     echo "  - #{$video['video_id']}: {$video['title']}\n";
 }
 ```
-
-## Aliases
-
-- `kvs eval:file`
 
 ## See Also
 
