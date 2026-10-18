@@ -163,29 +163,51 @@ EOT
             $this->io()->info("Streaming export through $compressFormat...");
         }
 
-        $process = $this->createStreamingExportProcess($command, $env, $outputFile, $compressor);
-        $exportSucceeded = $this->runStreamingExport($process, $outputFile, $compressor);
-
-        if ($exportSucceeded === false) {
-            $this->io()->error('Database export failed');
-            $this->io()->newLine();
-
-            $errorOutput = trim($this->streamingExportError !== '' ? $this->streamingExportError : $process->getErrorOutput());
-            if ($errorOutput !== '') {
-                $this->io()->text('<error>Error details:</error>');
-                $this->io()->text($errorOutput);
+        $outputDir = realpath(dirname($outputFile));
+        $temporaryOutputFile = $outputDir === false ? false : @tempnam($outputDir, '.kvs_export_');
+        if ($temporaryOutputFile === false || dirname($temporaryOutputFile) !== $outputDir) {
+            if (is_string($temporaryOutputFile)) {
+                @unlink($temporaryOutputFile);
             }
-
-            // Common error hints
-            $this->io()->newLine();
-            $this->io()->text('<comment>Common issues:</comment>');
-            $this->io()->text('  • Wrong database credentials in setup_db.php');
-            $this->io()->text('  • Database server not running');
-            $this->io()->text('  • Insufficient permissions');
-
+            $this->io()->error('Failed to create temporary export output');
             return self::FAILURE;
         }
 
+        try {
+            $process = $this->createStreamingExportProcess($command, $env, $temporaryOutputFile, $compressor);
+            $exportSucceeded = $this->runStreamingExport($process, $temporaryOutputFile, $compressor);
+
+            if ($exportSucceeded === false) {
+                $this->io()->error('Database export failed');
+                $this->io()->newLine();
+
+                $errorOutput = trim($this->streamingExportError !== '' ? $this->streamingExportError : $process->getErrorOutput());
+                if ($errorOutput !== '') {
+                    $this->io()->text('<error>Error details:</error>');
+                    $this->io()->text($errorOutput);
+                }
+
+                // Common error hints
+                $this->io()->newLine();
+                $this->io()->text('<comment>Common issues:</comment>');
+                $this->io()->text('  • Wrong database credentials in setup_db.php');
+                $this->io()->text('  • Database server not running');
+                $this->io()->text('  • Insufficient permissions');
+
+                return self::FAILURE;
+            }
+
+            if (!@rename($temporaryOutputFile, $outputFile)) {
+                $this->io()->error('Failed to publish database export');
+                return self::FAILURE;
+            }
+        } finally {
+            if (is_file($temporaryOutputFile)) {
+                @unlink($temporaryOutputFile);
+            }
+        }
+
+        clearstatcache(true, $outputFile);
         $fileSize = filesize($outputFile);
         if ($fileSize === false) {
             $this->io()->error('Failed to get file size');
@@ -411,11 +433,7 @@ EOT
         $progressBar = $this->io()->createProgressBar();
         $progressBar->start();
 
-        $this->withSecureFileUmask(function () use ($process, $outputFile, $progressBar): void {
-            if (is_file($outputFile)) {
-                @unlink($outputFile);
-            }
-
+        $this->withSecureFileUmask(function () use ($process, $progressBar): void {
             $process->run(function () use ($progressBar): void {
                 $progressBar->advance();
             });
