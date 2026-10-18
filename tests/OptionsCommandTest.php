@@ -294,6 +294,45 @@ class OptionsCommandTest extends TestCase
         }
     }
 
+    public function testSetEmptyStringClearsDatabaseAndStringMirror(): void
+    {
+        $systemDir = $this->kvsPath . '/admin/data/system';
+        self::assertTrue(is_dir($systemDir) || mkdir($systemDir, 0777, true));
+        $path = $systemDir . '/mixed_options.dat';
+        file_put_contents($path, serialize(['SCREENSHOTS_SIZE' => '320x180', 'OTHER_SETTING' => 'preserve']));
+
+        foreach (['0', ''] as $value) {
+            $this->tester->execute([
+                'action' => 'set', 'name' => 'SCREENSHOTS_SIZE', 'value' => $value,
+                '--force' => true, '--yes' => true,
+            ]);
+
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame(
+                $value,
+                $this->db->query("SELECT value FROM ktvs_options WHERE variable='SCREENSHOTS_SIZE'")->fetchColumn()
+            );
+            $this->assertSame(
+                ['SCREENSHOTS_SIZE' => $value, 'OTHER_SETTING' => 'preserve'],
+                unserialize((string) file_get_contents($path), ['allowed_classes' => false])
+            );
+        }
+    }
+
+    public function testSetMissingValueDoesNotClearAnOption(): void
+    {
+        $this->tester->execute([
+            'action' => 'set', 'name' => 'SCREENSHOTS_SIZE', '--force' => true, '--yes' => true,
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Option value is required', $this->tester->getDisplay());
+        $this->assertSame(
+            '320x180',
+            $this->db->query("SELECT value FROM ktvs_options WHERE variable='SCREENSHOTS_SIZE'")->fetchColumn()
+        );
+    }
+
     public function testSetShowsValidCacheClearCommandHint(): void
     {
         $this->tester->execute([

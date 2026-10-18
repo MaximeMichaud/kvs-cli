@@ -434,7 +434,7 @@ HELP
         }
 
         $name = $this->getStringArgument($input, 'name');
-        $value = $this->getStringArgument($input, 'value');
+        $value = $input->getArgument('value');
 
         if ($name === null || $name === '') {
             $this->io()->error('Option name is required');
@@ -442,7 +442,7 @@ HELP
             return self::FAILURE;
         }
 
-        if ($value === null) {
+        if (!is_string($value)) {
             $this->io()->error('Option value is required');
             $this->io()->text('Usage: kvs options set <name> <value>');
             $this->io()->text('Use empty string "" to clear a value');
