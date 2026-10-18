@@ -26,7 +26,7 @@ The `migrate:import` command imports a migration package (created by `migrate:pa
 | `-e, --email=EMAIL` | - | Admin email for SSL certificates (required) |
 | `-t, --target=PATH` | /opt/kvs | KVS-Install directory |
 | `--ssl=TYPE` | - | SSL type: 1=Let's Encrypt, 2=ZeroSSL, 3=self-signed |
-| `--db=VERSION` | 1 | MariaDB version: 1=11.8, 2=11.4, 3=10.11, 4=10.6 |
+| `--db=INDEX` | 1 | KVS-Install MariaDB menu index (1=latest LTS) |
 | `-y, --yes` | - | Skip confirmation prompts |
 | `--force` | - | Skip experimental feature confirmation |
 
@@ -38,14 +38,16 @@ The `migrate:import` command imports a migration package (created by `migrate:pa
 | ZeroSSL | `--ssl=2` | Alternative free SSL | Valid DNS + ports 80/443 |
 | Self-signed | `--ssl=3` | Testing only | None (browser warnings) |
 
-## MariaDB Versions
+## MariaDB Selection
 
-| Version | Value | Status |
-|---------|-------|--------|
-| 11.8 | `--db=1` | Latest (default) |
-| 11.4 | `--db=2` | LTS |
-| 10.11 | `--db=3` | Legacy LTS |
-| 10.6 | `--db=4` | Legacy |
+`--db` is forwarded unchanged as KVS-Install's `DB_CHOICE` menu index. Index `1`
+selects the latest LTS entry in that installer's current menu. Other indices
+depend on the KVS-Install revision and its available entries; they do not pin
+a MariaDB release series. The setup output reports the selected series.
+
+KVS CLI accepts indices `1` through `4`. Use an index available in the target
+installer's current menu. KVS CLI does not resolve a release number to an index
+or provide a stable release-series selector.
 
 ## Import Process
 
@@ -79,7 +81,7 @@ kvs migrate:import backup.tar.zst -d example.com -e admin@example.com
 ### Custom Configuration
 
 ```bash
-# Custom target directory and MariaDB version
+# Custom target directory and second MariaDB menu entry
 kvs migrate:import backup.tar.zst \
   -d example.com \
   -e admin@example.com \

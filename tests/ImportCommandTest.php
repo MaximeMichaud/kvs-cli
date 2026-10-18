@@ -331,7 +331,7 @@ cat > "$dest/metadata.json" <<'JSON'
 {
   "created_at": "2026-06-29T00:00:00Z",
   "kvs_version": "test",
-  "source_path": "/var/www/maximemichaud.ca",
+  "source_path": "/srv/example-site",
   "database": {"size": 41},
   "content": {"included": false, "size": 0, "files": 0}
 }
@@ -345,23 +345,27 @@ SH
         putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
 
         try {
-            $this->tester->execute(
-                [
-                    'package' => $packageFile,
-                    '--domain' => 'example.test',
-                    '--email' => 'admin@example.test',
-                    '--target' => $targetDir,
-                    '--ssl' => '1',
-                    '--force' => true,
-                ],
-                ['interactive' => false]
-            );
+            foreach (['1', '2', '3', '4'] as $dbChoice) {
+                $this->tester->execute(
+                    [
+                        'package' => $packageFile,
+                        '--domain' => 'example.test',
+                        '--email' => 'admin@example.test',
+                        '--target' => $targetDir,
+                        '--ssl' => '1',
+                        '--db' => $dbChoice,
+                        '--force' => true,
+                    ],
+                    ['interactive' => false]
+                );
 
-            $output = $this->tester->getDisplay();
+                $output = $this->tester->getDisplay();
 
-            $this->assertSame(1, $this->tester->getStatusCode(), $output);
-            $this->assertStringContainsString('Import cancelled because confirmation was not provided', $output);
-            $this->assertDirectoryDoesNotExist($targetDir);
+                $this->assertSame(1, $this->tester->getStatusCode(), $output);
+                $this->assertStringContainsString('Import cancelled because confirmation was not provided', $output);
+                $this->assertDirectoryDoesNotExist($targetDir);
+                $this->assertStringContainsString('MariaDB menu choice ' . $dbChoice, $output);
+            }
         } finally {
             if ($previousPath === false) {
                 putenv('PATH');
@@ -697,5 +701,40 @@ SH
 
         sort($dirs);
         return array_values($dirs);
+    }
+
+    public function testSetupReceivesTheDatabaseMenuIndexUnchanged(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-db-menu-');
+        $dockerDir = $rootDir . '/target/docker';
+        mkdir($dockerDir, 0755, true);
+        file_put_contents(
+            $dockerDir . '/setup.sh',
+            "#!/bin/sh\nprintf '%s\\n' \"\$DB_CHOICE\" > captured-db-choice\n"
+        );
+        chmod($dockerDir . '/setup.sh', 0755);
+
+        try {
+            $output = new BufferedOutput();
+            $ioProperty = new \ReflectionProperty($this->command, 'io');
+            $ioProperty->setValue($this->command, new SymfonyStyle(new ArrayInput([]), $output));
+            $method = new \ReflectionMethod($this->command, 'runKvsInstallSetup');
+
+            foreach (['1', '2', '3', '4'] as $choice) {
+                $result = $method->invoke(
+                    $this->command,
+                    $rootDir . '/target',
+                    'example.test',
+                    'admin@example.test',
+                    '3',
+                    $choice
+                );
+
+                $this->assertTrue($result, $output->fetch());
+                $this->assertSame($choice, trim((string) file_get_contents($dockerDir . '/captured-db-choice')));
+            }
+        } finally {
+            TestHelper::removeDir($rootDir);
+        }
     }
 }

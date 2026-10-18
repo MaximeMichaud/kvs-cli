@@ -41,7 +41,7 @@ class ToDockerCommand extends BaseCommand
             ->addOption('email', 'e', InputOption::VALUE_REQUIRED, 'Admin email for SSL certificates')
             ->addOption('target', 't', InputOption::VALUE_REQUIRED, 'KVS-Install directory', self::KVS_INSTALL_DIR)
             ->addOption('ssl', null, InputOption::VALUE_REQUIRED, 'SSL: 1=letsencrypt, 2=zerossl, 3=selfsigned')
-            ->addOption('db', null, InputOption::VALUE_REQUIRED, 'MariaDB: 1=11.8, 2=11.4, 3=10.11, 4=10.6', '1')
+            ->addOption('db', null, InputOption::VALUE_REQUIRED, 'KVS-Install MariaDB menu index (1=latest LTS)', '1')
             ->addOption('no-content', null, InputOption::VALUE_NONE, 'Skip content migration (DB only)')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be done')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompts')
@@ -194,12 +194,8 @@ EOT
             '2' => 'ZeroSSL',
             default => 'Self-signed',
         };
-        $dbName = match ($dbChoice) {
-            '1' => 'MariaDB 11.8 (latest)',
-            '2' => 'MariaDB 11.4 LTS',
-            '3' => 'MariaDB 10.11 LTS',
-            '4' => 'MariaDB 10.6 LTS',
-        };
+        $dbName = 'MariaDB menu choice ' . $dbChoice
+            . ($dbChoice === '1' ? ' (latest LTS from KVS-Install)' : ' (KVS-Install)');
 
         $this->io()->table(['Parameter', 'Value'], [
             ['Source Path', $sourceConfig->getKvsPath()],

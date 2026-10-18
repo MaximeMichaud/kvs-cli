@@ -96,7 +96,7 @@ class ImportCommand extends Command
             ->addOption('email', 'e', InputOption::VALUE_REQUIRED, 'Admin email for SSL certificates')
             ->addOption('target', 't', InputOption::VALUE_REQUIRED, 'KVS-Install directory', self::KVS_INSTALL_DIR)
             ->addOption('ssl', null, InputOption::VALUE_REQUIRED, 'SSL: 1=letsencrypt, 2=zerossl, 3=selfsigned')
-            ->addOption('db', null, InputOption::VALUE_REQUIRED, 'MariaDB: 1=11.8, 2=11.4, 3=10.11, 4=10.6', '1')
+            ->addOption('db', null, InputOption::VALUE_REQUIRED, 'KVS-Install MariaDB menu index (1=latest LTS)', '1')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompts')
             ->setHelp(<<<'EOT'
 Import a KVS migration package created by migrate:package into a Docker environment.
@@ -218,12 +218,8 @@ EOT
             '2' => 'ZeroSSL',
             '3' => 'Self-signed',
         };
-        $dbName = match ($dbChoice) {
-            '1' => 'MariaDB 11.8',
-            '2' => 'MariaDB 11.4 LTS',
-            '3' => 'MariaDB 10.11 LTS',
-            '4' => 'MariaDB 10.6 LTS',
-        };
+        $dbName = 'MariaDB menu choice ' . $dbChoice
+            . ($dbChoice === '1' ? ' (latest LTS from KVS-Install)' : ' (KVS-Install)');
 
         $dbData = is_array($metadata['database'] ?? null) ? $metadata['database'] : [];
         $contentData = is_array($metadata['content'] ?? null) ? $metadata['content'] : [];

@@ -85,6 +85,9 @@ class ToDockerCommandTest extends TestCase
         $this->assertStringContainsString('Export source database', $output);
         $this->assertStringContainsString('KVS-Install setup (headless)', $output);
         $this->assertStringContainsString('STOP_EXISTING=n', $output);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('MariaDB menu choice 1 (latest LTS from KVS-Install)', $output);
+        $this->assertStringContainsString("DB_CHOICE='1'", $output);
         $this->assertStringContainsString('Import database', $output);
     }
 
@@ -560,7 +563,9 @@ PHP
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('MariaDB 10.11 LTS', $output);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('MariaDB menu choice 3', $output);
+        $this->assertStringContainsString("DB_CHOICE='3'", $output);
     }
 
     public function testToDockerCommandShowsDbChoice2(): void
@@ -575,7 +580,9 @@ PHP
 
         $output = $this->tester->getDisplay();
 
-        $this->assertStringContainsString('MariaDB 11.4 LTS', $output);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString('MariaDB menu choice 2', $output);
+        $this->assertStringContainsString("DB_CHOICE='2'", $output);
     }
 
     public function testToDockerCommandShowsSslProvider(): void
@@ -695,6 +702,41 @@ SH
             } else {
                 $_ENV['PATH'] = $previousEnvPath;
             }
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
+    public function testSetupReceivesTheDatabaseMenuIndexUnchanged(): void
+    {
+        $rootDir = TestHelper::createTempDir('kvs-db-menu-');
+        $dockerDir = $rootDir . '/target/docker';
+        mkdir($dockerDir, 0755, true);
+        file_put_contents(
+            $dockerDir . '/setup.sh',
+            "#!/bin/sh\nprintf '%s\\n' \"\$DB_CHOICE\" > captured-db-choice\n"
+        );
+        chmod($dockerDir . '/setup.sh', 0755);
+
+        try {
+            $output = new BufferedOutput();
+            $ioProperty = new \ReflectionProperty(\KVS\CLI\Command\BaseCommand::class, 'io');
+            $ioProperty->setValue($this->command, new SymfonyStyle(new ArrayInput([]), $output));
+            $method = new \ReflectionMethod($this->command, 'runKvsInstallSetup');
+
+            foreach (['1', '2', '3', '4'] as $choice) {
+                $result = $method->invoke(
+                    $this->command,
+                    $rootDir . '/target',
+                    'example.test',
+                    'admin@example.test',
+                    '3',
+                    $choice
+                );
+
+                $this->assertTrue($result, $output->fetch());
+                $this->assertSame($choice, trim((string) file_get_contents($dockerDir . '/captured-db-choice')));
+            }
+        } finally {
             TestHelper::removeDir($rootDir);
         }
     }
