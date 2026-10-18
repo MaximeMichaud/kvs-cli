@@ -131,15 +131,39 @@ class IntegrationTest extends TestCase
 
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Engine cache', $output);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
 
-        // Clear cache
+        $previousPort = getenv('KVS_DB_PORT');
+        putenv('KVS_DB_PORT=1');
+        try {
+            $this->tester->run([
+                'command' => 'system:cache',
+                '--clear' => true,
+                '--path' => $this->tempDir,
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringNotContainsString('Cache cleared successfully', $output);
+        } finally {
+            putenv($previousPort === false ? 'KVS_DB_PORT' : 'KVS_DB_PORT=' . $previousPort);
+        }
+        $this->assertFileDoesNotExist($this->tempDir . '/admin/data/engine/cache.dat');
+        $this->assertFileDoesNotExist($this->tempDir . '/admin/smarty/cache/test.cache');
+
+        file_put_contents($this->tempDir . '/admin/data/engine/cache.dat', 'cache');
+        file_put_contents($this->tempDir . '/admin/smarty/cache/test.cache', 'smarty cache');
+
+        // File-only clearing must succeed independently of database availability.
         $this->tester->run([
             'command' => 'system:cache',
             '--clear' => true,
+            '--type' => 'file',
             '--path' => $this->tempDir
         ]);
 
         $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
         $this->assertStringContainsString('Cache cleared successfully', $output);
 
         // Verify files are gone

@@ -77,20 +77,26 @@ HELP
             return self::FAILURE;
         }
 
+        $success = true;
         if ($type === null || $type === '' || $type === 'file') {
-            $this->clearFileCache();
+            $success = $this->clearFileCache();
         }
 
         if ($type === null || $type === '' || $type === 'db') {
-            $this->clearDatabaseCache();
+            $success = $this->clearDatabaseCache() && $success;
+        }
+
+        if (!$success) {
+            return self::FAILURE;
         }
 
         $this->io()->success('Cache cleared successfully');
         return self::SUCCESS;
     }
 
-    private function clearFileCache(): void
+    private function clearFileCache(): bool
     {
+        $success = true;
         $cacheDirs = [
             $this->config->getAdminPath() . '/data/engine',
             $this->config->getAdminPath() . '/smarty/cache',
@@ -109,7 +115,11 @@ HELP
 
             $count = 0;
             foreach ($finder as $file) {
-                unlink($file->getRealPath());
+                if (!$this->removeCacheFile($file->getPathname())) {
+                    $this->io()->error('Failed to delete cache file: ' . $file->getPathname());
+                    $success = false;
+                    continue;
+                }
                 $count++;
             }
 
@@ -117,13 +127,20 @@ HELP
                 $this->io()->info("Cleared $count files from " . basename($dir));
             }
         }
+
+        return $success;
     }
 
-    private function clearDatabaseCache(): void
+    protected function removeCacheFile(string $path): bool
+    {
+        return @unlink($path);
+    }
+
+    private function clearDatabaseCache(): bool
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
-            return;
+            return false;
         }
 
         try {
@@ -148,8 +165,11 @@ HELP
                 );
             }
         } catch (\Exception $e) {
-            $this->io()->warning('Could not clear database cache: ' . $e->getMessage());
+            $this->io()->error('Could not clear database cache: ' . $e->getMessage());
+            return false;
         }
+
+        return true;
     }
 
     protected function databaseCacheTableExists(\PDO $db, string $table): bool
