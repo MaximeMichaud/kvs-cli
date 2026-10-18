@@ -1845,15 +1845,7 @@ HELP
 
     protected function deleteVideoWithKvs(int $videoId): void
     {
-        $this->runWithKvsAdminContext(function () use ($videoId): void {
-            if (!function_exists('delete_video')) {
-                throw new \RuntimeException('KVS delete_video function is not available');
-            }
-
-            if (delete_video($videoId) !== true) {
-                throw new \RuntimeException("KVS refused to delete video #$videoId");
-            }
-        }, ['functions_servers.php', 'functions_admin.php']);
+        $this->queueContentDeletionWithKvs('video', $videoId);
     }
 
     private function showStats(InputInterface $input): int

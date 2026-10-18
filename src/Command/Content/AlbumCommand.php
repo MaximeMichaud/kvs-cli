@@ -1265,14 +1265,6 @@ HELP
 
     protected function deleteAlbumWithKvs(int $albumId): void
     {
-        $this->runWithKvsAdminContext(function () use ($albumId): void {
-            if (!function_exists('delete_album')) {
-                throw new \RuntimeException('KVS delete_album function is not available');
-            }
-
-            if (delete_album($albumId) !== true) {
-                throw new \RuntimeException("KVS refused to delete album #$albumId");
-            }
-        }, ['functions_servers.php', 'functions_admin.php']);
+        $this->queueContentDeletionWithKvs('album', $albumId);
     }
 }

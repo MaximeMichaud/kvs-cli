@@ -91,7 +91,14 @@ kvs video show <id>
 
 ### delete
 
-Delete a video through KVS native cleanup.
+Queue a video for KVS native background deletion after confirmation.
+Only disabled, active, or error content can be queued. The current status is
+checked again before applying the change.
+
+The content, `background_tasks`, and `admin_audit_log` tables must use InnoDB.
+The command checks the stored task and audit entry before committing the change;
+failed queue attempts are rolled back. KVS background processing performs the
+later file, reference, and counter cleanup.
 
 ```bash
 kvs video delete <id>

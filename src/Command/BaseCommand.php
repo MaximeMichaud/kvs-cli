@@ -274,6 +274,92 @@ abstract class BaseCommand extends Command
         }
     }
 
+    /**
+     * @param 'video'|'album' $kind
+     */
+    protected function queueContentDeletionWithKvs(string $kind, int $id): void
+    {
+        $this->runWithKvsAdminContext(function () use ($kind, $id): void {
+            $delete = 'delete_' . $kind;
+            if (!function_exists($delete)) {
+                throw new \RuntimeException("KVS $delete function is not available");
+            }
+            if (
+                !function_exists('sql') || !function_exists('sql_pr')
+                || !function_exists('mr2array') || !function_exists('mr2number')
+            ) {
+                throw new \RuntimeException('KVS SQL helpers are not available');
+            }
+
+            $contentTable = $this->table($kind . 's');
+            $taskTable = $this->table('background_tasks');
+            $auditTable = $this->table('admin_audit_log');
+            $engines = mr2array(sql_pr(
+                'SELECT ENGINE FROM information_schema.TABLES '
+                . 'WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN (?, ?, ?)',
+                $contentTable,
+                $taskTable,
+                $auditTable
+            ));
+            if (!is_array($engines) || count($engines) !== 3) {
+                throw new \RuntimeException('KVS deletion requires the content, background task and audit tables');
+            }
+            foreach ($engines as $row) {
+                $engine = is_array($row) ? ($row['ENGINE'] ?? null) : null;
+                if (!is_string($engine) || strcasecmp($engine, 'InnoDB') !== 0) {
+                    throw new \RuntimeException(
+                        'KVS deletion requires InnoDB content, background task and audit tables'
+                    );
+                }
+            }
+            if (sql('START TRANSACTION') !== true) {
+                throw new \RuntimeException('Unable to start the native KVS deletion transaction');
+            }
+            try {
+                $auditQuery = "SELECT COUNT(*) FROM $auditTable "
+                    . 'WHERE action_id=180 AND object_id=? AND object_type_id=?';
+                $objectType = $kind === 'video' ? 1 : 2;
+                $auditsBefore = mr2number(sql_pr($auditQuery, $id, $objectType));
+                // Offset the status because mr2number() also returns zero when the row is missing.
+                $status = mr2number(sql_pr(
+                    "SELECT status_id + 1 FROM $contentTable WHERE {$kind}_id=? FOR UPDATE",
+                    $id
+                ));
+                if (!is_numeric($status) || !in_array((int) $status, [1, 2, 3], true)) {
+                    throw new \RuntimeException("KVS $kind status changed before deletion");
+                }
+                if ($delete($id) !== true) {
+                    throw new \RuntimeException("KVS refused to delete $kind #$id");
+                }
+                $tasks = mr2number(sql_pr(
+                    "SELECT COUNT(*) FROM $taskTable WHERE type_id=? AND {$kind}_id=?",
+                    $kind === 'video' ? 2 : 11,
+                    $id
+                ));
+                $content = mr2number(sql_pr(
+                    "SELECT COUNT(*) FROM $contentTable WHERE {$kind}_id=? AND status_id=4",
+                    $id
+                ));
+                if (!is_numeric($tasks) || (int) $tasks < 1 || !is_numeric($content) || (int) $content !== 1) {
+                    throw new \RuntimeException("KVS did not persist the deletion task for $kind #$id");
+                }
+                $auditsAfter = mr2number(sql_pr($auditQuery, $id, $objectType));
+                if (
+                    !is_numeric($auditsBefore) || !is_numeric($auditsAfter)
+                    || (int) $auditsAfter !== (int) $auditsBefore + 1
+                ) {
+                    throw new \RuntimeException("KVS did not persist the deletion audit entry for $kind #$id");
+                }
+                if (sql('COMMIT') !== true) {
+                    throw new \RuntimeException('Unable to commit the native KVS deletion transaction');
+                }
+            } catch (\Throwable $error) {
+                sql('ROLLBACK');
+                throw $error;
+            }
+        }, ['functions_servers.php', 'functions_admin.php']);
+    }
+
     protected function getDatabaseConnection(bool $quiet = false): ?\PDO
     {
         $dbConfig = $this->config->getDatabaseConfig();
