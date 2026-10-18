@@ -805,4 +805,132 @@ SH
             TestHelper::removeDir($rootDir);
         }
     }
+
+    /**
+     * @dataProvider tablePrefixCases
+     */
+    public function testImportRequiresMatchingLoadedTargetTablePrefix(
+        ?string $sourcePrefix,
+        ?string $targetPrefix,
+        int $expectedStatus
+    ): void {
+        $rootDir = TestHelper::createTempDir('kvs-import-prefix-');
+        $site = $rootDir . '/site';
+        $target = $rootDir . '/target';
+        mkdir($site . '/admin/include', 0755, true);
+        mkdir($site . '/admin/data', 0755, true);
+        mkdir($target . '/docker', 0755, true);
+        mkdir($target . '/.git', 0755, true);
+        TestHelper::createMockDbConfig($site);
+        $project = ['project_path' => $site, 'project_version' => '7.0.0'];
+        if ($targetPrefix !== null) {
+            $project['tables_prefix'] = $targetPrefix;
+        }
+        file_put_contents($site . '/admin/include/setup.php', '<?php $config = ' . var_export($project, true) . ';');
+        file_put_contents(
+            $site . '/admin/include/version.php',
+            '<?php $config["project_version"] = "7.0.0";'
+        );
+        file_put_contents($target . '/docker/.env', "SITE_PREFIX=fixture\nMARIADB_DATABASE=fixture_db\n");
+        file_put_contents($target . '/docker/setup.sh', "#!/bin/sh\nexit 0\n");
+        $tools = \KVS\CLI\Tests\Support\MigrationDatabaseFixture::create($rootDir);
+        file_put_contents($tools . '/git', "#!/bin/sh\nexit 0\n");
+        chmod($tools . '/git', 0755);
+        $metadata = [
+            'kvs_version' => '7.0.0',
+            'table_prefix' => $sourcePrefix,
+            'database' => ['size' => 128],
+            'content' => ['included' => false],
+        ];
+        file_put_contents($rootDir . '/metadata.json', json_encode($metadata, JSON_THROW_ON_ERROR));
+        $tar = <<<'SH'
+#!/bin/sh
+dest=''
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = -C ]; then shift; dest="$1"; fi
+    shift
+done
+SH;
+        $tar .= "\ncp " . escapeshellarg($rootDir . '/metadata.json') . ' "$dest/metadata.json"' . "\n";
+        $tar .= 'printf compressed > "$dest/database.sql.zst"' . "\n";
+        file_put_contents($tools . '/tar', $tar);
+        chmod($tools . '/tar', 0755);
+        file_put_contents($rootDir . '/package.tar.zst', 'compressed');
+
+        $command = new class ($site) extends ImportCommand {
+            public function __construct(private string $targetSite)
+            {
+                parent::__construct('migrate:import');
+            }
+
+            protected function getTargetSitePath(string $domain): string
+            {
+                return $this->targetSite;
+            }
+        };
+        $application = new Application();
+        $application->add($command);
+        $tester = new CommandTester($command);
+        $previousPath = getenv('PATH');
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $tools . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
+
+        try {
+            $tester->execute([
+                'package' => $rootDir . '/package.tar.zst',
+                '--domain' => 'example.test',
+                '--email' => 'admin@example.test',
+                '--target' => $target,
+                '--ssl' => '3',
+                '--yes' => true,
+                '--force' => true,
+            ], ['interactive' => false]);
+
+            $output = $tester->getDisplay();
+            $this->assertSame($expectedStatus, $tester->getStatusCode(), $output);
+            if ($expectedStatus === 0) {
+                $this->assertSame(
+                    \KVS\CLI\Tests\Support\MigrationDatabaseFixture::SQL,
+                    file_get_contents($rootDir . '/captured.sql')
+                );
+                $this->assertSame("true\ntrue\n", file_get_contents($rootDir . '/auth.log'));
+            } else {
+                $this->assertFileDoesNotExist($rootDir . '/captured.sql');
+                $this->assertFileDoesNotExist($rootDir . '/auth.log');
+                $this->assertStringContainsString('prefix', $output);
+            }
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
+            }
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
+    public static function tablePrefixCases(): array
+    {
+        return [
+            'mismatched package' => ['source_', 'ktvs_', 1],
+            'matching standard prefix' => ['ktvs_', 'ktvs_', 0],
+            'matching custom prefix' => ['fixture_', 'fixture_', 0],
+            'missing package prefix' => [null, 'ktvs_', 1],
+            'missing target prefix' => ['ktvs_', null, 1],
+        ];
+    }
 }

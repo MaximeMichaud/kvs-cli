@@ -5,6 +5,7 @@ namespace KVS\CLI\Command\Migrate;
 use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Command\Traits\RsyncProgressTrait;
+use KVS\CLI\Command\Traits\MigrationTablePrefixTrait;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -27,6 +28,7 @@ class ToDockerCommand extends BaseCommand
 {
     use ExperimentalCommandTrait;
     use RsyncProgressTrait;
+    use MigrationTablePrefixTrait;
 
     private const MIN_DATABASE_DUMP_BYTES = 100;
 
@@ -619,6 +621,11 @@ EOT
     ): bool {
         $containerPrefix = $this->getKvsInstallSitePrefix($domain, $targetDir);
         $mariadbContainer = $containerPrefix . '-mariadb';
+
+        $sourceMetadata = ['table_prefix' => $sourceConfig->getProjectConfig()['tables_prefix'] ?? null];
+        if (!$this->validateTargetTablePrefix($sourceMetadata, $this->getTargetSitePath($domain))) {
+            return false;
+        }
 
         // Wait for database
         $this->io()->text('Waiting for database...');

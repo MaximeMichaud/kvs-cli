@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Migrate;
 
 use KVS\CLI\Command\Traits\ExperimentalCommandTrait;
 use KVS\CLI\Command\Traits\RsyncProgressTrait;
+use KVS\CLI\Command\Traits\MigrationTablePrefixTrait;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Exception\MissingInputException;
@@ -28,6 +29,7 @@ class ImportCommand extends Command
 {
     use ExperimentalCommandTrait;
     use RsyncProgressTrait;
+    use MigrationTablePrefixTrait;
 
     private const KVS_INSTALL_REPO = 'https://github.com/MaximeMichaud/KVS-install.git';
     private const KVS_INSTALL_DIR = '/opt/kvs';
@@ -289,6 +291,11 @@ EOT
         // 7.2: Run KVS-Install setup
         $this->io()->text('<info>Step 2/4:</info> Running KVS-Install setup...');
         if (!$this->runKvsInstallSetup($targetDir, $domain, $email, $sslChoice, $dbChoice)) {
+            $this->cleanup($extractDir);
+            return Command::FAILURE;
+        }
+
+        if (!$this->validateTargetTablePrefix($metadata, $this->getTargetSitePath($domain))) {
             $this->cleanup($extractDir);
             return Command::FAILURE;
         }
@@ -604,7 +611,6 @@ EOT
             fclose($sqlHandle);
             unlink($tempSql);
         }
-
 
         if (!$process->isSuccessful()) {
             $this->io()->error('Database import failed: ' . $process->getErrorOutput());

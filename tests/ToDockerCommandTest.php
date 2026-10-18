@@ -29,7 +29,7 @@ class ToDockerCommandTest extends TestCase
 
         file_put_contents(
             $this->tempDir . '/admin/include/setup.php',
-            '<?php $config = ["project_version" => "6.4.0"];'
+            '<?php $config = ["project_version" => "6.4.0", "tables_prefix" => "ktvs_"];'
         );
 
         file_put_contents(
@@ -38,7 +38,18 @@ class ToDockerCommandTest extends TestCase
         );
 
         $this->config = new Configuration(['path' => $this->tempDir]);
-        $this->command = new ToDockerCommand($this->config);
+        $this->command = new class ($this->config) extends ToDockerCommand {
+            public function __construct(Configuration $config)
+            {
+                parent::__construct($config);
+                $this->setName('migrate:to-docker');
+            }
+
+            protected function getTargetSitePath(string $domain): string
+            {
+                return $this->config->getKvsPath();
+            }
+        };
 
         $app = new Application();
         $app->add($this->command);
@@ -806,5 +817,106 @@ SH
             }
             TestHelper::removeDir($rootDir);
         }
+    }
+
+    /**
+     * @dataProvider directTablePrefixCases
+     */
+    public function testDirectImportRequiresMatchingLoadedTargetPrefix(
+        ?string $sourcePrefix,
+        ?string $targetPrefix,
+        bool $expected
+    ): void {
+        $rootDir = TestHelper::createTempDir('kvs-direct-prefix-');
+        foreach (['source' => $sourcePrefix, 'site' => $targetPrefix] as $kind => $prefix) {
+            $path = $rootDir . '/' . $kind;
+            mkdir($path . '/admin/include', 0755, true);
+            mkdir($path . '/admin/data', 0755, true);
+            TestHelper::createMockDbConfig($path);
+            $project = ['project_path' => $path, 'project_version' => '7.0.0'];
+            if ($prefix !== null) {
+                $project['tables_prefix'] = $prefix;
+            }
+            file_put_contents($path . '/admin/include/setup.php', '<?php $config = ' . var_export($project, true) . ';');
+        }
+        mkdir($rootDir . '/target/docker', 0755, true);
+        file_put_contents($rootDir . '/target/docker/.env', "SITE_PREFIX=fixture\nMARIADB_DATABASE=fixture_db\n");
+        file_put_contents($rootDir . '/dump.sql', \KVS\CLI\Tests\Support\MigrationDatabaseFixture::SQL);
+        $config = new Configuration(['path' => $rootDir . '/source']);
+        $command = new class ($config, $rootDir . '/site') extends ToDockerCommand {
+            public function __construct(Configuration $config, private string $targetSite)
+            {
+                parent::__construct($config);
+                $this->setName('migrate:to-docker');
+            }
+
+            protected function getTargetSitePath(string $domain): string
+            {
+                return $this->targetSite;
+            }
+        };
+        $tools = \KVS\CLI\Tests\Support\MigrationDatabaseFixture::create($rootDir);
+        $previousPath = getenv('PATH');
+        $previousServerPath = $_SERVER['PATH'] ?? null;
+        $previousEnvPath = $_ENV['PATH'] ?? null;
+        $path = $tools . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : '');
+        putenv('PATH=' . $path);
+        $_SERVER['PATH'] = $path;
+        $_ENV['PATH'] = $path;
+
+        try {
+            $output = new BufferedOutput();
+            $property = new \ReflectionProperty(\KVS\CLI\Command\BaseCommand::class, 'io');
+            $property->setValue($command, new SymfonyStyle(new ArrayInput([]), $output));
+            $method = new \ReflectionMethod($command, 'importData');
+            $result = $method->invoke(
+                $command,
+                $rootDir . '/target',
+                'example.test',
+                $rootDir . '/dump.sql',
+                $config,
+                true
+            );
+
+            $this->assertSame($expected, $result, $output->fetch());
+            if ($expected) {
+                $this->assertSame(
+                    \KVS\CLI\Tests\Support\MigrationDatabaseFixture::SQL,
+                    file_get_contents($rootDir . '/captured.sql')
+                );
+                $this->assertSame("true\ntrue\n", file_get_contents($rootDir . '/auth.log'));
+            } else {
+                $this->assertFileDoesNotExist($rootDir . '/captured.sql');
+                $this->assertFileDoesNotExist($rootDir . '/auth.log');
+            }
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+            if ($previousServerPath === null) {
+                unset($_SERVER['PATH']);
+            } else {
+                $_SERVER['PATH'] = $previousServerPath;
+            }
+            if ($previousEnvPath === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $previousEnvPath;
+            }
+            TestHelper::removeDir($rootDir);
+        }
+    }
+
+    public static function directTablePrefixCases(): array
+    {
+        return [
+            'mismatch' => ['source_', 'ktvs_', false],
+            'matching standard prefix' => ['ktvs_', 'ktvs_', true],
+            'matching custom prefix' => ['fixture_', 'fixture_', true],
+            'missing source prefix' => [null, 'ktvs_', false],
+            'missing target prefix' => ['ktvs_', null, false],
+        ];
     }
 }

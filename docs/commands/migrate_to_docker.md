@@ -53,6 +53,19 @@ KVS CLI accepts indices `1` through `4`. Use an index available in the target
 installer's current menu. KVS CLI does not resolve a release number to an index
 or provide a stable release-series selector.
 
+## Table Prefix Compatibility
+
+The source prefix must match the prefix loaded from the target site's
+`admin/include/setup.php` after KVS-Install setup. A missing prefix or mismatch
+stops the migration before any source SQL or content is imported. The source
+database dump may already have been created, and setup may already have
+created the target installation.
+
+KVS CLI does not rewrite KVS-Install's `TABLES_PREFIX` configuration or
+Manticore settings. Use a source matching the target prefix, or use
+KVS-Install's existing-site import separately. A dry run only renders the
+plan; the loaded target prefix is checked during the actual migration.
+
 ## Migration Process
 
 The command performs:
