@@ -529,8 +529,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->saveEmailSettings($db, $newValue);
-            $this->syncEmailDebugSideEffects($db, $settings);
+            $this->updateEmailSettings($db, $newValue, $settings);
 
             $this->io()->success('Email settings updated:');
             foreach ($changes as $change) {
@@ -542,6 +541,61 @@ HELP
             $this->io()->error('Failed to update settings: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /** @param array<string, mixed> $settings */
+    private function updateEmailSettings(\PDO $db, string $value, array $settings): void
+    {
+        $notificationsAvailable = $this->requireEmailTransaction($db);
+        $db->beginTransaction();
+        try {
+            $this->saveEmailSettings($db, $value);
+            $this->syncEmailDebugSideEffects($db, $settings, $notificationsAvailable);
+            $db->commit();
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    private function requireEmailTransaction(\PDO $db): bool
+    {
+        if ($db->inTransaction()) {
+            throw new \RuntimeException('Cannot update email settings inside an existing database transaction');
+        }
+        $notificationsTable = $this->multiTable('admin_notifications');
+        $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'sqlite') {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = :table");
+            $stmt->execute(['table' => $notificationsTable]);
+            return (int) $stmt->fetchColumn() > 0;
+        }
+        if ($driver !== 'mysql') {
+            throw new \RuntimeException('Cannot atomically update email settings with this database driver');
+        }
+
+        $settingsTable = $this->table('settings');
+        $stmt = $db->prepare(
+            'SELECT tables.TABLE_NAME, engines.TRANSACTIONS FROM information_schema.TABLES AS tables '
+            . 'JOIN information_schema.ENGINES AS engines ON engines.ENGINE = tables.ENGINE '
+            . 'WHERE tables.TABLE_SCHEMA = DATABASE() AND tables.TABLE_NAME IN (?, ?)'
+        );
+        $stmt->execute([$settingsTable, $notificationsTable]);
+        $engines = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+        foreach ([$settingsTable, $notificationsTable] as $table) {
+            // Legacy installations may not have the shared notifications table.
+            if ($table === $notificationsTable && !array_key_exists($table, $engines)) {
+                continue;
+            }
+            if (($engines[$table] ?? null) !== 'YES') {
+                throw new \RuntimeException(
+                    "Cannot atomically update email settings: table $table is not transactional"
+                );
+            }
+        }
+        return array_key_exists($notificationsTable, $engines);
     }
 
     private function saveEmailSettings(\PDO $db, string $value): void
@@ -573,12 +627,14 @@ HELP
     /**
      * @param array<string, mixed> $settings
      */
-    private function syncEmailDebugSideEffects(\PDO $db, array $settings): void
+    private function syncEmailDebugSideEffects(\PDO $db, array $settings, bool $notificationsAvailable): void
     {
         $debugLevel = $this->getSettingString($settings, 'debug_level', '0');
         $debugEnabled = $debugLevel === '0' ? 0 : 1;
 
-        $this->syncAdminNotification($db, self::DEBUG_NOTIFICATION_ID, $debugEnabled);
+        if ($notificationsAvailable) {
+            $this->syncAdminNotification($db, self::DEBUG_NOTIFICATION_ID, $debugEnabled);
+        }
 
         if ($debugEnabled === 0) {
             $this->removeEmailDebugLog();
@@ -589,34 +645,30 @@ HELP
     {
         $table = $this->multiTable('admin_notifications');
 
-        try {
-            if ($objects > 0) {
-                $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE notification_id = :notification_id");
-                $stmt->execute(['notification_id' => $notificationId]);
-
-                if ((int) $stmt->fetchColumn() > 0) {
-                    $stmt = $db->prepare(
-                        "UPDATE {$table} SET objects = :objects, details = :details WHERE notification_id = :notification_id"
-                    );
-                } else {
-                    $stmt = $db->prepare(
-                        "INSERT INTO {$table} (notification_id, objects, details) " .
-                        "VALUES (:notification_id, :objects, :details)"
-                    );
-                }
-                $stmt->execute([
-                    'notification_id' => $notificationId,
-                    'objects' => $objects,
-                    'details' => json_encode([], JSON_THROW_ON_ERROR),
-                ]);
-                return;
-            }
-
-            $stmt = $db->prepare("DELETE FROM {$table} WHERE notification_id = :notification_id");
+        if ($objects > 0) {
+            $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE notification_id = :notification_id");
             $stmt->execute(['notification_id' => $notificationId]);
-        } catch (\PDOException) {
-            // Minimal or legacy installs may not have the shared notifications table.
+
+            if ((int) $stmt->fetchColumn() > 0) {
+                $stmt = $db->prepare(
+                    "UPDATE {$table} SET objects = :objects, details = :details WHERE notification_id = :notification_id"
+                );
+            } else {
+                $stmt = $db->prepare(
+                    "INSERT INTO {$table} (notification_id, objects, details) " .
+                    "VALUES (:notification_id, :objects, :details)"
+                );
+            }
+            $stmt->execute([
+                'notification_id' => $notificationId,
+                'objects' => $objects,
+                'details' => json_encode([], JSON_THROW_ON_ERROR),
+            ]);
+            return;
         }
+
+        $stmt = $db->prepare("DELETE FROM {$table} WHERE notification_id = :notification_id");
+        $stmt->execute(['notification_id' => $notificationId]);
     }
 
     private function removeEmailDebugLog(): void
@@ -625,8 +677,8 @@ HELP
         $billingScriptsName = is_scalar($billingScriptsName) ? (string) $billingScriptsName : '';
         $debugLog = $this->config->getAdminPath() . '/logs/email_' . md5($billingScriptsName) . '.txt';
 
-        if (is_file($debugLog)) {
-            @unlink($debugLog);
+        if (is_file($debugLog) && !@unlink($debugLog)) {
+            throw new \RuntimeException('Failed to remove email debug log: ' . $debugLog);
         }
     }
 

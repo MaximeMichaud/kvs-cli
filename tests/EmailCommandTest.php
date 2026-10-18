@@ -7,6 +7,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\EmailCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
+use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamDirectory;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -532,6 +534,114 @@ class EmailCommandTest extends TestCase
 
         $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertJsonStringEqualsJsonString('{}', $this->tester->getDisplay());
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function refusedNotificationMutations(): iterable
+    {
+        yield 'insert' => ['INSERT', '1'];
+        yield 'update' => ['UPDATE', '1'];
+        yield 'delete' => ['DELETE', '0'];
+    }
+
+    #[DataProvider('refusedNotificationMutations')]
+    public function testEmailSetRollsBackWhenDebugNotificationFails(string $operation, string $debug): void
+    {
+        $this->createAdminNotificationsTable();
+        if ($operation !== 'INSERT') {
+            $this->db->exec(
+                'INSERT INTO ' . TestHelper::table('admin_notifications')
+                . " (notification_id, objects, details) VALUES ('settings.email_settings.debug', 1, '[]')"
+            );
+        }
+        $before = $this->readEmailSettings();
+        $notifications = $this->db->query('SELECT * FROM ' . TestHelper::table('admin_notifications'))->fetchAll();
+        $this->db->exec(
+            'CREATE TRIGGER reject_email_notification BEFORE ' . $operation . ' ON '
+            . TestHelper::table('admin_notifications')
+            . " BEGIN SELECT RAISE(FAIL, 'Fixture notification refused'); END"
+        );
+        $logPath = $this->emailLogPath();
+        file_put_contents($logPath, 'debug log');
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--from-name' => 'Updated sender',
+            '--debug' => $debug,
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Fixture notification refused', $this->tester->getDisplay());
+        $this->assertStringNotContainsString('Email settings updated', $this->tester->getDisplay());
+        $this->assertSame($before, $this->readEmailSettings());
+        $this->assertSame(
+            $notifications,
+            $this->db->query('SELECT * FROM ' . TestHelper::table('admin_notifications'))->fetchAll()
+        );
+        $this->assertSame('debug log', file_get_contents($logPath));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testEmailSetRollsBackWhenDebugLogCannotBeRemoved(): void
+    {
+        $this->createAdminNotificationsTable();
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('admin_notifications')
+            . " (notification_id, objects, details) VALUES ('settings.email_settings.debug', 1, '[]')"
+        );
+        $logName = basename($this->emailLogPath());
+        $root = vfsStream::setup('email', 0755, ['admin' => ['logs' => [$logName => 'debug log']]]);
+        $logs = $root->getChild('admin/logs');
+        $this->assertInstanceOf(vfsStreamDirectory::class, $logs);
+        $logs->chmod(0555);
+        $config = $this->getMockBuilder(Configuration::class)
+            ->setConstructorArgs([['path' => $this->kvsPath]])
+            ->onlyMethods(['getAdminPath'])
+            ->getMock();
+        $config->method('getAdminPath')->willReturn($root->url() . '/admin');
+        $this->config = $config;
+        $tester = new CommandTester($this->createCommand($this->db));
+        $before = $this->readEmailSettings();
+
+        $tester->execute(['--force' => true, 'action' => 'set', '--debug' => '0']);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Failed to remove email debug log', $tester->getDisplay());
+        $this->assertStringNotContainsString('Email settings updated', $tester->getDisplay());
+        $this->assertSame($before, $this->readEmailSettings());
+        $this->assertSame('debug log', file_get_contents($root->url() . '/admin/logs/' . $logName));
+        $this->assertSame(1, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('admin_notifications')
+        )->fetchColumn());
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testEmailSetPreservesAnExistingTransaction(): void
+    {
+        $before = $this->readEmailSettings();
+        $this->db->beginTransaction();
+        try {
+            $this->tester->execute(['--force' => true, 'action' => 'set', '--from-name' => 'Updated sender']);
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertStringContainsString('existing database transaction', $this->tester->getDisplay());
+            $this->assertTrue($this->db->inTransaction());
+            $this->assertSame($before, $this->readEmailSettings());
+        } finally {
+            $this->db->rollBack();
+        }
+    }
+
+    public function testEmailSetSupportsLegacyInstallsWithoutNotificationsTable(): void
+    {
+        $this->tester->execute(['--force' => true, 'action' => 'set', '--from-name' => 'Updated sender']);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $settings = json_decode($this->readEmailSettings(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertIsArray($settings);
+        $this->assertSame('Updated sender', $settings['send_from_title']);
+        $this->assertFalse($this->db->inTransaction());
     }
 
     private function readEmailSettings(string $prefix = ''): string
