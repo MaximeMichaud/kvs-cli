@@ -202,11 +202,16 @@ HELP
 
         $action = $this->getStringArgument($input, 'action') ?? 'show';
 
-        return match ($action) {
-            'show' => $this->showSettings($input),
-            'set' => $this->setSettings($input),
-            default => $this->failUnknownAction('stats-settings', $action, ['show', 'set']),
-        };
+        try {
+            return match ($action) {
+                'show' => $this->showSettings($input),
+                'set' => $this->setSettings($input),
+                default => $this->failUnknownAction('stats-settings', $action, ['show', 'set']),
+            };
+        } catch (\RuntimeException $e) {
+            $this->io()->error($e->getMessage());
+            return self::FAILURE;
+        }
     }
 
     private function getStatsParamsPath(): string
@@ -246,14 +251,14 @@ HELP
             return [];
         }
 
-        $content = file_get_contents($path);
+        $content = @file_get_contents($path);
         if ($content === false) {
-            return [];
+            throw new \RuntimeException('Failed to read stats settings: ' . $path);
         }
 
         $params = @unserialize($content, ['allowed_classes' => false]);
         if (!is_array($params)) {
-            return [];
+            throw new \RuntimeException('Invalid stats settings: ' . $path);
         }
 
         /** @var array<string, mixed> $params */
@@ -373,12 +378,12 @@ HELP
         $dir = dirname($path);
 
         if (!is_dir($dir)) {
-            if (!mkdir($dir, 0755, true)) {
+            if (!@mkdir($dir, 0755, true)) {
                 return false;
             }
         }
 
-        $result = file_put_contents($path, serialize($params), LOCK_EX);
+        $result = @file_put_contents($path, serialize($params), LOCK_EX);
         return $result !== false;
     }
 

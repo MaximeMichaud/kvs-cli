@@ -6,6 +6,7 @@ use KVS\CLI\Command\System\StatsSettingsCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class StatsSettingsCommandTest extends TestCase
@@ -133,6 +134,7 @@ PHP
     {
         $this->writeStatsParams([
             'collect_traffic_stats' => 1,
+            'CUSTOM_SETTING' => ['preserve' => true],
             'videos_stats_limit_countries_option' => '',
             'videos_stats_limit_countries' => [],
         ]);
@@ -147,8 +149,104 @@ PHP
         $params = $this->readStatsParams();
         $this->assertSame(0, $this->tester->getStatusCode(), $display);
         $this->assertSame(1, $params['collect_performance_stats'] ?? null);
-        $this->assertCount(4, $params);
+        $this->assertCount(5, $params);
+        $this->assertSame(['preserve' => true], $params['CUSTOM_SETTING']);
         $this->assertArrayNotHasKey('collect_player_stats', $params);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function statsSettingsActions(): array
+    {
+        return ['show' => ['show'], 'set' => ['set']];
+    }
+
+    #[DataProvider('statsSettingsActions')]
+    public function testRejectsUnreadableStatsSettingsWithoutChangingFile(string $action): void
+    {
+        $contents = serialize(['collect_traffic_stats' => 1, 'CUSTOM_SETTING' => 'preserve']);
+        file_put_contents($this->statsParamsPath(), $contents);
+        chmod($this->statsParamsPath(), 0200);
+        if (is_readable($this->statsParamsPath())) {
+            chmod($this->statsParamsPath(), 0644);
+            $this->markTestSkipped('The current user can read a write-only settings file.');
+        }
+        $arguments = ['action' => $action, '--force' => true];
+        $arguments += $action === 'set' ? ['--traffic' => '0'] : ['--format' => 'json'];
+
+        try {
+            $this->tester->execute($arguments);
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertStringContainsString('Failed to read stats settings', $this->tester->getDisplay());
+            $this->assertStringNotContainsString('Stats settings updated', $this->tester->getDisplay());
+        } finally {
+            chmod($this->statsParamsPath(), 0644);
+        }
+        $this->assertSame($contents, file_get_contents($this->statsParamsPath()));
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function malformedStatsSettings(): array
+    {
+        $cases = [];
+        foreach (['invalid serialization', serialize('invalid'), ''] as $index => $contents) {
+            foreach (['show', 'set'] as $action) {
+                $cases[$action . '-' . $index] = [$action, $contents];
+            }
+        }
+        return $cases;
+    }
+
+    #[DataProvider('malformedStatsSettings')]
+    public function testRejectsMalformedStatsSettingsWithoutChangingFile(string $action, string $contents): void
+    {
+        file_put_contents($this->statsParamsPath(), $contents);
+        $arguments = ['action' => $action, '--force' => true];
+        $arguments += $action === 'set' ? ['--traffic' => '0'] : ['--format' => 'json'];
+
+        $this->tester->execute($arguments);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Invalid stats settings', $this->tester->getDisplay());
+        $this->assertStringNotContainsString('Stats settings updated', $this->tester->getDisplay());
+        $this->assertSame($contents, file_get_contents($this->statsParamsPath()));
+    }
+
+    public function testRejectsReadOnlyStatsSettingsWithoutChangingFile(): void
+    {
+        $contents = serialize(['collect_traffic_stats' => 1, 'CUSTOM_SETTING' => 'preserve']);
+        file_put_contents($this->statsParamsPath(), $contents);
+        chmod($this->statsParamsPath(), 0444);
+        if (is_writable($this->statsParamsPath())) {
+            chmod($this->statsParamsPath(), 0644);
+            $this->markTestSkipped('The current user can write a read-only settings file.');
+        }
+
+        try {
+            $this->tester->execute(['action' => 'set', '--traffic' => '0', '--force' => true]);
+
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertStringContainsString('Failed to save stats settings', $this->tester->getDisplay());
+            $this->assertSame($contents, file_get_contents($this->statsParamsPath()));
+        } finally {
+            chmod($this->statsParamsPath(), 0644);
+        }
+    }
+
+    public function testMissingStatsSettingsUseDefaultsAndCanBeCreated(): void
+    {
+        unlink($this->statsParamsPath());
+        $this->tester->execute(['action' => 'show', '--format' => 'json', '--force' => true]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $params = json_decode($this->tester->getDisplay(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $params['collect_traffic_stats']);
+        $this->assertFileDoesNotExist($this->statsParamsPath());
+
+        $this->tester->execute(['action' => 'set', '--traffic' => '1', '--force' => true]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(['collect_traffic_stats' => 1], $this->readStatsParams());
     }
 
     public function testPerformanceDisabledRemovesKvsDebugArtifacts(): void
