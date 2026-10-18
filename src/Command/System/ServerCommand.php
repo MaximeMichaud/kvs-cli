@@ -1941,6 +1941,34 @@ HELP
                 return self::FAILURE;
             }
 
+            $publisher = $this->createStorageClusterDataPublisher();
+            $snapshot = $publisher->snapshot();
+            $this->applyStorageServerStatus($db, $serverId, $status, $server, $publisher, $snapshot);
+
+            $title = $this->getStringField($server, 'title', (string) $serverId);
+            $newStatus = $status === StatusFormatter::SERVER_ACTIVE ? 'enabled' : 'disabled';
+            $this->io()->success("Server '{$title}' {$newStatus} successfully!");
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to update Server status: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array{bytes: string, permissions: int} $snapshot
+     */
+    private function applyStorageServerStatus(
+        \PDO $db,
+        int $serverId,
+        int $status,
+        array $server,
+        StorageClusterDataPublisher $publisher,
+        array $snapshot
+    ): void {
+        try {
             if ($status === StatusFormatter::SERVER_ACTIVE) {
                 $stmt = $db->prepare("
                     UPDATE {$this->table('admin_servers')}
@@ -1964,17 +1992,61 @@ HELP
                 $stmt->execute(['id' => $serverId]);
             }
 
-            $this->writeStorageClusterData($db);
-
-            $title = $this->getStringField($server, 'title', (string) $serverId);
-            $newStatus = $status === StatusFormatter::SERVER_ACTIVE ? 'enabled' : 'disabled';
-            $this->io()->success("Server '{$title}' {$newStatus} successfully!");
-
-            return self::SUCCESS;
-        } catch (\Exception $e) {
-            $this->io()->error('Failed to update Server status: ' . $e->getMessage());
-            return self::FAILURE;
+            $this->writeStorageClusterData($db, $publisher, $snapshot);
+        } catch (\Throwable $e) {
+            $errors = $this->recoverStorageServerStatus($db, $serverId, $server, $publisher, $snapshot);
+            $message = $e->getMessage();
+            if ($errors !== []) {
+                $message .= '; ' . implode('; ', $errors);
+            }
+            throw new \RuntimeException($message, 0, $e);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array{bytes: string, permissions: int} $snapshot
+     * @return list<string>
+     */
+    private function recoverStorageServerStatus(
+        \PDO $db,
+        int $serverId,
+        array $server,
+        StorageClusterDataPublisher $publisher,
+        array $snapshot
+    ): array {
+        $errors = [];
+        $previous = array_intersect_key($server, array_flip([
+            'status_id', 'error_iteration', 'error_streaming_iteration',
+        ]));
+        try {
+            $current = $this->fetchStorageServerForMutation($db, $serverId);
+            if ($current === null || array_intersect_key($current, $previous) !== $previous) {
+                $stmt = $db->prepare(
+                    "UPDATE {$this->table('admin_servers')} SET status_id = :status_id, "
+                    . 'error_iteration = :error_iteration, error_streaming_iteration = :error_streaming_iteration '
+                    . 'WHERE server_id = :id'
+                );
+                $stmt->execute([...$previous, 'id' => $serverId]);
+            }
+            $restored = $this->fetchStorageServerForMutation($db, $serverId);
+            if ($restored === null || array_intersect_key($restored, $previous) !== $previous) {
+                throw new \RuntimeException('The previous database values could not be verified');
+            }
+        } catch (\Throwable $e) {
+            $errors[] = 'Could not restore storage server status: ' . $e->getMessage();
+        }
+        try {
+            if ($publisher->readBytes() !== $snapshot['bytes']) {
+                $publisher->restore($snapshot);
+            }
+            if ($publisher->readBytes() !== $snapshot['bytes']) {
+                throw new \RuntimeException('The previous file bytes could not be verified');
+            }
+        } catch (\Throwable $e) {
+            $errors[] = 'Could not restore storage cluster data: ' . $e->getMessage();
+        }
+        return $errors;
     }
 
     /**
@@ -2053,10 +2125,12 @@ HELP
         }
     }
 
-    private function writeStorageClusterData(\PDO $db): void
-    {
-        $publisher = $this->createStorageClusterDataPublisher();
-        $snapshot = $publisher->snapshot();
+    /** @param array{bytes: string, permissions: int} $snapshot */
+    private function writeStorageClusterData(
+        \PDO $db,
+        StorageClusterDataPublisher $publisher,
+        array $snapshot
+    ): void {
         try {
             $fields = $publisher->fieldsFromSerializedRows($snapshot['bytes']);
         } catch (\RuntimeException) {

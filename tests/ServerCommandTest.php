@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Service\StorageClusterDataPublisher;
@@ -1937,6 +1938,120 @@ class ServerCommandTest extends TestCase
         $this->assertSame(5, (int) $server['error_streaming_iteration']);
         $this->assertCount(3, $clusterRows);
         $this->assertSame(1, (int) $clusterRows[1]['status_id']);
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function statusPublicationFailures(): array
+    {
+        return [
+            'enable before publication' => ['enable', false],
+            'enable after publication' => ['enable', true],
+            'disable before publication' => ['disable', false],
+            'disable after publication' => ['disable', true],
+        ];
+    }
+
+    #[DataProvider('statusPublicationFailures')]
+    public function testServerStatusPublicationFailureRestoresDatabaseAndClusterBytes(
+        string $action,
+        bool $publish
+    ): void {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            " SET lb_countries = '' WHERE server_id = 1"
+        );
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            ' SET status_id = ' . ($action === 'enable' ? '0' : '1') .
+            ', error_id = 4, error_iteration = 7, error_streaming_id = 2, error_streaming_iteration = 9 ' .
+            'WHERE server_id = 2'
+        );
+        $this->writeCurrentClusterData();
+        $path = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $contents = (string) file_get_contents($path) . "\n";
+        file_put_contents($path, $contents);
+        $before = $this->fetchServerRow(2);
+        $publisher = new class ($path, $publish) extends StorageClusterDataPublisher {
+            public bool $published = false;
+
+            public function __construct(string $file, private bool $publishBeforeFailure)
+            {
+                parent::__construct($file);
+            }
+
+            public function publish(array $rows, int $permissions): string
+            {
+                if ($this->publishBeforeFailure) {
+                    parent::publish($rows, $permissions);
+                    $this->published = true;
+                }
+                throw new \RuntimeException('Synthetic status publication failure');
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        $this->tester->execute(['--force' => true, 'action' => $action, 'id' => 2]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($publish, $publisher->published);
+        $this->assertSame($before, $this->fetchServerRow(2));
+        $this->assertSame($contents, file_get_contents($path));
+    }
+
+    public function testServerStatusReportsWhenItsDatabaseCannotBeRestored(): void
+    {
+        $this->writeCurrentClusterData();
+        $path = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $contents = file_get_contents($path);
+        $publisher = new class ($path) extends StorageClusterDataPublisher {
+            public function publish(array $rows, int $permissions): string
+            {
+                throw new \RuntimeException('Synthetic status publication failure');
+            }
+        };
+        $this->useClusterPublisher($publisher);
+        $this->db->exec(
+            'CREATE TRIGGER reject_status_restore BEFORE UPDATE ON ' . TestHelper::table('admin_servers') .
+            " WHEN OLD.server_id = 2 AND NEW.status_id = 0 " .
+            "BEGIN SELECT RAISE(FAIL, 'Synthetic status restore rejection'); END"
+        );
+
+        $this->tester->execute(['--force' => true, 'action' => 'enable', 'id' => 2]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $display = preg_replace('/\s+/', ' ', $this->tester->getDisplay()) ?? $this->tester->getDisplay();
+        $this->assertStringContainsString('Could not restore storage server status', $display);
+        $this->assertSame(1, (int) $this->fetchServerRow(2)['status_id']);
+        $this->assertSame($contents, file_get_contents($path));
+    }
+
+    public function testServerStatusReportsWhenItsClusterFileCannotBeRestored(): void
+    {
+        $this->writeCurrentClusterData();
+        $path = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $contents = file_get_contents($path);
+        $before = $this->fetchServerRow(2);
+        $publisher = new class ($path) extends StorageClusterDataPublisher {
+            public function publish(array $rows, int $permissions): string
+            {
+                parent::publish($rows, $permissions);
+                throw new \RuntimeException('Synthetic status publication failure');
+            }
+
+            public function restore(array $snapshot): void
+            {
+                throw new \RuntimeException('Synthetic cluster restore rejection');
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        $this->tester->execute(['--force' => true, 'action' => 'enable', 'id' => 2]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $display = preg_replace('/\s+/', ' ', $this->tester->getDisplay()) ?? $this->tester->getDisplay();
+        $this->assertStringContainsString('Could not restore storage cluster data', $display);
+        $this->assertSame($before, $this->fetchServerRow(2));
+        $this->assertNotSame($contents, file_get_contents($path));
     }
 
     /**
