@@ -911,6 +911,134 @@ class ConversionCommandTest extends TestCase
         $this->assertSame('[]', $row['details']);
     }
 
+    public function testConversionDebugOffReportsFailedLogRemovalAndCanBeRetried(): void
+    {
+        $directory = $this->kvsPath . '/admin/logs';
+        self::assertTrue(is_dir($directory) || mkdir($directory, 0777, true));
+        $path = $directory . '/debug_conversion_server_3.txt';
+        file_put_contents($path, 'Preserve this debug log');
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+
+        try {
+            foreach ([1, 2] as $attempt) {
+                $tester = new CommandTester($this->command);
+                $tester->execute(['--force' => true, 'action' => 'debug-off', 'id' => '3']);
+                $this->assertSame(1, $tester->getStatusCode(), "Attempt $attempt: " . $tester->getDisplay());
+                $this->assertSame('Preserve this debug log', file_get_contents($path));
+                $this->assertStringContainsString('Cannot remove conversion debug log', $tester->getDisplay());
+                $this->assertStringNotContainsString('Debug is already disabled', $tester->getDisplay());
+                $this->assertStringNotContainsString('[OK]', $tester->getDisplay());
+            }
+        } finally {
+            chmod($directory, 0755);
+        }
+
+        $tester = new CommandTester($this->command);
+        $tester->execute(['--force' => true, 'action' => 'debug-off', 'id' => '3']);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileDoesNotExist($path);
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function rejectedConversionNotifications(): array
+    {
+        return [
+            'insert' => ['INSERT', false],
+            'update' => ['UPDATE', true],
+            'delete' => ['DELETE', true],
+        ];
+    }
+
+    /** @dataProvider rejectedConversionNotifications */
+    public function testConversionDebugReportsNotificationWriteFailures(string $operation, bool $existing): void
+    {
+        $this->createAdminNotificationsTable();
+        $servers = TestHelper::table('admin_conversion_servers');
+        $notifications = TestHelper::table('admin_notifications');
+        $this->db->exec("UPDATE $servers SET is_debug_enabled = 0");
+        if ($existing) {
+            $this->db->exec("UPDATE $servers SET is_debug_enabled = 1 WHERE server_id = 3");
+            $this->db->exec(
+                "INSERT INTO $notifications (notification_id, objects, details) " .
+                "VALUES ('settings.conversion_servers.debug', 1, '[]')"
+            );
+        }
+        $before = $this->db->query("SELECT * FROM $notifications")->fetchAll();
+        $this->db->exec(
+            "CREATE TRIGGER reject_conversion_notification BEFORE $operation ON $notifications " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic conversion notification rejection'); END"
+        );
+
+        $this->tester->execute([
+            '--force' => true, 'action' => $operation === 'DELETE' ? 'debug-off' : 'debug-on', 'id' => '3',
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Synthetic conversion notification rejection', $display);
+        $this->assertStringNotContainsString('[OK]', $display);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $notifications")->fetchAll());
+        $this->assertSame(
+            $operation === 'DELETE' ? 0 : 1,
+            (int) $this->db->query("SELECT is_debug_enabled FROM $servers WHERE server_id = 3")->fetchColumn()
+        );
+    }
+
+    public function testConversionDebugAllowsAnAbsentLegacyNotificationTable(): void
+    {
+        foreach (['debug-on', 'debug-off'] as $action) {
+            $tester = new CommandTester($this->command);
+            $tester->execute(['--force' => true, 'action' => $action, 'id' => '1']);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame(
+                $action === 'debug-on' ? 1 : 0,
+                (int) $this->db->query(
+                    'SELECT is_debug_enabled FROM ' . TestHelper::table('admin_conversion_servers') . ' WHERE server_id=1'
+                )->fetchColumn()
+            );
+        }
+    }
+
+    /** @return array<string, array{string, int}> */
+    public static function conversionStatusNotificationFailures(): array
+    {
+        return ['enable' => ['enable', 1], 'disable' => ['disable', 0]];
+    }
+
+    /** @dataProvider conversionStatusNotificationFailures */
+    public function testConversionStatusReportsFailedNotificationSynchronization(string $action, int $target): void
+    {
+        $this->createAdminNotificationsTable();
+        $servers = TestHelper::table('admin_conversion_servers');
+        $notifications = TestHelper::table('admin_notifications');
+        $this->db->exec("UPDATE $servers SET status_id = 0");
+        $this->db->exec('UPDATE ' . $servers . ' SET status_id = ' . (1 - $target) . ' WHERE server_id = 1');
+        $this->db->exec(
+            "INSERT INTO $notifications (notification_id, objects, details) " .
+            "VALUES ('settings.conversion_servers.validation', 1, '[]')"
+        );
+        $this->db->exec(
+            "CREATE TRIGGER reject_conversion_status_notification BEFORE DELETE ON $notifications " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic status notification rejection'); END"
+        );
+
+        $this->tester->execute(['--force' => true, 'action' => $action, 'id' => '1']);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $normalized = preg_replace('/\s+/', ' ', $display) ?? $display;
+        $this->assertStringContainsString('Synthetic status notification rejection', $normalized);
+        $this->assertSame(
+            $target,
+            (int) $this->db->query("SELECT status_id FROM $servers WHERE server_id = 1")->fetchColumn()
+        );
+    }
+
     public function testConversionDebugOffUpdatesKvsDebugNotification(): void
     {
         $this->createAdminNotificationsTable();
