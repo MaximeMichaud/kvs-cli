@@ -918,7 +918,8 @@ HELP
                 "UPDATE {$this->table('videos_feeds_import')}
                  SET videos_content_source_id = 0
                  WHERE videos_content_source_id = :id",
-                ['id' => $sourceId]
+                ['id' => $sourceId],
+                "SELECT videos_content_source_id FROM {$this->table('videos_feeds_import')} LIMIT 0"
             );
             $this->recountRelatedTags($db, $tagIds);
             $this->recountRelatedCategories($db, $categoryIds);
@@ -2299,7 +2300,8 @@ HELP
                     SELECT COUNT(*) FROM {$this->table('tags_content_sources')} WHERE tag_id = :id
                  )
                  WHERE tag_id = :id",
-                ['id' => $tagId]
+                ['id' => $tagId],
+                "SELECT total_content_sources FROM {$this->table('tags')} LIMIT 0"
             );
         }
     }
@@ -2317,7 +2319,8 @@ HELP
                     SELECT COUNT(*) FROM {$this->table('categories_content_sources')} WHERE category_id = :id
                  )
                  WHERE category_id = :id",
-                ['id' => $categoryId]
+                ['id' => $categoryId],
+                "SELECT total_content_sources FROM {$this->table('categories')} LIMIT 0"
             );
         }
     }
@@ -2340,7 +2343,8 @@ HELP
                     WHERE user_id = :id AND is_approved = 1
                  )
                  WHERE user_id = :id",
-                ['id' => $userId]
+                ['id' => $userId],
+                "SELECT comments_cs_count, comments_total_count FROM {$this->table('users')} LIMIT 0"
             );
         }
     }
@@ -2348,14 +2352,31 @@ HELP
     /**
      * @param array<string, mixed> $params
      */
-    private function safeExecute(\PDO $db, string $sql, array $params): void
+    private function safeExecute(\PDO $db, string $sql, array $params, string $schemaProbe): void
     {
         try {
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
-        } catch (\PDOException) {
-            // Optional KVS tables and counters may be absent in hermetic tests.
+        } catch (\PDOException $error) {
+            if ($this->isMissingOptionalSchema($error)) {
+                try {
+                    $db->query($schemaProbe);
+                } catch (\PDOException $schemaError) {
+                    // Tolerate only an actually absent legacy table or counter.
+                    if ($this->isMissingOptionalSchema($schemaError)) {
+                        return;
+                    }
+                }
+            }
+            throw $error;
         }
+    }
+
+    private function isMissingOptionalSchema(\PDOException $error): bool
+    {
+        return in_array($error->getCode(), ['42S02', '42S22'], true)
+            || str_contains($error->getMessage(), 'no such table: ')
+            || str_contains($error->getMessage(), 'no such column: ');
     }
 
     /**

@@ -730,6 +730,75 @@ class ContentSourceCommandTest extends TestCase
         }
     }
 
+    /** @return iterable<string, array{string, bool}> */
+    public static function rejectedSourceSideEffects(): iterable
+    {
+        foreach (['videos_feeds_import', 'tags', 'categories', 'users'] as $table) {
+            yield $table => [$table, false];
+        }
+        yield 'missing trigger dependency on present table' => ['videos_feeds_import', true];
+    }
+
+    #[DataProvider('rejectedSourceSideEffects')]
+    public function testSourceDeletionRollsBackRealOptionalSchemaErrors(string $table, bool $missingDependency): void
+    {
+        $before = $this->snapshotSourceDatabase();
+        $body = $missingDependency
+            ? 'SELECT * FROM missing_fixture_dependency;'
+            : "SELECT RAISE(ABORT, 'Synthetic optional SQL rejection');";
+        $this->db->exec(
+            'CREATE TRIGGER reject_source_side_effect BEFORE UPDATE ON ' . TestHelper::table($table)
+            . ' BEGIN ' . $body . ' END'
+        );
+        $this->sourceTester->setInputs(['yes']);
+        $exitCode = $this->sourceTester->execute(['action' => 'delete', 'id' => '1']);
+
+        $this->assertSame(Command::FAILURE, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertSame($before, $this->snapshotSourceDatabase());
+        $this->assertStringNotContainsString('deleted successfully', $this->sourceTester->getDisplay());
+        $this->assertSame('old screenshot', file_get_contents($this->sourceFilesPath . '/1/s1_alpha.png'));
+        $this->assertSame('old custom file', file_get_contents($this->sourceFilesPath . '/1/c1_old.txt'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /** @return iterable<string, array{string, string|null}> */
+    public static function missingLegacySourceSchema(): iterable
+    {
+        yield 'feed table' => ['videos_feeds_import', null];
+        yield 'tag counter' => ['tags', 'total_content_sources'];
+        yield 'category counter' => ['categories', 'total_content_sources'];
+        yield 'user counter' => ['users', 'comments_cs_count'];
+    }
+
+    #[DataProvider('missingLegacySourceSchema')]
+    public function testSourceDeletionAllowsMissingLegacyOptionalSchema(string $table, ?string $column): void
+    {
+        $name = TestHelper::table($table);
+        $this->db->exec($column === null ? "DROP TABLE $name" : "ALTER TABLE $name DROP COLUMN $column");
+        $this->sourceTester->setInputs(['yes']);
+        $exitCode = $this->sourceTester->execute(['action' => 'delete', 'id' => '1']);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertNull($this->fetchSourceByTitle('Alpha Source'));
+        $this->assertDirectoryDoesNotExist($this->sourceFilesPath . '/1');
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /** @return array<string, list<array<string, mixed>>> */
+    private function snapshotSourceDatabase(): array
+    {
+        $tables = $this->db->query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $state = [];
+        foreach ($tables as $table) {
+            if (!is_string($table) || !str_starts_with($table, TestHelper::getTablePrefix())) {
+                continue;
+            }
+            $state[$table] = $this->db->query('SELECT * FROM ' . $table)->fetchAll(PDO::FETCH_ASSOC);
+        }
+        return $state;
+    }
+
     private function createDatabase(): PDO
     {
         $db = class_exists(\Pdo\Sqlite::class)
