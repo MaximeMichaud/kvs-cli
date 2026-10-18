@@ -145,29 +145,59 @@ HELP
 
         $timestamp = date('Y-m-d_H-i-s');
         $backupName = "kvs_backup_{$type}_{$timestamp}";
-        $success = true;
-
-        if ($type === 'full' || $type === 'db') {
-            $success = $this->createDatabaseBackup($outputDir, $backupName);
-        }
-
-        if ($type === 'full' || $type === 'files') {
-            $success = $this->createFilesBackup($outputDir, $backupName) && $success;
-        }
-
-        if ($type === 'full' && $success) {
-            $success = $this->createFullArchive($outputDir, $backupName);
-        }
-
-        if (!$success) {
-            if ($type === 'full') {
-                $this->cleanupPartialBackupFiles($outputDir, $backupName);
-            }
+        $workingDir = $outputDir . '/.kvs-backup-' . bin2hex(random_bytes(8));
+        if (!@mkdir($workingDir, 0700)) {
+            $this->io()->error('Failed to create backup working directory');
             return self::FAILURE;
         }
 
-        $this->io()->success('Backup created: ' . $this->getCreatedBackupPath($outputDir, $backupName, $type));
-        return self::SUCCESS;
+        $success = false;
+        try {
+            $success = true;
+            if ($type === 'full' || $type === 'db') {
+                $success = $this->createDatabaseBackup($workingDir, $backupName);
+            }
+
+            if ($type === 'full' || $type === 'files') {
+                $success = $this->createFilesBackup($workingDir, $backupName) && $success;
+            }
+
+            if ($type === 'full' && $success) {
+                $success = $this->createFullArchive($workingDir, $backupName);
+            }
+
+            if (!$success) {
+                return self::FAILURE;
+            }
+
+            $source = $this->getCreatedBackupPath($workingDir, $backupName, $type);
+            $publishedFile = $this->publishBackup($source, $outputDir, $backupName, $type);
+            if ($publishedFile === null) {
+                $success = false;
+                return self::FAILURE;
+            }
+
+            $this->io()->success('Backup created: ' . $publishedFile);
+            return self::SUCCESS;
+        } finally {
+            $this->cleanupPartialBackupFiles($workingDir, $backupName, !$success);
+            @rmdir($workingDir);
+        }
+    }
+
+    private function publishBackup(string $source, string $outputDir, string $backupName, string $type): ?string
+    {
+        for ($suffix = 0;; $suffix++) {
+            $name = $backupName . ($suffix === 0 ? '' : '_' . $suffix);
+            $target = $this->getCreatedBackupPath($outputDir, $name, $type);
+            if (@link($source, $target)) {
+                return $target;
+            }
+            if (!file_exists($target) && !is_link($target)) {
+                $this->io()->error('Failed to publish backup archive');
+                return null;
+            }
+        }
     }
 
     private function getCreatedBackupPath(string $outputDir, string $backupName, string $type): string
@@ -180,7 +210,7 @@ HELP
         };
     }
 
-    private function cleanupPartialBackupFiles(string $outputDir, string $backupName): void
+    private function cleanupPartialBackupFiles(string $outputDir, string $backupName, bool $report = true): void
     {
         $partialFiles = [
             "$outputDir/{$backupName}_db.sql",
@@ -197,7 +227,7 @@ HELP
             }
         }
 
-        if ($removed !== []) {
+        if ($report && $removed !== []) {
             $this->io()->info('Removed partial backup files: ' . implode(', ', $removed));
         }
     }

@@ -3,10 +3,12 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\BackupCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Process\Process;
 
 class BackupCommandTest extends TestCase
 {
@@ -15,9 +17,12 @@ class BackupCommandTest extends TestCase
     private Configuration $config;
     private BackupCommand $command;
     private CommandTester $tester;
+    private mixed $originalEnvPath;
 
     protected function setUp(): void
     {
+        $this->originalEnvPath = $_ENV['PATH'] ?? null;
+        unset($_ENV['PATH']);
         // Create mock KVS installation
         $this->rootDir = TestHelper::createTempDir('kvs-backup-test-');
         $this->tempDir = $this->rootDir . '/kvs';
@@ -39,6 +44,11 @@ class BackupCommandTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->originalEnvPath === null) {
+            unset($_ENV['PATH']);
+        } else {
+            $_ENV['PATH'] = $this->originalEnvPath;
+        }
         if (is_dir($this->rootDir)) {
             TestHelper::removeDir($this->rootDir);
         }
@@ -702,6 +712,84 @@ SH
         $this->assertStringContainsString('--list', $output);
         $this->assertStringNotContainsString('--restore', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    #[DataProvider('backupCollisionCases')]
+    public function testBackupPreservesExistingArchivesDuringFilenameCollision(string $type, bool $dumpFails): void
+    {
+        $toolsDir = $this->rootDir . '/collision-tools';
+        mkdir($toolsDir, 0755);
+        $this->writeTool($toolsDir, 'mysqldump', $dumpFails
+            ? "#!/bin/sh\necho 'dump failed' >&2\nexit 1\n"
+            : "#!/bin/sh\nprintf '%128s\\n' 'synthetic SQL dump'\n");
+
+        $outputDir = $this->rootDir . '/collision-backups';
+        mkdir($outputDir, 0755);
+        $suffix = match ($type) {
+            'db' => '_db.sql.gz',
+            'files' => '_files.tar.gz',
+            default => '_full.tar.gz',
+        };
+        $existing = [];
+        $now = time();
+        for ($second = -2; $second < 60; $second++) {
+            $name = 'kvs_backup_' . $type . '_' . date('Y-m-d_H-i-s', $now + $second) . $suffix;
+            $path = $outputDir . '/' . $name;
+            file_put_contents($path, 'Previously created archive: ' . $name);
+            chmod($path, 0600);
+            $existing[$name] = [file_get_contents($path), 0600];
+        }
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        try {
+            $this->tester->execute(['--create' => true, '--type' => $type, '--output' => $outputDir]);
+        } finally {
+            $previousPath === false ? putenv('PATH') : putenv('PATH=' . $previousPath);
+        }
+
+        clearstatcache();
+        $observed = [];
+        foreach ($existing as $name => $expected) {
+            $path = $outputDir . '/' . $name;
+            $observed[$name] = is_file($path) ? [file_get_contents($path), fileperms($path) & 0777] : null;
+        }
+        $this->assertSame($existing, $observed, 'Existing archive bytes and permissions must be preserved.');
+        $this->assertSame($dumpFails ? 1 : 0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+
+        $newFiles = array_values(array_diff(scandir($outputDir) ?: [], ['.', '..'], array_keys($existing)));
+        $this->assertCount($dumpFails ? 0 : 1, $newFiles);
+        if ($dumpFails) {
+            $this->assertStringNotContainsString('Backup created:', $this->tester->getDisplay());
+            return;
+        }
+
+        $newArchive = $outputDir . '/' . $newFiles[0];
+        $this->assertSame($newArchive, $this->extractSuccessBackupPath($this->tester->getDisplay()));
+        $this->assertSame(0640, fileperms($newArchive) & 0777);
+        if ($type === 'db') {
+            $this->assertStringContainsString('synthetic SQL dump', gzdecode(file_get_contents($newArchive)));
+        } else {
+            $process = new Process(['tar', 'tzf', $newArchive]);
+            $this->assertSame(0, $process->run(), $process->getErrorOutput());
+            $this->assertStringContainsString(
+                $type === 'full' ? '_db.sql.gz' : 'admin/include/setup.php',
+                $process->getOutput()
+            );
+            if ($type === 'full') {
+                $this->assertStringContainsString('_files.tar.gz', $process->getOutput());
+            }
+        }
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function backupCollisionCases(): iterable
+    {
+        yield 'database success' => ['db', false];
+        yield 'database failure' => ['db', true];
+        yield 'files success' => ['files', false];
+        yield 'full success' => ['full', false];
+        yield 'full database failure' => ['full', true];
     }
 
     private function writeTool(string $toolsDir, string $name, string $script): void
