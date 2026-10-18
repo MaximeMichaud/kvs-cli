@@ -9,6 +9,7 @@ use KVS\CLI\Command\System\QueueCommand;
 use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class SystemValidationRegressionTest extends TestCase
@@ -472,6 +473,120 @@ class SystemValidationRegressionTest extends TestCase
         $this->assertStringContainsString('mixed_options.dat', $tester->getDisplay());
     }
 
+    /** @return array<string, array{string}> */
+    public static function invalidOptionMirrors(): array
+    {
+        return [
+            'malformed' => ['invalid serialization'],
+            'scalar' => [serialize('invalid')],
+            'empty' => [''],
+        ];
+    }
+
+    #[DataProvider('invalidOptionMirrors')]
+    public function testOptionsRejectInvalidMirrorsBeforeUpdatingDatabase(string $contents): void
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('ALBUMS_SOURCE_FILES_ACCESS_LEVEL', '0')");
+        $path = $this->tempDir . '/admin/data/system/mixed_options.dat';
+        file_put_contents($path, $contents);
+        $tester = new CommandTester($this->createOptionsCommand());
+
+        $tester->execute([
+            'action' => 'set', 'name' => 'ALBUMS_SOURCE_FILES_ACCESS_LEVEL', 'value' => '2',
+            '--force' => true, '--yes' => true,
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Invalid mirrored KVS settings file', $tester->getDisplay());
+        $this->assertSame('0', $this->readMirroredOptionValue());
+        $this->assertSame($contents, file_get_contents($path));
+    }
+
+    public function testOptionsRestoreEarlierMirrorsAndDatabaseWhenLaterWriteFails(): void
+    {
+        $files = $this->createOptionMirrors();
+        $paths = array_keys($files);
+        $this->denySecondMirrorOnOptionUpdate($paths[1]);
+        $tester = new CommandTester($this->createOptionsCommand());
+
+        try {
+            $tester->execute([
+                'action' => 'set', 'name' => 'ALBUMS_SOURCE_FILES_ACCESS_LEVEL', 'value' => '2',
+                '--force' => true, '--yes' => true,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame('0', $this->readMirroredOptionValue());
+            foreach ($files as $path => $contents) {
+                $this->assertSame($contents, file_get_contents($path), $path);
+            }
+            $this->assertFalse($this->db->inTransaction());
+        } finally {
+            foreach ($paths as $path) {
+                chmod($path, 0644);
+            }
+        }
+    }
+
+    public function testOptionsReportWhenAnEarlierMirrorCannotBeRestored(): void
+    {
+        $files = $this->createOptionMirrors();
+        $paths = array_keys($files);
+        $this->denySecondMirrorOnOptionUpdate($paths[1]);
+        $tester = new CommandTester($this->createOptionsCommand());
+        set_error_handler(static function (int $severity, string $message) use ($paths): bool {
+            if ($severity === E_WARNING && str_contains($message, $paths[1])) {
+                chmod($paths[0], 0444);
+            }
+            return false;
+        });
+
+        try {
+            $tester->execute([
+                'action' => 'set', 'name' => 'ALBUMS_SOURCE_FILES_ACCESS_LEVEL', 'value' => '2',
+                '--force' => true, '--yes' => true,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? $tester->getDisplay();
+            $this->assertStringContainsString('Could not restore mirrored KVS settings file', $display);
+            $this->assertSame('0', $this->readMirroredOptionValue());
+            $this->assertNotSame($files[$paths[0]], file_get_contents($paths[0]));
+            $this->assertSame($files[$paths[1]], file_get_contents($paths[1]));
+            $this->assertFalse($this->db->inTransaction());
+        } finally {
+            restore_error_handler();
+            foreach ($paths as $path) {
+                chmod($path, 0644);
+            }
+        }
+    }
+
+    public function testOptionsDoNotTakeOverAnExistingMirrorTransaction(): void
+    {
+        $files = $this->createOptionMirrors();
+        $this->db->beginTransaction();
+        $tester = new CommandTester($this->createOptionsCommand());
+        try {
+            $tester->execute([
+                'action' => 'set', 'name' => 'ALBUMS_SOURCE_FILES_ACCESS_LEVEL', 'value' => '2',
+                '--force' => true, '--yes' => true,
+            ]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? $tester->getDisplay();
+            $this->assertStringContainsString('existing database transaction', $display);
+            $this->assertSame('0', $this->readMirroredOptionValue());
+            foreach ($files as $path => $contents) {
+                $this->assertSame($contents, file_get_contents($path));
+            }
+            $this->assertTrue($this->db->inTransaction());
+        } finally {
+            $this->db->rollBack();
+        }
+    }
+
     public function testServerRejectsInvalidTypeStatusAndConnection(): void
     {
         foreach (['type', 'status', 'connection'] as $option) {
@@ -922,7 +1037,7 @@ class SystemValidationRegressionTest extends TestCase
 
     private function createSqliteConnection(): \PDO
     {
-        $db = new \PDO('sqlite::memory:');
+        $db = class_exists(\Pdo\Sqlite::class) ? new \Pdo\Sqlite('sqlite::memory:') : new \PDO('sqlite::memory:');
         $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
 
@@ -1112,6 +1227,50 @@ class SystemValidationRegressionTest extends TestCase
                 return $this->testDb;
             }
         };
+    }
+
+    /** @return array<string, string> */
+    private function createOptionMirrors(): array
+    {
+        $this->db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
+        $this->db->exec("INSERT INTO ktvs_options VALUES ('ALBUMS_SOURCE_FILES_ACCESS_LEVEL', '0')");
+        $files = [];
+        foreach (['mixed_options.dat', 'website_ui_params.dat'] as $file) {
+            $path = $this->tempDir . '/admin/data/system/' . $file;
+            $contents = serialize(['ALBUMS_SOURCE_FILES_ACCESS_LEVEL' => 0, 'OTHER_SETTING' => $file]) . "\n";
+            file_put_contents($path, $contents);
+            $files[$path] = $contents;
+        }
+        return $files;
+    }
+
+    private function readMirroredOptionValue(): mixed
+    {
+        return $this->db->query("SELECT value FROM ktvs_options WHERE variable='ALBUMS_SOURCE_FILES_ACCESS_LEVEL'")
+            ->fetchColumn();
+    }
+
+    private function denySecondMirrorOnOptionUpdate(string $path): void
+    {
+        chmod($path, 0444);
+        if (is_writable($path)) {
+            chmod($path, 0644);
+            $this->markTestSkipped('The current user can write a read-only mirrored settings file.');
+        }
+        chmod($path, 0644);
+        $callback = static function () use ($path): int {
+            chmod($path, 0444);
+            return 0;
+        };
+        if ($this->db instanceof \Pdo\Sqlite) {
+            $this->db->createFunction('deny_second_mirror_write', $callback);
+        } else {
+            $this->db->sqliteCreateFunction('deny_second_mirror_write', $callback);
+        }
+        $this->db->exec(
+            'CREATE TRIGGER deny_second_mirror BEFORE UPDATE ON ktvs_options '
+            . 'BEGIN SELECT deny_second_mirror_write(); END'
+        );
     }
 
     private function createOptionsCommand(): OptionsCommand

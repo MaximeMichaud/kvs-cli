@@ -6,6 +6,7 @@ use KVS\CLI\Command\Settings\OptionsCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class OptionsCommandTest extends TestCase
@@ -316,7 +317,19 @@ class OptionsCommandTest extends TestCase
         $this->assertStringNotContainsString('kvs cache clear', $normalizedDisplay);
     }
 
-    public function testSetRotatorScheduleIntervalUpdatesAdminProcessLikeKvs(): void
+    /** @return array<string, array{bool, bool}> */
+    public static function relatedSettingUpdates(): array
+    {
+        return [
+            'successful update' => [false, false],
+            'successful mirrored update' => [false, true],
+            'rejected update' => [true, false],
+            'rejected mirrored update' => [true, true],
+        ];
+    }
+
+    #[DataProvider('relatedSettingUpdates')]
+    public function testSetRotatorScheduleIntervalKeepsRelatedSettingsConsistent(bool $reject, bool $mirrored): void
     {
         $this->db->exec(
             'CREATE TABLE ' . TestHelper::table('admin_processes') .
@@ -330,6 +343,18 @@ class OptionsCommandTest extends TestCase
             "INSERT INTO " . TestHelper::table('admin_processes') .
             " (pid, exec_interval) VALUES ('cron_rotator', 900)"
         );
+        $path = $this->kvsPath . '/admin/data/system/mixed_options.dat';
+        $contents = serialize(['ROTATOR_SCHEDULE_INTERVAL' => 15, 'OTHER_SETTING' => 'preserve']) . "\n";
+        if ($mirrored) {
+            self::assertTrue(is_dir(dirname($path)) || mkdir(dirname($path), 0777, true));
+            file_put_contents($path, $contents);
+        }
+        if ($reject) {
+            $this->db->exec(
+                'CREATE TRIGGER reject_interval BEFORE UPDATE ON ' . TestHelper::table('admin_processes') .
+                " BEGIN SELECT RAISE(ABORT, 'Synthetic interval rejection'); END"
+            );
+        }
 
         $this->tester->execute([
             'action' => 'set',
@@ -339,15 +364,32 @@ class OptionsCommandTest extends TestCase
             '--force' => true,
         ]);
 
-        $display = $this->tester->getDisplay();
-        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame($reject ? 1 : 0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame(
-            1200,
+            $reject ? '15' : '20',
+            $this->db->query(
+                'SELECT value FROM ' . TestHelper::table('options') .
+                " WHERE variable = 'ROTATOR_SCHEDULE_INTERVAL'"
+            )->fetchColumn()
+        );
+        $this->assertSame(
+            $reject ? 900 : 1200,
             (int) $this->db->query(
                 'SELECT exec_interval FROM ' . TestHelper::table('admin_processes') .
                 " WHERE pid = 'cron_rotator'"
             )->fetchColumn()
         );
+        if ($mirrored) {
+            if ($reject) {
+                $this->assertSame($contents, file_get_contents($path));
+            } else {
+                $this->assertSame(
+                    ['ROTATOR_SCHEDULE_INTERVAL' => 20, 'OTHER_SETTING' => 'preserve'],
+                    unserialize((string) file_get_contents($path), ['allowed_classes' => false])
+                );
+            }
+        }
+        $this->assertFalse($this->db->inTransaction());
     }
 
     public function testSetBackgroundTasksPauseDisabledRemovesPauseFileLikeKvs(): void
@@ -374,7 +416,8 @@ class OptionsCommandTest extends TestCase
         $this->assertFileDoesNotExist($pauseFile);
     }
 
-    public function testSetRotatorScreenshotsEnableResetsVideoCountersLikeKvs(): void
+    #[DataProvider('relatedSettingUpdates')]
+    public function testSetRotatorScreenshotsKeepsCounterUpdatesConsistent(bool $reject, bool $mirrored): void
     {
         $this->db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') .
@@ -388,6 +431,18 @@ class OptionsCommandTest extends TestCase
             'INSERT INTO ' . TestHelper::table('videos') .
             ' (video_id, rs_dlist, rs_ccount) VALUES (1, 15, 7), (2, 3, 11)'
         );
+        $path = $this->kvsPath . '/admin/data/system/mixed_options.dat';
+        $contents = serialize(['ROTATOR_SCREENSHOTS_ENABLE' => 0, 'OTHER_SETTING' => 'preserve']) . "\n";
+        if ($mirrored) {
+            self::assertTrue(is_dir(dirname($path)) || mkdir(dirname($path), 0777, true));
+            file_put_contents($path, $contents);
+        }
+        if ($reject) {
+            $this->db->exec(
+                'CREATE TRIGGER reject_counters BEFORE UPDATE ON ' . TestHelper::table('videos') .
+                " BEGIN SELECT RAISE(ABORT, 'Synthetic counter rejection'); END"
+            );
+        }
 
         $this->tester->execute([
             'action' => 'set',
@@ -397,15 +452,35 @@ class OptionsCommandTest extends TestCase
             '--force' => true,
         ]);
 
-        $display = $this->tester->getDisplay();
-        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertSame($reject ? 1 : 0, $this->tester->getStatusCode(), $this->tester->getDisplay());
         $this->assertSame(
-            0,
-            (int) $this->db->query(
-                'SELECT COUNT(*) FROM ' . TestHelper::table('videos') .
-                ' WHERE rs_dlist <> 0 OR rs_ccount <> 0'
+            $reject ? '0' : '1',
+            $this->db->query(
+                'SELECT value FROM ' . TestHelper::table('options') .
+                " WHERE variable = 'ROTATOR_SCREENSHOTS_ENABLE'"
             )->fetchColumn()
         );
+        $this->assertSame(
+            $reject ? [
+                ['video_id' => 1, 'rs_dlist' => 15, 'rs_ccount' => 7],
+                ['video_id' => 2, 'rs_dlist' => 3, 'rs_ccount' => 11],
+            ] : [
+                ['video_id' => 1, 'rs_dlist' => 0, 'rs_ccount' => 0],
+                ['video_id' => 2, 'rs_dlist' => 0, 'rs_ccount' => 0],
+            ],
+            $this->db->query('SELECT * FROM ' . TestHelper::table('videos') . ' ORDER BY video_id')->fetchAll()
+        );
+        if ($mirrored) {
+            if ($reject) {
+                $this->assertSame($contents, file_get_contents($path));
+            } else {
+                $this->assertSame(
+                    ['ROTATOR_SCREENSHOTS_ENABLE' => 1, 'OTHER_SETTING' => 'preserve'],
+                    unserialize((string) file_get_contents($path), ['allowed_classes' => false])
+                );
+            }
+        }
+        $this->assertFalse($this->db->inTransaction());
     }
 
     public function testSetMainServerMinFreeSpaceUpdatesPrimaryDiskNotificationLikeKvs(): void
