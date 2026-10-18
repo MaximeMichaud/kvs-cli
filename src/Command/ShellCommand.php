@@ -47,7 +47,7 @@ The <info>shell</info> command starts an interactive PHP shell (REPL) with the K
 <comment>Examples in shell:</comment>
   >>> $video = Video::find(1)
   >>> $videos = Video::all(5)
-  >>> $config->get('project_url')
+  >>> $kvsConfig->get('project_url')
   >>> User::count()
   >>> help                     # Show PsySH help
   >>> exit                     # Exit the shell
@@ -93,7 +93,12 @@ HELP
         $tempBootstrap = TempFileManager::createWithContent($bootstrap, 'kvs_shell_', '.php');
 
         // Include bootstrap
-        require $tempBootstrap;
+        try {
+            require $tempBootstrap;
+        } catch (\Throwable $error) {
+            $this->io()->error('Failed to load shell bootstrap: ' . $error->getMessage());
+            return self::FAILURE;
+        }
         $this->defineKvsDatabaseConstantsForUserCode();
         $GLOBALS['config'] = $this->getKvsRuntimeConfig();
 
@@ -172,10 +177,7 @@ PHP;
 
         // Add custom bootstrap if provided
         if (is_string($bootstrap) && file_exists($bootstrap)) {
-            $bootstrapContent = file_get_contents($bootstrap);
-            if ($bootstrapContent !== false) {
-                $code .= "\n// Custom bootstrap\n" . $bootstrapContent;
-            }
+            $code .= "\n// Custom bootstrap\nrequire " . var_export($bootstrap, true) . ";\n";
         }
 
         return $code;
