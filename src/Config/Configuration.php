@@ -456,6 +456,12 @@ class Configuration
         return $default;
     }
 
+    public function reloadDatabaseConfig(): void
+    {
+        $this->dbConfig = [];
+        $this->loadDatabaseConfig();
+    }
+
     /**
      * @return array<string, string>
      */

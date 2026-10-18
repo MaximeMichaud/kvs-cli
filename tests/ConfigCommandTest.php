@@ -9,35 +9,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 /**
- * ConfigCommand Test Suite
- *
- * Coverage: 78.26% (234/299 lines)
- *
- * TESTED (✅):
- * - Configuration listing (all sections)
- * - Project, Tools, Server, Content, Database sections
- * - 3-column Content Paths & URLs display ⭐
- * - JSON export format
- * - Config get with key validation
- * - Protected value masking (passwords)
- * - --show-protected flag
- * - --file filtering (db, main, all)
- * - Input validation (key format, categories)
- *
- * NOT TESTED (❌) - See tests/COVERAGE.md for details:
- * - setDatabaseConfig() - File write operations
- * - setMainConfig() - File write operations
- * - editConfig() - Interactive editor
- * - createBackup() - File creation
- * - getConfigFilePath() - Path resolution edge cases
- *
- * Reason: These require:
- * 1. File write operations (risk of corrupting test setup)
- * 2. Mock interactive editor (passthru() not easily mockable)
- * 3. Real database connection testing
- * 4. Complex cleanup mechanisms
- *
- * Alternative: Use vfsStream for safe file system testing
+ * Tests configuration reads, writes, backups, and editor failures on isolated fixtures.
  */
 class ConfigCommandTest extends TestCase
 {
@@ -705,5 +677,253 @@ $config["ahv"] = "secret-ahv";
 
         // Should appear exactly once in the three-column table
         $this->assertEquals(1, $videosCount, 'Videos Sources should appear exactly once in the table');
+    }
+    /**
+     * @dataProvider literalConfigurationValueProvider
+     */
+    public function testConfigSetRoundTripsLiteralValues(string $value, mixed $expected): void
+    {
+        $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => $value]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($expected, $this->loadWrittenMainConfig()['project_name']);
+    }
+
+    /**
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function literalConfigurationValueProvider(): iterable
+    {
+        yield 'replacement backreferences' => ['Price $1 and ${2}', 'Price $1 and ${2}'];
+        yield 'quotes and backslashes' => ["A 'quoted' \\ path", "A 'quoted' \\ path"];
+        yield 'semicolon and newline' => ["First; second\nthird", "First; second\nthird"];
+        yield 'leading zero numeric' => ['08', 8];
+        yield 'scientific number' => ['1e2', 100.0];
+        yield 'true' => ['true', true];
+        yield 'false' => ['false', false];
+        yield 'null' => ['null', null];
+        yield 'empty string' => ['', ''];
+    }
+
+    public function testConfigSetCanReplaceAnExistingSemicolonString(): void
+    {
+        foreach (['First; semicolon', "Next; 'quoted' value", 'Final value'] as $value) {
+            $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => $value]);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($value, $this->loadWrittenMainConfig()['project_name']);
+        }
+    }
+
+    public function testConfigSetDatabaseLiteralCanBeReadAndUpdatedAgain(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+
+        foreach (['charset-$1', "a'quote\\path;value", 'final-charset'] as $value) {
+            $this->tester->execute(['action' => 'set', 'key' => 'db.charset', 'value' => $value]);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $lint = new \Symfony\Component\Process\Process([PHP_BINARY, '-l', $file]);
+            $this->assertSame(0, $lint->run(), $lint->getOutput() . $lint->getErrorOutput());
+            $get = new CommandTester($this->command);
+            $get->execute(['action' => 'get', 'key' => 'db.charset', '--json' => true]);
+            $this->assertSame(0, $get->getStatusCode(), $get->getDisplay());
+            $this->assertSame(['db.charset' => $value], json_decode($get->getDisplay(), true, 512, JSON_THROW_ON_ERROR));
+        }
+    }
+
+    public function testConfigSetFailsWithoutChangingAnUnwritableFile(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $before = file_get_contents($file);
+        chmod($file, 0444);
+        clearstatcache(true, $file);
+        if (is_writable($file)) {
+            chmod($file, 0644);
+            $this->markTestSkipped('The current user can write a read-only file.');
+        }
+
+        try {
+            $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => 'Denied update']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+        } finally {
+            chmod($file, 0644);
+        }
+    }
+
+    public function testConfigSetRefusesMutationWhenRequestedBackupFails(): void
+    {
+        $directory = $this->tempDir . '/admin/include';
+        $file = $directory . '/setup.php';
+        $before = file_get_contents($file);
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+
+        try {
+            $this->tester->execute([
+                'action' => 'set', 'key' => 'main.project_name', 'value' => 'Unbacked update', '--backup' => true,
+            ]);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertSame([], glob($file . '.backup.*'));
+            $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+        } finally {
+            chmod($directory, 0755);
+        }
+    }
+
+    /**
+     * @dataProvider failingConfigurationEditorProvider
+     */
+    public function testConfigEditRestoresOriginalAndFailsOnEditorErrors(string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $before = file_get_contents($file);
+        $editor = $this->tempDir . '/fixture-editor';
+        file_put_contents($editor, "#!/bin/sh\n" . $body . "\n");
+        chmod($editor, 0755);
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+
+        try {
+            $this->tester->setInputs(['yes']);
+            $this->tester->execute(['action' => 'edit', '--file' => 'main']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertStringNotContainsString('Configuration file edited successfully', $this->tester->getDisplay());
+        } finally {
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function failingConfigurationEditorProvider(): iterable
+    {
+        yield 'nonzero after changing file' => ['printf "%s" "<?php if (" > "$1"; echo "editor rejected file" >&2; exit 7'];
+        yield 'invalid PHP with zero exit' => ['printf "%s" "<?php if (" > "$1"; exit 0'];
+    }
+
+    public function testConfigEditDoesNotLaunchEditorWhenBackupFails(): void
+    {
+        $directory = $this->tempDir . '/admin/include';
+        $file = $directory . '/setup.php';
+        $before = file_get_contents($file);
+        $marker = $this->tempDir . '/editor-called';
+        $editor = $this->tempDir . '/fixture-editor';
+        file_put_contents($editor, '#!/bin/sh' . "\n" . 'touch ' . escapeshellarg($marker) . "\n");
+        chmod($editor, 0755);
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+
+        try {
+            $this->tester->execute(['action' => 'edit', '--file' => 'main']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertFileDoesNotExist($marker);
+        } finally {
+            chmod($directory, 0755);
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadWrittenMainConfig(): array
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $lint = new \Symfony\Component\Process\Process([PHP_BINARY, '-l', $file]);
+        $this->assertSame(0, $lint->run(), $lint->getOutput() . $lint->getErrorOutput());
+        $previousDirectory = getcwd();
+        chdir(dirname($file));
+        try {
+            return (static function (string $path): array {
+                $config = [];
+                include $path;
+                return $config;
+            })($file);
+        } finally {
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+        }
+    }
+    /**
+     * @dataProvider updatedDatabaseConnectionConfigurationProvider
+     */
+    public function testConfigSetTestsTheUpdatedEffectiveDatabaseConfiguration(
+        string $key,
+        string $value,
+        string $observedKey,
+        string $expected,
+        bool $environmentOverride,
+        bool $disableEnvironmentOverrides
+    ): void {
+        $previousEnvironment = [];
+        foreach (['KVS_DB_HOST', 'KVS_DB_PORT', 'KVS_DB_USER', 'KVS_DB_PASS', 'KVS_DB_NAME'] as $name) {
+            $previousEnvironment[$name] = getenv($name);
+            putenv($name);
+        }
+        if ($environmentOverride) {
+            putenv('KVS_DB_HOST=127.0.0.2:32124');
+            putenv('KVS_DB_PORT=32125');
+        }
+
+        try {
+            $configuration = new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => $disableEnvironmentOverrides,
+            ]);
+            $command = new class ($configuration) extends ConfigCommand {
+                /** @var array<string, string> */
+                public array $observedConfiguration = [];
+
+                protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+                {
+                    $this->observedConfiguration = $this->config->getDatabaseConfig();
+                    return null;
+                }
+            };
+            $command->setName('config');
+            $application = new Application();
+            $application->add($command);
+            $tester = new CommandTester($command);
+            $tester->execute(['action' => 'set', 'key' => 'db.' . $key, 'value' => $value]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($expected, $command->observedConfiguration[$observedKey] ?? null);
+            $this->assertStringContainsString('Database connection failed', $tester->getDisplay());
+            $this->assertStringNotContainsString('Database connection successful', $tester->getDisplay());
+        } finally {
+            foreach ($previousEnvironment as $name => $previousValue) {
+                $previousValue === false ? putenv($name) : putenv($name . '=' . $previousValue);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string, bool, bool}>
+     */
+    public static function updatedDatabaseConnectionConfigurationProvider(): iterable
+    {
+        yield 'updated host' => ['host', '127.0.0.1:32123', 'host', '127.0.0.1:32123', false, false];
+        yield 'updated login' => ['login', 'fixture-new-user', 'user', 'fixture-new-user', false, false];
+        yield 'updated password' => ['pass', 'fixture-new-password', 'password', 'fixture-new-password', false, false];
+        yield 'updated database' => ['device', 'fixture_new_database', 'database', 'fixture_new_database', false, false];
+        yield 'environment host and port override' => ['host', '127.0.0.1:32123', 'host', '127.0.0.2:32125', true, false];
+        yield 'preserved disabled environment override' => ['host', '127.0.0.1:32123', 'host', '127.0.0.1:32123', true, true];
     }
 }

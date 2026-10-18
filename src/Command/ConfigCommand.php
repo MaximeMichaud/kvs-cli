@@ -3,6 +3,8 @@
 namespace KVS\CLI\Command;
 
 use KVS\CLI\Constants;
+use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -117,9 +119,9 @@ class ConfigCommand extends BaseCommand
     private function setConfig(InputInterface $input): int
     {
         $key = $this->getStringArgument($input, 'key');
-        $value = $this->getStringArgument($input, 'value');
+        $value = $input->getArgument('value');
 
-        if ($key === null || $key === '' || $value === null) {
+        if ($key === null || $key === '' || !is_string($value)) {
             $this->io()->error('Both key and value are required for set action');
             return self::FAILURE;
         }
@@ -130,11 +132,6 @@ class ConfigCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        // Create backup if requested
-        if ($this->getBoolOption($input, 'backup')) {
-            $this->createBackup($key);
-        }
-
         // Parse key
         [$category, $configKey] = explode('.', $key, 2);
 
@@ -143,6 +140,13 @@ class ConfigCommand extends BaseCommand
         if ($file === null) {
             $this->io()->error("Unknown configuration category: $category");
             return self::FAILURE;
+        }
+
+        if ($this->getBoolOption($input, 'backup')) {
+            $filePath = $this->getConfigFilePath($file);
+            if ($filePath === null || $this->createBackup($filePath) === null) {
+                return self::FAILURE;
+            }
         }
 
         // Special handling for database config
@@ -364,33 +368,43 @@ class ConfigCommand extends BaseCommand
         $editorEnv = getenv('EDITOR');
         $editor = ($editorEnv !== false && $editorEnv !== '') ? $editorEnv : 'nano';
 
-        // Create backup
-        $backupFile = $filePath . '.backup.' . date('YmdHis');
-        copy($filePath, $backupFile);
-        $this->io()->info("Backup created: $backupFile");
-
-        $this->io()->info("Opening $filePath in $editor...");
-        $returnCode = $this->runEditor($editor, $filePath);
-
-        if ($returnCode === 0) {
-            $this->io()->success('Configuration file edited successfully');
-
-            // Validate syntax
-            $result = shell_exec(sprintf('%s -l %s 2>&1', escapeshellarg(PHP_BINARY), escapeshellarg($filePath)));
-            if ($result === null || $result === false || strpos($result, 'No syntax errors') === false) {
-                $this->io()->error('Syntax error in configuration file!');
-                if (is_string($result)) {
-                    $this->io()->warning($result);
-                }
-
-                if ($this->io()->confirm('Restore from backup?', true) === true) {
-                    copy($backupFile, $filePath);
-                    $this->io()->success('Restored from backup');
-                }
-            }
+        $backupFile = $this->createBackup($filePath);
+        if ($backupFile === null) {
+            return self::FAILURE;
         }
 
+        $this->io()->info("Opening $filePath in $editor...");
+        try {
+            if ($this->runEditor($editor, $filePath) !== 0) {
+                $this->restoreConfigFile($filePath, $backupFile);
+                return self::FAILURE;
+            }
+
+            $lint = new Process([PHP_BINARY, '-l', $filePath]);
+            if ($lint->run() !== 0) {
+                $this->io()->error('Syntax error in configuration file!');
+                $this->io()->warning($lint->getErrorOutput() . $lint->getOutput());
+                $this->restoreConfigFile($filePath, $backupFile);
+                return self::FAILURE;
+            }
+        } catch (\RuntimeException $error) {
+            $this->io()->error($error->getMessage());
+            $this->restoreConfigFile($filePath, $backupFile);
+            return self::FAILURE;
+        }
+
+        $this->io()->success('Configuration file edited successfully');
         return self::SUCCESS;
+    }
+
+    private function restoreConfigFile(string $file, string $backup): void
+    {
+        $content = @file_get_contents($backup);
+        if ($content !== false && $this->writeConfigFile($file, $content)) {
+            $this->io()->info('Restored from backup');
+        } else {
+            $this->io()->error("Unable to restore configuration. Backup retained: $backup");
+        }
     }
 
     private function runEditor(string $editor, string $filePath): int
@@ -411,7 +425,15 @@ class ConfigCommand extends BaseCommand
 
         $process->run();
 
-        return $process->getExitCode() ?? self::FAILURE;
+        $status = $process->getExitCode() ?? self::FAILURE;
+        if ($status !== 0) {
+            $this->io()->error("Editor failed with exit code $status");
+            $error = trim($process->getErrorOutput());
+            if ($error !== '') {
+                $this->io()->text($error);
+            }
+        }
+        return $status;
     }
 
     /**
@@ -427,10 +449,17 @@ class ConfigCommand extends BaseCommand
         $content = (string) file_get_contents($file);
         $configs = [];
 
-        // Parse define() statements
-        if (preg_match_all("/define\('DB_([^']+)',\s*'([^']*)'\)/", $content, $matches) > 0) {
+        // Decode the single-quoted literals written by setDatabaseConfig().
+        $pattern = <<<'REGEX'
+/define\(\s*'DB_([^']+)',\s*'((?:\\.|[^'\\])*)'\s*\)/s
+REGEX;
+        if (preg_match_all($pattern, $content, $matches) > 0) {
             foreach ($matches[1] as $i => $key) {
-                $configs[strtolower($key)] = $matches[2][$i];
+                $configs[strtolower($key)] = (string) preg_replace_callback(
+                    '/\\\\([\\\\\'])/',
+                    static fn (array $match): string => $match[1],
+                    $matches[2][$i]
+                );
             }
         }
 
@@ -627,35 +656,40 @@ class ConfigCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        $content = (string) file_get_contents($file);
-        $defineKey = 'DB_' . strtoupper($key);
-
-        // Check if key exists
-        if (preg_match("/define\('$defineKey',/", $content) !== 1) {
-            $this->io()->error("Configuration key not found: db.$key");
+        $content = @file_get_contents($file);
+        if ($content === false) {
+            $this->io()->error('Unable to read database configuration file');
             return self::FAILURE;
         }
-
-        $escapedDefineKey = preg_quote($defineKey, '/');
-        // Escape only \ and ' for single-quoted PHP strings
-        $escapedValue = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
-        $pattern = "/define\('" . $escapedDefineKey . "',\s*'[^']*'\)/";
-        $replacement = "define('" . $defineKey . "','" . $escapedValue . "')";
-        $newContent = preg_replace($pattern, $replacement, $content);
-
-        // Write file
-        file_put_contents($file, $newContent);
+        $defineKey = 'DB_' . strtoupper($key);
+        $pattern = "/define\\('" . preg_quote($defineKey, '/') . "',\\s*'(?:\\\\.|[^'\\\\])*'\\)/s";
+        $count = 0;
+        $newContent = preg_replace_callback(
+            $pattern,
+            static fn (): string => "define('" . $defineKey . "'," . var_export($value, true) . ')',
+            $content,
+            -1,
+            $count
+        );
+        if ($newContent === null || $count === 0) {
+            $this->io()->error("Configuration key not found or unsupported: db.$key");
+            return self::FAILURE;
+        }
+        if (!$this->writeConfigFile($file, $newContent)) {
+            return self::FAILURE;
+        }
 
         $this->io()->success("Configuration updated: db.$key = $value");
 
         // Test database connection if it's a db setting
         if (in_array($key, ['host', 'login', 'pass', 'device'], true)) {
-            $this->io()->info('Testing database connection...');
+            $this->io()->info('Testing database connection with effective settings...');
+            $this->config->reloadDatabaseConfig();
             $db = $this->getDatabaseConnection();
             if ($db !== null) {
                 $this->io()->success('Database connection successful');
             } else {
-                $this->io()->warning('Database connection failed with new settings');
+                $this->io()->warning('Database connection failed with effective settings');
             }
         }
 
@@ -670,37 +704,37 @@ class ConfigCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        $content = (string) file_get_contents($file);
-
-        $escapedKey = preg_quote($key, '/');
-        $patterns = [
-            '/\$config\[\'' . $escapedKey . '\'\]\s*=\s*[^;]+;/',
-            '/\$config\["' . $escapedKey . '"\]\s*=\s*[^;]+;/',
-        ];
-
-        $found = false;
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $content) === 1) {
-                if (is_numeric($value) || $value === 'true' || $value === 'false' || $value === 'null') {
-                    $replacement = "\$config['" . $key . "'] = " . $value . ";";
-                } else {
-                    // Escape only \ and ' for single-quoted PHP strings
-                    $escapedValue = str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
-                    $replacement = "\$config['" . $key . "'] = '" . $escapedValue . "';";
-                }
-                $content = preg_replace($pattern, $replacement, $content);
-                $found = true;
-                break;
-            }
+        $content = @file_get_contents($file);
+        if ($content === false) {
+            $this->io()->error('Unable to read main configuration file');
+            return self::FAILURE;
         }
-
-        if (!$found) {
+        $literal = match ($value) {
+            'true' => true,
+            'false' => false,
+            'null' => null,
+            default => is_numeric($value) ? 0 + $value : $value,
+        };
+        // A quoted value may contain semicolons, quotes, or escaped backslashes.
+        $expression = <<<'REGEX'
+(?:'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^;'\"])*
+REGEX;
+        $pattern = '/\$config\[\s*([\'\"])' . preg_quote($key, '/') . '\1\s*\]\s*=\s*' . $expression . ';/s';
+        $count = 0;
+        $content = preg_replace_callback(
+            $pattern,
+            static fn (): string => "\$config['" . $key . "'] = " . var_export($literal, true) . ';',
+            $content,
+            -1,
+            $count
+        );
+        if ($content === null || $count === 0) {
             $this->io()->error("Configuration key not found: main.$key");
             return self::FAILURE;
         }
-
-        // Write file
-        file_put_contents($file, $content);
+        if (!$this->writeConfigFile($file, $content)) {
+            return self::FAILURE;
+        }
 
         $this->io()->success("Configuration updated: main.$key = $value");
         return self::SUCCESS;
@@ -731,17 +765,40 @@ class ConfigCommand extends BaseCommand
         return in_array($file, ['all', 'db', 'main', 'paths'], true);
     }
 
-    private function createBackup(string $key): void
+    private function createBackup(string $file): ?string
     {
-        [$category] = explode('.', $key, 2);
-        $configFile = $this->getConfigFile($category);
-        $file = $configFile !== null ? $this->getConfigFilePath($configFile) : null;
-
-        if ($file !== null) {
-            $backupFile = $file . '.backup.' . date('YmdHis');
-            copy($file, $backupFile);
-            $this->io()->info("Backup created: $backupFile");
+        $backup = $file . '.backup.' . date('YmdHis');
+        if (file_exists($backup)) {
+            $backup .= '.' . bin2hex(random_bytes(4));
         }
+        if (!@copy($file, $backup)) {
+            @unlink($backup);
+            $this->io()->error('Unable to create configuration backup. No changes were made.');
+            return null;
+        }
+        $this->io()->info("Backup created: $backup");
+        return $backup;
+    }
+
+    private function writeConfigFile(string $file, string $content): bool
+    {
+        if (!is_writable($file)) {
+            $this->io()->error("Configuration file is not writable: $file");
+            return false;
+        }
+        try {
+            $lint = new Process([PHP_BINARY, '-l']);
+            $lint->setInput($content);
+            if ($lint->run() !== 0) {
+                $this->io()->error('Invalid configuration: ' . $lint->getErrorOutput() . $lint->getOutput());
+                return false;
+            }
+            (new Filesystem())->dumpFile($file, $content);
+        } catch (\RuntimeException | IOExceptionInterface $error) {
+            $this->io()->error('Unable to update configuration: ' . $error->getMessage());
+            return false;
+        }
+        return true;
     }
 
     /**
