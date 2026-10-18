@@ -403,10 +403,11 @@ class BenchmarkCommand extends BaseCommand
 
             $json = json_encode($experiment->toArray(), JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
 
-            if (file_put_contents($filename, $json) !== false) {
+            if (@file_put_contents($filename, $json) !== false) {
                 $this->io()->success("Results exported to: {$filename}");
             } else {
-                $this->io()->warning("Failed to export results to: {$filename}");
+                $this->io()->error("Failed to export results to: {$filename}");
+                return self::FAILURE;
             }
         }
 
