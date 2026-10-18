@@ -17,6 +17,15 @@ if [[ -z ${KVS_CLI_PHAR:-} && ! -f $phar && -f $launcher_dir/../kvs.phar ]]; the
 fi
 [[ -f $phar && -r $phar ]] || fail "PHAR not found: $phar. Place kvs.phar beside the launcher or set KVS_CLI_PHAR."
 phar=$(cd -- "$(dirname -- "$phar")" && printf '%s/%s' "$PWD" "$(basename -- "$phar")")
+if command -v sha256sum >/dev/null 2>&1; then
+    phar_hash=$(sha256sum < "$phar")
+elif command -v shasum >/dev/null 2>&1; then
+    phar_hash=$(shasum -a 256 < "$phar")
+else
+    fail 'sha256sum or shasum is required by the Docker launcher.'
+fi
+phar_hash=${phar_hash%% *}
+[[ $phar_hash =~ ^[a-f0-9]{64}$ ]] || fail 'Cannot calculate the PHAR SHA256 checksum.'
 
 requested_path=${KVS_PATH:-}
 args=()
@@ -82,6 +91,8 @@ local_paths=()
 for candidate in ${candidates[@]+"${candidates[@]}"}; do
     mounts=$(docker inspect --format '{{range .Mounts}}{{printf "%s\t%s\n" .Source .Destination}}{{end}}' "$candidate") ||
         fail "Cannot inspect container: $candidate"
+    probe_sources=()
+    probe_destinations=()
     while IFS=$'\t' read -r source destination; do
         [[ -n $source && -n $destination ]] || continue
         if [[ -d $source ]]; then
@@ -90,16 +101,29 @@ for candidate in ${candidates[@]+"${candidates[@]}"}; do
         if [[ -n $requested_path && $requested_path != "$source" && $requested_path != "$destination" ]]; then
             continue
         fi
-        if ! docker exec "$candidate" test -f "${destination%/}/admin/include/setup.php" </dev/null; then
-            continue
-        fi
+        probe_sources+=("$source")
+        probe_destinations+=("$destination")
+    done <<< "$mounts"
+    ((${#probe_destinations[@]})) || continue
+    # Probe all mounts together: each docker exec has a process-startup cost.
+    valid_destinations=$(docker exec "$candidate" sh -c '
+for destination do
+    if [ -f "${destination%/}/admin/include/setup.php" ]; then
+        printf "%s\n" "$destination"
+    fi
+done
+' sh "${probe_destinations[@]}" </dev/null) || fail "Cannot check KVS mounts in $candidate."
+    for index in "${!probe_destinations[@]}"; do
+        source=${probe_sources[$index]}
+        destination=${probe_destinations[$index]}
+        [[ $'\n'$valid_destinations$'\n' == *$'\n'"$destination"$'\n'* ]] || continue
         matched_containers+=("$candidate")
         matched_paths+=("$destination")
         if [[ $current_dir == "$source" || $current_dir == "${source%/}/"* ]]; then
             local_containers+=("$candidate")
             local_paths+=("$destination")
         fi
-    done <<< "$mounts"
+    done
 done
 
 if [[ -z $requested_path && ${#local_containers[@]} -gt 0 ]]; then
@@ -117,17 +141,44 @@ fi
 
 container=${matched_containers[0]}
 container_path=${matched_paths[0]}
-runtime_dir=$(docker exec "$container" sh -c '
+# Cache immutable content, but keep cancellation state private to each call.
+# Hard links let active commands retain their PHAR even if the cache is replaced.
+runtime_info=$(docker exec "$container" sh -c '
+set -eu
 runtime_dir=$(mktemp -d -t kvs-cli.XXXXXXXXXX) || exit 1
-if ! : > "$runtime_dir/pending"; then
-    rm -rf -- "$runtime_dir"
+trap '\''rm -rf -- "$runtime_dir"'\'' EXIT
+cache_dir=${runtime_dir%/*}/kvs-cli-cache-v1-$(id -u)
+mkdir -m 700 -- "$cache_dir" 2>/dev/null || true
+if [ -L "$cache_dir" ] || [ ! -d "$cache_dir" ] ||
+    [ "$(stat -c "%u:%a" -- "$cache_dir")" != "$(id -u):700" ]; then
+    printf "Error: Unsafe PHAR cache directory: %s\n" "$cache_dir" >&2
     exit 1
 fi
-printf "%s\n" "$runtime_dir"
-') ||
-    fail "Cannot create a temporary directory in $container."
+cache_file=$cache_dir/$1.phar
+cache_hit=false
+if [ -f "$cache_file" ] && [ ! -L "$cache_file" ] &&
+    ln -- "$cache_file" "$runtime_dir/kvs.phar" 2>/dev/null; then
+    if command -v sha256sum >/dev/null 2>&1; then
+        cached_hash=$(sha256sum < "$runtime_dir/kvs.phar")
+        cached_hash=${cached_hash%% *}
+    else
+        cached_hash=$(php -r '\''echo hash_file("sha256", $argv[1]);'\'' "$runtime_dir/kvs.phar")
+    fi
+    if [ "$cached_hash" = "$1" ]; then
+        cache_hit=true
+    else
+        rm -- "$runtime_dir/kvs.phar"
+    fi
+fi
+: > "$runtime_dir/pending"
+printf "%s\t%s\t%s\n" "$runtime_dir" "$cache_file" "$cache_hit"
+trap - EXIT
+' sh "$phar_hash") || fail "Cannot prepare the CLI runtime in $container."
+IFS=$'\t' read -r runtime_dir cache_file cache_hit <<< "$runtime_info"
 [[ $runtime_dir == /* && $runtime_dir != / && $runtime_dir != *$'\n'* ]] ||
     fail 'Docker returned an invalid temporary directory.'
+[[ $cache_file == /* && $cache_file != *$'\n'* && ( $cache_hit == true || $cache_hit == false ) ]] ||
+    fail 'Docker returned invalid PHAR cache information.'
 execution_pid=
 keep_runtime=false
 # The pending token prevents a canceled invocation from starting PHP work later.
@@ -192,7 +243,9 @@ trap 'interrupt HUP 129' HUP
 trap 'interrupt INT 130' INT
 trap 'interrupt TERM 143' TERM
 
-docker cp -q -L -- "$phar" "$container:$runtime_dir/kvs.phar"
+if [[ $cache_hit == false ]]; then
+    docker cp -q -L -- "$phar" "$container:$runtime_dir/kvs.phar"
+fi
 exec_options=(-i)
 if [[ -t 0 && -t 1 ]]; then
     exec_options+=(-t)
@@ -209,6 +262,9 @@ done
 # shellcheck disable=SC2016
 php_bootstrap='
 array_shift($argv);
+$cacheFile = array_shift($argv);
+$expectedHash = array_shift($argv);
+$cacheHit = array_shift($argv) === "true";
 $argc = count($argv);
 $_SERVER["argv"] = $argv;
 $_SERVER["argc"] = $argc;
@@ -225,13 +281,32 @@ if (@file_put_contents($runtimeDirectory . "/php.pid.tmp", $processIdentity) ===
     !@rename($runtimeDirectory . "/pending", $runtimeDirectory . "/running")) {
     exit(1);
 }
+if (!$cacheHit) {
+    // Docker copies are root-owned. Create the cache file as the runtime user
+    // so private permissions and hard links also work in non-root containers.
+    $cacheStage = $runtimeDirectory . "/cached.phar";
+    if (!@copy($argv[0], $cacheStage)) {
+        fwrite(STDERR, "Error: Cannot prepare the container PHAR cache.\n");
+        exit(1);
+    }
+    if (hash_file("sha256", $cacheStage) !== $expectedHash) {
+        fwrite(STDERR, "Error: PHAR changed during transfer. Run the command again.\n");
+        exit(1);
+    }
+    if (!@chmod($cacheStage, 0600) || !@unlink($argv[0]) ||
+        !@link($cacheStage, $argv[0]) || !@rename($cacheStage, $cacheFile)) {
+        fwrite(STDERR, "Error: Cannot publish the container PHAR cache.\n");
+        exit(1);
+    }
+}
 require $argv[0];
 '
 # An explicit stdin descriptor keeps pipes and interactive input available to
 # the asynchronous Docker client while wait remains interruptible.
 exec 3<&0
 docker exec "${exec_options[@]}" -e KVS_CLI_DOCKER_LAUNCHER=1 -e "KVS_PATH=$container_path" \
-    -w "$container_path" "$container" php -r "$php_bootstrap" "$runtime_dir/kvs.phar" --path="$container_path" ${args[@]+"${args[@]}"} <&3 &
+    -w "$container_path" "$container" php -r "$php_bootstrap" "$cache_file" "$phar_hash" "$cache_hit" \
+    "$runtime_dir/kvs.phar" --path="$container_path" ${args[@]+"${args[@]}"} <&3 &
 execution_pid=$!
 exec 3<&-
 status=0

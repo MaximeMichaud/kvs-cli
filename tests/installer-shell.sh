@@ -5,7 +5,9 @@ set -euo pipefail
 project_dir=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 working_dir=$(mktemp -d)
 trap 'rm -rf -- "$working_dir"' EXIT
-mkdir -p "$working_dir/bin" "$working_dir/payload" "$working_dir/site/admin/include"
+mkdir -p "$working_dir/bin" "$working_dir/payload" "$working_dir/site/admin/include" "$working_dir/runtime"
+export TMPDIR="$working_dir/runtime"
+export FIXTURE_COPY_LOG="$working_dir/copies"
 printf '<?php\n' > "$working_dir/site/admin/include/setup.php"
 printf 'synthetic payload\n' > "$working_dir/payload/kvs.phar"
 cp "$project_dir/bin/kvs-docker" "$working_dir/payload/kvs-docker"
@@ -48,6 +50,7 @@ case $1 in
         else printf '%s\t/srv/site\n' "$FIXTURE_SITE"; fi
         ;;
     cp)
+        printf 'copy\n' >> "$FIXTURE_COPY_LOG"
         shift
         while [ "$#" -gt 2 ]; do shift; done
         cp "$1" "${2#*:}"
@@ -58,9 +61,17 @@ case $1 in
         [ "$#" -gt 0 ] || exit 99
         shift
         case $1 in
-            test) exit 0 ;;
-            sh|rm) exec "$@" ;;
-            php) printf 'Fixture CLI output\n' ;;
+            sh)
+                case $3 in
+                    *admin/include/setup.php*) printf '/srv/site\n' ;;
+                    *) exec "$@" ;;
+                esac
+                ;;
+            rm) exec "$@" ;;
+            php)
+                if [ "$6" = false ]; then cp "$7" "$4"; fi
+                printf 'Fixture CLI output\n'
+                ;;
             *) exit 99 ;;
         esac
         ;;
@@ -89,6 +100,7 @@ cmp "$project_dir/bin/kvs-docker" "$working_dir/docker/kvs"
 cmp "$working_dir/payload/kvs.phar" "$working_dir/docker/kvs.phar"
 test "$(bash "$working_dir/docker/kvs")" = 'Fixture CLI output'
 test "$(bash "$working_dir/docker/kvs" --version)" = 'Fixture CLI output'
+test "$(wc -l < "$FIXTURE_COPY_LOG")" -eq 1
 if FIXTURE_NO_CONTAINERS=1 bash "$working_dir/docker/kvs" --version; then
     printf 'Missing container incorrectly reported success.\n' >&2
     exit 1

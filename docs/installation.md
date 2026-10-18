@@ -95,10 +95,15 @@ curl -fsSL https://raw.githubusercontent.com/MaximeMichaud/kvs-cli/main/install.
 kvs --version
 ```
 
-The host needs Bash and access to the Docker daemon. The selected container
-needs PHP 8.1+ and the required PHP extensions. The launcher uses that container's
-PHP configuration, network, and mounted KVS files. It copies the PHAR to a unique
-temporary directory for each invocation and removes the copy afterwards.
+The host needs Bash, `sha256sum` or `shasum`, and access to the Docker daemon.
+The selected container needs PHP 8.1+ and the required PHP extensions. The launcher uses that container's
+PHP configuration, network, and mounted KVS files. It caches the PHAR in a private
+temporary-storage directory in the container, identified by its SHA256 checksum.
+Subsequent commands reuse the verified copy without transferring the PHAR again.
+Changing the host PHAR, deleting the cache, or recreating the container triggers
+a new transfer automatically. Each invocation keeps its own temporary runtime;
+cleanup removes that runtime while retaining the cached versions until the
+container or its temporary storage is removed.
 
 With one running KVS PHP container, selection is automatic. With several sites,
 select the host directory, run from that site's host directory, or specify the
@@ -132,7 +137,7 @@ For a user-local install, put both files in `~/.local/bin`, naming the launcher
 `kvs` and the archive `kvs.phar`.
 
 To update, repeat the installer command. `self-update` is unavailable through
-this launcher because the container copy is temporary.
+this launcher because the host PHAR is the source for the managed container cache.
 
 ### Method 2: From Source (Development)
 
