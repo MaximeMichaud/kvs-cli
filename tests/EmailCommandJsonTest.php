@@ -27,7 +27,10 @@ class EmailCommandJsonTest extends TestCase
         $db = new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        $db->exec('CREATE TABLE ktvs_settings (section TEXT NOT NULL, value TEXT NOT NULL)');
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('settings')
+            . " (section TEXT NOT NULL, satellite_prefix TEXT NOT NULL DEFAULT '', value TEXT NOT NULL)"
+        );
 
         $settings = [
             'use_mailer' => 'smtp',
@@ -36,7 +39,7 @@ class EmailCommandJsonTest extends TestCase
             'smtp_password' => 'secret-value',
         ];
 
-        $stmt = $db->prepare('INSERT INTO ktvs_settings (section, value) VALUES (:section, :value)');
+        $stmt = $db->prepare('INSERT INTO ' . TestHelper::table('settings') . ' (section, value) VALUES (:section, :value)');
         $stmt->execute([
             'section' => 'email',
             'value' => json_encode($settings),
@@ -128,8 +131,11 @@ class EmailCommandJsonTest extends TestCase
         $db = new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        $db->exec('CREATE TABLE ktvs_settings (section TEXT NOT NULL, value TEXT NOT NULL)');
-        $db->prepare('INSERT INTO ktvs_settings (section, value) VALUES (:section, :value)')->execute([
+        $db->exec(
+            'CREATE TABLE ' . TestHelper::table('settings')
+            . " (section TEXT NOT NULL, satellite_prefix TEXT NOT NULL DEFAULT '', value TEXT NOT NULL)"
+        );
+        $db->prepare('INSERT INTO ' . TestHelper::table('settings') . ' (section, value) VALUES (:section, :value)')->execute([
             'section' => 'email',
             'value' => json_encode(['use_mailer' => 'php']),
         ]);

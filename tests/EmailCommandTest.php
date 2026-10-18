@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\EmailCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
@@ -460,6 +461,91 @@ class EmailCommandTest extends TestCase
         $this->assertEquals(0, $this->tester->getStatusCode());
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function invalidSettingsValues(): iterable
+    {
+        yield 'invalid JSON' => ['{broken json'];
+        yield 'null' => ['null'];
+        yield 'string' => ['"scalar"'];
+        yield 'number' => ['7'];
+    }
+
+    #[DataProvider('invalidSettingsValues')]
+    public function testEmailSetPreservesInvalidExistingSettings(string $value): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE ' . TestHelper::table('settings') . ' SET value = :value WHERE section = "email"'
+        );
+        $stmt->execute(['value' => $value]);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--from-name' => 'Updated sender',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Invalid email settings format', $this->tester->getDisplay());
+        $this->assertSame($value, $this->readEmailSettings());
+    }
+
+    public function testEmailShowDoesNotExposeSatelliteSettingsAsGlobal(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('settings') . ' SET satellite_prefix = "satellite"');
+        $this->tester->execute(['--force' => true, 'action' => 'show', '--format' => 'json']);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertJsonStringEqualsJsonString('{}', $this->tester->getDisplay());
+    }
+
+    public function testEmailSetDoesNotCopySatelliteSettingsIntoNewGlobalSettings(): void
+    {
+        $before = $this->readEmailSettings();
+        $this->db->exec('UPDATE ' . TestHelper::table('settings') . ' SET satellite_prefix = "satellite"');
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--from-name' => 'Global sender',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertJsonStringEqualsJsonString(
+            '{"send_from_title":"Global sender"}',
+            $this->readEmailSettings()
+        );
+        $this->assertSame($before, $this->readEmailSettings('satellite'));
+    }
+
+    public function testEmailShowRejectsInvalidFormatWhenSettingsAreMissing(): void
+    {
+        $this->db->exec('DELETE FROM ' . TestHelper::table('settings'));
+        $this->tester->execute(['--force' => true, 'action' => 'show', '--format' => 'invalid']);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString('Invalid value for --format', $this->tester->getDisplay());
+    }
+
+    public function testEmailShowMissingSettingsReturnsValidJson(): void
+    {
+        $this->db->exec('DELETE FROM ' . TestHelper::table('settings'));
+        $this->tester->execute(['--force' => true, 'action' => 'show', '--format' => 'json']);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertJsonStringEqualsJsonString('{}', $this->tester->getDisplay());
+    }
+
+    private function readEmailSettings(string $prefix = ''): string
+    {
+        $stmt = $this->db->prepare(
+            'SELECT value FROM ' . TestHelper::table('settings')
+            . ' WHERE section = :section AND satellite_prefix = :prefix'
+        );
+        $stmt->execute(['section' => 'email', 'prefix' => $prefix]);
+        $value = $stmt->fetchColumn();
+        $this->assertIsString($value);
+        return $value;
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -467,7 +553,8 @@ class EmailCommandTest extends TestCase
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('settings') .
-            ' (section TEXT PRIMARY KEY, satellite_prefix TEXT, value TEXT NOT NULL, added_date TEXT, version_control INTEGER)'
+            ' (section TEXT, satellite_prefix TEXT, value TEXT NOT NULL, added_date TEXT, version_control INTEGER,'
+            . ' PRIMARY KEY (section, satellite_prefix))'
         );
 
         $settings = json_encode([

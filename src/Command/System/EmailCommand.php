@@ -174,6 +174,11 @@ HELP
             return self::FAILURE;
         }
 
+        $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
+        if ($format === null) {
+            return self::FAILURE;
+        }
+
         $db = $this->getDatabaseConnection();
         if ($db === null) {
             return self::FAILURE;
@@ -182,12 +187,17 @@ HELP
         try {
             $stmt = $db->prepare("
                 SELECT value FROM {$this->table('settings')}
-                WHERE section = 'email'
+                WHERE section = 'email' AND satellite_prefix = ''
             ");
             $stmt->execute();
             $value = $stmt->fetchColumn();
 
             if ($value === false || !is_string($value)) {
+                if ($format === 'json') {
+                    $this->io()->writeln('{}');
+                    return self::SUCCESS;
+                }
+
                 $this->io()->warning('No email settings found');
                 return self::SUCCESS;
             }
@@ -199,11 +209,6 @@ HELP
             }
             /** @var array<string, mixed> $settings */
             $settings = $decoded;
-
-            $format = $this->validateOutputFormat($input, self::OUTPUT_FORMATS);
-            if ($format === null) {
-                return self::FAILURE;
-            }
 
             if ($format === 'json') {
                 $this->io()->writeln((string) json_encode($this->maskSensitiveSettings($settings), JSON_PRETTY_PRINT));
@@ -299,7 +304,7 @@ HELP
             // Get current email settings
             $stmt = $db->prepare("
                 SELECT value FROM {$this->table('settings')}
-                WHERE section = 'email'
+                WHERE section = 'email' AND satellite_prefix = ''
             ");
             $stmt->execute();
             $value = $stmt->fetchColumn();
@@ -400,7 +405,7 @@ HELP
             // Get current settings
             $stmt = $db->prepare("
                 SELECT value FROM {$this->table('settings')}
-                WHERE section = 'email'
+                WHERE section = 'email' AND satellite_prefix = ''
             ");
             $stmt->execute();
             $value = $stmt->fetchColumn();
@@ -409,10 +414,11 @@ HELP
             $settings = [];
             if ($value !== false && is_string($value)) {
                 $decoded = json_decode($value, true);
-                if (is_array($decoded)) {
-                    /** @var array<string, mixed> $settings */
-                    $settings = $decoded;
+                if (!is_array($decoded)) {
+                    throw new \RuntimeException('Invalid email settings format');
                 }
+                /** @var array<string, mixed> $settings */
+                $settings = $decoded;
             }
 
             // Track changes
