@@ -6,6 +6,7 @@ use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\StatusFormatter;
+use KVS\CLI\Service\UploadedFileBatch;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -665,7 +666,7 @@ HELP
             }
 
             $sourceId = 0;
-            $createdFiles = [];
+            $fileBatch = new UploadedFileBatch();
             $description = $this->getRawStringOptionOrDefault($input, 'description', '');
             $customValues = $this->collectCustomValues($input, []);
 
@@ -706,7 +707,7 @@ HELP
                 $stmt->execute($fields);
 
                 $sourceId = (int) $db->lastInsertId();
-                $createdFiles = $this->installUploads($sourceId, array_values($uploads));
+                $this->installUploads($sourceId, array_values($uploads), $fileBatch);
                 $this->syncTags($db, $sourceId, $this->getRawStringOption($input, 'tags'));
                 $this->syncCategories($db, $sourceId, $this->getRawStringOption($input, 'categories'));
                 $this->writeAdminAuditLog($db, 100, $sourceId, Constants::OBJECT_TYPE_CONTENT_SOURCE);
@@ -717,11 +718,26 @@ HELP
                 if ($db->inTransaction()) {
                     $db->rollBack();
                 }
-                $this->removeFiles($createdFiles);
+                $fileFailures = $fileBatch->rollback();
                 if ($sourceId > 0) {
                     $this->removeEmptySourceDirectory($sourceId);
                 }
+                if ($fileFailures !== []) {
+                    throw new \RuntimeException(
+                        $mutationError->getMessage() . '; upload rollback failed: ' . implode('; ', $fileFailures),
+                        0,
+                        $mutationError
+                    );
+                }
                 throw $mutationError;
+            }
+
+            try {
+                $fileBatch->commit();
+            } catch (\Throwable $cleanupError) {
+                $this->io()->warning(
+                    'Content source created, but upload backup cleanup failed: ' . $cleanupError->getMessage()
+                );
             }
 
             $this->io()->success('Content source created successfully!');
@@ -774,10 +790,11 @@ HELP
             }
 
             $newFiles = [];
+            $fileBatch = new UploadedFileBatch();
             $db->beginTransaction();
             $this->relaxSqlMode($db);
             try {
-                $newFiles = $this->installUploads($sourceId, array_values($fileChanges['uploads']));
+                $newFiles = $this->installUploads($sourceId, array_values($fileChanges['uploads']), $fileBatch);
                 if ($updates !== []) {
                     $stmt = $db->prepare("
                         UPDATE {$this->table('content_sources')}
@@ -808,11 +825,19 @@ HELP
                 if ($db->inTransaction()) {
                     $db->rollBack();
                 }
-                $this->removeFiles($newFiles);
+                $fileFailures = $fileBatch->rollback();
+                if ($fileFailures !== []) {
+                    throw new \RuntimeException(
+                        $mutationError->getMessage() . '; upload rollback failed: ' . implode('; ', $fileFailures),
+                        0,
+                        $mutationError
+                    );
+                }
                 throw $mutationError;
             }
 
             try {
+                $fileBatch->commit();
                 $this->removeFiles(array_values(array_diff(array_unique($fileChanges['old_files']), $newFiles)));
             } catch (\Throwable $cleanupError) {
                 $this->io()->warning('Content source updated, but old file cleanup failed: ' . $cleanupError->getMessage());
@@ -2099,15 +2124,13 @@ HELP
      * @param list<array{source: string, filename: string}> $uploads
      * @return list<string>
      */
-    private function installUploads(int $sourceId, array $uploads): array
+    private function installUploads(int $sourceId, array $uploads, UploadedFileBatch $fileBatch): array
     {
         $created = [];
         foreach ($uploads as $upload) {
             $target = $this->getSourceFilePath($sourceId, $upload['filename']);
             $this->ensureDirectory(dirname($target));
-            if (!@copy($upload['source'], $target)) {
-                throw new \RuntimeException(sprintf('Could not copy file to %s', $target));
-            }
+            $fileBatch->copy($upload['source'], $target);
             @chmod($target, 0666);
             $created[] = $target;
         }

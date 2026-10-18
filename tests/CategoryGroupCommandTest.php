@@ -798,6 +798,90 @@ class CategoryGroupCommandTest extends TestCase
         $this->assertSame(1, (int) $stmt->fetchColumn());
     }
 
+
+    public function testUpdateRestoresExistingScreenshotsWhenSqlFails(): void
+    {
+        $folder = $this->kvsPath . '/contents/categories/groups/1';
+        mkdir($folder, 0777, true);
+        file_put_contents($folder . '/s1_genres.jpg', 'old first screenshot');
+        file_put_contents($folder . '/s2_genres.jpg', 'old second screenshot');
+        chmod($folder . '/s1_genres.jpg', 0640);
+        $table = TestHelper::table('categories_groups');
+        $this->db->exec("UPDATE $table SET screenshot2 = 's2_genres.jpg' WHERE category_group_id = 1");
+        $this->db->exec(
+            "UPDATE " . TestHelper::table('options') . " SET value = '1' WHERE variable = 'CATEGORY_AVATAR_OPTION'"
+        );
+        $before = $this->db->query("SELECT * FROM $table WHERE category_group_id = 1")->fetch();
+        $this->db->exec(
+            "CREATE TRIGGER reject_upload_update BEFORE UPDATE ON $table " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic upload rejection'); END"
+        );
+
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--screenshot1' => $this->createTinyPng('genres.jpg'),
+        ]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('Synthetic upload rejection', $this->tester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE category_group_id = 1")->fetch());
+        $this->assertFileExists($folder . '/s1_genres.jpg');
+        $this->assertSame(hash('sha256', 'old first screenshot'), hash_file('sha256', $folder . '/s1_genres.jpg'));
+        $this->assertSame('old second screenshot', file_get_contents($folder . '/s2_genres.jpg'));
+        $this->assertSame(0640, fileperms($folder . '/s1_genres.jpg') & 0777);
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+    }
+
+    public function testUpdateRestoresFirstScreenshotWhenSecondTargetIsBlocked(): void
+    {
+        $folder = $this->kvsPath . '/contents/categories/groups/1';
+        mkdir($folder . '/s2_blocked.png', 0777, true);
+        file_put_contents($folder . '/s1_genres.jpg', 'old first screenshot');
+        file_put_contents($folder . '/s2_blocked.png/sentinel', 'preserve unrelated bytes');
+        $table = TestHelper::table('categories_groups');
+        $before = $this->db->query("SELECT * FROM $table WHERE category_group_id = 1")->fetch();
+
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--screenshot1' => $this->createTinyPng('genres.jpg'),
+            '--screenshot2' => $this->createTinyPng('blocked.png'),
+        ]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE category_group_id = 1")->fetch());
+        $this->assertFileExists($folder . '/s1_genres.jpg');
+        $this->assertSame(hash('sha256', 'old first screenshot'), hash_file('sha256', $folder . '/s1_genres.jpg'));
+        $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_blocked.png/sentinel'));
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+    }
+
+    public function testCreateRemovesFirstScreenshotWhenSecondTargetIsBlocked(): void
+    {
+        $folder = $this->kvsPath . '/contents/categories/groups/3';
+        mkdir($folder . '/s2_new.png', 0777, true);
+        file_put_contents($folder . '/s2_new.png/sentinel', 'preserve unrelated bytes');
+        $this->db->exec(
+            "UPDATE " . TestHelper::table('options') . " SET value = '1' WHERE variable = 'CATEGORY_AVATAR_OPTION'"
+        );
+
+        $exitCode = $this->tester->execute([
+            'action' => 'create',
+            'id' => 'Rejected group',
+            '--screenshot1' => $this->createTinyPng('new.png'),
+        ]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertSame(
+            2,
+            (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('categories_groups'))->fetchColumn()
+        );
+        $this->assertFileDoesNotExist($folder . '/s1_new.png');
+        $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_new.png/sentinel'));
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+    }
+
     private function createTinyPng(string $filename): string
     {
         $path = $this->kvsPath . '/' . $filename;

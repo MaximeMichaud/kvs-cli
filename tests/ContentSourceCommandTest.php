@@ -481,6 +481,184 @@ class ContentSourceCommandTest extends TestCase
         return $rows;
     }
 
+
+    public function testUpdateRestoresExistingUploadsWhenSqlFails(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        file_put_contents($folder . '/s2_alpha.png', 'old second screenshot');
+        chmod($folder . '/s1_alpha.png', 0640);
+        chmod($folder . '/c1_old.txt', 0600);
+        $table = TestHelper::table('content_sources');
+        $this->db->exec("UPDATE $table SET screenshot2 = 's2_alpha.png' WHERE content_source_id = 1");
+        $before = $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch();
+        $this->db->exec(
+            "CREATE TRIGGER reject_upload_update BEFORE UPDATE ON $table " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic upload rejection'); END"
+        );
+        $image = $this->createTinyPng('alpha.png');
+        $custom = $this->kvsPath . '/old.txt';
+        file_put_contents($custom, 'new custom file');
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--screenshot1' => $image,
+            '--custom-file1' => $custom,
+        ]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertStringContainsString('Synthetic upload rejection', $this->sourceTester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch());
+        $this->assertFileExists($folder . '/s1_alpha.png');
+        $this->assertSame(hash('sha256', 'old screenshot'), hash_file('sha256', $folder . '/s1_alpha.png'));
+        $this->assertSame('old second screenshot', file_get_contents($folder . '/s2_alpha.png'));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+        $this->assertSame(0640, fileperms($folder . '/s1_alpha.png') & 0777);
+        $this->assertSame(0600, fileperms($folder . '/c1_old.txt') & 0777);
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+    }
+
+    public function testUpdateRestoresFirstUploadWhenSecondTargetIsBlocked(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        mkdir($folder . '/s2_blocked.png');
+        file_put_contents($folder . '/s2_blocked.png/sentinel', 'preserve unrelated bytes');
+        $table = TestHelper::table('content_sources');
+        $before = $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch();
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--screenshot1' => $this->createTinyPng('alpha.png'),
+            '--screenshot2' => $this->createTinyPng('blocked.png'),
+        ]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch());
+        $this->assertFileExists($folder . '/s1_alpha.png');
+        $this->assertSame(hash('sha256', 'old screenshot'), hash_file('sha256', $folder . '/s1_alpha.png'));
+        $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_blocked.png/sentinel'));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+    }
+
+    public function testCreateRemovesFirstUploadWhenSecondTargetIsBlocked(): void
+    {
+        $folder = $this->sourceFilesPath . '/3';
+        mkdir($folder . '/s2_new.png', 0777, true);
+        file_put_contents($folder . '/s2_new.png/sentinel', 'preserve unrelated bytes');
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'create',
+            'id' => 'Rejected source',
+            '--screenshot1' => $this->createTinyPng('new.png'),
+        ]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertSame(
+            2,
+            (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('content_sources'))->fetchColumn()
+        );
+        $this->assertFileDoesNotExist($folder . '/s1_new.png');
+        $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_new.png/sentinel'));
+        $this->assertSame('old screenshot', file_get_contents($this->sourceFilesPath . '/1/s1_alpha.png'));
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+    }
+
+
+    public function testUpdateReportsRestorationFailureAndRetainsOriginalBackup(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        $image = $this->createTinyPng('alpha.png');
+        $table = TestHelper::table('content_sources');
+        $before = $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch();
+        $this->denyUploadDirectoryOnUpdate($folder, true);
+
+        try {
+            $exitCode = $this->sourceTester->execute([
+                'action' => 'update',
+                'id' => '1',
+                '--screenshot1' => $image,
+            ]);
+        } finally {
+            chmod($folder, 0777);
+        }
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $output = $this->sourceTester->getDisplay();
+        $this->assertStringContainsString('Synthetic upload rejection', $output);
+        $this->assertStringContainsString('upload rollback failed', $output);
+        $this->assertStringContainsString('original upload retained at', preg_replace('/\s+/', ' ', $output) ?? $output);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch());
+        $backups = glob($folder . '/.kvs-cli-upload-*');
+        $this->assertIsArray($backups);
+        $this->assertCount(1, $backups);
+        $this->assertSame('old screenshot', file_get_contents($backups[0]));
+        $this->assertSame(file_get_contents($image), file_get_contents($folder . '/s1_alpha.png'));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+    }
+
+    public function testUpdateKeepsCommittedUploadWhenBackupCleanupFails(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        $image = $this->createTinyPng('alpha.png');
+        $this->denyUploadDirectoryOnUpdate($folder, false);
+
+        try {
+            $exitCode = $this->sourceTester->execute([
+                'action' => 'update',
+                'id' => '1',
+                '--description' => 'Committed upload description',
+                '--screenshot1' => $image,
+            ]);
+        } finally {
+            chmod($folder, 0777);
+        }
+
+        $this->assertSame(Command::SUCCESS, $exitCode);
+        $this->assertStringContainsString(
+            'Could not remove upload backup',
+            preg_replace('/\\s+/', ' ', $this->sourceTester->getDisplay()) ?? ''
+        );
+        $this->assertSame(
+            'Committed upload description',
+            $this->db->query(
+                'SELECT description FROM ' . TestHelper::table('content_sources') . ' WHERE content_source_id = 1'
+            )->fetchColumn()
+        );
+        $this->assertSame(file_get_contents($image), file_get_contents($folder . '/s1_alpha.png'));
+        $backups = glob($folder . '/.kvs-cli-upload-*');
+        $this->assertIsArray($backups);
+        $this->assertCount(1, $backups);
+        $this->assertSame('old screenshot', file_get_contents($backups[0]));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+    }
+
+    private function denyUploadDirectoryOnUpdate(string $folder, bool $reject): void
+    {
+        chmod($folder, 0555);
+        if (is_writable($folder)) {
+            chmod($folder, 0777);
+            $this->markTestSkipped('The current user can write a read-only upload directory.');
+        }
+        chmod($folder, 0777);
+        $callback = static function () use ($folder): int {
+            chmod($folder, 0555);
+            return 0;
+        };
+        if ($this->db instanceof \Pdo\Sqlite) {
+            $this->db->createFunction('deny_upload_directory', $callback);
+        } else {
+            $this->db->sqliteCreateFunction('deny_upload_directory', $callback);
+        }
+        $this->db->exec(
+            'CREATE TRIGGER deny_upload_directory BEFORE UPDATE ON ' . TestHelper::table('content_sources')
+            . ' BEGIN SELECT deny_upload_directory();'
+            . ($reject ? " SELECT RAISE(ABORT, 'Synthetic upload rejection');" : '')
+            . ' END'
+        );
+    }
+
     private function createTinyPng(string $filename): string
     {
         $path = $this->kvsPath . '/' . $filename;
@@ -497,7 +675,9 @@ class ContentSourceCommandTest extends TestCase
 
     private function createDatabase(): PDO
     {
-        $db = new PDO('sqlite::memory:');
+        $db = class_exists(\Pdo\Sqlite::class)
+            ? new \Pdo\Sqlite('sqlite::memory:')
+            : new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
