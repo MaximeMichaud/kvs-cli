@@ -270,7 +270,7 @@ EOT
 
         $this->io()->text('Dumping database...');
 
-        $process = Process::fromShellCommandline($command, null, ['MYSQL_PWD' => $dbConfig['password']]);
+        $process = new Process(['bash', '-o', 'pipefail', '-c', $command], null, ['MYSQL_PWD' => $dbConfig['password']]);
         $process->setTimeout(3600); // 1 hour timeout
         $process->run();
 
@@ -419,7 +419,7 @@ EOT
             escapeshellarg($outputFile)
         );
 
-        $process = Process::fromShellCommandline($command);
+        $process = new Process(['bash', '-o', 'pipefail', '-c', $command]);
         $process->setTimeout(3600);
         $process->run();
 

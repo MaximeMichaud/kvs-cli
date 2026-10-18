@@ -16,9 +16,13 @@ class PackageCommandTest extends TestCase
     private Configuration $config;
     private PackageCommand $command;
     private CommandTester $tester;
+    private mixed $originalEnvPath;
 
     protected function setUp(): void
     {
+        $this->originalEnvPath = $_ENV['PATH'] ?? null;
+        // Let subprocesses inherit the PATH changed by each test's tool fixtures.
+        unset($_ENV['PATH']);
         $this->tempDir = TestHelper::createTempDir('kvs-package-test-');
         mkdir($this->tempDir . '/admin/include', 0755, true);
         mkdir($this->tempDir . '/admin/data', 0755, true);
@@ -47,6 +51,11 @@ class PackageCommandTest extends TestCase
 
     protected function tearDown(): void
     {
+        if ($this->originalEnvPath === null) {
+            unset($_ENV['PATH']);
+        } else {
+            $_ENV['PATH'] = $this->originalEnvPath;
+        }
         if (is_dir($this->tempDir)) {
             exec('rm -rf ' . escapeshellarg($this->tempDir));
         }
@@ -142,8 +151,7 @@ class PackageCommandTest extends TestCase
             $dump,
             <<<'SH'
 #!/bin/sh
-echo 'dump connection failed' >&2
-exit 1
+exit 0
 SH
         );
         chmod($dump, 0755);
@@ -177,7 +185,6 @@ SH
             $output = $this->tester->getDisplay();
             $this->assertSame(1, $this->tester->getStatusCode(), $output);
             $this->assertStringContainsString('empty or invalid dump', $output);
-            $this->assertStringContainsString('dump connection failed', $output);
             $this->assertFileDoesNotExist($package);
         } finally {
             if ($previousPath === false) {
@@ -186,6 +193,62 @@ SH
                 putenv('PATH=' . $previousPath);
             }
         }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideFailedPipelineStages')]
+    public function testPackageRejectsFailedPipelineStage(string $stage): void
+    {
+        $toolsDir = $this->tempDir . '/pipeline-tools';
+        mkdir($toolsDir, 0755, true);
+        $dumpExit = $stage === 'dump' ? 7 : 0;
+        $tarExit = $stage === 'archive' ? 7 : 0;
+        foreach (['mariadb-dump' => $dumpExit, 'tar' => $tarExit] as $tool => $exit) {
+            file_put_contents(
+                $toolsDir . '/' . $tool,
+                "#!/bin/sh\nprintf '%128s\\n' 'Partial output'\necho 'Synthetic $tool failure' >&2\nexit $exit\n"
+            );
+            chmod($toolsDir . '/' . $tool, 0755);
+        }
+        file_put_contents($toolsDir . '/zstd', <<<'SH'
+#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+cat > "$out"
+SH
+        );
+        chmod($toolsDir . '/zstd', 0755);
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        $package = $this->packagePath();
+        try {
+            $this->tester->execute(['--no-content' => true, '-o' => $package, '--force' => true]);
+
+            $display = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $display);
+            $this->assertStringContainsString($stage === 'dump' ? 'Database export failed' : 'Archive creation failed', $display);
+            $this->assertStringNotContainsString('Package created successfully', $display);
+            if ($stage === 'dump') {
+                $this->assertFileDoesNotExist($package);
+            }
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    /** @return list<array{string}> */
+    public static function provideFailedPipelineStages(): array
+    {
+        return [['dump'], ['archive']];
     }
 
     public function testPackageDatabaseExportUsesMysqlPwdEnvironment(): void
