@@ -258,7 +258,8 @@ class StorageClusterDataPublisher
         if ($temporaryFile === false) {
             throw new \RuntimeException('Failed to create temporary storage cluster data file');
         }
-        if (dirname($temporaryFile) !== dirname($this->clusterFile)) {
+        $targetDirectory = realpath(dirname($this->clusterFile));
+        if ($targetDirectory === false || realpath(dirname($temporaryFile)) !== $targetDirectory) {
             $this->removeFile($temporaryFile);
             throw new \RuntimeException('Temporary storage cluster data file was not created in the target directory');
         }

@@ -1542,6 +1542,85 @@ class ServerCommandTest extends TestCase
         $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
     }
 
+    public function testServerSetWeightsSupportsSymlinkedClusterDirectory(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $aliasDirectory = TestHelper::createTempDir('server-cluster-alias-');
+        $alias = $aliasDirectory . '/site';
+
+        try {
+            $this->assertTrue(symlink($this->kvsPath, $alias));
+            $this->useClusterPublisher(new StorageClusterDataPublisher($alias . '/admin/data/system/cluster.dat'));
+            $arguments = [
+                'action' => 'set-weights',
+                'id' => '10',
+                '--weight' => $this->weightOptions($weights),
+                '--if-revision' => $this->readWeightRevision(),
+            ];
+
+            [$status, , $display] = $this->executeWeightJson([...$arguments, '--dry-run' => true]);
+            $this->assertSame(0, $status, $display);
+            $this->assertSame($databaseBefore, $this->fetchWeightRows());
+            $this->assertSame($clusterBefore, file_get_contents($alias . '/admin/data/system/cluster.dat'));
+
+            [$status, $result, $display] = $this->executeWeightJson($arguments);
+            $this->assertSame(0, $status, $display);
+            $this->assertTrue($result['cluster_data_updated']);
+            $this->assertSame($weights, $this->fetchWeightMap(10));
+            foreach ($this->readClusterRows() as $row) {
+                if ((int) $row['group_id'] === 10) {
+                    $this->assertSame($weights[(int) $row['server_id']], (int) $row['lb_weight']);
+                }
+            }
+        } finally {
+            TestHelper::removeDir($aliasDirectory);
+        }
+    }
+
+    public function testServerSetWeightsRejectsTemporaryFileOutsideClusterDirectory(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $otherDirectory = TestHelper::createTempDir('server-cluster-outside-');
+
+        try {
+            $publisher = new class ($this->kvsPath . '/admin/data/system/cluster.dat', $otherDirectory) extends StorageClusterDataPublisher {
+                public function __construct(string $clusterFile, private string $otherDirectory)
+                {
+                    parent::__construct($clusterFile);
+                }
+
+                protected function createTemporaryFile(string $directory): string|false
+                {
+                    return tempnam($this->otherDirectory, 'cluster-');
+                }
+            };
+            $this->useClusterPublisher($publisher);
+
+            [$status, $result] = $this->executeWeightJson([
+                'action' => 'set-weights',
+                'id' => '10',
+                '--weight' => $this->weightOptions($weights),
+                '--if-revision' => $this->readWeightRevision(),
+                '--dry-run' => true,
+            ]);
+
+            $this->assertSame(1, $status);
+            $this->assertSame('dry_run_validation_failed', $result['error']['code']);
+            $this->assertStringContainsString('target directory', $result['error']['message']);
+            $this->assertSame($databaseBefore, $this->fetchWeightRows());
+            $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+            $this->assertSame([], glob($otherDirectory . '/cluster-*'));
+        } finally {
+            TestHelper::removeDir($otherDirectory);
+        }
+    }
+
     public function testServerSetWeightsRollsBackTemporaryFileWriteFailure(): void
     {
         $weights = $this->prepareWeightFixture();
