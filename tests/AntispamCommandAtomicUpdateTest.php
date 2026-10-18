@@ -35,6 +35,8 @@ class AntispamCommandAtomicUpdateTest extends TestCase
         ]);
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('UNIQUE constraint failed:', $tester->getDisplay());
+        $this->assertStringContainsString('ktvs_users_blocked_domains.domain', $tester->getDisplay());
         $this->assertSame(['existing.test'], $this->fetchColumn($db, 'ktvs_users_blocked_domains', 'domain'));
     }
 
@@ -51,7 +53,90 @@ class AntispamCommandAtomicUpdateTest extends TestCase
         ]);
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('UNIQUE constraint failed:', $tester->getDisplay());
+        $this->assertStringContainsString('ktvs_users_blocked_ips.ip', $tester->getDisplay());
         $this->assertSame(['192.0.2.10'], $this->fetchColumn($db, 'ktvs_users_blocked_ips', 'ip'));
+    }
+
+    public function testSetPreservesOriginalListWhenLaterRuleIsInvalid(): void
+    {
+        $db = $this->createDatabase();
+        $db->exec("INSERT INTO ktvs_users_blocked_domains VALUES ('existing.test', 0)");
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute([
+            '--force' => true,
+            'action' => 'set',
+            '--domains' => 'replacement.test',
+            '--comments-captcha' => 'invalid',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Invalid rule format', $tester->getDisplay());
+        $this->assertSame(['existing.test'], $this->fetchColumn($db, 'ktvs_users_blocked_domains', 'domain'));
+        $this->assertFalse($db->inTransaction());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('blacklistMutations')]
+    public function testFailedLaterListRollsBackWholeMutation(string $action): void
+    {
+        $db = $this->createDatabase();
+        $db->exec("INSERT INTO ktvs_users_blocked_domains VALUES ('existing.test', 0)");
+        $db->exec("INSERT INTO ktvs_users_blocked_ips VALUES ('192.0.2.10', 0)");
+        $db->exec(<<<'SQL'
+CREATE TRIGGER reject_ip_insert BEFORE INSERT ON ktvs_users_blocked_ips
+BEGIN SELECT RAISE(ABORT, 'Synthetic IP write failure'); END
+SQL
+        );
+        $db->exec(<<<'SQL'
+CREATE TRIGGER reject_ip_delete BEFORE DELETE ON ktvs_users_blocked_ips
+BEGIN SELECT RAISE(ABORT, 'Synthetic IP write failure'); END
+SQL
+        );
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            '--force' => true,
+            'action' => $action,
+            '--domains' => $action === 'remove' ? 'existing.test' : 'replacement.test',
+            '--ips' => $action === 'remove' ? '192.0.2.10' : '198.51.100.20',
+        ]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Synthetic IP write failure', $tester->getDisplay());
+        $this->assertSame(['existing.test'], $this->fetchColumn($db, 'ktvs_users_blocked_domains', 'domain'));
+        $this->assertSame(['192.0.2.10'], $this->fetchColumn($db, 'ktvs_users_blocked_ips', 'ip'));
+        $this->assertFalse($db->inTransaction());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('blacklistMutations')]
+    public function testValidMultipleListMutationCommitsTogether(string $action): void
+    {
+        $db = $this->createDatabase();
+        $tester = new CommandTester($this->createCommand($db));
+        foreach (['set', 'add', 'remove'] as $step) {
+            if ($step === 'remove' && $action !== 'remove') {
+                break;
+            }
+            $tester->execute([
+                '--force' => true,
+                'action' => $step,
+                '--domains' => 'example.test',
+                '--ips' => '192.0.2.10',
+            ]);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            if ($step === $action) {
+                break;
+            }
+        }
+        $this->assertSame($action === 'remove' ? [] : ['example.test'], $this->fetchColumn($db, 'ktvs_users_blocked_domains', 'domain'));
+        $this->assertSame($action === 'remove' ? [] : ['192.0.2.10'], $this->fetchColumn($db, 'ktvs_users_blocked_ips', 'ip'));
+        $this->assertFalse($db->inTransaction());
+    }
+
+    /** @return list<array{string}> */
+    public static function blacklistMutations(): array
+    {
+        return [['set'], ['add'], ['remove']];
     }
 
     private function createDatabase(): PDO
@@ -59,6 +144,7 @@ class AntispamCommandAtomicUpdateTest extends TestCase
         $db = new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $db->exec('CREATE TABLE ktvs_options (variable TEXT PRIMARY KEY, value TEXT NOT NULL)');
         $db->exec('CREATE TABLE ktvs_users_blocked_domains (domain TEXT UNIQUE, sort_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_users_blocked_ips (ip TEXT UNIQUE, sort_id INTEGER)');
 
