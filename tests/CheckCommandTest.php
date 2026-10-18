@@ -3,10 +3,12 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\CheckCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Process\Process;
 
 class CheckCommandTest extends TestCase
 {
@@ -262,14 +264,84 @@ SH
         $this->assertMatchesRegularExpression('/\d+(\.\d+)?%\s+used/', $output);
     }
 
-    public function testCheckInternetConnectivity(): void
+    /** @return array<string, array{int, bool, string}> */
+    public static function connectivityResponses(): array
     {
-        $this->tester->execute([]);
+        return [
+            'endpoint rejects HEAD but accepts GET' => [200, true, 'ok'],
+            'HTTP error remains a failure' => [404, false, 'error'],
+            'connection closes without a response' => [0, false, 'error'],
+        ];
+    }
 
-        $output = $this->tester->getDisplay();
+    #[DataProvider('connectivityResponses')]
+    public function testCheckInternetConnectivity(int $httpCode, bool $online, string $status): void
+    {
+        if (!extension_loaded('curl')) {
+            $this->markTestSkipped('The connectivity probe requires the cURL extension.');
+        }
 
-        // Should check Cloudflare (our connectivity test)
-        $this->assertStringContainsString('Cloudflare', $output);
+        $serverFile = $this->tempDir . '/connectivity-server.php';
+        $requestFile = $this->tempDir . '/connectivity-request.txt';
+        file_put_contents($serverFile, <<<'PHP'
+<?php
+$server = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+if ($server === false) {
+    exit(1);
+}
+echo stream_socket_get_name($server, false) . "\n";
+flush();
+$connection = stream_socket_accept($server, 5);
+if ($connection === false) {
+    exit(1);
+}
+$request = fgets($connection);
+file_put_contents($argv[1], $request);
+while (($header = fgets($connection)) !== false && trim($header) !== '') {
+}
+if ((int) $argv[2] !== 0) {
+    $status = str_starts_with($request, 'GET ') ? (int) $argv[2] : 404;
+    fwrite($connection, "HTTP/1.1 $status Test\r\nContent-Length: 3\r\nConnection: close\r\n\r\nok\n");
+}
+fclose($connection);
+fclose($server);
+PHP);
+        $server = new Process([PHP_BINARY, $serverFile, $requestFile, (string) $httpCode]);
+        $oldNoProxy = getenv('no_proxy');
+        putenv('no_proxy=127.0.0.1');
+        try {
+            $server->start();
+            $this->assertTrue($server->waitUntil(static fn(string $type, string $output): bool =>
+                $type === Process::OUT && str_contains($output, "\n")), $server->getErrorOutput());
+            $url = 'http://' . trim($server->getOutput()) . '/cdn-cgi/trace';
+            $command = new class ($this->config, $url) extends CheckCommand {
+                public function __construct(Configuration $config, private string $probeUrl)
+                {
+                    parent::__construct($config);
+                }
+
+                protected function getInternetCheckUrl(): string
+                {
+                    return $this->probeUrl;
+                }
+            };
+            (new \ReflectionProperty(CheckCommand::class, 'silent'))->setValue($command, true);
+            $result = (new \ReflectionMethod(CheckCommand::class, 'checkInternet'))->invoke($command, false, false);
+            $server->wait();
+
+            $this->assertTrue($server->isSuccessful(), $server->getErrorOutput());
+            $this->assertSame($httpCode, $result['http_code']);
+            $this->assertSame($online, $result['online']);
+            $this->assertSame($status, $result['status']);
+            $this->assertStringStartsWith('GET /cdn-cgi/trace ', file_get_contents($requestFile));
+            $this->assertSame($online ? 0 : 1, (new \ReflectionProperty(CheckCommand::class, 'errors'))->getValue($command));
+            if (!$online) {
+                $this->assertNotEmpty($result['error']);
+            }
+        } finally {
+            $server->stop(0.5);
+            putenv($oldNoProxy === false ? 'no_proxy' : 'no_proxy=' . $oldNoProxy);
+        }
     }
 
     public function testCheckToolsSection(): void
