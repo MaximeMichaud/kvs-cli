@@ -8,6 +8,7 @@ use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use PDO;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -671,6 +672,62 @@ class ContentSourceCommandTest extends TestCase
         );
 
         return $path;
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function sourceCacheMutations(): iterable
+    {
+        yield 'update' => ['update'];
+        yield 'delete' => ['delete'];
+    }
+
+    #[DataProvider('sourceCacheMutations')]
+    public function testSourceMutationWarnsWhenCommittedCacheCleanupFails(string $action): void
+    {
+        $hash = md5('1');
+        $directory = $this->kvsPath . '/admin/data/engine/content_sources_info/' . substr($hash, 0, 2);
+        $this->assertTrue(is_dir($directory) || mkdir($directory, 0777, true));
+        $cache = $directory . '/' . $hash . '.dat';
+        file_put_contents($cache, 'Original cached source');
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+
+        try {
+            $arguments = ['action' => $action, 'id' => '1'];
+            if ($action === 'update') {
+                $arguments['--description'] = 'Committed source description';
+            } else {
+                $this->sourceTester->setInputs(['yes']);
+            }
+            $exitCode = $this->sourceTester->execute($arguments);
+
+            $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+            $display = preg_replace('/\s+/', ' ', $this->sourceTester->getDisplay()) ?? '';
+            $this->assertStringContainsString('cleanup failed', $display);
+            $this->assertStringContainsString('Could not remove content source cache', $display);
+            $this->assertSame('Original cached source', file_get_contents($cache));
+            if ($action === 'update') {
+                $this->assertSame('Committed source description', $this->db->query(
+                    'SELECT description FROM ' . TestHelper::table('content_sources') . ' WHERE content_source_id = 1'
+                )->fetchColumn());
+            } else {
+                $this->assertNull($this->fetchSourceByTitle('Alpha Source'));
+            }
+        } finally {
+            chmod($directory, 0755);
+        }
+
+        if ($action === 'update') {
+            $exitCode = $this->sourceTester->execute([
+                'action' => 'update', 'id' => '1', '--description' => 'Recovered source description',
+            ]);
+            $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+            $this->assertFileDoesNotExist($cache);
+        }
     }
 
     private function createDatabase(): PDO

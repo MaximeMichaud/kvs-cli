@@ -842,7 +842,11 @@ HELP
             } catch (\Throwable $cleanupError) {
                 $this->io()->warning('Content source updated, but old file cleanup failed: ' . $cleanupError->getMessage());
             }
-            $this->removeSourceCache($sourceId);
+            try {
+                $this->removeSourceCache($sourceId);
+            } catch (\Throwable $cleanupError) {
+                $this->io()->warning('Content source updated, but cache cleanup failed: ' . $cleanupError->getMessage());
+            }
 
             $this->io()->success('Content source updated successfully!');
             return $this->showSource((string) $sourceId, $input);
@@ -2255,8 +2259,8 @@ HELP
         }
         $hash = md5((string) $sourceId);
         $cacheFile = rtrim($projectPath, '/') . "/admin/data/engine/content_sources_info/{$hash[0]}{$hash[1]}/{$hash}.dat";
-        if (is_file($cacheFile)) {
-            @unlink($cacheFile);
+        if (is_file($cacheFile) && !@unlink($cacheFile)) {
+            throw new \RuntimeException("Could not remove content source cache: $cacheFile");
         }
     }
 
