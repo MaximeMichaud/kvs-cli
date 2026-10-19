@@ -238,6 +238,8 @@ PHP);
         $GLOBALS['cleanup_fixture_outcome'] = $outcome;
         $GLOBALS['cleanup_fixture_hidden_path'] = $avatar;
         $complete = in_array($outcome, ['complete', 'missing-directory', 'healthy-symlink'], true);
+        $previousColumns = getenv('COLUMNS');
+        putenv('COLUMNS=55');
         try {
             $tester = new CommandTester($command);
             $tester->execute($arguments);
@@ -263,13 +265,16 @@ PHP);
                 $this->assertFileDoesNotExist($avatar);
             }
             if (!$complete) {
-                $this->assertStringContainsString('no rollback was performed', $tester->getDisplay());
+                $display = preg_replace('/\s+/', ' ', $tester->getDisplay());
+                $this->assertIsString($display);
+                $this->assertStringContainsString('no rollback was performed', $display);
                 $this->assertStringNotContainsString('[OK]', $tester->getDisplay());
                 if ($outcome === 'subscriptions') {
                     $this->assertStringContainsString('users_subscriptions', $tester->getDisplay());
                 }
             }
         } finally {
+            $previousColumns === false ? putenv('COLUMNS') : putenv('COLUMNS=' . $previousColumns);
             unset(
                 $GLOBALS['cleanup_fixture_db'],
                 $GLOBALS['cleanup_fixture_outcome'],
