@@ -163,7 +163,7 @@ jobs:
         run: pre-commit run --all-files --hook-stage manual --show-diff-on-failure
 
   server-weights-mariadb:
-    name: Storage server weights - MariaDB
+    name: MariaDB integration
     runs-on: ubuntu-latest
 
     services:
@@ -216,6 +216,18 @@ jobs:
           KVS_TEST_DB_PASS: kvs_pass
           KVS_TEST_DB_NAME: kvs_test
         run: vendor/bin/phpunit --configuration phpunit.xml.dist tests/QueueRetryMariaDbIntegrationTest.php
+
+      - name: Run MariaDB migration scan contract
+        env:
+          KVS_CLI_TEST_SCAN_MARIADB: '1'
+          KVS_TEST_DB_HOST: 127.0.0.1
+          KVS_TEST_DB_PORT: '13308'
+          KVS_TEST_DB_USER: kvs_user
+          KVS_TEST_DB_PASS: kvs_pass
+          KVS_TEST_DB_NAME: kvs_test
+        run: >-
+          vendor/bin/phpunit --configuration phpunit.xml.dist --no-coverage
+          --fail-on-warning --fail-on-risky --fail-on-deprecation tests/ScanCommandTest.php
 
   build:
     name: Build PHAR

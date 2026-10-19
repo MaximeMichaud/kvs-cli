@@ -808,10 +808,15 @@ HELP
             return;
         }
 
-        if ($contentPath === '' || !is_dir($contentPath)) {
+        $contentState = $contentPath === '' ? 'MISSING' : $this->getStorageDirectoryState($contentPath);
+        if ($contentState === 'MISSING') {
             $this->io()->warning('Content directory not found: ' . ($contentPath !== '' ? $contentPath : 'not configured'));
             $this->io()->text('This is normal if content is stored on external storage servers.');
             $this->io()->text('Check KVS config for content_path_* settings.');
+            return;
+        }
+        if ($contentState !== 'EXISTS') {
+            $this->showUnavailableStorageTotal();
             return;
         }
 
@@ -819,15 +824,23 @@ HELP
         $totalSize = 0;
 
         $directories = $this->getContentStorageDirectories($contentPath);
+        if ($directories === null) {
+            $this->showUnavailableStorageTotal();
+            return;
+        }
+        $partial = false;
 
-        foreach ($directories as $label => $dir) {
+        foreach ($directories as $dir => $label) {
             $path = $contentPath . '/' . $dir;
             if (is_dir($path)) {
                 $size = $this->getDirectorySize($path);
-                $totalSize += $size;
-
-                // Count files
                 $fileCount = $this->countFiles($path);
+                if ($size === null || $fileCount === null) {
+                    $storage[] = [$label, 'Unavailable', 'Unavailable'];
+                    $partial = true;
+                    continue;
+                }
+                $totalSize += $size;
 
                 $storage[] = [
                     $label,
@@ -841,9 +854,12 @@ HELP
 
         // Add total
         $storage[] = ['---', '---', '---'];
-        $storage[] = ['Total Content', format_bytes($totalSize), ''];
+        $storage[] = [$partial ? 'Total Content (partial)' : 'Total Content', format_bytes($totalSize), ''];
 
         $this->renderTable(['Type', 'Size', 'Files'], $storage);
+        if ($partial) {
+            $this->io()->warning('Storage data unavailable for some directories; the total is partial.');
+        }
     }
 
     /**
@@ -858,89 +874,109 @@ HELP
 
         $containerContentPath = $this->docker()->mapHostPathToContainer($contentPath) ?? $contentPath;
 
-        // Check if path exists inside container
-        $checkResult = $this->docker()->exec('php', 'test -d ' . escapeshellarg($containerContentPath) . ' && echo "EXISTS" || echo "MISSING"');
-        if ($checkResult === null || trim($checkResult) !== 'EXISTS') {
+        $contentState = $this->getStorageDirectoryState($containerContentPath, true);
+        if ($contentState !== 'EXISTS') {
             $this->io()->text("Content path: $contentPath (inside container)");
             if ($containerContentPath !== $contentPath) {
                 $this->io()->text("Container path: $containerContentPath");
             }
-            $this->io()->text('Directory not accessible from PHP container.');
+            if ($contentState === 'MISSING') {
+                $this->io()->text('Content directory not found in PHP container.');
+            } else {
+                $this->showUnavailableStorageTotal();
+            }
             return;
         }
 
         $storage = [];
         $totalSize = 0;
 
-        $directories = is_dir($contentPath)
-            ? $this->getContentStorageDirectories($contentPath)
-            : $this->getDockerContentStorageDirectories($containerContentPath);
+        $directories = is_dir($contentPath) ? $this->getContentStorageDirectories($contentPath) : null;
+        $directories ??= $this->getDockerContentStorageDirectories($containerContentPath);
+        if ($directories === null) {
+            $this->showUnavailableStorageTotal();
+            return;
+        }
+        $partial = false;
 
-        foreach ($directories as $label => $dir) {
+        foreach ($directories as $dir => $label) {
             $path = $containerContentPath . '/' . $dir;
 
-            // Get size via du command in container
-            $sizeResult = $this->docker()->exec('php', "du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
-            $countResult = $this->docker()->exec('php', "find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
-
-            if ($sizeResult !== null && trim($sizeResult) !== '') {
-                $size = (int) trim($sizeResult);
-                $totalSize += $size;
-                $fileCount = $countResult !== null ? (int) trim($countResult) : 0;
-
-                $storage[] = [
-                    $label,
-                    format_bytes($size),
-                    number_format($fileCount) . ' files'
-                ];
-            } else {
+            $escapedPath = escapeshellarg($path);
+            $state = $this->getStorageDirectoryState($path, true);
+            if ($state !== null && trim($state) === 'MISSING') {
                 $storage[] = [$label, 'Not found', '-'];
+                continue;
+            }
+            $sizeResult = $state !== null && trim($state) === 'EXISTS'
+                ? $this->runStorageCommand('du -sb ' . $escapedPath, true) : null;
+            $countResult = $sizeResult !== null
+                ? $this->runStorageCommand($this->fileCountCommand($path), true) : null;
+            if (
+                $sizeResult !== null && preg_match('/^(\\d+)(?:\\s|$)/', trim($sizeResult), $matches) === 1
+                && $countResult !== null && ctype_digit(trim($countResult))
+            ) {
+                $size = (int) $matches[1];
+                $totalSize += $size;
+                $storage[] = [$label, format_bytes($size), number_format((int) trim($countResult)) . ' files'];
+            } else {
+                $storage[] = [$label, 'Unavailable', 'Unavailable'];
+                $partial = true;
             }
         }
 
         // Add total
         $storage[] = ['---', '---', '---'];
-        $storage[] = ['Total Content', format_bytes($totalSize), ''];
+        $storage[] = [$partial ? 'Total Content (partial)' : 'Total Content', format_bytes($totalSize), ''];
 
         $pathLabel = $containerContentPath === $contentPath
             ? "Content path: $contentPath (Docker)"
             : "Content path: $contentPath (Docker: $containerContentPath)";
         $this->io()->text($pathLabel);
         $this->renderTable(['Type', 'Size', 'Files'], $storage);
+        if ($partial) {
+            $this->io()->warning('Storage data unavailable for some directories; the total is partial.');
+        }
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string, string>|null
      */
-    private function getContentStorageDirectories(string $contentPath): array
+    private function getContentStorageDirectories(string $contentPath): ?array
     {
+        if (!is_readable($contentPath) || !is_executable($contentPath)) {
+            return null;
+        }
         $directories = [];
-        $handle = opendir($contentPath);
+        $handle = @opendir($contentPath);
         if ($handle === false) {
-            return $this->getDefaultContentStorageDirectories();
+            return null;
         }
 
         while (($entry = readdir($handle)) !== false) {
             if ($entry !== '.' && $entry !== '..' && is_dir($contentPath . '/' . $entry)) {
-                $directories[$this->getContentStorageLabel($entry)] = $entry;
+                $directories[$entry] = $this->getContentStorageLabel($entry);
             }
         }
         closedir($handle);
-        ksort($directories, SORT_NATURAL | SORT_FLAG_CASE);
+        asort($directories, SORT_NATURAL | SORT_FLAG_CASE);
 
         return $directories !== [] ? $directories : $this->getDefaultContentStorageDirectories();
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string, string>|null
      */
-    private function getDockerContentStorageDirectories(string $containerContentPath): array
+    private function getDockerContentStorageDirectories(string $containerContentPath): ?array
     {
-        $listResult = $this->docker()->exec(
-            'php',
-            "find " . escapeshellarg($containerContentPath) . " -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null"
+        $listResult = $this->runStorageCommand(
+            "find " . escapeshellarg($containerContentPath) . " -mindepth 1 -maxdepth 1 -type d -printf '%f\n'",
+            true
         );
-        if ($listResult === null || trim($listResult) === '') {
+        if ($listResult === null) {
+            return null;
+        }
+        if (trim($listResult) === '') {
             return $this->getDefaultContentStorageDirectories();
         }
 
@@ -948,10 +984,10 @@ HELP
         foreach (explode("\n", trim($listResult)) as $dir) {
             $dir = trim($dir);
             if ($dir !== '') {
-                $directories[$this->getContentStorageLabel($dir)] = $dir;
+                $directories[$dir] = $this->getContentStorageLabel($dir);
             }
         }
-        ksort($directories, SORT_NATURAL | SORT_FLAG_CASE);
+        asort($directories, SORT_NATURAL | SORT_FLAG_CASE);
 
         return $directories !== [] ? $directories : $this->getDefaultContentStorageDirectories();
     }
@@ -961,7 +997,7 @@ HELP
      */
     private function getDefaultContentStorageDirectories(): array
     {
-        return [
+        return array_flip([
             'Videos' => Constants::CONTENT_VIDEOS,
             'Videos Sources' => Constants::CONTENT_VIDEOS_SOURCES,
             'Screenshots' => Constants::CONTENT_VIDEOS_SCREENSHOTS,
@@ -973,7 +1009,7 @@ HELP
             'Posts' => 'posts',
             'Avatars' => Constants::CONTENT_AVATARS,
             'Referers' => 'referers',
-        ];
+        ]);
     }
 
     private function getContentStorageLabel(string $dir): string
@@ -995,16 +1031,60 @@ HELP
         return $labels[$dir] ?? ucfirst(str_replace('_', ' ', $dir));
     }
 
-    private function getDirectorySize(string $path): int
+    private function showUnavailableStorageTotal(): void
+    {
+        $this->io()->warning('Storage data unavailable: cannot read the content directory.');
+        $this->renderTable(['Type', 'Size', 'Files'], [['Total Content', 'Unavailable', '']]);
+    }
+
+    private function getStorageDirectoryState(string $path, bool $docker = false): ?string
+    {
+        $command = 'storage_path=' . escapeshellarg($path) . '; '
+            . 'if test -L "$storage_path"; then '
+            . 'storage_target=$(readlink -- "$storage_path") || exit 1; '
+            . 'case "$storage_target" in /*) storage_path=$storage_target;; '
+            . '*) storage_path=$(dirname -- "$storage_path")/$storage_target;; esac; fi; '
+            . 'if test -d "$storage_path"; then echo EXISTS; '
+            . 'elif test -e "$storage_path" || test -L "$storage_path"; then echo UNAVAILABLE; '
+            . 'else storage_parent=$(dirname -- "$storage_path"); '
+            . 'while ! test -d "$storage_parent"; do '
+            . 'if test -e "$storage_parent" || test -L "$storage_parent"; then echo UNAVAILABLE; exit 0; fi; '
+            . 'storage_next=$(dirname -- "$storage_parent"); '
+            . 'if test "$storage_next" = "$storage_parent"; then echo UNAVAILABLE; exit 0; fi; '
+            . 'storage_parent=$storage_next; done; '
+            . 'if test -x "$storage_parent"; then echo MISSING; else echo UNAVAILABLE; fi; fi';
+        $result = $this->runStorageCommand($command, $docker);
+        return $result === null ? null : trim($result);
+    }
+
+    private function runStorageCommand(string $command, bool $docker = false): ?string
+    {
+        $script = '(' . $command . ") 2>/dev/null && printf '\\nKVS_STORAGE_OK\\n'";
+        $output = $docker
+            ? $this->docker()->exec('php', 'sh -c ' . escapeshellarg($script))
+            : @shell_exec($script);
+        if (!is_string($output)) {
+            return null;
+        }
+        $output = rtrim($output, "\r\n");
+        $marker = "\nKVS_STORAGE_OK";
+        return str_ends_with($output, $marker) ? substr($output, 0, -strlen($marker)) : null;
+    }
+
+    private function fileCountCommand(string $path): string
+    {
+        // Emit one short record per file, never file names; a failed find must reach awk.
+        return '{ find ' . escapeshellarg($path) . " -type f -printf '1\\n' 2>/dev/null || printf 'ERROR\\n'; }"
+            . " | awk '$0 == \"ERROR\" { failed = 1 } END { if (failed) exit 1; print NR }'";
+    }
+
+    private function getDirectorySize(string $path): ?int
     {
         // Use du command for faster calculation on Linux
         if (PHP_OS_FAMILY === 'Linux') {
-            $output = shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
-            if ($output !== null && $output !== false) {
-                $trimmed = trim($output);
-                if ($trimmed !== '') {
-                    return (int)$trimmed;
-                }
+            $output = $this->runStorageCommand('du -sb ' . escapeshellarg($path));
+            if ($output !== null && preg_match('/^(\\d+)(?:\\s|$)/', trim($output), $matches) === 1) {
+                return (int) $matches[1];
             }
         }
 
@@ -1017,27 +1097,27 @@ HELP
 
             foreach ($iterator as $file) {
                 if ($file instanceof \SplFileInfo && $file->isFile()) {
-                    $size += $file->getSize();
+                    $fileSize = $file->getSize();
+                    if ($fileSize === false) {
+                        return null;
+                    }
+                    $size += $fileSize;
                 }
             }
         } catch (\Exception $e) {
-            // Directory might not exist or not readable
-            return 0;
+            return null;
         }
 
         return $size;
     }
 
-    private function countFiles(string $path): int
+    private function countFiles(string $path): ?int
     {
         // Use find command for faster counting on Linux
         if (PHP_OS_FAMILY === 'Linux') {
-            $output = shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
-            if ($output !== null && $output !== false) {
-                $trimmed = trim($output);
-                if ($trimmed !== '') {
-                    return (int)$trimmed;
-                }
+            $output = $this->runStorageCommand($this->fileCountCommand($path));
+            if ($output !== null && ctype_digit(trim($output))) {
+                return (int) trim($output);
             }
         }
 
@@ -1054,7 +1134,7 @@ HELP
                 }
             }
         } catch (\Exception $e) {
-            return 0;
+            return null;
         }
 
         return $count;

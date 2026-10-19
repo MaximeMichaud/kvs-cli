@@ -52,14 +52,16 @@ use function KVS\CLI\Utils\format_bytes;
  *     tags: int,
  *     models: int,
  *     dvds: int,
- *     comments: int
+ *     comments: int,
+ *     error?: string
  * }
  * @phpstan-type StorageInfo array{
  *     content_path: string,
  *     content_exists: bool,
- *     breakdown: array<string, array{path: string, exists: bool, size_bytes: int, files: int}>,
+ *     breakdown: array<string, array{path: string, label: string, exists: bool, size_bytes: int, files: int}>,
  *     total_bytes: int,
- *     total_files: int
+ *     total_files: int,
+ *     error?: string
  * }
  * @phpstan-type TotalsInfo array{
  *     database_size_bytes: int,
@@ -196,6 +198,13 @@ EOT
             $issues[] = 'Database connection failed';
         }
 
+        foreach ([$content, $storage] as $section) {
+            if (isset($section['error'])) {
+                $readyForMigration = false;
+                $issues[] = $section['error'];
+            }
+        }
+
         $totals = [
             'database_size_bytes' => $database['size_bytes'],
             'storage_size_bytes' => $storage['total_bytes'],
@@ -208,6 +217,10 @@ EOT
         ];
 
         $assessment = $this->assessMigration($database, $storage, $environment, $content);
+        if (!$readyForMigration) {
+            $assessment['can_migrate'] = false;
+            $assessment['warnings'] = array_values(array_unique(array_merge($assessment['warnings'], $issues)));
+        }
 
         return [
             'path' => $config->getKvsPath(),
@@ -426,12 +439,15 @@ EOT
                         $count = $stmt->fetchColumn();
                         $result[$key] = is_numeric($count) ? (int) $count : 0;
                     }
-                } catch (\Exception $e) {
-                    // Table might not exist
+                } catch (\PDOException $e) {
+                    if ($e->getCode() !== '42S02' || ($e->errorInfo[1] ?? null) !== 1146) {
+                        throw $e;
+                    }
+                    // Legacy installations can omit these optional tables.
                 }
             }
         } catch (\Exception $e) {
-            // Ignore errors, return partial results
+            $result['error'] = 'Unable to inspect content data: ' . $e->getMessage();
         }
 
         return $result;
@@ -456,6 +472,22 @@ EOT
         ];
 
         if (!is_dir($contentPath)) {
+            $ancestor = $contentPath;
+            if (is_link($ancestor)) {
+                $target = readlink($ancestor);
+                if ($target !== false) {
+                    $ancestor = str_starts_with($target, '/') ? $target : dirname($ancestor) . '/' . $target;
+                }
+            }
+            while (!is_dir($ancestor) && dirname($ancestor) !== $ancestor) {
+                $ancestor = dirname($ancestor);
+            }
+            if (
+                !is_readable($ancestor)
+                || (PHP_OS_FAMILY !== 'Windows' && !is_executable($ancestor))
+            ) {
+                $result['error'] = 'Unable to inspect content directory: ' . $contentPath;
+            }
             return $result;
         }
 
@@ -480,15 +512,17 @@ EOT
 
         // Scan all actual directories in content path
         $actualDirs = [];
-        $handle = opendir($contentPath);
-        if ($handle !== false) {
-            while (($entry = readdir($handle)) !== false) {
-                if ($entry !== '.' && $entry !== '..' && is_dir($contentPath . '/' . $entry)) {
-                    $actualDirs[] = $entry;
-                }
-            }
-            closedir($handle);
+        $handle = @opendir($contentPath);
+        if ($handle === false) {
+            $result['error'] = 'Unable to inspect content directory: ' . $contentPath;
+            return $result;
         }
+        while (($entry = readdir($handle)) !== false) {
+            if ($entry !== '.' && $entry !== '..' && is_dir($contentPath . '/' . $entry)) {
+                $actualDirs[] = $entry;
+            }
+        }
+        closedir($handle);
         sort($actualDirs);
 
         // Process each actual directory
@@ -496,14 +530,20 @@ EOT
             $path = $contentPath . '/' . $dir;
             $label = $expectedDirs[$dir] ?? ucfirst(str_replace('_', ' ', $dir));
 
-            if ($useDocker) {
-                $info = $this->getDirectorySizeDocker(rtrim($dockerContentPath, '/') . '/' . $dir);
-            } else {
-                $info = $this->getDirectorySizeLocal($path);
+            try {
+                if ($useDocker) {
+                    $info = $this->getDirectorySizeDocker(rtrim($dockerContentPath, '/') . '/' . $dir);
+                } else {
+                    $info = $this->getDirectorySizeLocal($path);
+                }
+            } catch (\RuntimeException $e) {
+                $result['error'] = $e->getMessage();
+                continue;
             }
 
-            $result['breakdown'][$label] = [
+            $result['breakdown'][$dir] = [
                 'path' => $dir,
+                'label' => $label,
                 'exists' => $info['exists'],
                 'size_bytes' => $info['size'],
                 'files' => $info['files'],
@@ -529,17 +569,20 @@ EOT
         $files = 0;
 
         if (PHP_OS_FAMILY === 'Linux') {
-            $sizeOutput = shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
-            $filesOutput = shell_exec("find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
+            $sizeOutput = shell_exec("du -sb " . escapeshellarg($path) . " 2>/dev/null && echo KVS_SCAN_OK");
+            $filesOutput = shell_exec("{ { find " . escapeshellarg($path)
+                . " -type f -printf '\\n' 2>/dev/null; printf 'KVS_SCAN_STATUS:%s\\n' \"$?\" >&3; } | wc -l; } 3>&1");
 
-            if (is_string($sizeOutput)) {
-                $size = (int) trim($sizeOutput);
-            }
-            if (is_string($filesOutput)) {
-                $files = (int) trim($filesOutput);
+            if (
+                !is_string($sizeOutput) || !str_ends_with(trim($sizeOutput), "\nKVS_SCAN_OK")
+                || preg_match('/^(\d+)\s/', $sizeOutput, $sizeMatch) !== 1
+                || !is_string($filesOutput) || !str_contains($filesOutput, 'KVS_SCAN_STATUS:0')
+                || preg_match('/^\s*(\d+)\s*$/m', $filesOutput, $filesMatch) !== 1
+            ) {
+                throw new \RuntimeException('Unable to inspect content directory: ' . $path);
             }
 
-            return ['exists' => true, 'size' => $size, 'files' => $files];
+            return ['exists' => true, 'size' => (int) $sizeMatch[1], 'files' => (int) $filesMatch[1]];
         }
 
         try {
@@ -554,7 +597,7 @@ EOT
                 }
             }
         } catch (\Exception $e) {
-            return ['exists' => false, 'size' => 0, 'files' => 0];
+            throw new \RuntimeException('Unable to inspect content directory: ' . $path, 0, $e);
         }
 
         return ['exists' => true, 'size' => $size, 'files' => $files];
@@ -575,13 +618,20 @@ EOT
             return ['exists' => false, 'size' => 0, 'files' => 0];
         }
 
-        $sizeResult = $docker->exec('php', "du -sb " . escapeshellarg($path) . " 2>/dev/null | cut -f1");
-        $countResult = $docker->exec('php', "find " . escapeshellarg($path) . " -type f 2>/dev/null | wc -l");
+        $sizeResult = $docker->exec('php', "du -sb " . escapeshellarg($path) . " 2>/dev/null && echo KVS_SCAN_OK");
+        $countResult = $docker->exec('php', "{ { find " . escapeshellarg($path)
+            . " -type f -printf '\\n' 2>/dev/null; printf 'KVS_SCAN_STATUS:%s\\n' \"$?\" >&3; } | wc -l; } 3>&1");
 
-        $size = (is_string($sizeResult)) ? (int) trim($sizeResult) : 0;
-        $files = (is_string($countResult)) ? (int) trim($countResult) : 0;
+        if (
+            !is_string($sizeResult) || !str_ends_with(trim($sizeResult), "\nKVS_SCAN_OK")
+            || preg_match('/^(\d+)\s/', $sizeResult, $sizeMatch) !== 1
+            || !is_string($countResult) || !str_contains($countResult, 'KVS_SCAN_STATUS:0')
+            || preg_match('/^\s*(\d+)\s*$/m', $countResult, $filesMatch) !== 1
+        ) {
+            throw new \RuntimeException('Unable to inspect content directory: ' . $path);
+        }
 
-        return ['exists' => true, 'size' => $size, 'files' => $files];
+        return ['exists' => true, 'size' => (int) $sizeMatch[1], 'files' => (int) $filesMatch[1]];
     }
 
     /**
@@ -604,7 +654,7 @@ EOT
             $assessment['warnings'][] = 'Database connection failed - cannot migrate';
         }
 
-        if (!$storage['content_exists']) {
+        if (!$storage['content_exists'] && !isset($storage['error'])) {
             $assessment['warnings'][] = 'Content directory not found - videos/images may be on external storage';
         }
 
@@ -628,7 +678,7 @@ EOT
     }
 
     /**
-     * @param array<string, array{path: string, exists: bool, size_bytes: int, files: int}> $storageBreakdown
+     * @param array<string, array{path: string, label: string, exists: bool, size_bytes: int, files: int}> $storageBreakdown
      */
     private function estimatePackageSize(int $databaseSizeBytes, array $storageBreakdown): int
     {
@@ -754,7 +804,8 @@ EOT
         if ($storage['content_exists']) {
             /** @var list<array{string, string, string}> $storageRows */
             $storageRows = [];
-            foreach ($storage['breakdown'] as $label => $info) {
+            foreach ($storage['breakdown'] as $info) {
+                $label = $info['label'];
                 if ($info['exists']) {
                     $storageRows[] = [
                         $label,
@@ -770,7 +821,7 @@ EOT
             $storageRows[] = ['<fg=white;options=bold>Total</>', format_bytes($storage['total_bytes']), $totalFiles];
             $this->renderTable(['Type', 'Size', 'Files'], $storageRows);
         } else {
-            $this->io()->warning('Content directory not found: ' . $storage['content_path']);
+            $this->io()->warning($storage['error'] ?? 'Content directory not found: ' . $storage['content_path']);
         }
 
         // Totals

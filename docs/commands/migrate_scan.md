@@ -113,6 +113,8 @@ Migration Readiness
 - Read-only operation - does not modify the installation
 - Package size is an estimate, not a quota: SQL dumps are estimated as highly compressible, known KVS media directories as mostly incompressible, and unknown content directories with the default zstd heuristic
 - Use `--json` output for automation and scripting
+- JSON storage entries use directory names as keys and include a human-readable `label`; directories with matching labels remain separate
+- Failed content queries or storage inspection report issues, set migration readiness to false, and exit with code 1. Partial statistics are incomplete. An absent local content directory remains a warning because content may use external storage
 
 ## See Also
 
