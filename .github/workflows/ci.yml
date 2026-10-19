@@ -255,7 +255,7 @@ jobs:
       - name: Set dev version
         if: github.ref == 'refs/heads/dev'
         run: |
-          BASE_VERSION=$(cat VERSION | tr -d '\n' | sed 's/-beta$//')
+          BASE_VERSION=$(tr -d '\n' < VERSION | sed 's/-beta$//')
           echo "${BASE_VERSION}-dev-${GITHUB_SHA::7}" > VERSION
           echo "Dev version: $(cat VERSION)"
 

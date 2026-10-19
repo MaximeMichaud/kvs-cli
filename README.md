@@ -216,6 +216,8 @@ composer prepare
 
 `composer prepare` runs `pre-commit install --install-hooks`. Hook tools use pinned
 versions in isolated environments; no global PHP or Python dependencies are installed.
+GitHub Actions validation uses the official actionlint Docker image so its embedded
+ShellCheck version is the same locally and in CI.
 The Bash compatibility check runs the `bash:3.2` Docker image. The minimum dependency
 check builds the PHP 8.1 test image from `tools/php81.Dockerfile`; subsequent runs
 reuse Docker layers and the Composer download cache. It has no access to the host
