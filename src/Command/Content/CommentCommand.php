@@ -20,6 +20,31 @@ use function KVS\CLI\Utils\truncate;
 )]
 class CommentCommand extends BaseCommand
 {
+    private const MODERATION_SELECTION_CHANGED =
+        'Comments changed while awaiting confirmation. Please review the selection again.';
+
+    /** @var array<int, array{table: string, id_col: string}> */
+    private const COMMENT_OBJECT_TABLES = [
+        Constants::OBJECT_TYPE_VIDEO => ['table' => 'videos', 'id_col' => 'video_id'],
+        Constants::OBJECT_TYPE_ALBUM => ['table' => 'albums', 'id_col' => 'album_id'],
+        Constants::OBJECT_TYPE_CONTENT_SOURCE => ['table' => 'content_sources', 'id_col' => 'content_source_id'],
+        Constants::OBJECT_TYPE_MODEL => ['table' => 'models', 'id_col' => 'model_id'],
+        Constants::OBJECT_TYPE_DVD => ['table' => 'dvds', 'id_col' => 'dvd_id'],
+        Constants::OBJECT_TYPE_POST => ['table' => 'posts', 'id_col' => 'post_id'],
+        Constants::OBJECT_TYPE_PLAYLIST => ['table' => 'playlists', 'id_col' => 'playlist_id'],
+    ];
+
+    /** @var array<int, array{string, string}> */
+    private const COMMENT_AWARD_OPTIONS = [
+        Constants::OBJECT_TYPE_VIDEO => ['AWARDS_COMMENT_VIDEO', 'AWARDS_COMMENT_VIDEO_CONDITION'],
+        Constants::OBJECT_TYPE_ALBUM => ['AWARDS_COMMENT_ALBUM', 'AWARDS_COMMENT_ALBUM_CONDITION'],
+        Constants::OBJECT_TYPE_CONTENT_SOURCE => ['AWARDS_COMMENT_CS', 'AWARDS_COMMENT_CS_CONDITION'],
+        Constants::OBJECT_TYPE_MODEL => ['AWARDS_COMMENT_MODEL', 'AWARDS_COMMENT_MODEL_CONDITION'],
+        Constants::OBJECT_TYPE_DVD => ['AWARDS_COMMENT_DVD', 'AWARDS_COMMENT_DVD_CONDITION'],
+        Constants::OBJECT_TYPE_POST => ['AWARDS_COMMENT_POST', 'AWARDS_COMMENT_POST_CONDITION'],
+        Constants::OBJECT_TYPE_PLAYLIST => ['AWARDS_COMMENT_PLAYLIST', 'AWARDS_COMMENT_PLAYLIST_CONDITION'],
+    ];
+
     /** @var list<string> */
     private const SHOW_UNSUPPORTED_OPTIONS = [
         'video',
@@ -1145,6 +1170,8 @@ HELP
             return self::FAILURE;
         }
 
+        $nonTransactionalTables = [];
+        $writesStarted = false;
         try {
             $commentIds = $this->resolveCommentIds($db, $input, $id, 'approve');
             if ($commentIds === null) {
@@ -1206,26 +1233,50 @@ HELP
                 return self::SUCCESS;
             }
 
-            // Use transaction to ensure atomic update
+            $newlyApprovedComments = array_values(array_filter(
+                $comments,
+                fn (array $comment): bool => $this->getInt($comment['is_approved'] ?? null) === 0
+            ));
+            $memberzoneParams = $newlyApprovedComments === [] ? [] : $this->loadMemberzoneParams();
+            if (
+                array_filter(
+                    $newlyApprovedComments,
+                    fn (array $comment): bool => $this->getCommentAwardTokens($comment, $memberzoneParams) > 0
+                ) === []
+            ) {
+                $memberzoneParams = [];
+            }
+            $anonymousUserId = $memberzoneParams === [] ? null : $this->fetchAnonymousUserId($db);
+            $nonTransactionalTables = $this->getNonTransactionalModerationTables(
+                $db,
+                $comments,
+                false,
+                $memberzoneParams !== []
+            );
             $db->beginTransaction();
+            $commentIds = $this->lockModerationSelection($db, $comments);
+            $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
+            $writesStarted = true;
 
             // Approve the comments
             $stmt = $db->prepare("
                 UPDATE {$this->table('comments')}
                 SET is_approved = 1, is_review_needed = 0
                 WHERE comment_id IN ($placeholders)
+                  AND (is_approved = 0 OR is_review_needed = 1)
             ");
             $stmt->execute($commentIds);
+            if ($stmt->rowCount() !== count($comments)) {
+                throw new \RuntimeException(self::MODERATION_SELECTION_CHANGED);
+            }
 
             // Update comment counts on parent objects
             $this->updateCommentCounts($db, $comments);
-            $newlyApprovedComments = [];
             foreach ($comments as $comment) {
                 $commentId = $comment['comment_id'] ?? null;
                 $wasApproved = $comment['is_approved'] ?? 0;
                 $wasApprovedInt = is_numeric($wasApproved) ? (int) $wasApproved : 0;
                 if (is_numeric($commentId) && $wasApprovedInt === 0) {
-                    $newlyApprovedComments[] = $comment;
                     $this->writeAdminAuditLog(
                         $db,
                         150,
@@ -1235,7 +1286,7 @@ HELP
                     );
                 }
             }
-            $this->grantCommentAwardTokens($db, $newlyApprovedComments);
+            $this->grantCommentAwardTokens($db, $newlyApprovedComments, $memberzoneParams, $anonymousUserId);
 
             $db->commit();
 
@@ -1246,37 +1297,49 @@ HELP
                 $db->rollBack();
             }
             $this->io()->error('Failed to approve comments: ' . $e->getMessage());
+            $this->warnAboutPartialModeration($nonTransactionalTables, $writesStarted);
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $comment
+     * @param array<string, mixed> $memberzoneParams
+     */
+    private function getCommentAwardTokens(array $comment, array $memberzoneParams): int
+    {
+        $objectTypeId = $this->getInt($comment['object_type_id'] ?? null);
+        if (
+            !isset(self::COMMENT_AWARD_OPTIONS[$objectTypeId])
+            || $this->getInt($comment['user_id'] ?? null) <= 0
+            || $this->getInt($comment['comment_id'] ?? null) <= 0
+        ) {
+            return 0;
+        }
+
+        [$awardKey, $conditionKey] = self::COMMENT_AWARD_OPTIONS[$objectTypeId];
+        $tokens = $this->getMemberzoneInt($memberzoneParams, $awardKey);
+        $minimumLength = $this->getMemberzoneInt($memberzoneParams, $conditionKey);
+        $commentText = $this->getStr($comment['comment'] ?? null);
+        return $tokens > 0 && strlen($commentText) >= $minimumLength ? $tokens : 0;
     }
 
     /**
      * Grant KVS memberzone awards for comments that just became approved.
      *
      * @param list<array<string, mixed>> $comments
+     * @param array<string, mixed> $memberzoneParams
      */
-    private function grantCommentAwardTokens(\PDO $db, array $comments): void
-    {
-        if ($comments === []) {
+    private function grantCommentAwardTokens(
+        \PDO $db,
+        array $comments,
+        array $memberzoneParams,
+        ?int $anonymousUserId
+    ): void {
+        if ($comments === [] || $memberzoneParams === []) {
             return;
         }
 
-        $memberzoneParams = $this->loadMemberzoneParams();
-        if ($memberzoneParams === []) {
-            return;
-        }
-
-        $awardMap = [
-            Constants::OBJECT_TYPE_VIDEO => ['AWARDS_COMMENT_VIDEO', 'AWARDS_COMMENT_VIDEO_CONDITION'],
-            Constants::OBJECT_TYPE_ALBUM => ['AWARDS_COMMENT_ALBUM', 'AWARDS_COMMENT_ALBUM_CONDITION'],
-            Constants::OBJECT_TYPE_CONTENT_SOURCE => ['AWARDS_COMMENT_CS', 'AWARDS_COMMENT_CS_CONDITION'],
-            Constants::OBJECT_TYPE_MODEL => ['AWARDS_COMMENT_MODEL', 'AWARDS_COMMENT_MODEL_CONDITION'],
-            Constants::OBJECT_TYPE_DVD => ['AWARDS_COMMENT_DVD', 'AWARDS_COMMENT_DVD_CONDITION'],
-            Constants::OBJECT_TYPE_POST => ['AWARDS_COMMENT_POST', 'AWARDS_COMMENT_POST_CONDITION'],
-            Constants::OBJECT_TYPE_PLAYLIST => ['AWARDS_COMMENT_PLAYLIST', 'AWARDS_COMMENT_PLAYLIST_CONDITION'],
-        ];
-
-        $anonymousUserId = $this->fetchAnonymousUserId($db);
         $insertAward = $db->prepare("
             INSERT INTO {$this->table('log_awards_users')}
                 (award_type, user_id, comment_id, tokens_granted, added_date)
@@ -1290,23 +1353,10 @@ HELP
         ");
 
         foreach ($comments as $comment) {
-            $objectTypeId = $this->getInt($comment['object_type_id'] ?? null);
-            if (!isset($awardMap[$objectTypeId])) {
-                continue;
-            }
-
+            $tokens = $this->getCommentAwardTokens($comment, $memberzoneParams);
             $userId = $this->getInt($comment['user_id'] ?? null);
             $commentId = $this->getInt($comment['comment_id'] ?? null);
-            if ($userId <= 0 || $commentId <= 0 || $userId === $anonymousUserId) {
-                continue;
-            }
-
-            [$awardKey, $conditionKey] = $awardMap[$objectTypeId];
-            $tokens = $this->getMemberzoneInt($memberzoneParams, $awardKey);
-            $minimumLength = $this->getMemberzoneInt($memberzoneParams, $conditionKey);
-            $commentText = $this->getStr($comment['comment'] ?? null);
-
-            if ($tokens <= 0 || strlen($commentText) < $minimumLength) {
+            if ($tokens <= 0 || $userId === $anonymousUserId) {
                 continue;
             }
 
@@ -1330,17 +1380,27 @@ HELP
     {
         $file = $this->config->getKvsPath() . '/admin/data/system/memberzone_params.dat';
         if (!is_file($file)) {
+            $directory = dirname($file);
+            while (!is_dir($directory)) {
+                if (file_exists($directory) || is_link($directory)) {
+                    throw new \RuntimeException('Cannot read memberzone award configuration');
+                }
+                $directory = dirname($directory);
+            }
+            if (file_exists($file) || is_link($file) || !is_executable($directory)) {
+                throw new \RuntimeException('Cannot read memberzone award configuration');
+            }
             return [];
         }
 
-        $contents = file_get_contents($file);
+        $contents = @file_get_contents($file);
         if ($contents === false || $contents === '') {
-            return [];
+            throw new \RuntimeException('Cannot read memberzone award configuration');
         }
 
-        $params = unserialize($contents, ['allowed_classes' => false]);
+        $params = @unserialize($contents, ['allowed_classes' => false]);
         if (!is_array($params)) {
-            return [];
+            throw new \RuntimeException('Invalid memberzone award configuration');
         }
 
         $stringKeyParams = [];
@@ -1355,17 +1415,13 @@ HELP
 
     private function fetchAnonymousUserId(\PDO $db): ?int
     {
-        try {
-            $stmt = $db->query("SELECT user_id FROM {$this->table('users')} WHERE status_id = 4 LIMIT 1");
-            if ($stmt === false) {
-                return null;
-            }
-
-            $userId = $stmt->fetchColumn();
-            return is_numeric($userId) ? (int) $userId : null;
-        } catch (\PDOException) {
-            return null;
+        $stmt = $db->query("SELECT user_id FROM {$this->table('users')} WHERE status_id = 4 LIMIT 1");
+        if ($stmt === false) {
+            throw new \RuntimeException('Unable to look up the anonymous KVS user');
         }
+
+        $userId = $stmt->fetchColumn();
+        return is_numeric($userId) ? (int) $userId : null;
     }
 
     /**
@@ -1394,6 +1450,8 @@ HELP
             return self::FAILURE;
         }
 
+        $nonTransactionalTables = [];
+        $writesStarted = false;
         try {
             $commentIds = $this->resolveCommentIds($db, $input, $id, $action);
             if ($commentIds === null) {
@@ -1454,20 +1512,27 @@ HELP
                 return self::SUCCESS;
             }
 
-            // Use transaction to ensure atomic delete
+            $nonTransactionalTables = $this->getNonTransactionalModerationTables($db, $comments, true);
             $db->beginTransaction();
+            $commentIds = $this->lockModerationSelection($db, $comments);
+            $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
+            $writesStarted = true;
 
             // Delete user events associated with these comments
-            try {
-                $stmt = $db->prepare("DELETE FROM {$this->table('users')}_events WHERE comment_id IN ($placeholders)");
-                $stmt->execute($commentIds);
-            } catch (\PDOException) {
-                // Table may not exist, ignore
-            }
+            $eventsTable = $this->table('users_events');
+            $this->executeModerationSideEffect(
+                $db,
+                "DELETE FROM {$eventsTable} WHERE comment_id IN ($placeholders)",
+                $commentIds,
+                "SELECT comment_id FROM {$eventsTable} LIMIT 0"
+            );
 
             // Delete the comments
             $stmt = $db->prepare("DELETE FROM {$this->table('comments')} WHERE comment_id IN ($placeholders)");
             $stmt->execute($commentIds);
+            if ($stmt->rowCount() !== count($comments)) {
+                throw new \RuntimeException(self::MODERATION_SELECTION_CHANGED);
+            }
 
             // Update comment counts on parent objects and users
             $this->updateCommentCounts($db, $comments);
@@ -1487,6 +1552,7 @@ HELP
                 $db->rollBack();
             }
             $this->io()->error('Failed to reject comments: ' . $e->getMessage());
+            $this->warnAboutPartialModeration($nonTransactionalTables, $writesStarted);
             return self::FAILURE;
         }
     }
@@ -1582,41 +1648,31 @@ HELP
             }
         }
 
-        // Object type to table mapping
-        $tableMap = [
-            Constants::OBJECT_TYPE_VIDEO => ['table' => 'videos', 'id_col' => 'video_id'],
-            Constants::OBJECT_TYPE_ALBUM => ['table' => 'albums', 'id_col' => 'album_id'],
-            Constants::OBJECT_TYPE_CONTENT_SOURCE => ['table' => 'content_sources', 'id_col' => 'content_source_id'],
-            Constants::OBJECT_TYPE_MODEL => ['table' => 'models', 'id_col' => 'model_id'],
-            Constants::OBJECT_TYPE_DVD => ['table' => 'dvds', 'id_col' => 'dvd_id'],
-            Constants::OBJECT_TYPE_POST => ['table' => 'posts', 'id_col' => 'post_id'],
-            Constants::OBJECT_TYPE_PLAYLIST => ['table' => 'playlists', 'id_col' => 'playlist_id'],
-        ];
-
         // Update comment counts on parent objects
         foreach ($objectsByType as $typeId => $objectIds) {
-            if (!isset($tableMap[$typeId])) {
+            if (!isset(self::COMMENT_OBJECT_TABLES[$typeId])) {
                 continue;
             }
 
-            $config = $tableMap[$typeId];
+            $config = self::COMMENT_OBJECT_TABLES[$typeId];
             $tableName = $this->table($config['table']);
             $idColumn = $config['id_col'];
             $commentsTable = $this->table('comments');
 
             foreach (array_keys($objectIds) as $objectId) {
-                try {
-                    $db->prepare("
+                $this->executeModerationSideEffect(
+                    $db,
+                    "
                         UPDATE {$tableName}
                         SET comments_count = (
                             SELECT COUNT(*) FROM {$commentsTable}
                             WHERE object_id = ? AND object_type_id = ? AND is_approved = 1
                         )
                         WHERE {$idColumn} = ?
-                    ")->execute([$objectId, $typeId, $objectId]);
-                } catch (\PDOException) {
-                    // Column may not exist in some KVS versions, ignore
-                }
+                    ",
+                    [$objectId, $typeId, $objectId],
+                    "SELECT {$idColumn}, comments_count FROM {$tableName} LIMIT 0"
+                );
             }
 
             if ($typeId === Constants::OBJECT_TYPE_ALBUM) {
@@ -1643,8 +1699,9 @@ HELP
         $imagesTable = $this->table('albums_images');
 
         foreach ($albumIds as $albumId) {
-            try {
-                $db->prepare("
+            $this->executeModerationSideEffect(
+                $db,
+                "
                     UPDATE {$imagesTable}
                     SET comments_count = (
                         SELECT COUNT(*) FROM {$commentsTable}
@@ -1653,10 +1710,10 @@ HELP
                           AND is_approved = 1
                     )
                     WHERE album_id = ?
-                ")->execute([Constants::OBJECT_TYPE_ALBUM, $albumId]);
-            } catch (\PDOException) {
-                // Table or columns may not exist in some KVS versions, ignore
-            }
+                ",
+                [Constants::OBJECT_TYPE_ALBUM, $albumId],
+                "SELECT image_id, album_id, comments_count FROM {$imagesTable} LIMIT 0"
+            );
         }
     }
 
@@ -1675,8 +1732,9 @@ HELP
         $usersTable = $this->table('users');
 
         foreach ($userIds as $userId) {
-            try {
-                $db->prepare("
+            $this->executeModerationSideEffect(
+                $db,
+                "
                     UPDATE {$usersTable} SET
                         comments_videos_count = (
                             SELECT COUNT(*) FROM {$commentsTable}
@@ -1711,7 +1769,8 @@ HELP
                             WHERE user_id = ? AND is_approved = 1
                         )
                     WHERE user_id = ?
-                ")->execute([
+                ",
+                [
                     $userId, Constants::OBJECT_TYPE_VIDEO,
                     $userId, Constants::OBJECT_TYPE_ALBUM,
                     $userId, Constants::OBJECT_TYPE_CONTENT_SOURCE,
@@ -1721,10 +1780,136 @@ HELP
                     $userId, Constants::OBJECT_TYPE_PLAYLIST,
                     $userId,
                     $userId,
-                ]);
-            } catch (\PDOException) {
-                // Columns may not exist in some KVS versions, ignore
+                ],
+                "SELECT user_id, comments_videos_count, comments_albums_count, comments_cs_count, "
+                . 'comments_models_count, comments_dvds_count, comments_posts_count, '
+                . "comments_playlists_count, comments_total_count FROM {$usersTable} LIMIT 0"
+            );
+        }
+    }
+
+    /**
+     * @param list<int> $params
+     */
+    private function executeModerationSideEffect(\PDO $db, string $sql, array $params, string $schemaProbe): void
+    {
+        try {
+            $db->prepare($sql)->execute($params);
+        } catch (\PDOException $error) {
+            if ($this->isMissingModerationSchema($error)) {
+                try {
+                    $db->query($schemaProbe);
+                } catch (\PDOException $schemaError) {
+                    // Only an actually absent legacy table or counter is optional.
+                    if ($this->isMissingModerationSchema($schemaError)) {
+                        return;
+                    }
+                }
             }
+            throw $error;
+        }
+    }
+
+    private function isMissingModerationSchema(\PDOException $error): bool
+    {
+        return in_array($error->getCode(), ['42S02', '42S22'], true)
+            || str_contains($error->getMessage(), 'no such table: ')
+            || str_contains($error->getMessage(), 'no such column: ');
+    }
+
+    /**
+     * @param list<array<string, mixed>> $comments
+     * @return list<string>
+     */
+    private function getNonTransactionalModerationTables(
+        \PDO $db,
+        array $comments,
+        bool $deleting,
+        bool $awardsConfigured = false
+    ): array {
+        $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'sqlite') {
+            return [];
+        }
+        if ($driver !== 'mysql') {
+            throw new \RuntimeException('Cannot inspect comment moderation tables with this database driver');
+        }
+
+        $tables = [$this->table('comments'), $this->table('users'), $this->table('admin_audit_log')];
+        if ($deleting) {
+            $tables[] = $this->table('users_events');
+        } elseif ($awardsConfigured) {
+            $tables[] = $this->table('log_awards_users');
+        }
+        foreach ($comments as $comment) {
+            $type = $this->getInt($comment['object_type_id'] ?? null);
+            if (isset(self::COMMENT_OBJECT_TABLES[$type])) {
+                $tables[] = $this->table(self::COMMENT_OBJECT_TABLES[$type]['table']);
+            }
+            if ($type === Constants::OBJECT_TYPE_ALBUM) {
+                $tables[] = $this->table('albums_images');
+            }
+        }
+        $tables = array_values(array_unique($tables));
+        $placeholders = implode(',', array_fill(0, count($tables), '?'));
+        $stmt = $db->prepare(
+            'SELECT tables.TABLE_NAME, engines.TRANSACTIONS FROM information_schema.TABLES AS tables '
+            . 'JOIN information_schema.ENGINES AS engines ON engines.ENGINE = tables.ENGINE '
+            . "WHERE tables.TABLE_SCHEMA = DATABASE() AND tables.TABLE_NAME IN ($placeholders)"
+        );
+        $stmt->execute($tables);
+        $engines = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $nonTransactional = [];
+        foreach ($tables as $table) {
+            // Optional legacy tables may be absent; required reads already checked their schema.
+            if (array_key_exists($table, $engines) && $engines[$table] !== 'YES') {
+                $nonTransactional[] = $table;
+            }
+        }
+        return $nonTransactional;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $comments
+     * @return list<int>
+     */
+    private function lockModerationSelection(\PDO $db, array $comments): array
+    {
+        $expected = [];
+        foreach ($comments as $comment) {
+            $expected[$this->getInt($comment['comment_id'] ?? null)] = $comment;
+        }
+        $ids = array_keys($expected);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $db->prepare(
+            "SELECT * FROM {$this->table('comments')} WHERE comment_id IN ($placeholders) ORDER BY comment_id"
+            . $this->rowLockClause($db)
+        );
+        $stmt->execute($ids);
+        /** @var list<array<string, mixed>> $current */
+        $current = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        if (count($current) !== count($expected)) {
+            throw new \RuntimeException(self::MODERATION_SELECTION_CHANGED);
+        }
+        foreach ($current as $comment) {
+            $id = $this->getInt($comment['comment_id'] ?? null);
+            if ($comment !== array_intersect_key($expected[$id], $comment)) {
+                throw new \RuntimeException(self::MODERATION_SELECTION_CHANGED);
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * @param list<string> $tables
+     */
+    private function warnAboutPartialModeration(array $tables, bool $writesStarted): void
+    {
+        if ($writesStarted && $tables !== []) {
+            $this->io()->warning(
+                'Some changes may have persisted because these tables do not support transactions: '
+                . implode(', ', $tables)
+            );
         }
     }
 }

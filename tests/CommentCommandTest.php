@@ -9,6 +9,9 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[CoversClass(CommentCommand::class)]
 class CommentCommandTest extends TestCase
@@ -1043,6 +1046,231 @@ class CommentCommandTest extends TestCase
         $this->assertStringContainsString('show, approve, reject, delete, stats', $output);
     }
 
+    #[DataProvider('requiredModerationWrites')]
+    public function testModerationRollsBackWhenRequiredSideEffectFails(
+        string $table,
+        string $event,
+        string $action,
+        string $ids,
+        string $message
+    ): void {
+        $this->createModerationSideEffectSchema();
+        $this->db->exec(
+            'CREATE TRIGGER moderation_refusal BEFORE ' . $event . ' ON ' . TestHelper::table($table) .
+            " BEGIN SELECT RAISE(ABORT, '" . $message . "'); END"
+        );
+        $before = $this->moderationSnapshot();
+
+        $this->tester->execute(['action' => $action, 'id' => $ids, '--yes' => true]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($message, $this->tester->getDisplay());
+        $this->assertSame($before, $this->moderationSnapshot());
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string, string}>
+     */
+    public static function requiredModerationWrites(): iterable
+    {
+        $writes = [
+            'events' => ['users_events', 'DELETE', 'delete', '20,30'],
+            'parent counter' => ['videos', 'UPDATE', 'approve', '20'],
+            'user counter' => ['users', 'UPDATE', 'reject', '30'],
+            'image counter' => ['albums_images', 'UPDATE', 'approve', '40'],
+        ];
+        foreach ($writes as $name => $write) {
+            $messages = [
+                'Synthetic SQL refusal', 'no such table: synthetic_target', 'no such column: synthetic_counter',
+            ];
+            foreach ($messages as $message) {
+                yield $name . ': ' . $message => [...$write, $message];
+            }
+        }
+    }
+
+    #[DataProvider('missingLegacyModerationSchema')]
+    public function testModerationToleratesActuallyMissingLegacySchema(string $sql, string $action, string $id): void
+    {
+        $this->createModerationSideEffectSchema();
+        $this->db->exec($sql);
+
+        $this->tester->execute(['action' => $action, 'id' => $id, '--yes' => true]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $stmt = $this->db->prepare('SELECT is_approved FROM ' . TestHelper::table('comments') . ' WHERE comment_id=?');
+        $stmt->execute([$id]);
+        $this->assertSame($action === 'delete' ? false : '1', $stmt->fetchColumn());
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function missingLegacyModerationSchema(): iterable
+    {
+        yield 'event table' => ['DROP TABLE ' . TestHelper::table('users_events'), 'delete', '30'];
+        yield 'parent counter' => [
+            'ALTER TABLE ' . TestHelper::table('videos') . ' DROP COLUMN comments_count', 'approve', '20',
+        ];
+        yield 'user counter' => [
+            'ALTER TABLE ' . TestHelper::table('users') . ' DROP COLUMN comments_videos_count',
+            'approve', '20',
+        ];
+        yield 'image table' => ['DROP TABLE ' . TestHelper::table('albums_images'), 'approve', '40'];
+        yield 'image counter' => [
+            'ALTER TABLE ' . TestHelper::table('albums_images') . ' DROP COLUMN comments_count', 'approve', '40',
+        ];
+    }
+
+    #[DataProvider('concurrentModerationActions')]
+    public function testModerationRejectsChangedSelectionAfterConfirmation(string $action): void
+    {
+        $this->createModerationSideEffectSchema();
+        $this->db->exec('ALTER TABLE ' . TestHelper::table('users') . ' ADD COLUMN tokens_available INTEGER DEFAULT 0');
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('log_awards_users') .
+            ' (award_type INTEGER, user_id INTEGER, comment_id INTEGER, tokens_granted INTEGER, added_date TEXT)'
+        );
+        file_put_contents(
+            $this->kvsPath . '/admin/data/system/memberzone_params.dat',
+            serialize(['AWARDS_COMMENT_VIDEO' => 3, 'AWARDS_COMMENT_VIDEO_CONDITION' => 1])
+        );
+        $afterActor = null;
+        $confirmations = 0;
+        $command = $this->createCommand($this->db, function () use ($action, &$afterActor, &$confirmations): void {
+            $confirmations++;
+            $actor = new CommandTester($this->createCommand($this->db));
+            $actor->execute(['action' => $action, 'id' => '20', '--yes' => true]);
+            $this->assertSame(0, $actor->getStatusCode(), $actor->getDisplay());
+            $afterActor = $this->moderationSnapshot();
+            $afterActor['awards'] = $this->db->query(
+                'SELECT * FROM ' . TestHelper::table('log_awards_users')
+            )->fetchAll(PDO::FETCH_ASSOC);
+        });
+        $tester = new CommandTester($command);
+
+        $tester->execute(['action' => $action, 'id' => $action === 'approve' ? '20,40' : '20,30']);
+
+        $this->assertSame(1, $confirmations);
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Comments changed', $tester->getDisplay());
+        $after = $this->moderationSnapshot();
+        $after['awards'] = $this->db->query(
+            'SELECT * FROM ' . TestHelper::table('log_awards_users')
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $this->assertSame($afterActor, $after);
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function concurrentModerationActions(): iterable
+    {
+        foreach (['approve', 'reject', 'delete'] as $action) {
+            yield $action => [$action];
+        }
+    }
+
+    public function testApproveOnlyUpdatesCommentsShownForConfirmation(): void
+    {
+        $this->createModerationSideEffectSchema();
+        $unselected = null;
+        $command = $this->createCommand($this->db, function () use (&$unselected): void {
+            $this->db->exec('UPDATE ' . TestHelper::table('comments') . ' SET is_review_needed=1 WHERE comment_id=30');
+            $unselected = $this->db->query(
+                'SELECT * FROM ' . TestHelper::table('comments') . ' WHERE comment_id=30'
+            )->fetch(PDO::FETCH_ASSOC);
+        });
+        $tester = new CommandTester($command);
+
+        $tester->execute(['action' => 'approve', 'id' => '20,30']);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($unselected, $this->db->query(
+            'SELECT * FROM ' . TestHelper::table('comments') . ' WHERE comment_id=30'
+        )->fetch(PDO::FETCH_ASSOC));
+        $this->assertSame('1', $this->db->query(
+            'SELECT is_approved FROM ' . TestHelper::table('comments') . ' WHERE comment_id=20'
+        )->fetchColumn());
+    }
+
+    #[DataProvider('changedCommentContext')]
+    public function testModerationRejectsContextChangedDuringConfirmation(string $change): void
+    {
+        $this->createModerationSideEffectSchema();
+        $afterActor = null;
+        $command = $this->createCommand($this->db, function () use ($change, &$afterActor): void {
+            $this->db->exec('UPDATE ' . TestHelper::table('comments') . ' SET ' . $change . ' WHERE comment_id=20');
+            $afterActor = $this->moderationSnapshot();
+        });
+        $tester = new CommandTester($command);
+
+        $tester->execute(['action' => 'approve', 'id' => '20']);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($afterActor, $this->moderationSnapshot());
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function changedCommentContext(): iterable
+    {
+        yield 'object' => ['object_type_id=2, object_id=200, object_sub_id=1'];
+        yield 'author' => ['user_id=1'];
+        yield 'text' => ["comment='Edited while awaiting confirmation'"];
+    }
+
+    private function createModerationSideEffectSchema(): void
+    {
+        foreach (['videos', 'albums', 'cs', 'models', 'dvds', 'posts', 'playlists', 'total'] as $kind) {
+            $this->db->exec(
+                'ALTER TABLE ' . TestHelper::table('users')
+                . ' ADD COLUMN comments_' . $kind . '_count INTEGER DEFAULT 0'
+            );
+        }
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('users_events') . ' (event_id INTEGER, comment_id INTEGER)');
+        $this->db->exec('INSERT INTO ' . TestHelper::table('users_events') . ' VALUES (1,20),(2,30),(3,10)');
+        $this->db->exec(
+            'CREATE TABLE ' . TestHelper::table('albums_images') .
+            ' (image_id INTEGER, album_id INTEGER, comments_count INTEGER)'
+        );
+        $this->db->exec('INSERT INTO ' . TestHelper::table('albums_images') . ' VALUES (1,200,0)');
+        $this->insertComment($this->db, [
+            'comment_id' => 40,
+            'object_id' => 200,
+            'object_type_id' => 2,
+            'object_sub_id' => 1,
+            'user_id' => 1,
+            'anonymous_username' => '',
+            'is_approved' => 0,
+            'is_review_needed' => 1,
+            'comment' => 'Pending image comment',
+            'country_code' => '',
+            'ip' => 0,
+            'rating' => 0,
+            'added_date' => '2025-01-01 12:00:00',
+        ]);
+    }
+
+    /**
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function moderationSnapshot(): array
+    {
+        $snapshot = [];
+        foreach (['comments', 'users', 'videos', 'albums', 'users_events', 'albums_images'] as $table) {
+            /** @var list<array<string, mixed>> $rows */
+            $rows = $this->db->query('SELECT * FROM ' . TestHelper::table($table))->fetchAll(PDO::FETCH_ASSOC);
+            $snapshot[$table] = $rows;
+        }
+        return $snapshot;
+    }
+
     private function createDatabase(): PDO
     {
         $db = new PDO('sqlite::memory:');
@@ -1198,15 +1426,40 @@ class CommentCommandTest extends TestCase
         $stmt->execute($comment);
     }
 
-    private function createCommand(PDO $db): CommentCommand
+    private function createCommand(PDO $db, ?\Closure $beforeConfirmation = null): CommentCommand
     {
-        return new class ($this->config, $db) extends CommentCommand {
-            public function __construct(Configuration $config, private PDO $testDb)
-            {
+        return new class ($this->config, $db, $beforeConfirmation) extends CommentCommand {
+            public function __construct(
+                Configuration $config,
+                private PDO $testDb,
+                private ?\Closure $beforeConfirmation
+            ) {
                 parent::__construct($config);
                 $this->setName('content:comment');
                 $this->setDescription('Manage KVS comments');
                 $this->setAliases(['comment', 'comments']);
+            }
+
+            protected function initialize(InputInterface $input, OutputInterface $output): void
+            {
+                parent::initialize($input, $output);
+                if ($this->beforeConfirmation !== null) {
+                    $this->io = new class ($input, $output, $this->beforeConfirmation) extends SymfonyStyle {
+                        public function __construct(
+                            InputInterface $input,
+                            OutputInterface $output,
+                            private \Closure $beforeConfirmation
+                        ) {
+                            parent::__construct($input, $output);
+                        }
+
+                        public function confirm(string $question, bool $default = true): bool
+                        {
+                            ($this->beforeConfirmation)();
+                            return true;
+                        }
+                    };
+                }
             }
 
             protected function getDatabaseConnection(bool $quiet = false): ?PDO

@@ -5,6 +5,7 @@ namespace KVS\CLI\Tests;
 use KVS\CLI\Command\Content\CommentCommand;
 use KVS\CLI\Config\Configuration;
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class CommentCleanupTest extends TestCase
@@ -193,6 +194,212 @@ class CommentCleanupTest extends TestCase
                  WHERE award_type = 3 AND user_id = 5 AND comment_id = 13 AND tokens_granted = 7'
             )
         );
+    }
+
+    #[DataProvider('invalidAwardConfigurations')]
+    public function testApproveRejectsUnreadableAwardConfigurationBeforeWrites(string $case): void
+    {
+        $writes = 0;
+        $db = $this->createAwardApprovalDatabase(false, static function () use (&$writes): void {
+            $writes++;
+        });
+        $file = $this->tempDir . '/admin/data/system/memberzone_params.dat';
+        $directory = dirname($file);
+        if ($case === 'unreadable') {
+            chmod($file, 0000);
+            clearstatcache(true, $file);
+            if (is_readable($file)) {
+                chmod($file, 0644);
+                $this->markTestSkipped('File permission refusal requires an unprivileged process');
+            }
+        } elseif ($case === 'unsearchable directory') {
+            chmod($directory, 0400);
+            clearstatcache();
+            if (is_executable($directory)) {
+                chmod($directory, 0755);
+                $this->markTestSkipped('Directory traversal refusal requires an unprivileged process');
+            }
+        } else {
+            file_put_contents($file, match ($case) {
+                'empty' => '',
+                'invalid' => 'not serialized memberzone parameters',
+                'scalar' => serialize(false),
+            });
+        }
+        $before = $this->awardSnapshot($db);
+        $tester = new CommandTester($this->createCommand($db));
+        try {
+            $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString('memberzone award configuration', $tester->getDisplay());
+            $this->assertSame($before, $this->awardSnapshot($db));
+            $this->assertSame(0, $writes, 'No moderation UPDATE may be prepared before configuration is readable');
+            $this->assertFalse($db->inTransaction());
+        } finally {
+            chmod($directory, 0755);
+            chmod($file, 0644);
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidAwardConfigurations(): iterable
+    {
+        foreach (['unreadable', 'unsearchable directory', 'empty', 'invalid', 'scalar'] as $case) {
+            yield $case => [$case];
+        }
+    }
+
+    #[DataProvider('optionalAwardConfigurations')]
+    public function testApproveAcceptsAbsentOrEmptyArrayAwardConfiguration(string $case): void
+    {
+        $db = $this->createAwardApprovalDatabase();
+        $file = $this->tempDir . '/admin/data/system/memberzone_params.dat';
+        if ($case === 'absent') {
+            unlink($file);
+        } elseif ($case === 'absent directory') {
+            unlink($file);
+            rmdir(dirname($file));
+        } else {
+            file_put_contents($file, serialize([]));
+        }
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id=13'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id=5'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_log_awards_users'));
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function optionalAwardConfigurations(): iterable
+    {
+        foreach (['absent', 'absent directory', 'empty array'] as $case) {
+            yield $case => [$case];
+        }
+    }
+
+    public function testApproveReadsAwardConfigurationThroughHealthySymlink(): void
+    {
+        $db = $this->createAwardApprovalDatabase();
+        $file = $this->tempDir . '/admin/data/system/memberzone_params.dat';
+        $target = $this->tempDir . '/award-settings.dat';
+        rename($file, $target);
+        symlink($target, $file);
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(8, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id=5'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_log_awards_users'));
+        $this->assertTrue(is_link($file));
+    }
+
+    public function testReviewOnlyApprovalDoesNotReadAwardConfiguration(): void
+    {
+        $db = $this->createAwardApprovalDatabase(true);
+        $db->exec('UPDATE ktvs_comments SET is_approved=1, is_review_needed=1 WHERE comment_id=13');
+        $file = $this->tempDir . '/admin/data/system/memberzone_params.dat';
+        file_put_contents($file, 'invalid award configuration');
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id=13'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id=13'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id=5'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_log_awards_users'));
+        $this->assertSame('invalid award configuration', file_get_contents($file));
+    }
+
+    #[DataProvider('unrewardedCommentConfigurations')]
+    public function testApproveSkipsAnonymousLookupWhenNoCommentCanReceiveAward(string $case): void
+    {
+        $db = $this->createAwardApprovalDatabase(true);
+        $this->createMemberzoneParams(match ($case) {
+            'all awards disabled' => ['AWARDS_COMMENT_VIDEO' => '0'],
+            'only another object rewarded' => ['AWARDS_COMMENT_ALBUM' => '9'],
+            'below reward length' => ['AWARDS_COMMENT_VIDEO' => '7', 'AWARDS_COMMENT_VIDEO_CONDITION' => '1000'],
+            'unregistered author' => ['AWARDS_COMMENT_VIDEO' => '7'],
+        });
+        if ($case === 'unregistered author') {
+            $db->exec('UPDATE ktvs_comments SET user_id=0 WHERE comment_id=13');
+        }
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id=13'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT is_review_needed FROM ktvs_comments WHERE comment_id=13'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT comments_count FROM ktvs_videos WHERE video_id=1'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id=5'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_log_awards_users'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_admin_audit_log'));
+        $this->assertFalse($db->inTransaction());
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function unrewardedCommentConfigurations(): iterable
+    {
+        $cases = [
+            'all awards disabled', 'only another object rewarded', 'below reward length', 'unregistered author',
+        ];
+        foreach ($cases as $case) {
+            yield $case => [$case];
+        }
+    }
+
+    public function testApproveFailsBeforeWritesWhenAnonymousLookupFails(): void
+    {
+        $writes = 0;
+        $db = $this->createAwardApprovalDatabase(true, static function () use (&$writes): void {
+            $writes++;
+        });
+        $db->exec('UPDATE ktvs_users SET status_id=2 WHERE user_id=4');
+        $db->exec('UPDATE ktvs_users SET status_id=4 WHERE user_id=5');
+        $before = $this->awardSnapshot($db);
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Synthetic anonymous lookup denied', $tester->getDisplay());
+        $this->assertSame($before, $this->awardSnapshot($db));
+        $this->assertSame(0, $writes, 'No moderation UPDATE may be prepared before the anonymous lookup succeeds');
+        $this->assertFalse($db->inTransaction());
+    }
+
+    public function testApproveDoesNotRewardAnonymousAuthor(): void
+    {
+        $db = $this->createAwardApprovalDatabase();
+        $db->exec('UPDATE ktvs_users SET status_id=2 WHERE user_id=4');
+        $db->exec('UPDATE ktvs_users SET status_id=4 WHERE user_id=5');
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT is_approved FROM ktvs_comments WHERE comment_id=13'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id=5'));
+        $this->assertSame(0, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_log_awards_users'));
+    }
+
+    public function testApproveAwardsRegisteredAuthorWhenNoAnonymousAccountExists(): void
+    {
+        $db = $this->createAwardApprovalDatabase();
+        $db->exec('DELETE FROM ktvs_users WHERE user_id=4');
+        $tester = new CommandTester($this->createCommand($db));
+
+        $tester->execute(['action' => 'approve', 'id' => '13', '--yes' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(8, $this->fetchInt($db, 'SELECT tokens_available FROM ktvs_users WHERE user_id=5'));
+        $this->assertSame(1, $this->fetchInt($db, 'SELECT COUNT(*) FROM ktvs_log_awards_users'));
     }
 
     public function testApproveWithoutInteractiveConfirmationFailsWithoutWrites(): void
@@ -460,6 +667,56 @@ class CommentCleanupTest extends TestCase
         ];
 
         file_put_contents($dir . '/memberzone_params.dat', serialize(array_merge($defaults, $overrides)));
+    }
+
+    private function createAwardApprovalDatabase(bool $failLookup = false, ?\Closure $beforeWrite = null): \PDO
+    {
+        $db = new class ($failLookup, $beforeWrite) extends \PDO {
+            public function __construct(private bool $failLookup, private ?\Closure $beforeWrite)
+            {
+                parent::__construct('sqlite::memory:');
+                $this->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+            }
+
+            public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): \PDOStatement|false
+            {
+                if ($this->failLookup && str_contains($query, 'WHERE status_id = 4 LIMIT 1')) {
+                    throw new \PDOException('Synthetic anonymous lookup denied');
+                }
+                return parent::query($query, $fetchMode, ...$fetchModeArgs);
+            }
+
+            public function prepare(string $query, array $options = []): \PDOStatement|false
+            {
+                if ($this->beforeWrite !== null && str_contains($query, 'UPDATE ktvs_comments')) {
+                    ($this->beforeWrite)();
+                }
+                return parent::prepare($query, $options);
+            }
+        };
+        $this->createSchema($db);
+        $this->createMemberzoneParams(['AWARDS_COMMENT_VIDEO' => '7', 'AWARDS_COMMENT_VIDEO_CONDITION' => '10']);
+        $db->exec("INSERT INTO ktvs_videos (video_id,title,comments_count) VALUES (1,'Video One',0)");
+        $db->exec(
+            "INSERT INTO ktvs_users (user_id,username,status_id,tokens_available) VALUES " .
+            "(4,'anonymous',4,0),(5,'tester',2,1)"
+        );
+        $db->exec(
+            "INSERT INTO ktvs_comments " .
+            "(comment_id,object_id,object_sub_id,object_type_id,user_id,comment,is_approved,is_review_needed) " .
+            "VALUES (13,1,0,1,5,'Long enough comment for award',0,1)"
+        );
+        return $db;
+    }
+
+    /** @return array<string, list<array<string, mixed>>> */
+    private function awardSnapshot(\PDO $db): array
+    {
+        $snapshot = [];
+        foreach (['comments', 'users', 'videos', 'admin_audit_log', 'log_awards_users'] as $table) {
+            $snapshot[$table] = $db->query('SELECT * FROM ktvs_' . $table)->fetchAll(\PDO::FETCH_ASSOC);
+        }
+        return $snapshot;
     }
 
     private function createCommand(\PDO $db): CommentCommand
