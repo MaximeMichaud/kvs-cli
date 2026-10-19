@@ -275,6 +275,105 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * @param list<int> $userIds
+     * @param callable(): void $cleanup
+     */
+    protected function runVerifiedKvsUserCleanup(array $userIds, callable $cleanup): void
+    {
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            throw new \RuntimeException('Cannot verify native user cleanup without a database connection.');
+        }
+        $ids = implode(',', $userIds);
+        $paths = $this->getKvsUserCleanupPaths($db, $ids);
+
+        $cleanup();
+
+        $remaining = [];
+        $conditions = [
+            'users_events' => "user_id IN ($ids) OR user_target_id IN ($ids)",
+            'users_subscriptions' => "user_id IN ($ids) OR "
+                . "(subscribed_object_id IN ($ids) AND subscribed_object_type_id=1)",
+            'users_ignores' => "user_id IN ($ids) OR ignored_user_id IN ($ids)",
+            'users_blogs' => "user_id IN ($ids) OR user_from_id IN ($ids)",
+            'friends' => "user_id IN ($ids) OR friend_id IN ($ids)",
+            'messages' => "user_id IN ($ids) OR user_from_id IN ($ids)",
+        ];
+        foreach (
+            ['users_blocked_passwords', 'fav_videos', 'fav_albums', 'comments', 'log_logins_users',
+            'feedbacks', 'dvds'] as $table
+        ) {
+            $conditions[$table] = "user_id IN ($ids)";
+        }
+        foreach ($conditions as $table => $condition) {
+            try {
+                $statement = $db->query("SELECT COUNT(*) FROM {$this->table($table)} WHERE $condition");
+                if ($statement === false) {
+                    throw new \RuntimeException('Cannot query cleanup state.');
+                }
+                $count = $statement->fetchColumn();
+                if (is_numeric($count) && (int) $count > 0) {
+                    $remaining[] = $table;
+                }
+            } catch (\Exception $error) {
+                $remaining[] = $table . ' could not be verified: ' . $error->getMessage();
+            }
+        }
+        foreach ($paths as $path) {
+            clearstatcache(true, $path);
+            if (file_exists($path) || is_link($path) || !$this->canInspectKvsUserCleanupPath($path)) {
+                $remaining[] = 'avatar/cover file ' . $path;
+            }
+        }
+        if ($remaining !== []) {
+            throw new \RuntimeException(
+                'KVS cleanup is incomplete: ' . implode('; ', $remaining) . '. '
+                . 'Account data may already have been deleted; no rollback was performed.'
+            );
+        }
+    }
+
+    private function canInspectKvsUserCleanupPath(string $path): bool
+    {
+        $directory = dirname($path);
+        while (!is_dir($directory) && dirname($directory) !== $directory) {
+            if (is_link($directory)) {
+                return false;
+            }
+            $directory = dirname($directory);
+        }
+
+        return is_executable($directory);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getKvsUserCleanupPaths(\PDO $db, string $ids): array
+    {
+        $users = $db->query("SELECT * FROM {$this->table('users')} WHERE user_id IN ($ids)");
+        if ($users === false) {
+            throw new \RuntimeException('Cannot read user cleanup data before deletion.');
+        }
+        $runtimeConfig = $this->getKvsRuntimeConfig();
+        $avatars = $runtimeConfig['content_path_avatars'] ?? $this->config->getKvsPath() . '/contents/avatars';
+        $paths = [];
+        foreach ($users->fetchAll(\PDO::FETCH_ASSOC) as $user) {
+            if (!is_array($user)) {
+                throw new \RuntimeException('Cannot read user cleanup data before deletion.');
+            }
+            foreach (['avatar', 'cover'] as $field) {
+                $file = $user[$field] ?? null;
+                if (is_string($avatars) && is_string($file) && $file !== '') {
+                    $paths[] = $avatars . '/' . $file;
+                }
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
      * @param 'video'|'album' $kind
      */
     protected function queueContentDeletionWithKvs(string $kind, int $id): void

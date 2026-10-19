@@ -1361,7 +1361,9 @@ HELP
                 throw new \RuntimeException('KVS delete_users function is not available');
             }
 
-            $deleteUsers($userIds, true, 'ap');
+            $this->runVerifiedKvsUserCleanup($userIds, static function () use ($deleteUsers, $userIds): void {
+                $deleteUsers($userIds, true, 'ap');
+            });
         });
     }
 
