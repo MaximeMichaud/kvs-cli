@@ -10,6 +10,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
+use Symfony\Component\Filesystem\Filesystem;
 
 /**
  * Generates shell completion scripts.
@@ -104,7 +106,22 @@ HELP
             return Command::FAILURE;
         }
 
-        if (file_put_contents($path, $script) === false) {
+        if ((file_exists($path) || is_link($path)) && (!is_file($path) || !is_writable($path))) {
+            $io->error(sprintf('Cannot update completion file: %s', $path));
+            return Command::FAILURE;
+        }
+
+        if ($shell === 'bash' && basename($path) === '.bash_completion') {
+            $merged = $this->mergeBashCompletions($io, $path, $script);
+            if ($merged === null) {
+                return Command::FAILURE;
+            }
+            $script = $merged;
+        }
+
+        try {
+            (new Filesystem())->dumpFile($path, $script);
+        } catch (IOExceptionInterface) {
             $io->error(sprintf('Failed to write to: %s', $path));
             return Command::FAILURE;
         }
@@ -113,6 +130,37 @@ HELP
         $io->text($this->getPostInstallHint($shell));
 
         return Command::SUCCESS;
+    }
+
+    private function mergeBashCompletions(SymfonyStyle $io, string $path, string $script): ?string
+    {
+        $existing = file_exists($path) || is_link($path) ? @file_get_contents($path) : '';
+        if ($existing === false) {
+            $io->error('Cannot read existing Bash completions: ' . $path);
+            return null;
+        }
+
+        $start = '# >>> KVS CLI completion >>>';
+        $end = '# <<< KVS CLI completion <<<';
+        $block = $start . "\n" . rtrim($script, "\r\n") . "\n" . $end;
+        $pattern = '/^' . preg_quote($start, '/') . '\r?\n.*?^' . preg_quote($end, '/') . '\r?$/ms';
+        $updated = preg_replace_callback($pattern, static fn (): string => $block, $existing, -1, $matches);
+        $hasMarkers = str_contains($existing, $start) || str_contains($existing, $end);
+        if (
+            $updated === null
+            || ($hasMarkers && ($matches !== 1
+                || substr_count($existing, $start) !== 1 || substr_count($existing, $end) !== 1))
+        ) {
+            $io->error('Incomplete KVS completion block. Existing Bash completions were not changed.');
+            return null;
+        }
+
+        if ($matches === 1) {
+            return $updated;
+        }
+
+        $separator = $existing !== '' && !str_ends_with($existing, "\n") ? "\n" : '';
+        return $existing . $separator . $block . "\n";
     }
 
     private function getPostInstallHint(string $shell): string

@@ -41,6 +41,12 @@ kvs completion fish --install
 After automatic installation, restart the terminal or run the shell-specific
 reload command printed by the CLI.
 
+User-level Bash installation preserves other definitions in `~/.bash_completion`
+and updates only its marked KVS block. Unreadable content or an incomplete KVS
+block causes an error before the file is changed.
+Completion files are replaced atomically, preserving the previous file if writing
+the new script fails. Existing read-only files and non-regular targets are refused.
+
 ### Bash
 
 **System-wide (requires sudo):**

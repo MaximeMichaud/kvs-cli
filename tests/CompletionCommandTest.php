@@ -5,7 +5,9 @@ namespace KVS\CLI\Tests;
 use KVS\CLI\Command\CompletionCommand;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use org\bovigo\vfs\vfsStream;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Process\Process;
 
 #[CoversClass(CompletionCommand::class)]
 class CompletionCommandTest extends TestCase
@@ -559,6 +561,170 @@ ZSH
         $this->assertFileExists($this->tempDir . '/.bash_completion');
         $this->assertStringContainsString('Restart your terminal or run: source ~/.bash_completion', $bash->getDisplay());
         $this->assertStringNotContainsString('source ~/.bashrc', $bash->getDisplay());
+    }
+
+    public function testBashInstallPreservesOtherCompletionsAndIsIdempotent(): void
+    {
+        $path = $this->tempDir . '/.bash_completion';
+        $existing = "# User completion\n_other_completion() { printf 'Original completion preserved\\n'; }\n"
+            . "complete -F _other_completion unrelated\n";
+        file_put_contents($path, $existing);
+        chmod($path, 0640);
+        $tester = $this->bashInstallerFor($path);
+
+        $tester->execute(['shell' => 'bash', '--install' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $installed = file_get_contents($path);
+        $this->assertIsString($installed);
+        $this->assertStringStartsWith($existing, $installed);
+        $this->assertSame(0640, fileperms($path) & 0777);
+        $process = new Process([
+            'bash', '--noprofile', '--norc', '-c',
+            'source "$1"; _other_completion; declare -F _kvs_complete; complete -p unrelated',
+            'completion-test', $path,
+        ]);
+        $this->assertSame(0, $process->run(), $process->getErrorOutput());
+        $this->assertStringContainsString("Original completion preserved\n", $process->getOutput());
+        $this->assertStringContainsString('_kvs_complete', $process->getOutput());
+        $this->assertStringContainsString('complete -F _other_completion unrelated', $process->getOutput());
+
+        $tester->execute(['shell' => 'bash', '--install' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($installed, file_get_contents($path));
+    }
+
+    public function testBashInstallReplacesOnlyItsManagedBlock(): void
+    {
+        $path = $this->tempDir . '/.bash_completion';
+        $before = "# Before KVS\n_before_completion() { :; }\n";
+        $after = "\n# After KVS\n_after_completion() { :; }\n";
+        file_put_contents(
+            $path,
+            $before . "# >>> KVS CLI completion >>>\n_kvs_complete() { echo stale; }\n"
+            . '# <<< KVS CLI completion <<<' . $after
+        );
+        $tester = $this->bashInstallerFor($path);
+
+        $tester->execute(['shell' => 'bash', '--install' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $installed = file_get_contents($path);
+        $this->assertIsString($installed);
+        $this->assertStringStartsWith($before, $installed);
+        $this->assertStringEndsWith($after, $installed);
+        $this->assertSame(1, substr_count($installed, '# >>> KVS CLI completion >>>'));
+        $this->assertSame(1, substr_count($installed, '# <<< KVS CLI completion <<<'));
+        $this->assertStringNotContainsString('echo stale', $installed);
+        $this->assertStringContainsString('complete -F _kvs_complete kvs', $installed);
+    }
+
+    public function testBashInstallRefusesUnreadableExistingContent(): void
+    {
+        $root = vfsStream::setup('completion-home');
+        $file = vfsStream::newFile('.bash_completion', 0200)->withContent('Preserved user content')->at($root);
+        $tester = $this->bashInstallerFor($file->url());
+
+        $tester->execute(['shell' => 'bash', '--install' => true]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('Preserved user content', $file->getContent());
+        $this->assertStringContainsString('Cannot read existing Bash completions', $tester->getDisplay());
+    }
+
+    public function testInstallPreservesExistingFileWhenTheFilesystemIsFull(): void
+    {
+        $root = vfsStream::setup('completion-home');
+        $existing = "# Existing user completion\n";
+        $file = vfsStream::newFile('.bash_completion', 0640)->withContent($existing)->at($root);
+        $tester = $this->bashInstallerFor($file->url());
+        vfsStream::setQuota(strlen($existing) + 8);
+
+        try {
+            $tester->execute(['shell' => 'bash', '--install' => true]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($existing, $file->getContent());
+            $this->assertSame(0640, $file->getPermissions());
+            $this->assertCount(1, $root->getChildren());
+        } finally {
+            vfsStream::setQuota(-1);
+        }
+    }
+
+    public function testBashInstallRejectsDevicesWithoutReadingThem(): void
+    {
+        if (posix_getuid() === 0 || !file_exists('/dev/full')) {
+            $this->markTestSkipped('Requires an unprivileged Unix user and /dev/full.');
+        }
+        $path = $this->tempDir . '/.bash_completion';
+        symlink('/dev/full', $path);
+        $process = new Process([
+            PHP_BINARY, '-d', 'memory_limit=32M', dirname(__DIR__) . '/bin/kvs',
+            'completion', 'bash', '--install',
+        ], null, ['HOME' => $this->tempDir]);
+        $process->setTimeout(5);
+
+        $this->assertSame(1, $process->run(), $process->getErrorOutput());
+        $this->assertTrue(is_link($path));
+        $this->assertSame('/dev/full', readlink($path));
+    }
+
+    public function testBashInstallUpdatesTheTargetOfAnExistingSymlink(): void
+    {
+        $target = $this->tempDir . '/shared-completions';
+        $path = $this->tempDir . '/.bash_completion';
+        $existing = "# Existing user completion\n";
+        file_put_contents($target, $existing);
+        chmod($target, 0640);
+        symlink('shared-completions', $path);
+        $tester = $this->bashInstallerFor($path);
+
+        $tester->execute(['shell' => 'bash', '--install' => true]);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertTrue(is_link($path));
+        $this->assertSame('shared-completions', readlink($path));
+        $installed = file_get_contents($target);
+        $this->assertIsString($installed);
+        $this->assertStringStartsWith($existing, $installed);
+        $this->assertStringContainsString('complete -F _kvs_complete kvs', $installed);
+        $this->assertSame(0640, fileperms($target) & 0777);
+    }
+
+    /** @dataProvider incompleteBashBlocks */
+    public function testBashInstallRefusesIncompleteManagedBlocks(string $content): void
+    {
+        $path = $this->tempDir . '/.bash_completion';
+        file_put_contents($path, $content);
+        $tester = $this->bashInstallerFor($path);
+
+        $tester->execute(['shell' => 'bash', '--install' => true]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($content, file_get_contents($path));
+        $this->assertStringContainsString('Incomplete KVS completion block', $tester->getDisplay());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function incompleteBashBlocks(): array
+    {
+        return [
+            'missing end' => ["# >>> KVS CLI completion >>>\n_other_completion() { :; }\n"],
+            'missing start' => ["_other_completion() { :; }\n# <<< KVS CLI completion <<<\n"],
+        ];
+    }
+
+    private function bashInstallerFor(string $path): CommandTester
+    {
+        $command = $this->getMockBuilder(CompletionCommand::class)
+            ->enableOriginalConstructor()
+            ->onlyMethods(['getInstallPath'])
+            ->getMock();
+        $command->setName('completion');
+        $command->method('getInstallPath')->willReturn($path);
+        return new CommandTester($command);
     }
 
     private function runZshCompletionProbe(string $probeScript, string $completionDir, string $line): string
