@@ -1393,6 +1393,22 @@ HELP
     {
         $contentPath = $this->config->getCategoriesPath();
         $path = rtrim($contentPath, '/') . '/' . $categoryId;
+        $parent = dirname($path);
+        while (!is_dir($parent) && dirname($parent) !== $parent) {
+            if (is_link($parent)) {
+                throw new \RuntimeException('Cannot inspect category files: ' . $path);
+            }
+            $parent = dirname($parent);
+        }
+        if (!is_executable($parent)) {
+            throw new \RuntimeException('Cannot inspect category files: ' . $path);
+        }
+        if (is_link($path)) {
+            if (!@unlink($path)) {
+                throw new \RuntimeException('Could not remove category storage link: ' . $path);
+            }
+            return;
+        }
         if (!is_dir($path)) {
             return;
         }
@@ -1412,14 +1428,23 @@ HELP
                 continue;
             }
 
-            if ($item->isDir()) {
-                @rmdir($item->getPathname());
-            } else {
-                @unlink($item->getPathname());
+            $removed = $item->isDir() && !$item->isLink()
+                ? @rmdir($item->getPathname())
+                : @unlink($item->getPathname());
+            if (!$removed) {
+                throw new \RuntimeException(sprintf(
+                    'Could not remove %s; category file cleanup may be incomplete.',
+                    $item->getPathname()
+                ));
             }
         }
 
-        @rmdir($path);
+        if (!@rmdir($path)) {
+            throw new \RuntimeException(sprintf(
+                'Could not remove category directory %s; file cleanup may be incomplete.',
+                $path
+            ));
+        }
     }
 
     private function slugifyCategoryDir(string $title): string
