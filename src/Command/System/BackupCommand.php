@@ -32,6 +32,7 @@ class BackupCommand extends BaseCommand
         $this
             ->setHelp(<<<'HELP'
 Create and list KVS backups.
+Database backups temporarily stage uncompressed SQL in the output directory before compression.
 
 <info>EXAMPLES:</info>
   <comment>kvs system:backup --list</comment>
@@ -241,6 +242,8 @@ HELP
             return false;
         }
 
+        $sqlFile = "$outputDir/{$backupName}_db.sql";
+        $errorFile = "$outputDir/{$backupName}_db.stderr";
         $gzFile = "$outputDir/{$backupName}_db.sql.gz";
         $host = $dbConfig['host'];
         $port = $dbConfig['port'] ?? (string) Constants::DEFAULT_MYSQL_PORT;
@@ -261,51 +264,88 @@ HELP
             $dbConfig['database'],
         ];
 
-        $process = new Process($command);
+        // Process pipe readers can accumulate output before invoking a callback.
+        $process = Process::fromShellCommandline(
+            'exec ' . implode(' ', array_map(escapeshellarg(...), $command))
+            . ' > ' . escapeshellarg($sqlFile) . ' 2> ' . escapeshellarg($errorFile)
+        );
         $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
+        $process->disableOutput();
 
         $this->io()->info('Creating database backup...');
 
-        $fp = $this->withSecureFileUmask(
-            static fn () => gzopen($gzFile, 'w9')
-        );
-        if ($fp === false) {
+        try {
+            if (!$this->writeSecureFile($sqlFile, '') || !$this->writeSecureFile($errorFile, '')) {
+                $this->io()->error('Failed to create temporary SQL dump files');
+                return false;
+            }
+
+            $this->withSecureFileUmask(static fn (): int => $process->run());
+            if (!$process->isSuccessful()) {
+                clearstatcache(true, $errorFile);
+                $errorSize = filesize($errorFile);
+                $errorOutput = $errorSize === false ? false : file_get_contents(
+                    $errorFile,
+                    false,
+                    null,
+                    max(0, $errorSize - 65536),
+                    65536
+                );
+                $this->io()->error('Database backup failed: ' . ($errorOutput !== false
+                    ? $errorOutput : 'Unable to read dump error output'));
+                return false;
+            }
+
+            clearstatcache(true, $sqlFile);
+            $dumpBytes = filesize($sqlFile);
+            if ($dumpBytes === false || $dumpBytes < self::MIN_DATABASE_DUMP_BYTES) {
+                $this->io()->error('Database backup failed: SQL dump is empty or incomplete');
+                return false;
+            }
+
+            if (!$this->compressDatabaseDump($sqlFile, $gzFile)) {
+                return false;
+            }
+
+            if (!$this->restrictFilePermissions($gzFile)) {
+                $this->io()->error('Failed to set compressed backup file permissions');
+                return false;
+            }
+
+            $this->io()->info('Database backup created: ' . basename($gzFile));
+            return true;
+        } finally {
+            @unlink($sqlFile);
+            @unlink($errorFile);
+        }
+    }
+
+    private function compressDatabaseDump(string $sqlFile, string $gzFile): bool
+    {
+        $input = @fopen($sqlFile, 'rb');
+        if ($input === false) {
+            $this->io()->error('Failed to read SQL dump file');
+            return false;
+        }
+        $output = $this->withSecureFileUmask(static fn () => gzopen($gzFile, 'w9'));
+        if ($output === false) {
+            fclose($input);
             $this->io()->error('Failed to create compressed backup file');
             return false;
         }
 
         $writeFailed = false;
-        $dumpBytes = 0;
-        $errorOutput = '';
-        $process->disableOutput();
-
         try {
-            $process->run(static function (
-                string $type,
-                string $buffer
-            ) use (
-                $fp,
-                &$writeFailed,
-                &$dumpBytes,
-                &$errorOutput
-            ): void {
-                if ($type === Process::OUT) {
-                    $dumpBytes += strlen($buffer);
-                    if (gzwrite($fp, $buffer) === false) {
-                        $writeFailed = true;
-                    }
-                    return;
+            while (!feof($input)) {
+                $chunk = fread($input, 65536);
+                if ($chunk === false || ($chunk !== '' && gzwrite($output, $chunk) !== strlen($chunk))) {
+                    $writeFailed = true;
+                    break;
                 }
-
-                if ($type === Process::ERR && $buffer !== '') {
-                    $errorOutput .= $buffer;
-                    if (strlen($errorOutput) > 65536) {
-                        $errorOutput = substr($errorOutput, -65536);
-                    }
-                }
-            });
+            }
         } finally {
-            if (!gzclose($fp)) {
+            fclose($input);
+            if (!gzclose($output)) {
                 $writeFailed = true;
             }
         }
@@ -316,24 +356,6 @@ HELP
             return false;
         }
 
-        if (!$process->isSuccessful()) {
-            @unlink($gzFile);
-            $this->io()->error('Database backup failed: ' . $errorOutput);
-            return false;
-        }
-
-        if ($dumpBytes < self::MIN_DATABASE_DUMP_BYTES) {
-            @unlink($gzFile);
-            $this->io()->error('Database backup failed: SQL dump is empty or incomplete');
-            return false;
-        }
-
-        if (!$this->restrictFilePermissions($gzFile)) {
-            $this->io()->error('Failed to set compressed backup file permissions');
-            return false;
-        }
-
-        $this->io()->info('Database backup created: ' . basename($gzFile));
         return true;
     }
 

@@ -317,12 +317,29 @@ SH);
 dd if=/dev/zero bs=1M count=32 2>/dev/null | tr '\000' 'A'
 SH);
 
+        $runner = $this->tempDir . '/slow-pipe-reader.php';
+        $reader = <<<'PHP'
+<?php
+namespace Symfony\Component\Process\Pipes {
+    function fread($stream, $length)
+    {
+        // Give a fast producer time to refill the real pipe between reads.
+        usleep(1000);
+        return \fread($stream, $length);
+    }
+}
+namespace {
+PHP;
+        file_put_contents(
+            $runner,
+            $reader . "\nrequire " . var_export(dirname(__DIR__) . '/bin/kvs', true) . ";\n}\n"
+        );
         $path = $toolsDir . PATH_SEPARATOR . (getenv('PATH') !== false ? getenv('PATH') : '');
         $command = sprintf(
             'PATH=%s %s -d memory_limit=16M %s --path=%s system:backup --create --type=db --output=%s --no-ansi 2>&1',
             escapeshellarg($path),
             escapeshellarg(PHP_BINARY),
-            escapeshellarg(dirname(__DIR__) . '/bin/kvs'),
+            escapeshellarg($runner),
             escapeshellarg($this->tempDir),
             escapeshellarg($this->tempDir . '/backups')
         );
@@ -333,6 +350,7 @@ SH);
         $files = glob($this->tempDir . '/backups/*_db.sql.gz') ?: [];
         $this->assertCount(1, $files);
         $this->assertSame(32 * 1024 * 1024, $this->countGzipUncompressedBytes($files[0]));
+        $this->assertSame([], glob($this->tempDir . '/backups/.kvs-backup-*') ?: []);
     }
 
     public function testDatabaseBackupSuccessMessageShowsActualFilePath(): void
