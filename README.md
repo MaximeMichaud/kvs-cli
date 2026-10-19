@@ -5,6 +5,9 @@
 
 Command-line interface for [KVS (Kernel Video Sharing)](https://www.kernel-video-sharing.com/) CMS.
 
+KVS CLI manages an existing application. Installation and migration are provided by
+[KVS-install](https://github.com/MaximeMichaud/KVS-install).
+
 Tested with KVS 6.3.2, 6.4.0, 7.0.0.
 
 > **⚠️ Beta Notice**: This CLI has been tested with limited datasets. Read operations should work reliably, but exercise caution with any create, update, or delete operations. Always backup your data before performing write operations.

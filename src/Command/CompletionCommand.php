@@ -224,8 +224,7 @@ _kvs_complete() {
         db:export database:export db:dump db:import database:import db:restore
         dev:debug debug dev:log log logs
         video:formats formats video:screenshots screenshots
-        settings:options options option settings:video-format video-format vformat
-        migrate:scan scan migrate:package package migrate:import import migrate:to-docker to-docker"
+        settings:options options option settings:video-format video-format vformat"
 
     local video_actions="list show delete stats"
     local album_actions="list show delete"
@@ -250,10 +249,10 @@ _kvs_complete() {
     local screenshots_actions="list generate regenerate"
     local maintenance_actions="on off status"
     local completion_actions="bash zsh fish"
-    local file_command_options="--help --path --output --target --force --no-content --compression --domain --email --ssl --db --yes"
+    local file_command_options="--help --path"
 
     case "${prev}" in
-        --path|-o|--output|-t|--target|-i|--includes|-b|--bootstrap)
+        --path|-o|--output|-i|--includes|-b|--bootstrap)
             _kvs_complete_files
             return
             ;;
@@ -265,7 +264,7 @@ _kvs_complete() {
     fi
 
     case "${words[1]}" in
-        eval-file|db:import|database:import|db:restore|migrate:scan|scan|migrate:package|package|migrate:import|import|migrate:to-docker|to-docker)
+        eval-file|db:import|database:import|db:restore)
             if [[ "${cur}" == -* ]]; then
                 COMPREPLY=($(compgen -W "${file_command_options}" -- "${cur}"))
             else
@@ -477,14 +476,6 @@ _kvs() {
         'settings\:video-format:Manage KVS video formats'
         'video-format:Manage KVS video formats'
         'vformat:Manage KVS video formats'
-        'migrate\:scan:Scan a KVS installation'
-        'scan:Scan a KVS installation'
-        'migrate\:package:Create a migration package'
-        'package:Create a migration package'
-        'migrate\:import:Import a migration package'
-        'import:Import a migration package'
-        'migrate\:to-docker:Migrate to Docker'
-        'to-docker:Migrate to Docker'
     )
 
     _arguments -C \
@@ -499,23 +490,20 @@ _kvs() {
             ;;
         args)
             case $words[CURRENT-1] in
-                --path|-o|--output|-t|--target|-i|--includes|-b|--bootstrap)
+                --path|-o|--output|-i|--includes|-b|--bootstrap)
                     _files
                     return
                     ;;
             esac
 
             case $words[1] in
-                eval-file|db:import|database:import|db:restore|migrate:scan|scan|\
-migrate:package|package|migrate:import|import|migrate:to-docker|to-docker)
+                eval-file|db:import|database:import|db:restore)
                     if [[ $PREFIX == -* ]]; then
                         _arguments \
                             '--help[Display help]' \
                             '--path=[Path to KVS installation]:directory:_files -/' \
                             '--output=[Output file path]:file:_files' \
                             '-o[Output file path]:file:_files' \
-                            '--target=[Target directory]:directory:_files -/' \
-                            '-t[Target directory]:directory:_files -/' \
                             '--includes=[Additional files to include]:file:_files' \
                             '-i[Additional files to include]:file:_files' \
                             '--bootstrap=[Bootstrap file to load]:file:_files' \
@@ -740,14 +728,6 @@ complete -c kvs -n "__fish_use_subcommand" -a "option" -d "System options"
 complete -c kvs -n "__fish_use_subcommand" -a "settings:video-format" -d "Video format settings"
 complete -c kvs -n "__fish_use_subcommand" -a "video-format" -d "Video format settings"
 complete -c kvs -n "__fish_use_subcommand" -a "vformat" -d "Video format settings"
-complete -c kvs -n "__fish_use_subcommand" -a "migrate:scan" -d "Scan migration"
-complete -c kvs -n "__fish_use_subcommand" -a "scan" -d "Scan migration"
-complete -c kvs -n "__fish_use_subcommand" -a "migrate:package" -d "Package migration"
-complete -c kvs -n "__fish_use_subcommand" -a "package" -d "Package migration"
-complete -c kvs -n "__fish_use_subcommand" -a "migrate:import" -d "Import migration"
-complete -c kvs -n "__fish_use_subcommand" -a "import" -d "Import migration"
-complete -c kvs -n "__fish_use_subcommand" -a "migrate:to-docker" -d "Migrate to Docker"
-complete -c kvs -n "__fish_use_subcommand" -a "to-docker" -d "Migrate to Docker"
 
 # Subcommand actions
 complete -c kvs -n "__fish_seen_subcommand_from content:video video videos" -a "list show delete stats"
@@ -780,17 +760,10 @@ complete -c kvs -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
 # Path and file arguments
 complete -c kvs -n "__fish_seen_subcommand_from eval-file" -F
 complete -c kvs -n "__fish_seen_subcommand_from db:import database:import db:restore" -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:scan scan" -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:package package" -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:import import" -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:to-docker to-docker" -F
 
 # Path and file options
 complete -c kvs -n "__fish_seen_subcommand_from db:export database:export db:dump" -s o -l output -d "Output file path" -r -F
 complete -c kvs -n "__fish_seen_subcommand_from system:backup backup" -l output -d "Output directory" -r -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:package package" -s o -l output -d "Output file path" -r -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:import import" -s t -l target -d "KVS-Install directory" -r -F
-complete -c kvs -n "__fish_seen_subcommand_from migrate:to-docker to-docker" -s t -l target -d "KVS-Install directory" -r -F
 complete -c kvs -n "__fish_seen_subcommand_from shell console repl" -s i -l includes -d "Additional files to include" -r -F
 complete -c kvs -n "__fish_seen_subcommand_from shell console repl" -s b -l bootstrap -d "Bootstrap file to load" -r -F
 

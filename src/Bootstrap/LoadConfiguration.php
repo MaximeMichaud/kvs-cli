@@ -100,10 +100,6 @@ class LoadConfiguration implements BootstrapStep
     {
         $command = $input->getFirstArgument();
 
-        if (in_array($command, ['migrate:scan', 'scan'], true)) {
-            return true;
-        }
-
         if (!in_array($command, ['eval', 'eval-php', 'eval-file'], true)) {
             return false;
         }

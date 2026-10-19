@@ -71,15 +71,6 @@ Complete reference for all KVS-CLI commands.
 | [`dev:debug`](dev_debug.md) | `debug` | Debug information |
 | [`dev:log`](dev_log.md) | `log`, `logs` | View logs |
 
-### Migration Tools
-
-| Command | Aliases | Description |
-| --------- | --------- | ------------- |
-| [`migrate:scan`](migrate_scan.md) | `scan` | [EXPERIMENTAL] Scan installation for migration |
-| [`migrate:package`](migrate_package.md) | `package` | [EXPERIMENTAL] Create migration package |
-| [`migrate:import`](migrate_import.md) | `import` | [EXPERIMENTAL] Import migration package |
-| [`migrate:to-docker`](migrate_to_docker.md) | `to-docker` | [EXPERIMENTAL] Migrate to Docker |
-
 ### Utility Commands
 
 | Command | Aliases | Description |
@@ -87,6 +78,11 @@ Complete reference for all KVS-CLI commands.
 | [`cli:info`](cli_info.md) | `info` | Display CLI environment info |
 | [`self-update`](self_update.md) | `selfupdate`, `self:update` | Update KVS-CLI |
 | [`completion`](completion.md) | - | Shell completion |
+
+Installation and migration belong to
+[KVS-install](https://github.com/MaximeMichaud/KVS-install). Use
+[`system:status`](system_status.md), [`system:check`](system_check.md), and
+[`system:stats`](system_stats.md) for application diagnostics.
 
 ## Global Options
 

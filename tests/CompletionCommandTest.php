@@ -74,6 +74,41 @@ class CompletionCommandTest extends TestCase
         $this->assertStringContainsString('bash zsh fish', $output);
     }
 
+    public function testCompletionCommandsExcludeInstallerMigrationCommands(): void
+    {
+        $retired = [
+            'migrate:scan', 'scan', 'migrate:package', 'package',
+            'migrate:import', 'import', 'migrate:to-docker', 'to-docker', 'system:scan',
+        ];
+        foreach (['bash', 'zsh', 'fish'] as $shell) {
+            $tester = new CommandTester(new CompletionCommand());
+            $this->assertSame(0, $tester->execute(['shell' => $shell]));
+            $script = $tester->getDisplay();
+            $this->assertStringNotContainsString('migrate:', str_replace('\\:', ':', $script));
+
+            if ($shell === 'bash') {
+                $this->assertSame(1, preg_match('/local commands="([^"]+)"/', $script, $matches));
+                $commands = preg_split('/\s+/', trim($matches[1]));
+                foreach ($retired as $name) {
+                    $this->assertNotContains($name, $commands);
+                }
+                foreach (['system:status', 'system:check', 'system:stats', 'db:import'] as $name) {
+                    $this->assertContains($name, $commands);
+                }
+                continue;
+            }
+
+            foreach ($retired as $name) {
+                $entry = $shell === 'zsh' ? "'" . str_replace(':', '\\:', $name) . ':' : '-a "' . $name . '"';
+                $this->assertStringNotContainsString($entry, $script);
+            }
+            foreach (['system:status', 'system:check', 'system:stats', 'db:import'] as $name) {
+                $entry = $shell === 'zsh' ? "'" . str_replace(':', '\\:', $name) . ':' : '-a "' . $name . '"';
+                $this->assertStringContainsString($entry, $script);
+            }
+        }
+    }
+
     public function testCompletionScriptsIncludeCurrentCommands(): void
     {
         $bash = new CommandTester(new CompletionCommand());
@@ -85,7 +120,8 @@ class CompletionCommandTest extends TestCase
         $this->assertStringContainsString('settings:options', $bashOutput);
         $this->assertStringContainsString('content:playlist', $bashOutput);
         $this->assertStringContainsString('user:purge', $bashOutput);
-        $this->assertStringContainsString('migrate:scan', $bashOutput);
+        $this->assertStringContainsString('system:check', $bashOutput);
+        $this->assertStringContainsString('system:stats', $bashOutput);
         $this->assertStringContainsString('local video_actions="list show delete stats"', $bashOutput);
         $this->assertStringContainsString('local queue_actions="list show stats history retry wait help-action"', $bashOutput);
         $this->assertStringContainsString(
@@ -188,10 +224,6 @@ class CompletionCommandTest extends TestCase
             'option',
             'video-format',
             'vformat',
-            'scan',
-            'package',
-            'import',
-            'to-docker',
         ];
 
         foreach ($aliases as $alias) {
@@ -295,8 +327,6 @@ class CompletionCommandTest extends TestCase
         $fishOutput = $fish->getDisplay();
 
         $this->assertStringContainsString('__fish_seen_subcommand_from db:import database:import db:restore" -F', $fishOutput);
-        $this->assertStringContainsString('__fish_seen_subcommand_from migrate:import import" -F', $fishOutput);
-        $this->assertStringContainsString('__fish_seen_subcommand_from migrate:package package" -F', $fishOutput);
         $this->assertStringContainsString('__fish_seen_subcommand_from eval-file" -F', $fishOutput);
         $this->assertStringContainsString(
             '__fish_seen_subcommand_from db:export database:export db:dump" -s o -l output',
@@ -312,10 +342,7 @@ class CompletionCommandTest extends TestCase
         $zshOutput = $zsh->getDisplay();
 
         $this->assertStringContainsString('eval-file|db:import|database:import|db:restore', $zshOutput);
-        $this->assertStringContainsString('migrate:scan|scan|\\', $zshOutput);
-        $this->assertStringContainsString('migrate:package|package|migrate:import|import', $zshOutput);
         $this->assertStringContainsString('--output=[Output file path]:file:_files', $zshOutput);
-        $this->assertStringContainsString('--target=[Target directory]:directory:_files -/', $zshOutput);
         $this->assertStringContainsString('--includes=[Additional files to include]:file:_files', $zshOutput);
         $this->assertStringContainsString('--bootstrap=[Bootstrap file to load]:file:_files', $zshOutput);
     }

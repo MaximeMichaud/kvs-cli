@@ -2,6 +2,10 @@
 
 **KVS-CLI** is a command-line interface for managing [KVS (Kernel Video Sharing)](http://kernel-team.com) installations. Inspired by [WP-CLI](https://wp-cli.org/), it provides a powerful set of commands for content management, system administration, and development tasks.
 
+Use [KVS-install](https://github.com/MaximeMichaud/KVS-install) for installation and
+migration. KVS CLI provides application diagnostics through `system:status`,
+`system:check`, and `system:stats`.
+
 ## Quick Links
 
 | Section | Description |

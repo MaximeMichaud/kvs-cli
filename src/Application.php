@@ -55,10 +55,6 @@ use KVS\CLI\Command\PluginCommand;
 use KVS\CLI\Command\SelfUpdateCommand;
 use KVS\CLI\Command\CompletionCommand;
 use KVS\CLI\Command\CliInfoCommand;
-use KVS\CLI\Command\Migrate\ScanCommand;
-use KVS\CLI\Command\Migrate\PackageCommand;
-use KVS\CLI\Command\Migrate\ToDockerCommand;
-use KVS\CLI\Command\Migrate\ImportCommand as MigrateImportCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Bootstrap\BootstrapState;
 use KVS\CLI\Bootstrap\BootstrapStep;
@@ -123,7 +119,6 @@ class Application extends BaseApplication
 
         $commands[] = new CompletionCommand();
         $commands[] = new CliInfoCommand();
-        $commands[] = new MigrateImportCommand();
 
         return $commands;
     }
@@ -226,7 +221,6 @@ class Application extends BaseApplication
             'self-update', 'selfupdate', 'self:update',
             'completion',
             'cli:info', 'info',
-            'migrate:import', 'import',
         ];
 
         return in_array($command, $standaloneCommands, true) || $isVersionRequest || $isHelpRequest;
@@ -364,10 +358,6 @@ class Application extends BaseApplication
             new EvalCommand($config),
             new EvalFileCommand($config),
             new PluginCommand($config),
-
-            new ScanCommand($config),
-            new PackageCommand($config),
-            new ToDockerCommand($config),
         ]);
     }
 
@@ -381,7 +371,6 @@ class Application extends BaseApplication
         $this->addCommands([
             new EvalCommand($config),
             new EvalFileCommand($config),
-            new ScanCommand($config),
         ]);
     }
 
