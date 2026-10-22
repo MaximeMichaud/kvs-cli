@@ -383,6 +383,7 @@ HELP
         $command = array_merge(
             ['tar', 'czf', $tarFile],
             $excludes,
+            $this->getBackupArtifactExcludes($outputDir, [$kvsPath, $contentPath]),
             ['-C', dirname($kvsPath), $this->getArchiveRootArgument($kvsPath)]
         );
 
@@ -424,6 +425,58 @@ HELP
             $this->io()->error('Files backup failed: ' . $process->getErrorOutput());
             return false;
         }
+    }
+
+    /**
+     * @param list<string> $archiveRoots
+     * @return list<string>
+     */
+    private function getBackupArtifactExcludes(string $workingDir, array $archiveRoots): array
+    {
+        $destination = realpath(dirname($workingDir));
+        if ($destination === false) {
+            return [];
+        }
+        $memberPrefixes = [];
+        foreach ($archiveRoots as $path) {
+            $root = realpath($path);
+            if ($root === false) {
+                continue;
+            }
+            $prefix = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            if ($destination === $root || str_starts_with($destination, $prefix)) {
+                $relative = $destination === $root ? '' : substr($destination, strlen($prefix)) . '/';
+                $memberPrefixes[] = $this->getArchiveRootArgument($path) . '/' . $relative;
+            }
+        }
+        if ($memberPrefixes === []) {
+            return [];
+        }
+
+        $names = [basename($workingDir)];
+        $pattern = '/^kvs_backup_(full|files|db)_\d{4}-\d{2}-\d{2}_'
+            . '\d{2}-\d{2}-\d{2}(?:_[1-9]\d*)?_\1\.(tar|sql)\.gz$/D';
+        $entries = scandir($destination);
+        foreach ($entries === false ? [] : $entries as $name) {
+            if (
+                preg_match($pattern, $name, $matches) === 1
+                && $matches[2] === ($matches[1] === 'db' ? 'sql' : 'tar')
+                && is_file($destination . DIRECTORY_SEPARATOR . $name)
+            ) {
+                $names[] = $name;
+            }
+        }
+
+        $excludes = [];
+        foreach ($memberPrefixes as $prefix) {
+            foreach ($names as $name) {
+                // Both GNU tar and BSD tar support escaped glob metacharacters.
+                $excludes[] = '--exclude=' . strtr($prefix . $name, [
+                    '\\' => '\\\\', '*' => '\\*', '?' => '\\?', '[' => '\\[', ']' => '\\]',
+                ]);
+            }
+        }
+        return array_values(array_unique($excludes));
     }
 
     private function isContentIncludedInSiteBackup(string $kvsPath, string $contentPath): bool

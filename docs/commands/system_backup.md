@@ -14,6 +14,8 @@ The `system:backup` command allows you to create full or partial backups of your
 
 Database backups require an available `mysqldump` or `mariadb-dump` client. File archiving, full archive assembly, and final compression each have a two-hour timeout.
 
+File backups exclude their current working directory and previously published KVS archives directly in the destination. Only names matching the command's backup type, timestamp, optional collision suffix, and final type and extension are recognized. Other source files in that directory remain included, including ordinary `.gz` files.
+
 File backups follow symbolic links used as the installation or content root. Links inside these roots are stored as links. A content root already traversed through the installation root is not added a second time.
 
 ## Options

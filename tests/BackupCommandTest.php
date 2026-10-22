@@ -464,6 +464,159 @@ SH);
         }
     }
 
+    #[DataProvider('backupArtifactDestinationCases')]
+    public function testRepeatedBackupsExcludeGeneratedArtifactsAndPreserveOrdinaryGzipFiles(
+        string $case,
+        string $type
+    ): void {
+        $site = $this->tempDir;
+        $content = $this->rootDir . '/contents';
+        $destination = $site . '/archive-store';
+        $suppliedSite = $site;
+        if ($case === 'content-destination') {
+            $destination = $content . '/archive-store';
+        } elseif ($case === 'site-root') {
+            $destination = $site;
+        } elseif ($case === 'content-root') {
+            $destination = $content;
+        } elseif ($case === 'external') {
+            $destination = $this->rootDir . '/archives';
+        } elseif ($case === 'literal-name') {
+            $destination = $site . '/archive[12]?*\\store';
+        } elseif ($case === 'content-in-destination') {
+            $content = $destination . '/contents';
+        } elseif ($case === 'same-root-names') {
+            $content = $this->rootDir . '/storage/kvs';
+        }
+        mkdir($content . '/videos_sources', 0755, true);
+        if (!is_dir($destination)) {
+            mkdir($destination, 0755, true);
+        }
+        if ($case === 'site-symlink') {
+            $suppliedSite = $this->rootDir . '/linked[site]?*';
+            symlink($site, $suppliedSite);
+        }
+        $suppliedDestination = $destination;
+        if ($case === 'output-symlink') {
+            $suppliedDestination = $this->rootDir . '/linked-output';
+            symlink($destination, $suppliedDestination);
+        }
+        file_put_contents(
+            $site . '/admin/include/setup.php',
+            '<?php $config[\'content_path_videos_sources\'] = ' . var_export($content . '/videos_sources', true) . ';'
+        );
+        file_put_contents($site . '/site-marker.txt', 'Synthetic site bytes');
+        file_put_contents($site . '/source-data.gz', gzencode('Source data is not a backup'));
+        file_put_contents($content . '/videos_sources/media-marker.txt', 'Synthetic media bytes');
+        file_put_contents($destination . '/ordinary-data.gz', gzencode('Ordinary content in the output directory'));
+        file_put_contents($destination . '/kvs_backup_family_photos.tar.gz', gzencode('Ordinary family archive'));
+        mkdir($site . '/archive1AX', 0755);
+        file_put_contents($site . '/archive1AX/keep-marker.txt', 'This sibling must remain');
+        if ($case === 'same-root-names') {
+            mkdir($content . '/archive-store', 0755);
+            file_put_contents($content . '/archive-store/same-name-marker.txt', 'Different source directory');
+        }
+        $listArchives = static function () use ($destination, $type): array {
+            $archives = [];
+            foreach (scandir($destination) ?: [] as $name) {
+                if (str_starts_with($name, 'kvs_backup_') && str_ends_with($name, '_' . $type . '.tar.gz')) {
+                    $archives[] = $destination . '/' . $name;
+                }
+            }
+            return $archives;
+        };
+        $toolsDir = $this->rootDir . '/tools-destination';
+        mkdir($toolsDir, 0755);
+        $this->writeTool($toolsDir, 'mysqldump', <<<'SH'
+#!/bin/sh
+printf '%128s\n' 'Synthetic SQL dump'
+SH);
+        $process = new Process(
+            [PHP_BINARY, dirname(__DIR__) . '/bin/kvs', '--no-ansi', '--no-interaction', '--path=' . $suppliedSite,
+                'system:backup', '--create', '--type=' . $type, '--output=' . $suppliedDestination],
+            $this->rootDir,
+            ['PATH' => $toolsDir . PATH_SEPARATOR . (getenv('PATH') ?: '')]
+        );
+        $process->setTimeout(20);
+        $this->assertSame(0, $process->run(), $process->getOutput() . $process->getErrorOutput());
+        $firstArchives = $listArchives();
+        $this->assertCount(1, $firstArchives);
+        $previousArchive = $firstArchives[0];
+        $previousHash = hash_file('sha256', $previousArchive);
+        $this->assertSame(0, $process->run(), $process->getOutput() . $process->getErrorOutput());
+        $archives = array_values(array_diff($listArchives(), $firstArchives));
+        $this->assertCount(1, $archives);
+        $fileArchive = $archives[0];
+        if ($type === 'full') {
+            $extractDir = $this->rootDir . '/extracted-full';
+            mkdir($extractDir, 0755);
+            (new Process(['tar', 'xzf', $fileArchive, '-C', $extractDir]))->mustRun();
+            $nestedArchives = glob($extractDir . '/*_files.tar.gz') ?: [];
+            $this->assertCount(1, $nestedArchives);
+            $fileArchive = $nestedArchives[0];
+        }
+        $listing = new Process(['tar', 'tzf', $fileArchive]);
+        $listing->mustRun();
+        $members = explode("\n", trim($listing->getOutput()));
+        $markers = ['site-marker.txt', 'media-marker.txt', 'source-data.gz', 'keep-marker.txt'];
+        if ($case !== 'external') {
+            $markers[] = 'ordinary-data.gz';
+            $markers[] = 'kvs_backup_family_photos.tar.gz';
+        }
+        if ($case === 'same-root-names') {
+            $markers[] = 'same-name-marker.txt';
+        }
+        foreach ($markers as $marker) {
+            $count = count(array_filter(
+                $members,
+                static fn (string $member): bool => str_ends_with($member, '/' . $marker)
+            ));
+            $this->assertSame(1, $count, $marker . " must occur exactly once:\n" . $listing->getOutput());
+        }
+        $this->assertStringNotContainsString('.kvs-backup-', $listing->getOutput());
+        $this->assertStringNotContainsString(basename($previousArchive), $listing->getOutput());
+        $this->assertSame($previousHash, hash_file('sha256', $previousArchive));
+        $this->assertSame([], glob($destination . '/.kvs-backup-*') ?: []);
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function backupArtifactDestinationCases(): array
+    {
+        return [
+            'destination inside site' => ['site-destination', 'files'],
+            'destination inside content' => ['content-destination', 'files'],
+            'site root is a symbolic link' => ['site-symlink', 'files'],
+            'destination is a symbolic link' => ['output-symlink', 'files'],
+            'destination has literal metacharacters' => ['literal-name', 'files'],
+            'destination equals site root' => ['site-root', 'files'],
+            'destination equals content root' => ['content-root', 'files'],
+            'destination is external' => ['external', 'files'],
+            'content lives inside destination' => ['content-in-destination', 'files'],
+            'roots have the same basename' => ['same-root-names', 'files'],
+            'full backup with nested destination' => ['site-destination', 'full'],
+            'full backup at site root' => ['site-root', 'full'],
+        ];
+    }
+
+    public function testFilesBackupDoesNotListAnExternalOutputDirectory(): void
+    {
+        $destination = $this->rootDir . '/write-only-output';
+        mkdir($destination, 0300);
+        $process = new Process([
+            PHP_BINARY, dirname(__DIR__) . '/bin/kvs', '--no-ansi', '--no-interaction',
+            '--path=' . $this->tempDir, 'system:backup', '--create', '--type=files', '--output=' . $destination,
+        ]);
+        $process->setTimeout(20);
+        try {
+            $this->assertSame(0, $process->run(), $process->getOutput() . $process->getErrorOutput());
+            $this->assertStringNotContainsString('scandir', $process->getOutput() . $process->getErrorOutput());
+            $this->assertStringNotContainsString('Warning', $process->getOutput() . $process->getErrorOutput());
+        } finally {
+            chmod($destination, 0755);
+        }
+        $this->assertCount(1, glob($destination . '/*_files.tar.gz') ?: []);
+    }
+
     public function testFullBackupSuccessMessageShowsActualFilePath(): void
     {
         $toolsDir = $this->tempDir . '/tools-message-full';
