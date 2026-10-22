@@ -1025,4 +1025,95 @@ SH
         $this->assertSame($filename, $row['file']);
         $this->assertSame(['file', 'size', 'created'], array_keys($row));
     }
+    #[DataProvider('linkedBackupRoots')]
+    public function testLinkedBackupRootsRestoreTheirFiles(string $type, string $links): void
+    {
+        $content = $this->rootDir . '/actual-content';
+        mkdir($content . '/videos_sources', 0755, true);
+        file_put_contents($this->tempDir . '/site-marker.txt', "Synthetic site\n");
+        file_put_contents($content . '/videos_sources/media-marker.txt', "Synthetic media\n");
+        symlink('site-marker.txt', $this->tempDir . '/internal-link');
+        symlink('.', $this->tempDir . '/internal-cycle');
+        $siteRoot = $this->tempDir;
+        $contentRoot = $content;
+        if (in_array($links, ['site', 'both', 'relative', 'trailing', 'chain'], true)) {
+            $siteRoot = $this->rootDir . '/linked-site';
+            $target = $links === 'relative' ? 'kvs' : $this->tempDir;
+            if ($links === 'chain') {
+                symlink($this->tempDir, $this->rootDir . '/site-hop');
+                $target = 'site-hop';
+            }
+            symlink($target, $siteRoot);
+            if ($links === 'trailing') {
+                $siteRoot .= '/';
+            }
+        }
+        if (in_array($links, ['content', 'both', 'relative', 'trailing', 'chain'], true)) {
+            $contentRoot = $this->rootDir . '/linked-content';
+            $target = $links === 'relative' ? 'actual-content' : $content;
+            if ($links === 'chain') {
+                symlink($content, $this->rootDir . '/content-hop');
+                $target = 'content-hop';
+            }
+            symlink($target, $contentRoot);
+        }
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config[\'content_path_videos_sources\'] = '
+                . var_export($contentRoot . '/videos_sources', true) . ';'
+        );
+        $toolsDir = $this->rootDir . '/archive-tools';
+        mkdir($toolsDir);
+        $this->writeTool($toolsDir, 'mysqldump', "#!/bin/sh\nprintf '%128s\\n' 'Synthetic SQL dump'\n");
+        $outputDir = $this->rootDir . '/archives';
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        try {
+            $config = new Configuration(['path' => $siteRoot, 'disable_db_env_overrides' => true]);
+            $tester = new CommandTester(new BackupCommand($config));
+            $tester->execute(['--create' => true, '--type' => $type, '--output' => $outputDir]);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        } finally {
+            $previousPath === false ? putenv('PATH') : putenv('PATH=' . $previousPath);
+        }
+        $archives = glob($outputDir . '/*_' . $type . '.tar.gz');
+        $this->assertNotFalse($archives);
+        $this->assertCount(1, $archives);
+        $archive = $archives[0];
+        if ($type === 'full') {
+            $outer = $this->rootDir . '/outer';
+            mkdir($outer);
+            (new Process(['tar', 'xzf', $archive, '-C', $outer]))->mustRun();
+            $inner = glob($outer . '/*_files.tar.gz');
+            $this->assertNotFalse($inner);
+            $this->assertCount(1, $inner);
+            $archive = $inner[0];
+        }
+        // Restoration must work after the original source directories are unavailable.
+        rename($this->tempDir, $this->tempDir . '-offline');
+        rename($content, $content . '-offline');
+        $restored = $this->rootDir . '/restored';
+        mkdir($restored);
+        (new Process(['tar', 'xzf', $archive, '-C', $restored]))->mustRun();
+        $restoredSite = $restored . '/' . basename($siteRoot);
+        $restoredContent = $restored . '/' . basename($contentRoot);
+        $this->assertFalse(is_link($restoredSite), 'The site archive root must restore as a directory.');
+        $this->assertFalse(is_link($restoredContent), 'The content archive root must restore as a directory.');
+        $this->assertSame("Synthetic site\n", file_get_contents($restoredSite . '/site-marker.txt'));
+        $this->assertSame("Synthetic media\n", file_get_contents($restoredContent . '/videos_sources/media-marker.txt'));
+        $this->assertTrue(is_link($restoredSite . '/internal-link'));
+        $this->assertSame('site-marker.txt', readlink($restoredSite . '/internal-link'));
+        $this->assertTrue(is_link($restoredSite . '/internal-cycle'));
+        $this->assertSame('.', readlink($restoredSite . '/internal-cycle'));
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function linkedBackupRoots(): iterable
+    {
+        foreach (['files', 'full'] as $type) {
+            foreach (['none', 'site', 'content', 'both', 'relative', 'trailing', 'chain'] as $links) {
+                yield $type . ' ' . $links => [$type, $links];
+            }
+        }
+    }
 }

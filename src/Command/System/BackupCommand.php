@@ -384,13 +384,13 @@ HELP
         $command = array_merge(
             ['tar', 'czf', $tarFile],
             $excludes,
-            ['-C', dirname($kvsPath), basename($kvsPath)]
+            ['-C', dirname($kvsPath), $this->getArchiveRootArgument($kvsPath)]
         );
 
         if (is_dir($contentPath)) {
             $command[] = '-C';
             $command[] = dirname($contentPath);
-            $command[] = basename($contentPath);
+            $command[] = $this->getArchiveRootArgument($contentPath);
         }
 
         $process = new Process($command);
@@ -425,6 +425,13 @@ HELP
             $this->io()->error('Files backup failed: ' . $process->getErrorOutput());
             return false;
         }
+    }
+
+    private function getArchiveRootArgument(string $path): string
+    {
+        $name = basename($path);
+        // Dereference the selected root while preserving symbolic links within its tree.
+        return is_link(rtrim($path, DIRECTORY_SEPARATOR)) ? $name . '/.' : $name;
     }
 
     private function createFullArchive(string $outputDir, string $backupName): bool
