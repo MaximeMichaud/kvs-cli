@@ -551,7 +551,8 @@ HELP
         $serverValue = $this->config->get('memcache_server', '127.0.0.1');
         $server = is_string($serverValue) ? $serverValue : '127.0.0.1';
         $portValue = $this->config->get('memcache_port', Constants::DEFAULT_MEMCACHE_PORT);
-        $port = is_int($portValue) ? $portValue : Constants::DEFAULT_MEMCACHE_PORT;
+        $port = is_int($portValue) || (is_string($portValue) && ctype_digit($portValue))
+            ? (int) $portValue : Constants::DEFAULT_MEMCACHE_PORT;
 
         $result = [
             'available' => false,
