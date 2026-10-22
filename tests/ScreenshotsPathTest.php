@@ -260,6 +260,81 @@ SH;
         $this->assertFileDoesNotExist($sourcesPath . '/1000/1234/screenshots/1.jpg');
     }
 
+    /** @dataProvider nonFileSourceCandidates */
+    public function testScreenshotGenerationSkipsDirectories(string $action, string $directory): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            ['video.mp4'],
+            ffprobeScript: $this->createRegularFileFfprobeScript()
+        );
+        mkdir($sourcesPath . '/1000/1234/' . $directory);
+
+        $tester->execute(['action' => $action, 'video_id' => '1234', '--count' => '1']);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+        $this->assertDirectoryExists($sourcesPath . '/1000/1234/' . $directory);
+        $this->assertSame('video', file_get_contents($sourcesPath . '/1000/1234/video.mp4'));
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function nonFileSourceCandidates(): array
+    {
+        return [
+            'generate preferred source' => ['generate', 'source.mp4'],
+            'generate first glob match' => ['generate', 'a.mp4'],
+            'regenerate preferred source' => ['regenerate', 'source.mp4'],
+            'regenerate first glob match' => ['regenerate', 'a.mp4'],
+        ];
+    }
+
+    /** @dataProvider screenshotGenerationActions */
+    public function testScreenshotGenerationReportsMissingSourceForDirectoriesOnly(string $action): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            [],
+            ffprobeScript: $this->createRegularFileFfprobeScript()
+        );
+        mkdir($sourcesPath . '/1000/1234/source.mp4');
+        mkdir($sourcesPath . '/1000/1234/a.mp4');
+
+        $tester->execute(['action' => $action, 'video_id' => '1234', '--count' => '1']);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('No video file found', $tester->getDisplay());
+        $this->assertDirectoryDoesNotExist($sourcesPath . '/1000/1234/screenshots');
+    }
+
+    /** @return array<string, array{string}> */
+    public static function screenshotGenerationActions(): array
+    {
+        return ['generate' => ['generate'], 'regenerate' => ['regenerate']];
+    }
+
+    /** @dataProvider regularSourceSymlinks */
+    public function testScreenshotGenerationAcceptsRegularFileSymlinks(string $filename): void
+    {
+        [$tester, $sourcesPath] = $this->createGenerateFixture(
+            [],
+            ffprobeScript: $this->createRegularFileFfprobeScript()
+        );
+        $source = $this->tempDir . '/original-video';
+        file_put_contents($source, 'video');
+        $this->assertTrue(symlink($source, $sourcesPath . '/1000/1234/' . $filename));
+
+        $tester->execute(['action' => 'generate', 'video_id' => '1234', '--count' => '1']);
+
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileExists($sourcesPath . '/1000/1234/screenshots/1.jpg');
+        $this->assertSame('video', file_get_contents($source));
+    }
+
+    /** @return array<string, array{string}> */
+    public static function regularSourceSymlinks(): array
+    {
+        return ['preferred source' => ['source.mp4'], 'glob match' => ['video.mp4']];
+    }
+
     public function testGenerateRefusesExistingScreenshotSymlinkWithoutChangingItsTarget(): void
     {
         [$tester, $sourcesPath] = $this->createGenerateFixture(['1234.tmp']);
@@ -727,6 +802,19 @@ for arg in "$@"; do
   previous="$arg"
 done
 exit 1
+SH;
+    }
+
+    private function createRegularFileFfprobeScript(): string
+    {
+        return <<<'SH'
+#!/bin/sh
+last=''
+for arg in "$@"; do
+  last="$arg"
+done
+[ -f "$last" ] || exit 1
+echo '12.0'
 SH;
     }
 
