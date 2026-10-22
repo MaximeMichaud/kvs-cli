@@ -442,6 +442,7 @@ HELP
             ];
 
             $process = new Process($command);
+            $process->setTimeout(Constants::FILE_BACKUP_TIMEOUT);
             $this->withSecureFileUmask(
                 static fn (): int => $process->run()
             );
@@ -457,6 +458,7 @@ HELP
 
                 $gzCommand = ['gzip', '-9', $fullFile];
                 $gzProcess = new Process($gzCommand);
+                $gzProcess->setTimeout(Constants::FILE_BACKUP_TIMEOUT);
                 $this->withSecureFileUmask(
                     static fn (): int => $gzProcess->run()
                 );

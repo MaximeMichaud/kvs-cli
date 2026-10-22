@@ -9,6 +9,7 @@ use KVS\CLI\Config\Configuration;
 use org\bovigo\vfs\vfsStream;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 
 class BackupCommandTest extends TestCase
@@ -496,6 +497,69 @@ SH);
                 putenv('PATH=' . $previousPath);
             }
         }
+    }
+
+    #[DataProvider('slowFullBackupStageProvider')]
+    public function testFullBackupAllowsArchiveStagesLongerThanOneMinute(string $stage): void
+    {
+        $finder = new ExecutableFinder();
+        $tar = $finder->find('tar');
+        $gzip = $finder->find('gzip');
+        $sleep = $finder->find('sleep');
+        $this->assertNotNull($tar);
+        $this->assertNotNull($gzip);
+        $this->assertNotNull($sleep);
+
+        $toolsDir = $this->tempDir . '/slow-archive-tools';
+        mkdir($toolsDir);
+        $this->writeTool($toolsDir, 'mysqldump', "#!/bin/sh\nprintf '%128s\\n' 'Synthetic SQL dump'\n");
+        foreach (['tar' => $tar, 'gzip' => $gzip] as $name => $executable) {
+            $delay = $stage === $name
+                ? 'if [ "$1" = ' . ($name === 'tar' ? 'cf' : '-9') . ' ]; then '
+                    . escapeshellarg($sleep) . " 1; fi\n"
+                : '';
+            $this->writeTool($toolsDir, $name, "#!/bin/sh\n" . $delay . 'exec ' . escapeshellarg($executable) . ' "$@"');
+        }
+
+        // Advance only the child process clock; tar and gzip still produce real archives.
+        $bootstrap = <<<'PHP'
+<?php
+namespace Symfony\Component\Process {
+    function microtime(bool $asFloat = false): string|float
+    {
+        return $asFloat ? \microtime(true) * 100.0 : \microtime(false);
+    }
+}
+namespace {
+PHP;
+        $runner = $this->tempDir . '/backup-clock.php';
+        file_put_contents(
+            $runner,
+            $bootstrap . "\nrequire " . var_export(dirname(__DIR__) . '/bin/kvs', true) . ";\n}\n"
+        );
+        $outputDir = $this->rootDir . '/slow-backup';
+        $process = new Process([
+            PHP_BINARY, $runner, '--path=' . $this->tempDir,
+            'system:backup', '--create', '--type=full', '--output=' . $outputDir, '--no-ansi',
+        ], null, ['PATH' => $toolsDir]);
+        $process->setTimeout(15);
+        $process->run();
+
+        $this->assertTrue($process->isSuccessful(), $process->getOutput() . $process->getErrorOutput());
+        $archives = glob($outputDir . '/*_full.tar.gz') ?: [];
+        $this->assertCount(1, $archives);
+        $listing = new Process([$tar, 'tzf', $archives[0]]);
+        $listing->mustRun();
+        $this->assertStringContainsString('_db.sql.gz', $listing->getOutput());
+        $this->assertStringContainsString('_files.tar.gz', $listing->getOutput());
+        $this->assertSame([], glob($outputDir . '/.kvs-backup-*') ?: []);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function slowFullBackupStageProvider(): iterable
+    {
+        yield 'tar assembly' => ['tar'];
+        yield 'gzip compression' => ['gzip'];
     }
 
     public function testFilesBackupTreatsTarExitOneWithArchiveAsWarning(): void
