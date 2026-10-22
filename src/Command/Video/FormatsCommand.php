@@ -122,7 +122,7 @@ HELP
             foreach ($extensions as $ext) {
                 $matches = glob("$videoPath/*.$ext");
                 if (is_array($matches) && $matches !== []) {
-                    $files = array_merge($files, $matches);
+                    $files = array_merge($files, array_filter($matches, 'is_file'));
                 }
             }
         }
@@ -263,7 +263,7 @@ HELP
             $fullPath = $this->findExistingFile($existingVideoPaths, $filename)
                 ?? $videoPaths[0] . '/' . $filename;
 
-            if (file_exists($fullPath)) {
+            if (is_file($fullPath)) {
                 $filesize = filesize($fullPath);
                 if ($filesize === false) {
                     $filesize = 0;
@@ -865,7 +865,7 @@ HELP
     {
         foreach ($dirs as $dir) {
             $path = $dir . '/' . $filename;
-            if (file_exists($path)) {
+            if (is_file($path)) {
                 return $path;
             }
         }

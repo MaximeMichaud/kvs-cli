@@ -190,6 +190,7 @@ class FormatsPathTest extends TestCase
         $secondaryDir = $secondaryPath . '/1000/1234';
         mkdir($secondaryDir, 0755, true);
         rename($primaryFile, $secondaryDir . '/1234.mp4');
+        mkdir($primaryFile);
 
         $quotedPath = $this->db->quote($secondaryPath);
         $this->db->exec(

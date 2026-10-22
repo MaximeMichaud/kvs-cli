@@ -29,6 +29,8 @@ Check which formats exist or are missing for a video.
 
 Only formats in the video's assigned format group are checked. Required formats from other groups do not affect the result. A video record and an assigned format group are needed for this check.
 
+Directories with video file names are not treated as available files. Symbolic links to regular files are supported.
+
 ```bash
 kvs video:formats check <video_id>
 ```

@@ -318,6 +318,32 @@ class FormatsCommandTest extends TestCase
         $this->assertSame([], json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR));
     }
 
+    public function testCheckDoesNotTreatADirectoryAsAnAvailableVideoFile(): void
+    {
+        $path = $this->storagePath . '/0/10/10_720p.mp4';
+        unlink($path);
+        mkdir($path);
+
+        $this->tester->execute(['action' => 'check', 'video_id' => '10', '--format' => 'json']);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $byPostfix = array_column($rows, null, 'postfix');
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('missing', $byPostfix['_720p.mp4']['status']);
+    }
+
+    public function testListIgnoresDirectoriesWithVideoFileExtensions(): void
+    {
+        mkdir($this->storagePath . '/0/10/10_directory.mp4');
+
+        $this->tester->execute(['action' => 'list', 'video_id' => '10', '--format' => 'json']);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertContains('10_720p.mp4', array_column($rows, 'file'));
+        $this->assertNotContains('10_directory.mp4', array_column($rows, 'file'));
+    }
+
     public function testCheckFormatsJsonFailsWhenRequiredFormatIsMissing(): void
     {
         $videoDir = $this->storagePath . '/0/13';
