@@ -447,7 +447,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $info = $this->buildServerInfo($server);
+            $info = $this->buildServerInfo($server, !$this->shouldUseFormattedRows($input));
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
             if ($this->shouldUseFormattedRows($input)) {
@@ -542,7 +542,7 @@ HELP
      * @param array<string, mixed> $server
      * @return list<array{0: string, 1: string}>
      */
-    private function buildServerInfo(array $server): array
+    private function buildServerInfo(array $server, bool $withColor = true): array
     {
         $statusId = $this->getNumericField($server, 'status_id');
         $priority = $this->getNumericField($server, 'process_priority');
@@ -566,8 +566,8 @@ HELP
 
         $info = [
             ['Title', $title],
-            ['Status', StatusFormatter::conversion($statusId)],
-            ['Priority', StatusFormatter::conversionPriority($priority)],
+            ['Status', StatusFormatter::conversion($statusId, $withColor)],
+            ['Priority', StatusFormatter::conversionPriority($priority, $withColor)],
             ['Connection', $connTypeStr],
             ['Max Tasks', (string) $maxTasks],
             ['Tasks Pending', (string) $tasksPending],
@@ -580,7 +580,7 @@ HELP
         ];
 
         if ($isDebug) {
-            $info[] = ['Debug', '<fg=yellow>Enabled</>'];
+            $info[] = ['Debug', $withColor ? '<fg=yellow>Enabled</>' : 'Enabled'];
         }
 
         $addedTimestamp = $addedDate !== '' ? strtotime($addedDate) : false;

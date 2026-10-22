@@ -542,6 +542,7 @@ HELP
 
             $title = $this->stringValue($source['title'] ?? '');
             $statusId = is_numeric($source['status_id'] ?? null) ? (int) $source['status_id'] : 0;
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', (string) $sourceId],
                 ['Title', $title],
@@ -550,7 +551,7 @@ HELP
                     ? $this->stringValue($source['url'] ?? '')
                     : 'None'],
                 ['Group', $this->formatSourceGroup($source)],
-                ['Status', StatusFormatter::contentSource($statusId)],
+                ['Status', StatusFormatter::contentSource($statusId, $withColor)],
                 ['Rating', $this->stringValue($source['rating'] ?? '0')],
                 ['Rating amount', $this->stringValue($source['rating_amount'] ?? '0')],
                 ['Videos', $this->stringValue($source['videos_amount'] ?? '0')],

@@ -1055,11 +1055,12 @@ HELP
                 ? $album['username']
                 : 'N/A';
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['Title', $title],
-                ['Status', StatusFormatter::album($statusId)],
-                ['Type', StatusFormatter::contentPrivacy($privacyId)],
-                ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
+                ['Status', StatusFormatter::album($statusId, $withColor)],
+                ['Type', StatusFormatter::contentPrivacy($privacyId, $withColor)],
+                ['Access', StatusFormatter::contentAccessLevel($accessLevelId, $withColor)],
                 ['User', $username],
                 ['Images', $imageCountValue],
                 ['Posted', $postTimestamp !== false ? date('Y-m-d H:i:s', $postTimestamp) : 'Unknown'],

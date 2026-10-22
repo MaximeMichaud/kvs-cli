@@ -663,10 +663,11 @@ HELP
             $modelIdStr = is_scalar($modelIdVal) ? (string) $modelIdVal : '0';
             $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['Model ID', $modelIdStr],
                 ['Name', $modelTitle],
-                ['Status', StatusFormatter::model($statusId)],
+                ['Status', StatusFormatter::model($statusId, $withColor)],
                 ['Videos', number_format($videoCount)],
                 ['Albums', number_format($albumCount)],
                 ['Views', number_format($modelViewed)],

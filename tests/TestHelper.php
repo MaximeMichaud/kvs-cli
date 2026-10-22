@@ -372,4 +372,57 @@ PHP;
     {
         return self::getTablePrefix() . $table;
     }
+
+    /**
+     * @param array<string, mixed> $arguments
+     * @return array<string, mixed>
+     */
+    public static function readCommandExportRow(
+        \Symfony\Component\Console\Tester\CommandTester $tester,
+        array $arguments,
+        string $format,
+        ?string $field = null
+    ): array {
+        if ($format === 'field') {
+            $arguments['--field'] = $field;
+        } else {
+            $arguments['--format'] = $format;
+            if ($field !== null) {
+                $arguments['--fields'] = $field;
+            }
+        }
+        ob_start();
+        try {
+            $exit = $tester->execute($arguments, ['decorated' => true]);
+            $direct = (string) ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $text = $format === 'csv' ? $direct : $tester->getDisplay();
+        \PHPUnit\Framework\Assert::assertSame(0, $exit, $text);
+        if ($format === 'field') {
+            return [$field => str_ends_with($text, PHP_EOL) ? substr($text, 0, -strlen(PHP_EOL)) : $text];
+        }
+        try {
+            if ($format === 'json') {
+                return json_decode($text, true, flags: JSON_THROW_ON_ERROR)[0];
+            }
+            if ($format === 'yaml') {
+                return \Symfony\Component\Yaml\Yaml::parse($text)[0];
+            }
+            $stream = fopen('php://memory', 'r+');
+            try {
+                fwrite($stream, $text);
+                rewind($stream);
+                $headers = fgetcsv($stream, escape: '');
+                $record = fgetcsv($stream, escape: '');
+                \PHPUnit\Framework\Assert::assertCount(count($headers), $record);
+                return array_combine($headers, $record);
+            } finally {
+                fclose($stream);
+            }
+        } catch (\Throwable $error) {
+            \PHPUnit\Framework\Assert::fail('Export must parse: ' . $error->getMessage());
+        }
+    }
 }

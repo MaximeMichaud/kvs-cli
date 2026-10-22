@@ -1468,4 +1468,30 @@ class CommentCommandTest extends TestCase
             }
         };
     }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv', 'field'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractCommentKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>value</>';
+        $this->db->prepare('UPDATE ' . TestHelper::table('comments') . ' SET comment = ? WHERE comment_id = 30')->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'show', 'id' => '30'], $format, 'comment');
+        $this->assertSame($payload, $row['comment']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractCommentKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $payload = 'Synthetic plain value';
+        $this->db->prepare('UPDATE ' . TestHelper::table('comments') . ' SET comment = ? WHERE comment_id = 30')->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'show', 'id' => '30'], $format, $format === 'field' ? 'status' : null);
+        $this->assertSame('Approved', $row['status']);
+    }
 }

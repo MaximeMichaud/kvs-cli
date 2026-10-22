@@ -1319,11 +1319,12 @@ abstract class BaseCommand extends Command
                 continue;
             }
 
-            $record[$key] = $this->stripConsoleMarkup($row[1] ?? '');
+            $value = $row[1] ?? '';
+            $record[$key] = is_scalar($value) ? (string) $value : $value;
         }
 
         foreach ($extraFields as $key => $value) {
-            $record[$key] = is_string($value) ? $this->stripConsoleMarkup($value) : $value;
+            $record[$key] = $value;
         }
 
         return $this->displayFormattedRows($input, [$record], array_keys($record));

@@ -2333,4 +2333,76 @@ class ServerCommandTest extends TestCase
             }
         };
     }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>value</>';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_servers') . ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format, 'title');
+        $this->assertSame($payload, $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $payload = 'Synthetic plain value';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_servers') . ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format);
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $this->assertSame('Nginx (x-accel-redirect)', $row['streaming']);
+            $this->assertSame('Local', $row['connection']);
+            $this->assertSame('Enabled', $row['debug']);
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerGroupKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>group</>';
+        $this->db->prepare('UPDATE ' . TestHelper::table('admin_servers_groups') . ' SET title = ? WHERE group_id = 10')->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', 'id' => '10'], $format, 'title');
+        $this->assertSame($payload, $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerGroupKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', 'id' => '10'], $format);
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $servers = $format === 'csv' ? json_decode($row['servers'], true, flags: JSON_THROW_ON_ERROR) : $row['servers'];
+            $this->assertSame(['Active', 'Inactive'], array_column($servers, 'status'));
+        }
+    }
+
+    public function testExportContractServerListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow(
+            $this->tester,
+            ['--force' => true, 'action' => 'list', '--limit' => '1'],
+            'csv',
+            'status,streaming,connection'
+        );
+        $this->assertSame(['status' => 'Active', 'streaming' => 'Nginx (x-accel-redirect)', 'connection' => 'Local'], $row);
+    }
+
+    public function testExportContractServerGroupListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', '--limit' => '1'], 'csv', 'status');
+        $this->assertSame(['status' => 'Active'], $row);
+    }
 }

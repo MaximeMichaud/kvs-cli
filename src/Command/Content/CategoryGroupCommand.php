@@ -387,11 +387,12 @@ HELP
             $addedDate = $group['added_date'] ?? null;
             $categoriesAmount = $group['categories_amount'] ?? 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', $this->stringValue($group['category_group_id'] ?? '0')],
                 ['Title', $groupTitle],
                 ['Dir', $this->stringValue($group['dir'] ?? '')],
-                ['Status', StatusFormatter::categoryGroup($statusId)],
+                ['Status', StatusFormatter::categoryGroup($statusId, $withColor)],
                 ['External ID', $externalId !== '' ? $externalId : 'None'],
                 ['Sort', $this->stringValue($group['sort_id'] ?? '0')],
                 ['Categories', is_scalar($categoriesAmount) ? (string) $categoriesAmount : '0'],

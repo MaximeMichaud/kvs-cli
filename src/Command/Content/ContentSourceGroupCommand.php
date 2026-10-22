@@ -394,11 +394,12 @@ HELP
                 ? (int) $group['content_sources_amount']
                 : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', $this->stringValue($group['content_source_group_id'] ?? '0')],
                 ['Title', $title],
                 ['Dir', $this->stringValue($group['dir'] ?? '')],
-                ['Status', StatusFormatter::contentSourceGroup($statusId)],
+                ['Status', StatusFormatter::contentSourceGroup($statusId, $withColor)],
                 ['External ID', $this->stringValue($group['external_id'] ?? '') !== ''
                     ? $this->stringValue($group['external_id'] ?? '')
                     : 'None'],

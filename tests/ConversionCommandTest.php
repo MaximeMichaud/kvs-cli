@@ -1513,4 +1513,46 @@ class ConversionCommandTest extends TestCase
             }
         };
     }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractConversionKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>value</>';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_conversion_servers') .
+            ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format, 'title');
+        $this->assertSame($payload, $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractConversionKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $payload = 'Synthetic plain value';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_conversion_servers') .
+            ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format);
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $this->assertSame('Medium', $row['priority']);
+            $this->assertSame('Enabled', $row['debug']);
+        }
+    }
+
+    public function testExportContractConversionListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'list', '--limit' => '1'], 'csv', 'status,priority');
+        $this->assertSame(['status' => 'Initializing', 'priority' => 'Very Low'], $row);
+    }
 }

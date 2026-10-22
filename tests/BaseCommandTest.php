@@ -371,4 +371,75 @@ class BaseCommandTest extends TestCase
         $this->expectExceptionMessage('Invalid status "bogus"');
         $command->parseForTest($input);
     }
+
+    public static function exportContractDetailPayloads(): iterable
+    {
+        foreach (['Literal <fg=red>text</>', 'Literal <bg=blue>text</>', 'Literal <options=bold>text</>', 'Literal <info>text</info>'] as $payload) {
+            foreach (['row', 'extra'] as $source) {
+                yield "$source $payload" => [$source, $payload];
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractDetailPayloads')]
+    public function testExportContractDetailAssemblyPreservesRawData(string $source, string $payload): void
+    {
+        $command = new class ($this->config) extends BaseCommand {
+            public array $captured = [];
+            protected function configure(): void
+            {
+                $this->setName('test:detail-data');
+            }
+            protected function execute($input, $output): int
+            {
+                return self::SUCCESS;
+            }
+            public function assemble(array $rows, array $extra): int
+            {
+                return $this->displayDetailRows(new ArrayInput([]), $rows, $extra);
+            }
+            protected function displayFormattedRows(
+                \Symfony\Component\Console\Input\InputInterface $input,
+                array $rows,
+                array $defaultFields,
+                ?array $knownFields = null
+            ): int {
+                $this->captured = $rows;
+                return self::SUCCESS;
+            }
+        };
+        $command->assemble($source === 'row' ? [['Value', $payload]] : [], $source === 'extra' ? ['value' => $payload] : []);
+        $this->assertSame($payload, $command->captured[0]['value']);
+    }
+
+    public function testExportContractDetailAssemblyKeepsScalarAndNestedTypes(): void
+    {
+        $command = new class ($this->config) extends BaseCommand {
+            public array $captured = [];
+            protected function configure(): void
+            {
+                $this->setName('test:detail-types');
+            }
+            protected function execute($input, $output): int
+            {
+                return self::SUCCESS;
+            }
+            public function assemble(array $rows, array $extra): int
+            {
+                return $this->displayDetailRows(new ArrayInput([]), $rows, $extra);
+            }
+            protected function displayFormattedRows(
+                \Symfony\Component\Console\Input\InputInterface $input,
+                array $rows,
+                array $defaultFields,
+                ?array $knownFields = null
+            ): int {
+                $this->captured = $rows;
+                return self::SUCCESS;
+            }
+        };
+        $nested = ['title' => 'Literal <fg=red>text</>', 'enabled' => false];
+        $command->assemble([['Images', 2], ['Missing', null]], ['count' => 2, 'enabled' => false, 'nested' => $nested]);
+        $this->assertSame([['images' => '2', 'missing' => '', 'count' => 2, 'enabled' => false, 'nested' => $nested]], $command->captured);
+    }
 }

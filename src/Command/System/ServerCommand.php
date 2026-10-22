@@ -717,7 +717,7 @@ HELP
                 ),
             ];
 
-            $info = $this->buildServerInfo($server);
+            $info = $this->buildServerInfo($server, !$this->shouldUseFormattedRows($input));
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
@@ -812,7 +812,7 @@ HELP
      * @param array<string, mixed> $server
      * @return list<array{0: string, 1: string}>
      */
-    private function buildServerInfo(array $server): array
+    private function buildServerInfo(array $server, bool $withColor = true): array
     {
         $statusId = $this->getNumericField($server, 'status_id');
         $streamingType = $this->getNumericField($server, 'streaming_type_id');
@@ -834,10 +834,10 @@ HELP
         $info = [
             ['Title', $title],
             ['Group', $groupTitle],
-            ['Status', StatusFormatter::server($statusId)],
+            ['Status', StatusFormatter::server($statusId, $withColor)],
             ['Content Type', $contentTypeStr],
-            ['Streaming', StatusFormatter::serverStreaming($streamingType)],
-            ['Connection', StatusFormatter::serverConnection($connType)],
+            ['Streaming', StatusFormatter::serverStreaming($streamingType, $withColor)],
+            ['Connection', StatusFormatter::serverConnection($connType, $withColor)],
             ['URLs', $urls],
             ['Total Space', $this->formatBytes($totalSpace)],
             ['Free Space', $this->formatBytes($freeSpace) . " ({$freePercent}%)"],
@@ -845,7 +845,7 @@ HELP
         ];
 
         if ($isDebug) {
-            $info[] = ['Debug', '<fg=yellow>Enabled</>'];
+            $info[] = ['Debug', $withColor ? '<fg=yellow>Enabled</>' : 'Enabled'];
         }
 
         $info[] = ['Added', $addedTimestamp !== false ? date('Y-m-d H:i:s', $addedTimestamp) : 'Unknown'];
@@ -1375,9 +1375,10 @@ HELP
             $addedDate = isset($group['added_date']) && is_string($group['added_date']) ? $group['added_date'] : '';
             $addedTimestamp = $addedDate !== '' ? strtotime($addedDate) : false;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['Title', $title],
-                ['Status', StatusFormatter::server($statusId)],
+                ['Status', StatusFormatter::server($statusId, $withColor)],
                 ['Content Type', $contentTypeStr],
                 ['Content Count', number_format($contentCount) . " {$contentTypeStr}"],
                 ['Added', $addedTimestamp !== false ? date('Y-m-d H:i:s', $addedTimestamp) : 'Unknown'],
@@ -1421,7 +1422,7 @@ HELP
                 $serverRecords[] = [
                     'server_id' => $serverId,
                     'title' => $serverTitle,
-                    'status' => $this->stripConsoleMarkup($status),
+                    'status' => StatusFormatter::server($serverStatus, false),
                     'free_space' => $freeSpaceDisplay,
                     'load' => number_format($serverLoad, 2),
                 ];

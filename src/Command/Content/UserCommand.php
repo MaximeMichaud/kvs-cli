@@ -991,11 +991,12 @@ HELP
             $birthDate = $this->getStr($user['birth_date'] ?? null);
             $ip = array_key_exists('ip', $user) ? $this->formatKvsIp($user['ip']) : '';
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['User ID', (string) $userId],
                 ['Username', $username],
                 ['Email', $this->getStr($user['email'] ?? null)],
-                ['Status', StatusFormatter::user($this->getInt($user['status_id'] ?? null))],
+                ['Status', StatusFormatter::user($this->getInt($user['status_id'] ?? null), $withColor)],
                 ['Display Name', $displayName !== '' ? $displayName : 'N/A'],
                 ['Country', $countryCode !== '' ? $countryCode : 'N/A'],
                 ['Gender', $this->formatGender($this->getInt($user['gender_id'] ?? null))],

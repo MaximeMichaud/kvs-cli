@@ -720,7 +720,7 @@ HELP
 
             [$task, $isHistory] = $result;
             $task = $this->hydrateTaskAppendFields($task, $db, !$isHistory);
-            $info = $this->buildTaskInfo($task, $isHistory);
+            $info = $this->buildTaskInfo($task, $isHistory, !$this->shouldUseFormattedRows($input));
 
             if ($this->shouldUseFormattedRows($input)) {
                 return $this->displayDetailRows(
@@ -863,7 +863,7 @@ HELP
      * @param array<string, mixed> $task
      * @return list<list<string|int|null>>
      */
-    private function buildTaskInfo(array $task, bool $isHistory): array
+    private function buildTaskInfo(array $task, bool $isHistory, bool $withColor = true): array
     {
         $statusId = is_numeric($task['status_id'] ?? null) ? (int) $task['status_id'] : 0;
         $typeId = is_numeric($task['type_id'] ?? null) ? (int) $task['type_id'] : 0;
@@ -875,7 +875,7 @@ HELP
         $priority = is_numeric($task['priority'] ?? null) ? (int) $task['priority'] : 0;
 
         $info = [
-            ['Status', StatusFormatter::task($statusId)],
+            ['Status', StatusFormatter::task($statusId, $withColor)],
             ['Type', self::TASK_TYPES[$typeId] ?? "Type #{$typeId}"],
             ['Priority', (string) $priority],
         ];
@@ -892,7 +892,7 @@ HELP
 
         if ($errorCode > 0) {
             $errorText = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
-            $info[] = ['Error Code', "<fg=red>{$errorText}</>"];
+            $info[] = ['Error Code', $withColor ? "<fg=red>{$errorText}</>" : $errorText];
         }
 
         $message = is_string($task['message'] ?? null) ? $task['message'] : '';

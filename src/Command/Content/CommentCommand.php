@@ -687,7 +687,8 @@ HELP
 
             $approvalStatus = $this->formatCommentStatus(
                 $comment['is_approved'] ?? 0,
-                $comment['is_review_needed'] ?? 0
+                $comment['is_review_needed'] ?? 0,
+                !$this->shouldUseFormattedRows($input)
             );
 
             // Safe type extraction

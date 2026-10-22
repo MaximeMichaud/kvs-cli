@@ -559,12 +559,13 @@ HELP
 
             $statusId = isset($category['status_id']) && is_numeric($category['status_id']) ? (int) $category['status_id'] : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
                 ['Title', $categoryTitle],
                 ['Group', $groupDisplay],
                 ['Group ID', $groupIdStr],
-                ['Status', StatusFormatter::category($statusId)],
+                ['Status', StatusFormatter::category($statusId, $withColor)],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
                 ['Posts', (string) $postCount],
