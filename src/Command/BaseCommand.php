@@ -11,6 +11,7 @@ use KVS\CLI\Util\OutputBuffer;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
@@ -1206,6 +1207,27 @@ abstract class BaseCommand extends Command
         } catch (\InvalidArgumentException $e) {
             $this->io()->error($e->getMessage());
             return self::FAILURE;
+        }
+    }
+
+    /**
+     * Validate the final detail selection before a mutation can persist changes.
+     *
+     * @param list<string> $knownFields Fields present in the requested detail record
+     */
+    protected function validateDetailOutputOptions(InputInterface $input, string $action, array $knownFields): bool
+    {
+        if ($this->rejectCountFormatForSingularAction($input, $action)) {
+            return false;
+        }
+
+        try {
+            $formatter = new Formatter($input->getOptions(), [], $knownFields);
+            $formatter->display([], new NullOutput());
+            return true;
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return false;
         }
     }
 

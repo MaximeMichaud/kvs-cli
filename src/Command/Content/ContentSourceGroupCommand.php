@@ -641,6 +641,12 @@ HELP
                 return self::FAILURE;
             }
 
+            $detailFields = ['id', 'title', 'dir', 'status', 'external_id', 'sort', 'content_sources', 'added'];
+            $extraFields = $this->getRequestedDetailFieldsForGroup($input, $group);
+            if (!$this->validateDetailOutputOptions($input, 'update', array_merge($detailFields, array_keys($extraFields)))) {
+                return self::FAILURE;
+            }
+
             $updates = [];
             $params = ['id' => $groupId];
             $changedFields = [];
@@ -896,6 +902,10 @@ HELP
         $fields = [];
         foreach ($this->getKnownFields([$group]) as $field) {
             $fields[$field] = $group[$field] ?? '';
+        }
+
+        foreach (self::CUSTOM_FIELDS as $field) {
+            $fields['custom_' . substr($field, 6)] = $group[$field] ?? '';
         }
 
         return $this->getRequestedDetailFields($input, $fields);

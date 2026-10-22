@@ -623,6 +623,14 @@ HELP
                 return self::FAILURE;
             }
 
+            $stmt = $db->prepare("SELECT * FROM {$this->table('content_sources')} WHERE 1 = 0");
+            $stmt->execute();
+            $columns = $this->getStatementColumnNames($stmt);
+            $source = array_fill_keys($columns, null);
+            if (!$this->validateSourceDetailOutput($input, $source)) {
+                return self::FAILURE;
+            }
+
             $synonyms = $this->getRawStringOptionOrDefault($input, 'synonyms', '');
             if (!$this->validateSynonyms($db, $synonyms)) {
                 return self::FAILURE;
@@ -764,6 +772,10 @@ HELP
             $source = $this->fetchSourceById($db, $sourceId);
             if ($source === null) {
                 $this->io()->error("Content source not found: $sourceId");
+                return self::FAILURE;
+            }
+
+            if (!$this->validateSourceDetailOutput($input, $source)) {
                 return self::FAILURE;
             }
 
@@ -1352,7 +1364,30 @@ HELP
             $fields[$field] = $source[$field] ?? '';
         }
 
+        foreach (self::CUSTOM_FIELDS as $field) {
+            $fields['custom_' . substr($field, 6)] = $source[$field] ?? '';
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $fields["custom_file_{$i}"] = $source["custom_file{$i}"] ?? '';
+        }
+
         return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /** @param array<string, mixed> $source */
+    private function validateSourceDetailOutput(InputInterface $input, array $source): bool
+    {
+        $detailFields = [
+            'id', 'title', 'dir', 'url', 'group', 'status', 'rating', 'rating_amount',
+            'videos', 'albums', 'comments', 'subscribers', 'sort', 'added',
+        ];
+        $extraFields = $this->getRequestedDetailFieldsForSource($input, $source + ['tags' => '', 'categories' => '']);
+
+        return $this->validateDetailOutputOptions(
+            $input,
+            $this->getStringArgument($input, 'action') ?? 'create',
+            array_merge($detailFields, array_keys($extraFields))
+        );
     }
 
     private function getFieldFilterCondition(string $fieldFilter): ?string

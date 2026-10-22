@@ -718,6 +718,12 @@ HELP
                 return self::FAILURE;
             }
 
+            $detailFields = ['id', 'title', 'dir', 'status', 'external_id', 'sort', 'categories', 'added'];
+            $extraFields = $this->getRequestedCategoryGroupDetailFields($input, $group);
+            if (!$this->validateDetailOutputOptions($input, 'update', array_merge($detailFields, array_keys($extraFields)))) {
+                return self::FAILURE;
+            }
+
             $updates = [];
             $params = ['id' => $groupId];
             $changedFields = [];
@@ -1212,6 +1218,11 @@ HELP
         $fields = [];
         foreach ($this->getCategoryGroupKnownFields([$group]) as $field) {
             $fields[$field] = $group[$field] ?? '';
+        }
+
+        foreach (['screenshot1', 'screenshot2', 'custom1', 'custom2', 'custom3'] as $field) {
+            $alias = substr($field, 0, -1) . '_' . substr($field, -1);
+            $fields[$alias] = $group[$field] ?? '';
         }
 
         return $this->getRequestedDetailFields($input, $fields);

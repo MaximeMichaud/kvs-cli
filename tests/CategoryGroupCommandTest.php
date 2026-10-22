@@ -6,6 +6,7 @@ use KVS\CLI\Command\Content\CategoryGroupCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 
@@ -378,6 +379,64 @@ class CategoryGroupCommandTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame(3, (int) $row['sort_id']);
         $this->assertAuditLogExists(150, (int) $row['category_group_id'], 'title, sort_id');
+    }
+
+    /** @return iterable<string, array{array<string, string>}> */
+    public static function invalidUpdateOutputOptions(): iterable
+    {
+        yield 'count' => [['--format' => 'count']];
+        yield 'unknown field' => [['--field' => 'missing_output_field']];
+        yield 'unknown fields' => [['--fields' => 'title,missing_output_field']];
+        yield 'empty field' => [['--field' => '']];
+        yield 'empty fields' => [['--fields' => '']];
+        yield 'conflicting fields' => [['--field' => 'title', '--fields' => 'title']];
+        yield 'field with JSON' => [['--field' => 'title', '--format' => 'json']];
+        yield 'fields with ids' => [['--fields' => 'title', '--format' => 'ids']];
+        yield 'alias without its target' => [['--field' => 'date']];
+    }
+
+    /** @param array<string, string> $options */
+    #[DataProvider('invalidUpdateOutputOptions')]
+    public function testUpdateRejectsInvalidOutputBeforeChangingDataOrFiles(array $options): void
+    {
+        $before = $this->fetchGroupByTitle('Genres');
+        $groupDir = $this->kvsPath . '/contents/categories/groups/1';
+        mkdir($groupDir, 0777, true);
+        $screenshot = $groupDir . '/s1_genres.jpg';
+        file_put_contents($screenshot, 'original image');
+
+        $exitCode = $this->tester->execute(array_merge([
+            'action' => 'update',
+            'id' => '1',
+            '--title' => 'Changed Genres',
+            '--screenshot1' => '',
+        ], $options));
+
+        $this->assertSame(1, $exitCode, $this->tester->getDisplay());
+        $this->assertSame($before, $this->fetchGroupByTitle('Genres'));
+        $this->assertSame(0, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log')
+        )->fetchColumn());
+        $this->assertFileExists($screenshot);
+        $this->assertSame('original image', file_get_contents($screenshot));
+        $this->assertStringNotContainsString('updated successfully', $this->tester->getDisplay());
+    }
+
+    public function testUpdateSupportsDetailAliasesWhenClearingOptionalFields(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--custom1' => '',
+            '--screenshot1' => '',
+            '--format' => 'json',
+            '--fields' => 'id,custom_1,screenshot_1,categories,categories_amount,date,added_date',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertStringContainsString('"custom_1": ""', $this->tester->getDisplay());
+        $this->assertStringContainsString('"screenshot_1": ""', $this->tester->getDisplay());
+        $this->assertStringContainsString('"categories_amount": 2', $this->tester->getDisplay());
     }
 
     public function testUpdateCanClearCustomAndScreenshotFields(): void

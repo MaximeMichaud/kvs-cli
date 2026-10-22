@@ -494,6 +494,50 @@ class CategoryCommandTest extends TestCase
         $this->assertStringContainsString('Category not found: 10abc', $this->tester->getDisplay());
     }
 
+    /** @return iterable<string, array{array<string, string>}> */
+    public static function invalidUpdateOutputOptions(): iterable
+    {
+        yield 'count' => [['--format' => 'count']];
+        yield 'unknown field' => [['--field' => 'missing_output_field']];
+        yield 'conflicting fields' => [['--field' => 'title', '--fields' => 'title']];
+        yield 'invalid format' => [['--format' => 'unsupported']];
+        yield 'alias without its target' => [['--field' => 'date']];
+    }
+
+    /** @param array<string, string> $options */
+    #[DataProvider('invalidUpdateOutputOptions')]
+    public function testCategoryUpdateRejectsInvalidOutputBeforeChangingData(array $options): void
+    {
+        $table = TestHelper::table('categories');
+        $before = $this->db->query("SELECT * FROM {$table} WHERE category_id = 10")->fetch();
+
+        $exitCode = $this->tester->execute(array_merge([
+            'action' => 'update',
+            'id' => '10',
+            '--title' => 'Changed Category',
+        ], $options));
+
+        $this->assertSame(1, $exitCode, $this->tester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM {$table} WHERE category_id = 10")->fetch());
+        $this->assertStringNotContainsString('updated successfully', $this->tester->getDisplay());
+    }
+
+    public function testCategoryUpdateKeepsCalculatedDetailFieldsAvailable(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--title' => 'Changed Category',
+            '--format' => 'json',
+            '--fields' => 'title,group_id,total_usage,videos_amount,date,added_date',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertStringContainsString('"title": "Changed Category"', $this->tester->getDisplay());
+        $this->assertStringContainsString('"videos_amount": 2', $this->tester->getDisplay());
+        $this->assertStringContainsString('"total_usage": "15"', $this->tester->getDisplay());
+    }
+
     public function testCategoryUpdateRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([

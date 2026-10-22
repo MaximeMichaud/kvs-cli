@@ -1534,6 +1534,21 @@ HELP
                 $this->io()->error("Category not found: $categoryId");
                 return self::FAILURE;
             }
+            $category = array_filter($category, 'is_string', ARRAY_FILTER_USE_KEY);
+
+            $detailFields = ['id', 'title', 'group', 'group_id', 'status', 'videos', 'albums', 'posts', 'other', 'total_usage', 'added'];
+            $extraFields = $this->getRequestedCategoryDetailFields(
+                $input,
+                $category,
+                (string) $categoryId,
+                0,
+                ['videos' => 0, 'albums' => 0, 'posts' => 0],
+                0,
+                0
+            );
+            if (!$this->validateDetailOutputOptions($input, 'update', array_merge($detailFields, array_keys($extraFields)))) {
+                return self::FAILURE;
+            }
 
             $updates = [];
             $params = ['id' => $categoryId];

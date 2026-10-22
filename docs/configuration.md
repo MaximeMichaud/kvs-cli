@@ -116,6 +116,12 @@ Most list commands support:
 | `--fields` | Comma-separated | Fields to display |
 | `--no-truncate` | - | Don't truncate long values |
 
+The `update` actions for categories, category groups, content sources, and
+content source groups also display the resulting record. The same applies to
+`content-source create` and `content-source add`. These actions validate output
+options before changing data or files. They reject `--format=count`, unknown
+fields, and incompatible field selections without applying the requested mutation.
+
 ### Format Examples
 
 ```bash

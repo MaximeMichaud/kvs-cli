@@ -310,6 +310,104 @@ class ContentSourceCommandTest extends TestCase
         }
     }
 
+    /** @return iterable<string, array{string, bool, array<string, string>}> */
+    public static function invalidMutationOutputOptions(): iterable
+    {
+        $invalid = [
+            'count' => ['--format' => 'count'],
+            'unknown field' => ['--field' => 'missing_output_field'],
+            'conflicting fields' => ['--field' => 'title', '--fields' => 'title'],
+            'alias without its target' => ['--field' => 'date'],
+        ];
+        foreach ($invalid as $name => $options) {
+            foreach (['create', 'add', 'update'] as $action) {
+                yield "$action source $name" => [$action, false, $options];
+            }
+            yield "update group $name" => ['update', true, $options];
+        }
+    }
+
+    /** @param array<string, string> $options */
+    #[DataProvider('invalidMutationOutputOptions')]
+    public function testMutationRejectsInvalidOutputBeforeChangingDataOrFiles(
+        string $action,
+        bool $group,
+        array $options
+    ): void {
+        $table = TestHelper::table($group ? 'content_sources_groups' : 'content_sources');
+        $idField = $group ? 'content_source_group_id' : 'content_source_id';
+        $before = $this->db->query("SELECT * FROM {$table} ORDER BY {$idField}")->fetchAll();
+        $tester = $group ? $this->groupTester : $this->sourceTester;
+        $input = ['action' => $action, '--title' => 'Changed Content'];
+        if ($action === 'update') {
+            $input['id'] = '1';
+            if (!$group) {
+                $input['--screenshot1'] = '';
+            }
+        } else {
+            $input['--group'] = 'New audit group';
+        }
+
+        $exitCode = $tester->execute(array_merge($input, $options));
+
+        $this->assertSame(Command::FAILURE, $exitCode, $tester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM {$table} ORDER BY {$idField}")->fetchAll());
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertSame(2, $this->countTableRows('content_sources_groups'));
+        $screenshot = $this->sourceFilesPath . '/1/s1_alpha.png';
+        $this->assertFileExists($screenshot);
+        $this->assertSame('old screenshot', file_get_contents($screenshot));
+        $this->assertStringNotContainsString('successfully', $tester->getDisplay());
+    }
+
+    public function testSourceUpdateSupportsAliasesWhenClearingOptionalFields(): void
+    {
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--custom1' => '',
+            '--custom-file1' => '',
+            '--format' => 'json',
+            '--fields' => 'id,custom_1,custom_file_1,comments,subscribers,tags,date,added_date',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"custom_1": ""', $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"custom_file_1": ""', $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"tags": "Existing Tag"', $this->sourceTester->getDisplay());
+    }
+
+    public function testSourceGroupUpdateSupportsEmptyDetailAlias(): void
+    {
+        $exitCode = $this->groupTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--custom1' => '',
+            '--format' => 'json',
+            '--fields' => 'id,custom_1,content_sources,date,added_date',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->groupTester->getDisplay());
+        $this->assertStringContainsString('"custom_1": ""', $this->groupTester->getDisplay());
+    }
+
+    public function testSourceCreateKeepsNativeColumnsAndNewDetailAliasesSelectable(): void
+    {
+        $this->db->exec('ALTER TABLE ' . TestHelper::table('content_sources') . ' ADD native_extra TEXT DEFAULT "native value"');
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'create',
+            '--title' => 'New source',
+            '--custom10' => 'New custom value',
+            '--format' => 'json',
+            '--fields' => 'id,native_extra,custom_10,tags,categories',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"native_extra": "native value"', $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"custom_10": "New custom value"', $this->sourceTester->getDisplay());
+    }
+
     public function testDeleteSourceDetachesContentAndRemovesRelations(): void
     {
         $this->sourceTester->setInputs(['yes']);
