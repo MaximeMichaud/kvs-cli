@@ -24,7 +24,9 @@ class FormatsPathTest extends TestCase
         $this->db = new \PDO('sqlite::memory:');
         $this->db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->db->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        $this->db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, server_group_id INTEGER)');
+        $this->db->exec('CREATE TABLE ktvs_videos (
+            video_id INTEGER, server_group_id INTEGER, format_video_group_id INTEGER DEFAULT 1
+        )');
         $this->db->exec('CREATE TABLE ktvs_admin_servers (
             server_id INTEGER,
             group_id INTEGER,

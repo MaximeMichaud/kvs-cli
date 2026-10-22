@@ -225,7 +225,7 @@ HELP
         }
 
         // Get configured formats from database
-        $configuredFormats = $this->getFormatsFromDatabase();
+        $configuredFormats = $this->getFormatsFromDatabase(false, $videoId);
 
         if ($configuredFormats === []) {
             if ($this->shouldUseFormattedRows($input)) {
@@ -233,8 +233,8 @@ HELP
                 return self::FAILURE;
             }
 
-            $this->io()->warning('No formats configured in database');
-            $this->io()->text('Cannot check formats without KVS format configuration.');
+            $this->io()->warning('No formats found for this video\'s assigned format group');
+            $this->io()->text('Cannot check formats without a video record and an assigned format group.');
             $this->io()->text('Use "kvs video:formats list <video_id>" to see actual files.');
             return self::FAILURE;
         }
@@ -398,7 +398,7 @@ HELP
      * Get video formats from KVS database
      * @return list<array<string, mixed>>
      */
-    private function getFormatsFromDatabase(bool $quiet = false): array
+    private function getFormatsFromDatabase(bool $quiet = false, ?string $videoId = null): array
     {
         $db = $this->getDatabaseConnection($quiet);
         if ($db === null) {
@@ -406,13 +406,18 @@ HELP
         }
 
         try {
-            $stmt = $db->query("
-                SELECT *
-                FROM " . $this->table('formats_videos') . "
-                ORDER BY format_video_group_id ASC, title ASC
-            ");
+            $query = 'SELECT f.* FROM ' . $this->table('formats_videos') . ' f';
+            $params = [];
+            if ($videoId !== null) {
+                $query .= ' INNER JOIN ' . $this->table('videos') . ' v'
+                    . ' ON v.format_video_group_id = f.format_video_group_id'
+                    . ' WHERE v.video_id = :video_id AND v.format_video_group_id > 0';
+                $params['video_id'] = $videoId;
+            }
+            $query .= ' ORDER BY f.format_video_group_id ASC, f.title ASC';
+            $stmt = $db->prepare($query);
 
-            if ($stmt === false) {
+            if ($stmt === false || !$stmt->execute($params)) {
                 return [];
             }
 
