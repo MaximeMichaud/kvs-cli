@@ -113,7 +113,12 @@ class ConfigCommand extends BaseCommand
         }
 
         if ($this->getBoolOption($input, 'json')) {
-            $this->io()->writeln((string) json_encode([$key => $value]), OutputInterface::OUTPUT_RAW);
+            $json = json_encode([$key => $value]);
+            if ($json === false) {
+                $this->io()->error('Failed to encode configuration as JSON: ' . json_last_error_msg());
+                return self::FAILURE;
+            }
+            $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
         } else {
             $this->io()->writeln("<info>$key</info> = $value");
         }
@@ -197,7 +202,12 @@ class ConfigCommand extends BaseCommand
                     }
                 }
             }
-            $this->io()->writeln((string) json_encode($configs, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
+            $json = json_encode($configs, JSON_PRETTY_PRINT);
+            if ($json === false) {
+                $this->io()->error('Failed to encode configuration as JSON: ' . json_last_error_msg());
+                return self::FAILURE;
+            }
+            $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 

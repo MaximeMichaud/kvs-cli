@@ -539,6 +539,21 @@ PHP);
     #[DataProvider('directCheckPaths')]
     public function testDirectJsonPreservesDiagnosticToolPath(string $filename, bool $decorated): void
     {
+        [$tester, $tool] = $this->createDiagnosticExportFixture($filename);
+        $tester->execute(['--json' => true, '--skip-online-checks' => true], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($tool, $data['results']['tools']['tools']['ffmpeg']['path']);
+        $this->assertSame('skip', $data['results']['internet']['status']);
+        $this->assertSame('skip', $data['results']['end_of_life']['status']);
+        $this->assertSame('not_configured', $data['results']['memcached']['status']);
+    }
+
+    /** @return array{CommandTester, string} */
+    private function createDiagnosticExportFixture(string $filename): array
+    {
         $tool = $this->tempDir . '/' . $filename;
         file_put_contents($tool, "#!/bin/sh\nprintf '%s\\n' 'ffmpeg version 1.0' 'libx264 aac libavfilter webp avif'\n");
         chmod($tool, 0755);
@@ -574,14 +589,40 @@ PHP);
             }
         };
         $tester = new CommandTester($command);
+        return [$tester, $tool];
+    }
+
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function jsonEncodingDiagnosticCases(): iterable
+    {
+        foreach ([false, true] as $valid) {
+            foreach ([false, true] as $decorated) {
+                yield (int) $valid . ' ' . (int) $decorated => [$valid, $decorated];
+            }
+        }
+    }
+
+    #[DataProvider('jsonEncodingDiagnosticCases')]
+    public function testJsonEncodingCheckReportsTheEncodingFailure(bool $valid, bool $decorated): void
+    {
+        $filename = $valid ? 'synthetic-tool-é' : "synthetic-tool-\xff";
+        [$tester, $tool] = $this->createDiagnosticExportFixture($filename);
+        $contents = file_get_contents($tool);
         $tester->execute(['--json' => true, '--skip-online-checks' => true], ['decorated' => $decorated]);
-        $text = $tester->getDisplay();
-        $this->assertSame(1, $tester->getStatusCode(), $text);
-        $this->assertJson($text);
-        $data = json_decode($text, true);
-        $this->assertSame($tool, $data['results']['tools']['tools']['ffmpeg']['path']);
-        $this->assertSame('skip', $data['results']['internet']['status']);
-        $this->assertSame('skip', $data['results']['end_of_life']['status']);
-        $this->assertSame('not_configured', $data['results']['memcached']['status']);
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), 'The fixture intentionally has no database connection.');
+        $this->assertSame($contents, file_get_contents($tool));
+        if ($valid) {
+            $this->assertJson($display);
+            $data = json_decode($display, true);
+            $this->assertSame($tool, $data['results']['tools']['tools']['ffmpeg']['path']);
+            $this->assertSame('skip', $data['results']['internet']['status']);
+        } else {
+            $this->assertStringContainsString('Failed to encode diagnostic results as JSON:', $display);
+            $this->assertStringContainsString('Malformed UTF-8', $display);
+            $this->assertStringNotContainsString($tool, $display);
+            $this->assertStringNotContainsString("\xff", $display);
+        }
     }
 }

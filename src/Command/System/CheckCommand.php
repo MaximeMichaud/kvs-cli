@@ -138,9 +138,11 @@ HELP
                     'warnings' => $this->warnings,
                 ],
             ], Constants::JSON_FLAGS);
-            if ($json !== false) {
-                $output->writeln($json, OutputInterface::OUTPUT_RAW);
+            if ($json === false) {
+                $this->io()->error('Failed to encode diagnostic results as JSON: ' . json_last_error_msg());
+                return self::FAILURE;
             }
+            $output->writeln($json, OutputInterface::OUTPUT_RAW);
         } else {
             $this->io()->newLine();
             $this->io()->writeln(str_repeat('─', 42));

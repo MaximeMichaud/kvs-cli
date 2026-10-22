@@ -66,10 +66,12 @@ HELP
         $info = $this->gatherInfo();
 
         if ($format === 'json') {
-            $output->writeln(
-                (string) json_encode($info, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-                OutputInterface::OUTPUT_RAW
-            );
+            $json = json_encode($info, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                $io->error('Failed to encode CLI information as JSON: ' . json_last_error_msg());
+                return Command::FAILURE;
+            }
+            $output->writeln($json, OutputInterface::OUTPUT_RAW);
         } else {
             $this->displayList($io, $info);
         }

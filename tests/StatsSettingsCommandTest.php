@@ -564,4 +564,40 @@ PHP
             }
         }
     }
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function jsonEncodingStatsCases(): iterable
+    {
+        foreach ([false, true] as $valid) {
+            foreach ([false, true] as $decorated) {
+                yield (int) $valid . ' ' . (int) $decorated => [$valid, $decorated];
+            }
+        }
+    }
+
+    #[DataProvider('jsonEncodingStatsCases')]
+    public function testJsonEncodingStatsFailsExplicitlyWithoutChangingSettings(bool $valid, bool $decorated): void
+    {
+        $payload = $valid ? 'Synthetic é <info>literal</info>' : "Synthetic private bytes \xff";
+        $file = $this->kvsPath . '/admin/data/system/stats_params.dat';
+        $contents = serialize(['search_stop_symbols' => $payload]);
+        file_put_contents($file, $contents);
+        $this->tester->execute(
+            ['action' => 'show', '--format' => 'json', '--force' => true],
+            ['decorated' => $decorated]
+        );
+        $display = $this->tester->getDisplay();
+        $this->assertSame($contents, file_get_contents($file));
+        if ($valid) {
+            $this->assertSame(0, $this->tester->getStatusCode(), $display);
+            $this->assertJson($display);
+            $this->assertSame($payload, json_decode($display, true)['search_stop_symbols']);
+        } else {
+            $this->assertSame(1, $this->tester->getStatusCode());
+            $this->assertStringContainsString('Failed to encode statistics settings as JSON:', $display);
+            $this->assertStringContainsString('Malformed UTF-8', $display);
+            $this->assertStringNotContainsString('Synthetic private bytes', $display);
+            $this->assertStringNotContainsString("\xff", $display);
+        }
+    }
 }

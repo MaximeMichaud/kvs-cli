@@ -1668,4 +1668,54 @@ PHP_SOURCE;
         $this->assertJson($text);
         $this->assertSame($payload, json_decode($text, true)['main.project_name']);
     }
+
+    /** @return iterable<string, array{string, string, bool, bool, bool}> */
+    public static function jsonEncodingConfigurationCases(): iterable
+    {
+        foreach (['get', 'list'] as $action) {
+            foreach ([false, true] as $valid) {
+                foreach ([false, true] as $decorated) {
+                    yield "$action public " . (int) $valid . ' ' . (int) $decorated
+                        => [$action, 'project_name', $valid, $decorated, false];
+                    foreach ([false, true] as $showProtected) {
+                        yield "$action protected " . (int) $valid . ' ' . (int) $decorated . ' ' . (int) $showProtected
+                            => [$action, 'smtp_password', $valid, $decorated, $showProtected];
+                    }
+                }
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('jsonEncodingConfigurationCases')]
+    public function testJsonEncodingConfigurationFailsExplicitlyWithoutChangingData(
+        string $action,
+        string $key,
+        bool $valid,
+        bool $decorated,
+        bool $showProtected
+    ): void {
+        $payload = $valid ? 'Synthetic é <info>literal</info>' : "Synthetic private bytes \xff";
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $contents = '<?php $config = [' . var_export($key, true) . ' => ' . var_export($payload, true) . '];';
+        file_put_contents($file, $contents);
+        $arguments = ['action' => $action, '--json' => true, '--show-protected' => $showProtected];
+        $arguments += $action === 'get' ? ['key' => 'main.' . $key] : ['--file' => 'main'];
+        $this->tester->execute($arguments, ['decorated' => $decorated]);
+        $display = $this->tester->getDisplay();
+        $masked = $key === 'smtp_password' && !$showProtected;
+        $this->assertSame($contents, file_get_contents($file));
+        if ($valid || $masked) {
+            $this->assertSame(0, $this->tester->getStatusCode(), $display);
+            $this->assertJson($display);
+            $this->assertSame($masked ? '**********' : $payload, json_decode($display, true)['main.' . $key]);
+        } else {
+            $this->assertSame(1, $this->tester->getStatusCode());
+            $this->assertStringContainsString('Failed to encode configuration as JSON:', $display);
+            $this->assertStringContainsString('Malformed UTF-8', $display);
+        }
+        if (!$valid || $masked) {
+            $this->assertStringNotContainsString('Synthetic private bytes', $display);
+            $this->assertStringNotContainsString("\xff", $display);
+        }
+    }
 }

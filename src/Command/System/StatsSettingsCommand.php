@@ -423,7 +423,12 @@ HELP
         $params = $this->loadStatsParams($format !== 'json');
 
         if ($format === 'json') {
-            $this->io()->writeln((string) json_encode($params, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
+            $json = json_encode($params, JSON_PRETTY_PRINT);
+            if ($json === false) {
+                $this->io()->error('Failed to encode statistics settings as JSON: ' . json_last_error_msg());
+                return self::FAILURE;
+            }
+            $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 
