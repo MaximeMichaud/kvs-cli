@@ -1006,9 +1006,6 @@ SH
     public static function directBackupPayloads(): iterable
     {
         foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
-            if ($format === 'csv' && str_starts_with($name, 'backslash-quote')) {
-                continue;
-            }
             if ($format !== 'field' && $decorated) {
                 yield $name => [str_replace('/', '_', $payload) . '.gz', $format];
             }

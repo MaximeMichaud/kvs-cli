@@ -643,9 +643,9 @@ HELP
             throw new \RuntimeException('Failed to open temporary CSV stream');
         }
 
-        fputcsv($stream, ['file', 'size', 'created'], ',', '"', '\\');
+        fputcsv($stream, ['file', 'size', 'created'], ',', '"', '');
         foreach ($backups as $backup) {
-            fputcsv($stream, [$backup['file'], $backup['size'], $backup['created']], ',', '"', '\\');
+            fputcsv($stream, [$backup['file'], $backup['size'], $backup['created']], ',', '"', '');
         }
 
         rewind($stream);
