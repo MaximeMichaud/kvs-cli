@@ -3,6 +3,11 @@
 namespace KVS\CLI\Command;
 
 use KVS\CLI\Constants;
+use KVS\CLI\Config\PhpConfigParser;
+use PhpParser\Error as PhpParserError;
+use PhpParser\Node;
+use PhpParser\NodeFinder;
+use PhpParser\ParserFactory;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -450,17 +455,17 @@ class ConfigCommand extends BaseCommand
         $content = (string) file_get_contents($file);
         $configs = [];
 
-        // Decode the single-quoted literals written by setDatabaseConfig().
-        $pattern = <<<'REGEX'
-/define\(\s*'DB_([^']+)',\s*'((?:\\.|[^'\\])*)'\s*\)/s
-REGEX;
-        if (preg_match_all($pattern, $content, $matches) > 0) {
-            foreach ($matches[1] as $i => $key) {
-                $configs[strtolower($key)] = (string) preg_replace_callback(
-                    '/\\\\([\\\\\'])/',
-                    static fn (array $match): string => $match[1],
-                    $matches[2][$i]
-                );
+        // Keep the single-quoted literal forms supported by setDatabaseConfig().
+        foreach (PhpConfigParser::getDefines($content) as $define) {
+            $name = $define['name'];
+            $value = $define['value'];
+            if (
+                str_starts_with($name->value, 'DB_') && strlen($name->value) > 3
+                && $name->getAttribute('kind') === Node\Scalar\String_::KIND_SINGLE_QUOTED
+                && $value instanceof Node\Scalar\String_
+                && $value->getAttribute('kind') === Node\Scalar\String_::KIND_SINGLE_QUOTED
+            ) {
+                $configs[strtolower(substr($name->value, 3))] = $value->value;
             }
         }
 
@@ -663,16 +668,31 @@ REGEX;
             return self::FAILURE;
         }
         $defineKey = 'DB_' . strtoupper($key);
-        $pattern = "/define\\('" . preg_quote($defineKey, '/') . "',\\s*'(?:\\\\.|[^'\\\\])*'\\)/s";
-        $count = 0;
-        $newContent = preg_replace_callback(
-            $pattern,
-            static fn (): string => "define('" . $defineKey . "'," . var_export($value, true) . ')',
+        $newContent = $this->replaceConfigurationExpressions(
             $content,
-            -1,
-            $count
+            static function (Node $node) use ($defineKey, $value): ?string {
+                if (
+                    !$node instanceof Node\Expr\FuncCall || !$node->name instanceof Node\Name
+                    || $node->name->toString() !== 'define' || $node->name->isRelative()
+                    || count($node->args) !== 2
+                ) {
+                    return null;
+                }
+                [$name, $argument] = $node->args;
+                if (
+                    !$name instanceof Node\Arg || !$argument instanceof Node\Arg
+                    || $name->name !== null || $argument->name !== null || $name->unpack || $argument->unpack
+                    || !$name->value instanceof Node\Scalar\String_ || $name->value->value !== $defineKey
+                    || !$argument->value instanceof Node\Scalar\String_
+                    || $name->value->getAttribute('kind') !== Node\Scalar\String_::KIND_SINGLE_QUOTED
+                    || $argument->value->getAttribute('kind') !== Node\Scalar\String_::KIND_SINGLE_QUOTED
+                ) {
+                    return null;
+                }
+                return $node->name->toCodeString() . '(' . var_export($defineKey, true) . ',' . var_export($value, true) . ')';
+            }
         );
-        if ($newContent === null || $count === 0) {
+        if ($newContent === null) {
             $this->io()->error("Configuration key not found or unsupported: db.$key");
             return self::FAILURE;
         }
@@ -716,21 +736,22 @@ REGEX;
             'null' => null,
             default => is_numeric($value) ? 0 + $value : $value,
         };
-        // A quoted value may contain semicolons, quotes, or escaped backslashes.
-        $expression = <<<'REGEX'
-(?:'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|[^;'\"])*
-REGEX;
-        $pattern = '/\$config\[\s*([\'\"])' . preg_quote($key, '/') . '\1\s*\]\s*=\s*' . $expression . ';/s';
-        $count = 0;
-        $content = preg_replace_callback(
-            $pattern,
-            static fn (): string => "\$config['" . $key . "'] = " . var_export($literal, true) . ';',
+        $content = $this->replaceConfigurationExpressions(
             $content,
-            -1,
-            $count
+            static function (Node $node) use ($key, $literal): ?string {
+                if (
+                    !($node instanceof Node\Expr\Assign || $node instanceof Node\Expr\AssignRef)
+                    || !$node->var instanceof Node\Expr\ArrayDimFetch
+                    || !$node->var->var instanceof Node\Expr\Variable || $node->var->var->name !== 'config'
+                    || !$node->var->dim instanceof Node\Scalar\String_ || $node->var->dim->value !== $key
+                ) {
+                    return null;
+                }
+                return '$config[' . var_export($key, true) . '] = ' . var_export($literal, true);
+            }
         );
-        if ($content === null || $count === 0) {
-            $this->io()->error("Configuration key not found: main.$key");
+        if ($content === null) {
+            $this->io()->error("Configuration key not found or unsupported: main.$key");
             return self::FAILURE;
         }
         if (!$this->writeConfigFile($file, $content)) {
@@ -739,6 +760,47 @@ REGEX;
 
         $this->io()->success("Configuration updated: main.$key = $value");
         return self::SUCCESS;
+    }
+
+    /**
+     * @param callable(Node): ?string $replace
+     */
+    private function replaceConfigurationExpressions(string $content, callable $replace): ?string
+    {
+        try {
+            $statements = (new ParserFactory())->createForHostVersion()->parse($content) ?? [];
+        } catch (PhpParserError $error) {
+            $this->io()->error('Unable to parse configuration: ' . $error->getMessage());
+            return null;
+        }
+        $nodes = (new NodeFinder())->find(
+            $statements,
+            static fn (Node $node): bool => $node instanceof Node\Expr\Assign
+                || $node instanceof Node\Expr\AssignRef || $node instanceof Node\Expr\FuncCall
+        );
+        usort($nodes, static fn (Node $left, Node $right): int => $left->getStartFilePos() <=> $right->getStartFilePos());
+        $replacements = [];
+        $lastEnd = -1;
+        foreach ($nodes as $node) {
+            if ($node->getStartFilePos() <= $lastEnd) {
+                continue;
+            }
+            $replacement = $replace($node);
+            if ($replacement === null) {
+                continue;
+            }
+            $start = $node->getStartFilePos();
+            $lastEnd = $node->getEndFilePos();
+            $replacements[] = [$start, $lastEnd - $start + 1, $replacement];
+        }
+        if ($replacements === []) {
+            return null;
+        }
+        // Replace from the end so earlier source offsets remain valid; outer matches cover nested ones.
+        foreach (array_reverse($replacements) as [$start, $length, $replacement]) {
+            $content = substr_replace($content, $replacement, $start, $length);
+        }
+        return $content;
     }
 
     private function getConfigFile(string $category): ?string

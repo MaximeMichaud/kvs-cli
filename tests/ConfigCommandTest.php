@@ -1188,4 +1188,456 @@ $config["ahv"] = "secret-ahv";
             chmod($directory, 0755);
         }
     }
+
+    /**
+     * @dataProvider nonAssignmentConfigurationTextProvider
+     */
+    public function testConfigSetRejectsTextThatIsNotAnAssignment(string $category, string $example): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $initializer = $category === 'db'
+            ? "const DB_CHARSET = 'Synthetic original';\n"
+            : "\$config = ['project_name' => 'Synthetic original'];\n";
+        $before = "<?php\n" . $initializer . $example . "\n";
+        file_put_contents($file, $before);
+        $this->assertSame('Synthetic original', $this->readSyntheticConfigurationValue($file, $category));
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($before, file_get_contents($file));
+        $this->assertSame('Synthetic original', $this->readSyntheticConfigurationValue($file, $category));
+        $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+    }
+
+    /**
+     * @dataProvider nonAssignmentConfigurationTextProvider
+     */
+    public function testConfigSetPreservesExamplesWhenUpdatingRealAssignments(string $category, string $example): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $assignment = $category === 'db'
+            ? "define('DB_CHARSET', 'Synthetic original');\n"
+            : "\$config['project_name'] = 'Synthetic original';\n";
+        // Initialize before comparisons; commented/string examples stay independent of the real assignment.
+        file_put_contents($file, "<?php\n" . $assignment . $example . "\n");
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($example, file_get_contents($file));
+        $this->assertSame('Synthetic replacement', $this->readSyntheticConfigurationValue($file, $category));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function nonAssignmentConfigurationTextProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            $statement = $category === 'db'
+                ? "define('DB_CHARSET', 'Synthetic example');"
+                : "\$config['project_name'] = 'Synthetic example';";
+            yield $category . ' line comment' => [$category, '// ' . $statement];
+            yield $category . ' block comment' => [$category, '/* ' . $statement . ' */'];
+            yield $category . ' doc comment' => [$category, '/** ' . $statement . ' */'];
+            yield $category . ' quoted example' => [
+                $category,
+                '$example = "' . str_replace('$', '\\$', $statement) . '";',
+            ];
+            yield $category . ' nowdoc example' => [$category, '$example = <<<' . "'EXAMPLE'\n" . $statement . "\nEXAMPLE;"];
+        }
+        yield 'main equality comparison' => ['main', "\$config['project_name'] == 'Synthetic original';"];
+        yield 'main strict comparison' => ['main', "\$config['project_name'] === 'Synthetic original';"];
+    }
+
+    /**
+     * @dataProvider literalConfigurationValueProvider
+     */
+    public function testConfigSetPreservesExamplesWhenWritingLiteralValues(string $value, mixed $expected): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $example = <<<'PHP'
+$example = <<<'EXAMPLE'
+$config['project_name'] = 'Keep this example';
+EXAMPLE;
+PHP;
+        file_put_contents($file, "<?php\n" . $example . "\n\$config['project_name'] = 'Synthetic original';\n");
+
+        $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => $value]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($example, file_get_contents($file));
+        $this->assertSame($expected, $this->readSyntheticConfigurationValue($file, 'main'));
+    }
+
+    /**
+     * @dataProvider executableConfigurationAssignmentProvider
+     */
+    public function testConfigSetPreservesExistingExecutableAssignmentForms(string $category, string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $sentinel = "\$sentinel = 'Keep unrelated trailing text';\n";
+        file_put_contents($file, "<?php\n" . $body . "\n" . $sentinel);
+        $this->assertSame('Synthetic original', $this->readSyntheticConfigurationValue($file, $category));
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($sentinel, file_get_contents($file));
+        $this->assertSame('Synthetic replacement', $this->readSyntheticConfigurationValue($file, $category));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function executableConfigurationAssignmentProvider(): iterable
+    {
+        yield 'main single assignment' => ['main', "$" . "config['project_name'] = 'Synthetic original';"];
+        yield 'main consecutive assignments' => ['main', <<<'PHP'
+$config['project_name'] = 'Synthetic first';
+$config['project_name'] = 'Synthetic original';
+PHP];
+        foreach (['true', 'false'] as $condition) {
+            yield 'main conditional ' . $condition => ['main', 'if (' . $condition . ') {' . <<<'PHP'
+$config['project_name'] = 'Synthetic original';
+} else {
+$config['project_name'] = 'Synthetic original';
+}
+PHP];
+            yield 'db conditional ' . $condition => ['db', 'if (' . $condition . ') {' . <<<'PHP'
+define('DB_CHARSET', 'Synthetic original');
+} else {
+define('DB_CHARSET', 'Synthetic original');
+}
+PHP];
+        }
+        yield 'main nested same-key assignment' => ['main', <<<'PHP'
+$config['project_name'] = $config['project_name'] = 'Synthetic original';
+PHP];
+        yield 'main called function using global' => ['main', <<<'PHP'
+function syntheticGlobalConfiguration(): void {
+    global $config;
+    $config['project_name'] = 'Synthetic original';
+}
+syntheticGlobalConfiguration();
+PHP];
+        yield 'main called reference closure' => ['main', <<<'PHP'
+$config = [];
+$initialize = static function () use (&$config): void {
+    $config['project_name'] = 'Synthetic original';
+};
+$initialize();
+PHP];
+        yield 'main called function returning configuration' => ['main', <<<'PHP'
+function syntheticReturnedConfiguration(): array {
+    $config['project_name'] = 'Synthetic original';
+    return $config;
+}
+$config = syntheticReturnedConfiguration();
+PHP];
+        yield 'main called function with reference parameter' => ['main', <<<'PHP'
+function syntheticReferenceConfiguration(array &$config): void {
+    $config['project_name'] = 'Synthetic original';
+}
+$config = [];
+syntheticReferenceConfiguration($config);
+PHP];
+        yield 'db single define' => ['db', "define('DB_CHARSET', 'Synthetic original');"];
+        yield 'db repeated guarded defines' => ['db', <<<'PHP'
+if (!defined('DB_CHARSET')) { define('DB_CHARSET', 'Synthetic original'); }
+if (!defined('DB_CHARSET')) { define('DB_CHARSET', 'Synthetic alternate'); }
+PHP];
+        yield 'db called function define' => ['db', <<<'PHP'
+function syntheticDatabaseConfiguration(): void {
+    define('DB_CHARSET', 'Synthetic original');
+}
+syntheticDatabaseConfiguration();
+PHP];
+        yield 'db called closure define' => ['db', <<<'PHP'
+$initialize = static function (): void {
+    define('DB_CHARSET', 'Synthetic original');
+};
+$initialize();
+PHP];
+    }
+
+    /**
+     * @dataProvider malformedConfigurationProvider
+     */
+    public function testConfigSetRejectsMalformedPhpWithoutChangingTheFile(string $category, string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $before = "<?php\n" . $body . "\nif (\n";
+        file_put_contents($file, $before);
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($before, file_get_contents($file));
+        $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function malformedConfigurationProvider(): iterable
+    {
+        yield 'main' => ['main', "\$config['project_name'] = 'Synthetic original';"];
+        yield 'db' => ['db', "define('DB_CHARSET', 'Synthetic original');"];
+    }
+
+    private function readSyntheticConfigurationValue(string $file, string $category): mixed
+    {
+        $code = <<<'PHP'
+$config = [];
+include $argv[1];
+echo json_encode($argv[2] === 'db' ? constant('DB_CHARSET') : $config['project_name'], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+PHP;
+        $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $code, $file, $category]);
+        $this->assertSame(0, $process->run(), $process->getErrorOutput() . $process->getOutput());
+        $this->assertSame('', $process->getErrorOutput());
+        return json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @dataProvider unsupportedDatabaseDefinitionProvider
+     */
+    public function testConfigSetDatabaseDoesNotExpandUnsupportedDefinitionForms(string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $before = "<?php\n" . $body . "\n";
+        file_put_contents($file, $before);
+        $this->tester->execute(['action' => 'set', 'key' => 'db.charset', 'value' => 'Synthetic replacement']);
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($before, file_get_contents($file));
+        $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unsupportedDatabaseDefinitionProvider(): iterable
+    {
+        yield 'double-quoted name' => ['define("DB_CHARSET", \'Synthetic original\');'];
+        yield 'double-quoted value' => ['define(\'DB_CHARSET\', "Synthetic original");'];
+        yield 'environment expression' => ["define('DB_CHARSET', getenv('SYNTHETIC_CHARSET') ?: 'Synthetic original');"];
+        yield 'concatenated expression' => ["define('DB_CHARSET', 'Synthetic ' . 'original');"];
+        yield 'constant declaration' => ["const DB_CHARSET = 'Synthetic original';"];
+        yield 'third argument' => ["define('DB_CHARSET', 'Synthetic original', false);"];
+        yield 'named arguments' => ["define(constant_name: 'DB_CHARSET', value: 'Synthetic original');"];
+        yield 'nowdoc value' => [<<<'PHP'
+define('DB_CHARSET', <<<'VALUE'
+Synthetic original
+VALUE
+);
+PHP];
+    }
+
+    public function testConfigSetDatabaseKeepsGetConsistentWithATrailingComment(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        file_put_contents(
+            $file,
+            "define('DB_CHARSET', 'Synthetic original');\n// define('DB_CHARSET', 'Synthetic example');\n",
+            FILE_APPEND
+        );
+        $this->tester->execute(['action' => 'set', 'key' => 'db.charset', 'value' => 'Synthetic replacement']);
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $get = new CommandTester($this->command);
+        $get->execute(['action' => 'get', 'key' => 'db.charset', '--json' => true]);
+        $this->assertSame(0, $get->getStatusCode(), $get->getDisplay());
+        $this->assertSame(
+            ['db.charset' => 'Synthetic replacement'],
+            json_decode($get->getDisplay(), true, 512, JSON_THROW_ON_ERROR)
+        );
+    }
+
+    public function testConfigSetTestsUpdatedDatabaseConfigurationWhenACommentPrecedesTheDefinition(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $source = file_get_contents($file);
+        $this->assertIsString($source);
+        file_put_contents($file, str_replace(
+            "define('DB_HOST',",
+            "// define('DB_HOST', '127.0.0.2');\ndefine('DB_HOST',",
+            $source
+        ));
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $command = new class ($configuration) extends ConfigCommand {
+            /** @var array<string, string> */
+            public array $observedConfiguration = [];
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                $this->observedConfiguration = $this->config->getDatabaseConfig();
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute(['action' => 'set', 'key' => 'db.host', 'value' => '127.0.0.3']);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('127.0.0.3', $command->observedConfiguration['host'] ?? null);
+    }
+
+    /**
+     * @dataProvider listedDatabaseDefinitionProvider
+     */
+    public function testConfigDatabaseGetAndListSelectSyntacticDefinitions(string $body, ?string $expected): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        file_put_contents($file, "<?php\n" . $body . "\n");
+        foreach (['get', 'list'] as $action) {
+            $tester = new CommandTester($this->command);
+            $arguments = ['action' => $action, '--json' => true];
+            $arguments += $action === 'get' ? ['key' => 'db.charset'] : ['--file' => 'db'];
+            $tester->execute($arguments);
+            if ($expected === null && $action === 'get') {
+                $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            } else {
+                $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+                $values = json_decode($tester->getDisplay(), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertSame($expected, $values['db.charset'] ?? null);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, ?string}>
+     */
+    public static function listedDatabaseDefinitionProvider(): iterable
+    {
+        $actual = "define('DB_CHARSET', 'Synthetic actual');";
+        $fake = "define('DB_CHARSET', 'Synthetic example');";
+        yield 'literal control' => [$actual, 'Synthetic actual'];
+        yield 'line comment' => [$actual . "\n// " . $fake, 'Synthetic actual'];
+        yield 'block comment' => [$actual . "\n/* " . $fake . ' */', 'Synthetic actual'];
+        yield 'documentation comment' => [$actual . "\n/** " . $fake . ' */', 'Synthetic actual'];
+        yield 'quoted example' => [$actual . "\n" . '$example = "' . $fake . '";', 'Synthetic actual'];
+        yield 'nowdoc example' => [$actual . "\n\$example = <<<'EXAMPLE'\n" . $fake . "\nEXAMPLE;", 'Synthetic actual'];
+        yield 'comment inside a real call' => ["define('DB_CHARSET', /* $fake */ 'Synthetic actual');", 'Synthetic actual'];
+        yield 'method call' => [$actual . "\n\$object->" . $fake, 'Synthetic actual'];
+        yield 'static call' => [$actual . "\nFixture::" . $fake, 'Synthetic actual'];
+        yield 'foreign qualified function' => [$actual . "\nFixture\\" . $fake, 'Synthetic actual'];
+        yield 'relative function' => [$actual . "\nnamespace\\" . $fake, 'Synthetic actual'];
+        yield 'fully qualified define' => ['\\' . $actual, 'Synthetic actual'];
+        yield 'simple define in a namespace' => ['namespace Fixture; ' . $actual, 'Synthetic actual'];
+        yield 'fully qualified define in a namespace' => ['namespace Fixture; \\' . $actual, 'Synthetic actual'];
+        yield 'function body retains syntactic selection' => ['function fixture() { ' . $actual . ' }', 'Synthetic actual'];
+        yield 'last literal wins' => [$actual . "\n" . $fake, 'Synthetic example'];
+        yield 'only a comment' => ['// ' . $fake, null];
+        yield 'double quoted key remains unsupported' => ['define("DB_CHARSET", \'Synthetic example\');', null];
+        yield 'double quoted value remains unsupported' => ['define(\'DB_CHARSET\', "Synthetic example");', null];
+        yield 'environment expression remains unsupported' => [
+            "define('DB_CHARSET', getenv('KVS_READER_SYNTHETIC_VALUE') ?: 'Synthetic example');", null,
+        ];
+        yield 'third argument remains unsupported' => ["define('DB_CHARSET', 'Synthetic example', false);", null];
+        yield 'named arguments remain unsupported' => ["define(constant_name: 'DB_CHARSET', value: 'Synthetic example');", null];
+        yield 'concatenation remains unsupported' => ["define('DB_CHARSET', 'Synthetic ' . 'example');", null];
+    }
+
+    public function testConfigDatabaseReaderDecodesLiteralBytes(): void
+    {
+        $expected = "Synthetic apostrophe's \\path; \"quote\"\nline";
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup_db.php',
+            "<?php define('DB_CHARSET', " . var_export($expected, true) . ');'
+        );
+        // Isolate extraction from the separate Console output formatting contract.
+        $reader = new \ReflectionMethod(ConfigCommand::class, 'getDatabaseConfigs');
+        $this->assertSame(['charset' => $expected], $reader->invoke($this->command));
+    }
+
+    public function testConfigSetReloadsEscapedDatabaseValueWithoutExecutingTheFile(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $marker = $this->tempDir . '/must-not-exist';
+        $expected = "Synthetic apostrophe's \\path; \"quote\"";
+        file_put_contents(
+            $file,
+            "<?php define('DB_PASS', 'Synthetic original');\nfile_put_contents("
+                . var_export($marker, true) . ", 'unexpected');"
+        );
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $command = new class ($configuration) extends ConfigCommand {
+            /** @var array<string, string> */
+            public array $observedConfiguration = [];
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                $this->observedConfiguration = $this->config->getDatabaseConfig();
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute(['action' => 'set', 'key' => 'db.pass', 'value' => $expected]);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($expected, $command->observedConfiguration['password'] ?? null);
+        $this->assertFileDoesNotExist($marker);
+    }
+
+    public function testConfigSetPreservesPreviousReferenceAssignmentReplacement(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $body = <<<'PHP_SOURCE'
+<?php
+$source = 'Synthetic original';
+$config['project_name'] =& $source;
+$source = 'Synthetic source changed';
+$config['source_after'] = $source;
+PHP_SOURCE;
+        file_put_contents($file, $body);
+        $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => 'Synthetic replacement']);
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $actual = $this->loadWrittenMainConfig();
+        $this->assertSame('Synthetic replacement', $actual['project_name']);
+        $this->assertSame('Synthetic source changed', $actual['source_after']);
+    }
+
+    /**
+     * @dataProvider recoverableDatabaseSyntaxErrorProvider
+     */
+    public function testConfigEditCanRepairRecoverableDatabaseSyntaxErrors(string $suffix): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $valid = "<?php define('DB_HOST', '127.0.0.1');";
+        file_put_contents($file, $valid . "\n" . $suffix);
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $this->assertTrue($configuration->isKvsInstalled());
+        $editor = $this->tempDir . '/repair-fixture';
+        file_put_contents($editor, '#!' . PHP_BINARY . "\n<?php file_put_contents(\$argv[1], " . var_export($valid, true) . ');');
+        chmod($editor, 0755);
+        $previous = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+        try {
+            $tester = new CommandTester(new ConfigCommand($configuration));
+            $tester->execute(['action' => 'edit', '--file' => 'db']);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($valid, file_get_contents($file));
+        } finally {
+            $previous === false ? putenv('EDITOR') : putenv('EDITOR=' . $previous);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function recoverableDatabaseSyntaxErrorProvider(): iterable
+    {
+        yield 'incomplete condition' => ['if ('];
+        yield 'invalid statement' => ['invalid syntax;'];
+    }
 }

@@ -52,6 +52,13 @@ kvs config set <key> <value>
 | -------- | ------------- |
 | `--backup` | Create backup before changes |
 
+Main settings must use `$config['key'] = ...` assignments. Database settings must
+use `define('DB_KEY', 'value')` with single-quoted literals. The command updates
+matching PHP instructions, preserving examples in comments and strings as well
+as comparisons. It updates all matching assignments, including conditional
+branches, without evaluating their conditions. If no supported instruction is
+found, it fails without changing the file.
+
 ### edit
 
 Open configuration file in editor.

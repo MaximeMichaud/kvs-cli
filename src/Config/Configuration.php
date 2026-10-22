@@ -3,6 +3,7 @@
 namespace KVS\CLI\Config;
 
 use KVS\CLI\Constants;
+use PhpParser\Node;
 
 class Configuration
 {
@@ -107,10 +108,11 @@ class Configuration
                 return;
             }
 
-            $host = $this->extractDefineValue($content, 'DB_HOST');
-            $user = $this->extractDefineValue($content, 'DB_LOGIN');
-            $password = $this->extractDefineValue($content, 'DB_PASS');
-            $database = $this->extractDefineValue($content, 'DB_DEVICE');
+            $defines = PhpConfigParser::getDefines($content);
+            $host = $this->extractDefineValue($defines, 'DB_HOST');
+            $user = $this->extractDefineValue($defines, 'DB_LOGIN');
+            $password = $this->extractDefineValue($defines, 'DB_PASS');
+            $database = $this->extractDefineValue($defines, 'DB_DEVICE');
 
             if ($host !== null && $host !== '') {
                 $this->dbConfig['host'] = $host;
@@ -227,45 +229,73 @@ class Configuration
     }
 
     /**
-     * Extract value from define() statement, handling various formats:
-     * - Simple: define('KEY', 'value')
-     * - With getenv: define('KEY', getenv('VAR') ?: 'default')
+     * Preserve the historical priority: literal, getenv ?:, getenv ??, then direct getenv.
+     * The first definition within each form wins, regardless of the order of other forms.
+     *
+     * @param list<array{name: Node\Scalar\String_, value: Node\Expr}> $defines
      */
-    private function extractDefineValue(string $content, string $key): ?string
+    private function extractDefineValue(array $defines, string $key): ?string
     {
-        $escapedKey = preg_quote($key, '/');
-
-        $result = preg_match("/define\\(['\"]" . $escapedKey . "['\"],\\s*['\"]([^'\"]*)['\"]\\)/", $content, $matches);
-        if ($result !== false && $result === 1) {
-            return $matches[1];
+        $expressions = [];
+        foreach ($defines as $define) {
+            if ($define['name']->value === $key) {
+                $expressions[] = $define['value'];
+            }
         }
 
-        $pattern2 = "/define\\(['\"]" . $escapedKey . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
-            . "\\s*\\?:\\s*['\"]([^'\"]*)['\"]\\)/";
-        if (preg_match($pattern2, $content, $matches) === 1) {
-            $envVar = $matches[1];
-            $default = $matches[2];
-            $envValue = getenv($envVar);
-            return $envValue !== false && $envValue !== '' ? $envValue : $default;
+        foreach ($expressions as $expression) {
+            $literal = PhpConfigParser::getQuotedString($expression);
+            if ($literal !== null) {
+                return $literal;
+            }
         }
-
-        $pattern3 = "/define\\(['\"]" . $escapedKey . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)"
-            . "\\s*\\?\\?\\s*['\"]([^'\"]*)['\"]\\)/";
-        if (preg_match($pattern3, $content, $matches) === 1) {
-            $envVar = $matches[1];
-            $default = $matches[2];
-            $envValue = getenv($envVar);
-            return $envValue !== false ? $envValue : $default;
+        foreach ($expressions as $expression) {
+            if (!$expression instanceof Node\Expr\Ternary || $expression->if !== null) {
+                continue;
+            }
+            $name = $this->extractEnvironmentName($expression->cond);
+            $default = PhpConfigParser::getQuotedString($expression->else);
+            if ($name !== null && $default !== null) {
+                $value = getenv($name);
+                return $value !== false && $value !== '' ? $value : $default;
+            }
         }
-
-        $result4 = preg_match("/define\\(['\"]" . $escapedKey . "['\"],\\s*getenv\\(['\"]([^'\"]+)['\"]\\)\\)/", $content, $matches);
-        if ($result4 !== false && $result4 === 1) {
-            $envVar = $matches[1];
-            $envValue = getenv($envVar);
-            return $envValue !== false ? $envValue : null;
+        foreach ($expressions as $expression) {
+            if (!$expression instanceof Node\Expr\BinaryOp\Coalesce) {
+                continue;
+            }
+            $name = $this->extractEnvironmentName($expression->left);
+            $default = PhpConfigParser::getQuotedString($expression->right);
+            if ($name !== null && $default !== null) {
+                $value = getenv($name);
+                return $value !== false ? $value : $default;
+            }
         }
-
+        foreach ($expressions as $expression) {
+            $name = $this->extractEnvironmentName($expression);
+            if ($name !== null) {
+                $value = getenv($name);
+                return $value !== false ? $value : null;
+            }
+        }
         return null;
+    }
+
+    private function extractEnvironmentName(Node\Expr $expression): ?string
+    {
+        if (
+            !$expression instanceof Node\Expr\FuncCall || !$expression->name instanceof Node\Name
+            || !$expression->name->isUnqualified() || $expression->name->toString() !== 'getenv'
+            || count($expression->args) !== 1
+        ) {
+            return null;
+        }
+        $argument = $expression->args[0];
+        if (!$argument instanceof Node\Arg || $argument->name !== null || $argument->unpack) {
+            return null;
+        }
+        $name = PhpConfigParser::getQuotedString($argument->value);
+        return $name !== '' ? $name : null;
     }
 
     private function loadProjectConfig(): void
