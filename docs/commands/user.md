@@ -90,6 +90,10 @@ kvs user stats
 The `create` and `delete` actions modify user data. `delete` uses KVS native
 cleanup and may queue associated videos and albums for background deletion.
 
+List filters and output options are not supported by these actions. They are
+rejected before prompting or changing user data. `create` does not accept an ID
+or username argument or `--yes`; `delete` accepts `--yes` to skip confirmation.
+
 ## Available Fields
 
 | Field | Aliases | Description |

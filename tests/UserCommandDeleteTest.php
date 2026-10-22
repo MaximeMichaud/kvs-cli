@@ -310,6 +310,81 @@ PHP);
         return $avatar;
     }
 
+    /**
+     * @dataProvider unsupportedDeleteInputs
+     * @param array<string, string|bool> $arguments
+     */
+    public function testDeleteRejectsUnsupportedInputsBeforeLookingUpOrCleaningUpUsers(array $arguments): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createDeleteSchema($db);
+        $db->exec("INSERT INTO ktvs_users (user_id, username, status_id) VALUES (1, 'fixture-active', 2)");
+        $command = new class (new Configuration(['path' => $this->tempDir]), $db) extends UserCommand {
+            public bool $databaseRequested = false;
+            public bool $cleanupCalled = false;
+
+            public function __construct(Configuration $config, private \PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                $this->databaseRequested = true;
+                return $this->testDb;
+            }
+
+            protected function deleteUsersWithKvs(array $userIds): void
+            {
+                $this->cleanupCalled = true;
+                foreach ($userIds as $userId) {
+                    $this->testDb->prepare('DELETE FROM ktvs_users WHERE user_id = ?')->execute([$userId]);
+                }
+            }
+        };
+        $tester = new CommandTester($command);
+
+        $tester->execute(['action' => 'delete', 'id' => '1', '--yes' => true] + $arguments);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('delete action does not support', $tester->getDisplay());
+        $this->assertFalse($command->databaseRequested);
+        $this->assertFalse($command->cleanupCalled);
+        $this->assertStringNotContainsString('This will delete user', $tester->getDisplay());
+        $this->assertSame(1, $this->countRows($db, 'ktvs_users'));
+    }
+
+    /** @return iterable<string, array{array<string, string|bool>}> */
+    public static function unsupportedDeleteInputs(): iterable
+    {
+        $options = [
+            '--status' => 'disabled',
+            '--search' => 'unrelated-user',
+            '--country' => '1',
+            '--gender' => 'female',
+            '--ip' => '127.0.0.2',
+            '--activity' => 'no/logins',
+            '--field-filter' => 'filled/avatar',
+            '--banned-status' => 'permanent',
+            '--removal-requested' => true,
+            '--trusted' => true,
+            '--untrusted' => true,
+            '--limit' => '20',
+            '--format' => 'json',
+            '--fields' => 'username',
+            '--field' => 'username',
+            '--no-truncate' => true,
+        ];
+        foreach ($options as $option => $value) {
+            yield $option => [[$option => $value]];
+        }
+        yield 'invalid format' => [['--format' => 'invalid']];
+        yield 'explicit default format' => [['--format' => 'table']];
+        yield 'unknown field' => [['--field' => 'nonexistent_field']];
+        yield 'conflicting trust' => [['--trusted' => true, '--untrusted' => true]];
+    }
+
     private function createDeleteSchema(\PDO $db): void
     {
         $db->exec('CREATE TABLE ktvs_users (user_id INTEGER, username TEXT, status_id INTEGER)');
