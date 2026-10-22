@@ -563,6 +563,7 @@ class FormatterTest extends TestCase
             'named-style' => 'Keep <info>text</info>',
             'custom-style' => 'Keep <fg=red;options=bold>text</>',
             'escaped-style' => 'Keep ' . chr(92) . '<info>text</info>',
+            'backslash-quote' => 'Keep ' . chr(92) . '"quoted' . chr(92) . '" text',
         ];
         foreach ($payloads as $name => $payload) {
             foreach (['json', 'yaml', 'csv', 'field'] as $format) {

@@ -400,7 +400,7 @@ class Formatter
         }
 
         // Header row
-        fputcsv($handle, $fields, ',', '"', '\\');
+        fputcsv($handle, $fields, ',', '"', '');
 
         // Data rows
         foreach ($items as $item) {
@@ -410,7 +410,7 @@ class Formatter
                 $value = $this->getFieldValue($item, $field);
                 $row[] = $this->formatCsvValue($value);
             }
-            fputcsv($handle, $row, ',', '"', '\\');
+            fputcsv($handle, $row, ',', '"', '');
         }
 
         fclose($handle);
