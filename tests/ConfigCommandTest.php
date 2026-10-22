@@ -926,4 +926,210 @@ $config["ahv"] = "secret-ahv";
         yield 'environment host and port override' => ['host', '127.0.0.1:32123', 'host', '127.0.0.2:32125', true, false];
         yield 'preserved disabled environment override' => ['host', '127.0.0.1:32123', 'host', '127.0.0.1:32123', true, true];
     }
+
+    /**
+     * @dataProvider configurationBackupPermissionProvider
+     */
+    public function testConfigBackupNeverBroadensSourcePermissions(string $category, int $mode, int $mask): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        if ($category === 'db') {
+            file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+        }
+        chmod($file, $mode);
+        $before = file_get_contents($file);
+        $previousMask = umask($mask);
+
+        try {
+            $this->tester->execute([
+                'action' => 'set',
+                'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+                'value' => 'Synthetic replacement',
+                '--backup' => true,
+            ]);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $backups = glob($file . '.backup.*');
+            $this->assertIsArray($backups);
+            $this->assertCount(1, $backups);
+            clearstatcache();
+            $this->assertSame($before, file_get_contents($backups[0]));
+            $this->assertFalse(is_link($backups[0]));
+            $this->assertSame($mode, fileperms($file) & 0777);
+            $backupMode = fileperms($backups[0]) & 0777;
+            $this->assertSame(
+                0,
+                $backupMode & ~$mode,
+                sprintf('Backup mode %04o must not grant access denied by source mode %04o.', $backupMode, $mode)
+            );
+        } finally {
+            umask($previousMask);
+            chmod($file, 0644);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, int, int}>
+     */
+    public static function configurationBackupPermissionProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            foreach ([[0600, 0022], [0640, 0022], [0644, 0022], [0600, 0077]] as [$mode, $mask]) {
+                yield $category . ' mode ' . decoct($mode) . ' umask ' . decoct($mask) => [$category, $mode, $mask];
+            }
+        }
+    }
+
+    /**
+     * @dataProvider configurationBackupCollisionProvider
+     */
+    public function testConfigBackupNeverFollowsOrOverwritesAnExistingDestination(
+        string $category,
+        string $collision
+    ): void {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        if ($category === 'db') {
+            file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+        }
+        $before = file_get_contents($file);
+        $existing = [];
+        $targets = [];
+        $fixtureTime = time();
+        if ($collision !== 'none') {
+            // Cover clock ticks without stubbing ConfigCommand's real backup path selection.
+            for ($offset = -2; $offset <= 60; $offset++) {
+                $stamp = date('YmdHis', $fixtureTime + $offset);
+                $candidate = $file . '.backup.' . $stamp;
+                if ($collision === 'regular') {
+                    file_put_contents($candidate, 'Existing synthetic backup');
+                } else {
+                    $target = $this->tempDir . '/collision-target-' . $stamp;
+                    if ($collision === 'existing-link') {
+                        file_put_contents($target, 'Existing synthetic target');
+                    }
+                    symlink($target, $candidate);
+                    $targets[$candidate] = $target;
+                }
+                $existing[] = $candidate;
+            }
+        }
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+            '--backup' => true,
+        ]);
+        $this->assertLessThanOrEqual($fixtureTime + 60, time(), 'The fixture backup collision window expired.');
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        clearstatcache();
+        foreach ($existing as $candidate) {
+            if ($collision === 'regular') {
+                $this->assertSame('Existing synthetic backup', file_get_contents($candidate));
+                continue;
+            }
+            $this->assertTrue(is_link($candidate));
+            $this->assertSame($targets[$candidate], readlink($candidate));
+            if ($collision === 'existing-link') {
+                $this->assertSame('Existing synthetic target', file_get_contents($targets[$candidate]));
+            } else {
+                $this->assertFileDoesNotExist($targets[$candidate], 'The backup must not follow a dangling symlink.');
+            }
+        }
+        $backups = glob($file . '.backup.*');
+        $this->assertIsArray($backups);
+        $newBackups = array_values(array_diff($backups, $existing));
+        $this->assertCount(1, $newBackups);
+        $this->assertFalse(is_link($newBackups[0]));
+        $this->assertSame($before, file_get_contents($newBackups[0]));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function configurationBackupCollisionProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            foreach (['none', 'regular', 'existing-link', 'dangling-link'] as $collision) {
+                yield $category . ' ' . $collision => [$category, $collision];
+            }
+        }
+    }
+
+    /**
+     * @dataProvider configurationHealthyLinkProvider
+     */
+    public function testConfigBackupPreservesHealthyConfigurationLinks(
+        string $category,
+        bool $relative,
+        string $action
+    ): void {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        if ($category === 'db') {
+            file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+        }
+        $before = file_get_contents($file);
+        $target = $this->tempDir . '/linked configuration.php';
+        rename($file, $target);
+        $link = $relative ? '../../' . basename($target) : $target;
+        symlink($link, $file);
+        chmod($target, 0640);
+        $previousEditor = getenv('EDITOR');
+
+        try {
+            if ($action === 'edit') {
+                $editor = $this->tempDir . '/fixture-editor';
+                file_put_contents($editor, "#!/bin/sh\nprintf '%s' '<?php if (' > \"\$1\"\nexit 7\n");
+                chmod($editor, 0700);
+                putenv('EDITOR=' . $editor);
+                $this->tester->execute(['action' => 'edit', '--file' => $category]);
+                $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+                $this->assertSame($before, file_get_contents($target));
+                $this->assertStringContainsString('Restored from backup', $this->tester->getDisplay());
+            } else {
+                $this->tester->execute([
+                    'action' => 'set',
+                    'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+                    'value' => 'Synthetic replacement',
+                    '--backup' => true,
+                ]);
+                $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+                $this->assertStringContainsString('Synthetic replacement', file_get_contents($target));
+            }
+            clearstatcache();
+            $this->assertTrue(is_link($file));
+            $this->assertSame($link, readlink($file));
+            $this->assertSame(0640, fileperms($target) & 0777);
+            $backups = glob($file . '.backup.*');
+            $this->assertIsArray($backups);
+            $this->assertCount(1, $backups);
+            $this->assertFalse(is_link($backups[0]));
+            $this->assertSame($before, file_get_contents($backups[0]));
+            $this->assertSame(0, (fileperms($backups[0]) & 0777) & ~0640);
+        } finally {
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+            chmod($target, 0644);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, bool, string}>
+     */
+    public static function configurationHealthyLinkProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            foreach ([false, true] as $relative) {
+                foreach (['set', 'edit'] as $action) {
+                    yield $category . ' ' . ($relative ? 'relative' : 'absolute') . ' ' . $action
+                        => [$category, $relative, $action];
+                }
+            }
+        }
+    }
+
+    public function testConfigBackupDoesNotFallBackToTheSystemTemporaryDirectory(): void
+    {
+        $before = glob(sys_get_temp_dir() . '/setup.php.backup.*');
+        $this->testConfigSetRefusesMutationWhenRequestedBackupFails();
+        $this->assertSame($before, glob(sys_get_temp_dir() . '/setup.php.backup.*'));
+    }
 }

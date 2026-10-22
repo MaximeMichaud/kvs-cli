@@ -767,12 +767,21 @@ REGEX;
 
     private function createBackup(string $file): ?string
     {
-        $backup = $file . '.backup.' . date('YmdHis');
-        if (file_exists($backup)) {
-            $backup .= '.' . bin2hex(random_bytes(4));
-        }
-        if (!@copy($file, $backup)) {
-            @unlink($backup);
+        $backup = null;
+        try {
+            $permissions = @fileperms($file);
+            if ($permissions === false) {
+                throw new \RuntimeException('Unable to read configuration permissions.');
+            }
+            $filesystem = new Filesystem();
+            // A suffix forces exclusive creation in this directory, without PHP's tempnam fallback.
+            $backup = $filesystem->tempnam(dirname($file), basename($file) . '.backup.' . date('YmdHis'), '.bak');
+            $filesystem->copy($file, $backup, true);
+            $filesystem->chmod($backup, $permissions & 0777);
+        } catch (\RuntimeException | IOExceptionInterface $error) {
+            if ($backup !== null) {
+                @unlink($backup);
+            }
             $this->io()->error('Unable to create configuration backup. No changes were made.');
             return null;
         }

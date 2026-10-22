@@ -69,6 +69,10 @@ kvs config edit [options]
 The `paths` view is derived from `setup.php`; use `--file=main` to edit path
 settings.
 
+Editing always creates a backup beside the configuration file. `set --backup`
+does the same. Each backup has a unique filename and preserves the source file's
+permissions.
+
 ## Configuration Keys
 
 ### Database Configuration (`db.*`)
