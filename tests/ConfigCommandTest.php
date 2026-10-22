@@ -780,10 +780,12 @@ $config["ahv"] = "secret-ahv";
     /**
      * @dataProvider failingConfigurationEditorProvider
      */
-    public function testConfigEditRestoresOriginalAndFailsOnEditorErrors(string $body): void
+    public function testConfigEditRestoresOriginalAndFailsOnEditorErrors(string $body, int $mode): void
     {
         $file = $this->tempDir . '/admin/include/setup.php';
         $before = file_get_contents($file);
+        chmod($file, $mode);
+        clearstatcache(true, $file);
         $editor = $this->tempDir . '/fixture-editor';
         file_put_contents($editor, "#!/bin/sh\n" . $body . "\n");
         chmod($editor, 0755);
@@ -794,20 +796,35 @@ $config["ahv"] = "secret-ahv";
             $this->tester->setInputs(['yes']);
             $this->tester->execute(['action' => 'edit', '--file' => 'main']);
             $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            clearstatcache(true, $file);
+            $this->assertFileExists($file, $this->tester->getDisplay());
             $this->assertSame($before, file_get_contents($file));
+            $this->assertSame($mode, fileperms($file) & 0777);
             $this->assertStringNotContainsString('Configuration file edited successfully', $this->tester->getDisplay());
         } finally {
             $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+            if (file_exists($file)) {
+                chmod($file, 0644);
+            }
         }
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * @return iterable<string, array{string, int}>
      */
     public static function failingConfigurationEditorProvider(): iterable
     {
-        yield 'nonzero after changing file' => ['printf "%s" "<?php if (" > "$1"; echo "editor rejected file" >&2; exit 7'];
-        yield 'invalid PHP with zero exit' => ['printf "%s" "<?php if (" > "$1"; exit 0'];
+        $editors = [
+            'nonzero after changing file' => 'printf "%s" "<?php if (" > "$1"; echo "editor rejected file" >&2; exit 7',
+            'invalid PHP with zero exit' => 'printf "%s" "<?php if (" > "$1"; exit 0',
+            'removed file with nonzero exit' => 'rm -- "$1"; exit 7',
+            'removed file with zero exit' => 'rm -- "$1"; exit 0',
+        ];
+        foreach ($editors as $label => $body) {
+            foreach ([0644, 0640, 0600] as $mode) {
+                yield $label . ' mode ' . decoct($mode) => [$body, $mode];
+            }
+        }
     }
 
     public function testConfigEditDoesNotLaunchEditorWhenBackupFails(): void
@@ -1131,5 +1148,44 @@ $config["ahv"] = "secret-ahv";
         $before = glob(sys_get_temp_dir() . '/setup.php.backup.*');
         $this->testConfigSetRefusesMutationWhenRequestedBackupFails();
         $this->assertSame($before, glob(sys_get_temp_dir() . '/setup.php.backup.*'));
+    }
+
+    public function testConfigEditRetainsBackupWhenTheEditorMakesRestorationImpossible(): void
+    {
+        $directory = $this->tempDir . '/admin/include';
+        $file = $directory . '/setup.php';
+        $before = file_get_contents($file);
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+        chmod($directory, 0755);
+        $editor = $this->tempDir . '/fixture-editor';
+        file_put_contents(
+            $editor,
+            '#!' . PHP_BINARY . "\n<?php unlink(\$argv[1]); chmod(dirname(\$argv[1]), 0555); exit(7);\n"
+        );
+        chmod($editor, 0700);
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+
+        try {
+            $this->tester->execute(['action' => 'edit', '--file' => 'main']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            clearstatcache();
+            $this->assertFileDoesNotExist($file);
+            $this->assertStringContainsString('Unable to restore configuration', $this->tester->getDisplay());
+            $this->assertStringNotContainsString('Restored from backup', $this->tester->getDisplay());
+            $backups = glob($file . '.backup.*');
+            $this->assertIsArray($backups);
+            $this->assertCount(1, $backups);
+            $this->assertSame($before, file_get_contents($backups[0]));
+            $this->assertSame([], glob($file . '*.restore'));
+        } finally {
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+            chmod($directory, 0755);
+        }
     }
 }

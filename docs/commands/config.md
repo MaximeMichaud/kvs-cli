@@ -71,7 +71,9 @@ settings.
 
 Editing always creates a backup beside the configuration file. `set --backup`
 does the same. Each backup has a unique filename and preserves the source file's
-permissions.
+permissions. If the editor fails, removes the file, or leaves invalid PHP, the
+command restores the original content. If restoration is impossible, it reports
+failure and retains the backup for manual recovery.
 
 ## Configuration Keys
 

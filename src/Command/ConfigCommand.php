@@ -400,7 +400,8 @@ class ConfigCommand extends BaseCommand
     private function restoreConfigFile(string $file, string $backup): void
     {
         $content = @file_get_contents($backup);
-        if ($content !== false && $this->writeConfigFile($file, $content)) {
+        $permissions = @fileperms($backup);
+        if ($content !== false && $permissions !== false && $this->writeConfigFile($file, $content, $permissions & 0777)) {
             $this->io()->info('Restored from backup');
         } else {
             $this->io()->error("Unable to restore configuration. Backup retained: $backup");
@@ -789,12 +790,14 @@ REGEX;
         return $backup;
     }
 
-    private function writeConfigFile(string $file, string $content): bool
+    private function writeConfigFile(string $file, string $content, ?int $restoreMode = null): bool
     {
-        if (!is_writable($file)) {
+        $restoreMissing = $restoreMode !== null && !file_exists($file) && !is_link($file);
+        if ($restoreMissing ? !is_writable(dirname($file)) : !is_writable($file)) {
             $this->io()->error("Configuration file is not writable: $file");
             return false;
         }
+        $temporaryFile = null;
         try {
             $lint = new Process([PHP_BINARY, '-l']);
             $lint->setInput($content);
@@ -802,10 +805,24 @@ REGEX;
                 $this->io()->error('Invalid configuration: ' . $lint->getErrorOutput() . $lint->getOutput());
                 return false;
             }
-            (new Filesystem())->dumpFile($file, $content);
+            $filesystem = new Filesystem();
+            if ($restoreMissing) {
+                $temporaryFile = $filesystem->tempnam(dirname($file), basename($file), '.restore');
+                if (@file_put_contents($temporaryFile, $content) !== strlen($content)) {
+                    throw new \RuntimeException('Unable to write restored configuration.');
+                }
+                $filesystem->chmod($temporaryFile, $restoreMode);
+                $filesystem->rename($temporaryFile, $file, true);
+            } else {
+                $filesystem->dumpFile($file, $content);
+            }
         } catch (\RuntimeException | IOExceptionInterface $error) {
             $this->io()->error('Unable to update configuration: ' . $error->getMessage());
             return false;
+        } finally {
+            if ($temporaryFile !== null && file_exists($temporaryFile)) {
+                @unlink($temporaryFile);
+            }
         }
         return true;
     }
