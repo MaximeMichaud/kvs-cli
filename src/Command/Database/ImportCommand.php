@@ -81,6 +81,9 @@ EOT
         }
 
         $compressionFormat = $this->detectCompressionFormat($file);
+        if ($compressionFormat !== null) {
+            $this->io()->info('Validating compressed archive...');
+        }
         try {
             $sqlBytes = $this->detectImportSqlBytePresence($file, $compressionFormat);
         } catch (\RuntimeException $e) {
@@ -297,6 +300,14 @@ EOT
         $process = new Process($decompressCommand);
         $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
 
+        // Validate the entire archive without buffering its SQL before exposing any bytes to the database client.
+        $process->disableOutput();
+        $process->run();
+        if (!$process->isSuccessful()) {
+            return false;
+        }
+
+        $process->enableOutput();
         $process->start();
 
         while ($process->isRunning()) {
