@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\ConversionCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
@@ -802,6 +803,102 @@ class ConversionCommandTest extends TestCase
         $this->assertStringContainsString('Local conversion log', $output);
         $this->assertStringNotContainsString('Local conversion cron', $output);
         $this->assertStringNotContainsString('/old/kvs/root', $output);
+    }
+
+    #[DataProvider('conversionDirectoryProvider')]
+    public function testConversionFileDiagnosticsRejectDirectories(string $action, string $format): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-directory';
+        $filename = $action === 'log' ? 'log.txt' : 'config.properties';
+        mkdir($serverPath . '/' . $filename, 0755, true);
+        $this->insertLocalConversionServer(56, 'Directory Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => $action,
+            'id' => '56',
+            '--format' => $format,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString("Cannot read $action file", $output);
+        if ($format === 'json') {
+            $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertTrue($rows[0]['exists']);
+            $this->assertFalse($rows[0]['readable']);
+            $this->assertNull($rows[0]['content']);
+        }
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function conversionDirectoryProvider(): iterable
+    {
+        foreach (['log', 'config'] as $action) {
+            foreach (['table', 'json'] as $format) {
+                yield "$action $format" => [$action, $format];
+            }
+        }
+    }
+
+    #[DataProvider('conversionRegularFileProvider')]
+    public function testConversionFileDiagnosticsAcceptEmptyFilesAndSymlinks(string $action, bool $symlink): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-regular-file';
+        $filename = $action === 'log' ? 'log.txt' : 'config.properties';
+        mkdir($serverPath, 0755, true);
+        $content = $symlink ? "Synthetic conversion data\n" : '';
+        if ($symlink) {
+            file_put_contents($serverPath . '/target', $content);
+            symlink($serverPath . '/target', $serverPath . '/' . $filename);
+        } else {
+            file_put_contents($serverPath . '/' . $filename, $content);
+        }
+        $this->insertLocalConversionServer(56, 'Regular File Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => $action,
+            'id' => '56',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertTrue($rows[0]['exists']);
+        $this->assertTrue($rows[0]['readable']);
+        $this->assertSame($content, $rows[0]['content']);
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function conversionRegularFileProvider(): iterable
+    {
+        foreach (['log', 'config'] as $action) {
+            yield "$action empty file" => [$action, false];
+            yield "$action symlink" => [$action, true];
+        }
+    }
+
+    public function testConversionLogUsesCronLogWhenLogPathIsDirectory(): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-fallback-log';
+        mkdir($serverPath . '/log.txt', 0755, true);
+        file_put_contents($serverPath . '/cron_log.txt', "Synthetic fallback log\n");
+        $this->insertLocalConversionServer(56, 'Fallback Log Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '56',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame($serverPath . '/cron_log.txt', $rows[0]['file']);
+        $this->assertSame("Synthetic fallback log\n", $rows[0]['content']);
     }
 
     public function testConversionLogRejectsUnknownFieldsWithFailureStatus(): void

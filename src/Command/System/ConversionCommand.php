@@ -833,7 +833,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $content = file_get_contents($logFile);
+            $content = is_file($logFile) ? file_get_contents($logFile) : false;
             if ($content === false) {
                 if ($this->shouldUseFormattedRows($input)) {
                     $status = $this->displayConversionFileRows($input, [[
@@ -961,7 +961,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $content = file_get_contents($configFile);
+            $content = is_file($configFile) ? file_get_contents($configFile) : false;
             if ($content === false) {
                 if ($this->shouldUseFormattedRows($input)) {
                     $status = $this->displayConversionFileRows($input, [[
