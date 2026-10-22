@@ -1001,4 +1001,31 @@ SH
 
         $this->fail('Success backup path was not found in output: ' . $output);
     }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function directBackupPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'csv' && str_starts_with($name, 'backslash-quote')) {
+                continue;
+            }
+            if ($format !== 'field' && $decorated) {
+                yield $name => [str_replace('/', '_', $payload) . '.gz', $format];
+            }
+        }
+    }
+
+    #[DataProvider('directBackupPayloads')]
+    public function testDirectExportPreservesBackupFilename(string $filename, string $format): void
+    {
+        $directory = $this->tempDir . '/backups';
+        file_put_contents($directory . '/' . $filename, '');
+        $row = TestHelper::readCommandExportRow(
+            $this->tester,
+            ['--list' => true, '--output' => $directory],
+            $format
+        );
+        $this->assertSame($filename, $row['file']);
+        $this->assertSame(['file', 'size', 'created'], array_keys($row));
+    }
 }

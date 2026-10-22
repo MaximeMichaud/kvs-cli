@@ -139,7 +139,7 @@ HELP
                 ],
             ], Constants::JSON_FLAGS);
             if ($json !== false) {
-                $output->writeln($json);
+                $output->writeln($json, OutputInterface::OUTPUT_RAW);
             }
         } else {
             $this->io()->newLine();

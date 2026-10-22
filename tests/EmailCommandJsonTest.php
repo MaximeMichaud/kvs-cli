@@ -166,4 +166,78 @@ class EmailCommandJsonTest extends TestCase
             $this->assertStringContainsString('Invalid value for --format "xml"', $output);
         }
     }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesEmailSettings(string $payload, bool $decorated): void
+    {
+        $db = new PDO('sqlite::memory:', options: [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $db->exec('CREATE TABLE ' . TestHelper::table('settings')
+            . " (section TEXT NOT NULL, satellite_prefix TEXT NOT NULL DEFAULT '', value TEXT NOT NULL)");
+        $settings = ['use_mailer' => 'php', 'from_name' => $payload, 'smtp_password' => 'secret-value'];
+        $db->prepare('INSERT INTO ' . TestHelper::table('settings') . ' (section, value) VALUES (?, ?)')
+            ->execute(['email', json_encode($settings, JSON_THROW_ON_ERROR)]);
+        $command = new class (TestHelper::createTestConfiguration($this->kvsPath), $db) extends EmailCommand {
+            public function __construct(Configuration $config, private PDO $testDb)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->testDb;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute(['action' => 'show', '--format' => 'json', '--force' => true], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($payload, $data['from_name']);
+        $this->assertSame('********', $data['smtp_password']);
+        $this->assertStringNotContainsString('secret-value', $text);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesEmailLog(string $payload, bool $decorated): void
+    {
+        file_put_contents($this->kvsPath . '/admin/logs/email_test.txt', $payload . "\n");
+        $tester = new CommandTester(new EmailCommand(TestHelper::createTestConfiguration($this->kvsPath)));
+        $tester->execute(['action' => 'log', '--format' => 'json', '--force' => true], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame([$payload], $data['lines']);
+        $this->assertTrue($data['exists']);
+        $this->assertSame(1, $data['shown_lines']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesEmailTemplateSubject(string $payload, bool $decorated): void
+    {
+        $directory = $this->kvsPath . '/blocks/signup/emails';
+        mkdir($directory, 0755, true);
+        file_put_contents($directory . '/synthetic_subject.txt', $payload);
+        file_put_contents($directory . '/synthetic_body.txt', 'Synthetic body');
+        $tester = new CommandTester(new EmailCommand(TestHelper::createTestConfiguration($this->kvsPath)));
+        $tester->execute(['action' => 'templates', '--format' => 'json', '--force' => true], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($payload, $data[0]['subject']);
+        $this->assertSame('User Registration', $data[0]['description']);
+        $this->assertTrue($data[0]['has_body']);
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directJsonPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                yield $name => [$payload, $decorated];
+            }
+        }
+    }
 }

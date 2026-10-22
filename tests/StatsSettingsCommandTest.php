@@ -539,4 +539,29 @@ PHP
 
         return new CommandTester($command);
     }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesStatsStopSymbols(string $payload, bool $decorated): void
+    {
+        $this->writeStatsParams(['search_stop_symbols' => $payload, 'collect_search_stats' => 1]);
+        $before = $this->readStatsParams();
+        $this->tester->execute(['action' => 'show', '--format' => 'json', '--force' => true], ['decorated' => $decorated]);
+        $text = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($payload, $data['search_stop_symbols']);
+        $this->assertSame(1, $data['collect_search_stats']);
+        $this->assertSame($before, $this->readStatsParams());
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directJsonPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                yield $name => [$payload, $decorated];
+            }
+        }
+    }
 }

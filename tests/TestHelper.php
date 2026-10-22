@@ -398,7 +398,7 @@ PHP;
         } finally {
             ob_end_clean();
         }
-        $text = $format === 'csv' ? $direct : $tester->getDisplay();
+        $text = $format === 'csv' && $direct !== '' ? $direct : $tester->getDisplay();
         \PHPUnit\Framework\Assert::assertSame(0, $exit, $text);
         if ($format === 'field') {
             return [$field => str_ends_with($text, PHP_EOL) ? substr($text, 0, -strlen(PHP_EOL)) : $text];

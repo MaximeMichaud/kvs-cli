@@ -394,7 +394,10 @@ HELP
     {
         $result['exit_code'] = $exitCode;
         if ($this->getStringOption($input, 'format') === 'json') {
-            $output->writeln(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            $output->writeln(
+                json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                OutputInterface::OUTPUT_RAW
+            );
         } else {
             $rows = [];
             foreach ($result as $key => $value) {

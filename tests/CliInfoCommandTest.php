@@ -97,4 +97,35 @@ class CliInfoCommandTest extends TestCase
             $this->assertArrayHasKey($key, $json, "Missing key: $key");
         }
     }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesShellEnvironment(string $payload, bool $decorated): void
+    {
+        $previousShell = getenv('SHELL');
+        $previousKvsPath = getenv('KVS_PATH');
+        $path = TestHelper::createTestKvsInstallation();
+        putenv('SHELL=' . $payload);
+        putenv('KVS_PATH=' . $path);
+        try {
+            $this->tester->execute(['--format' => 'json'], ['decorated' => $decorated]);
+            $text = $this->tester->getDisplay();
+            $this->assertSame(0, $this->tester->getStatusCode(), $text);
+            $this->assertJson($text);
+            $this->assertSame($payload, json_decode($text, true)['shell']);
+        } finally {
+            $previousShell === false ? putenv('SHELL') : putenv('SHELL=' . $previousShell);
+            $previousKvsPath === false ? putenv('KVS_PATH') : putenv('KVS_PATH=' . $previousKvsPath);
+            TestHelper::removeDir($path);
+        }
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directJsonPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                yield $name => [$payload, $decorated];
+            }
+        }
+    }
 }

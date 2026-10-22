@@ -113,7 +113,7 @@ class ConfigCommand extends BaseCommand
         }
 
         if ($this->getBoolOption($input, 'json')) {
-            $this->io()->writeln((string) json_encode([$key => $value]));
+            $this->io()->writeln((string) json_encode([$key => $value]), OutputInterface::OUTPUT_RAW);
         } else {
             $this->io()->writeln("<info>$key</info> = $value");
         }
@@ -197,7 +197,7 @@ class ConfigCommand extends BaseCommand
                     }
                 }
             }
-            $this->io()->writeln((string) json_encode($configs, JSON_PRETTY_PRINT));
+            $this->io()->writeln((string) json_encode($configs, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 

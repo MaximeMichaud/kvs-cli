@@ -2405,4 +2405,61 @@ class ServerCommandTest extends TestCase
         $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', '--limit' => '1'], 'csv', 'status');
         $this->assertSame(['status' => 'Active'], $row);
     }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesStoredServerWeightCountries(string $payload, bool $decorated): void
+    {
+        $this->prepareWeightFixture();
+        $this->db->prepare('UPDATE ' . TestHelper::table('admin_servers') . ' SET lb_countries = ? WHERE server_id = 1')
+            ->execute([$payload]);
+        $before = $this->fetchWeightMap(10);
+        $this->tester->execute([
+            '--force' => true, 'action' => 'weights', 'id' => '10', '--format' => 'json',
+        ], ['decorated' => $decorated]);
+        $text = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame([$payload], $data['weights'][0]['lb_countries']);
+        $this->assertSame('weights', $data['action']);
+        $this->assertTrue($data['ok']);
+        $this->assertSame($before, $this->fetchWeightMap(10));
+    }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesServerWeightError(string $payload, bool $decorated): void
+    {
+        $db = new class ($payload) extends PDO {
+            public function __construct(private string $failureMessage)
+            {
+                parent::__construct('sqlite::memory:');
+            }
+
+            public function prepare(string $query, array $options = []): \PDOStatement|false
+            {
+                throw new \PDOException($this->failureMessage);
+            }
+        };
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            '--force' => true, 'action' => 'weights', 'id' => '10', '--format' => 'json',
+        ], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame('Failed to read storage server weights: ' . $payload, $data['error']['message']);
+        $this->assertSame('weights_failed', $data['error']['code']);
+        $this->assertFalse($data['ok']);
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directJsonPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                yield $name => [$payload, $decorated];
+            }
+        }
+    }
 }

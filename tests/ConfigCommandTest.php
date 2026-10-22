@@ -1640,4 +1640,32 @@ PHP_SOURCE;
         yield 'incomplete condition' => ['if ('];
         yield 'invalid statement' => ['invalid syntax;'];
     }
+
+    /** @return iterable<string, array{string, bool, string}> */
+    public static function directConfigPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                foreach (['get', 'list'] as $action) {
+                    yield $name . ' ' . $action => [$payload, $decorated, $action];
+                }
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('directConfigPayloads')]
+    public function testDirectJsonPreservesConfigurationValue(string $payload, bool $decorated, string $action): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config[\'project_name\'] = ' . var_export($payload, true) . ';'
+        );
+        $arguments = ['action' => $action, '--json' => true];
+        $arguments += $action === 'get' ? ['key' => 'main.project_name'] : ['--file' => 'main'];
+        $this->tester->execute($arguments, ['decorated' => $decorated]);
+        $text = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $this->assertSame($payload, json_decode($text, true)['main.project_name']);
+    }
 }

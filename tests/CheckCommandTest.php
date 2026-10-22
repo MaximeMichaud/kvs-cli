@@ -525,4 +525,63 @@ PHP);
             }
         };
     }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directCheckPaths(): iterable
+    {
+        foreach (['plain-tool', '<info>literal-tool'] as $name) {
+            foreach ([false, true] as $decorated) {
+                yield $name . ($decorated ? ' decorated' : ' plain') => [$name, $decorated];
+            }
+        }
+    }
+
+    #[DataProvider('directCheckPaths')]
+    public function testDirectJsonPreservesDiagnosticToolPath(string $filename, bool $decorated): void
+    {
+        $tool = $this->tempDir . '/' . $filename;
+        file_put_contents($tool, "#!/bin/sh\nprintf '%s\\n' 'ffmpeg version 1.0' 'libx264 aac libavfilter webp avif'\n");
+        chmod($tool, 0755);
+        $setup = "<?php \$config['project_version'] = '7.0.0'; \$config['memcache_server'] = '';\n";
+        foreach (['ffmpeg_path', 'image_magick_path', 'mysqldump_path'] as $key) {
+            $setup .= '$config[' . var_export($key, true) . '] = ' . var_export($tool, true) . ";\n";
+        }
+        file_put_contents($this->tempDir . '/admin/include/setup.php', $setup);
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $detector = $this->createMock(\KVS\CLI\Docker\DockerDetector::class);
+        $detector->method('getSummary')->willReturn([
+            'docker_available' => false, 'kvs_in_docker' => false, 'prefix' => null, 'containers' => [],
+        ]);
+        $command = new class ($configuration, $detector) extends CheckCommand {
+            public function __construct(Configuration $config, private \KVS\CLI\Docker\DockerDetector $detector)
+            {
+                parent::__construct($config);
+            }
+
+            protected function docker(): \KVS\CLI\Docker\DockerDetector
+            {
+                return $this->detector;
+            }
+
+            protected function isDockerMode(): bool
+            {
+                return false;
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute(['--json' => true, '--skip-online-checks' => true], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($tool, $data['results']['tools']['tools']['ffmpeg']['path']);
+        $this->assertSame('skip', $data['results']['internet']['status']);
+        $this->assertSame('skip', $data['results']['end_of_life']['status']);
+        $this->assertSame('not_configured', $data['results']['memcached']['status']);
+    }
 }

@@ -66,7 +66,10 @@ HELP
         $info = $this->gatherInfo();
 
         if ($format === 'json') {
-            $output->writeln((string) json_encode($info, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $output->writeln(
+                (string) json_encode($info, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                OutputInterface::OUTPUT_RAW
+            );
         } else {
             $this->displayList($io, $info);
         }

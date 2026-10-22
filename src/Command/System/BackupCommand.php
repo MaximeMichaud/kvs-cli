@@ -620,15 +620,15 @@ HELP
                 if ($json === false) {
                     throw new \RuntimeException('Failed to encode JSON: ' . json_last_error_msg());
                 }
-                $this->io()->writeln($json);
+                $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
                 return;
 
             case 'csv':
-                $this->io()->write($this->formatBackupsCsv($backups));
+                $this->io()->write($this->formatBackupsCsv($backups), false, OutputInterface::OUTPUT_RAW);
                 return;
 
             case 'yaml':
-                $this->io()->write(Yaml::dump($backups, 2, 2));
+                $this->io()->write(Yaml::dump($backups, 2, 2), false, OutputInterface::OUTPUT_RAW);
                 return;
         }
     }

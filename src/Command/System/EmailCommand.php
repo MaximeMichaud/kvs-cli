@@ -211,7 +211,10 @@ HELP
             $settings = $decoded;
 
             if ($format === 'json') {
-                $this->io()->writeln((string) json_encode($this->maskSensitiveSettings($settings), JSON_PRETTY_PRINT));
+                $this->io()->writeln(
+                    (string) json_encode($this->maskSensitiveSettings($settings), JSON_PRETTY_PRINT),
+                    OutputInterface::OUTPUT_RAW
+                );
                 return self::SUCCESS;
             }
 
@@ -873,7 +876,7 @@ HELP
             return self::FAILURE;
         }
 
-        $this->io()->writeln($json);
+        $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
         return $statusCode;
     }
 
@@ -968,7 +971,7 @@ HELP
                 $this->io()->error('Failed to encode templates as JSON: ' . json_last_error_msg());
                 return self::FAILURE;
             }
-            $this->io()->writeln($json);
+            $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 

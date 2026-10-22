@@ -351,7 +351,7 @@ HELP
                     $data['sections'][$name] = $section;
                 }
 
-                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT));
+                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
                 return self::SUCCESS;
             }
 
@@ -467,7 +467,7 @@ HELP
                     'domains' => $domains,
                     'ips' => $ips,
                 ];
-                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT));
+                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
                 return self::SUCCESS;
             }
 

@@ -1760,7 +1760,7 @@ HELP
             $this->io()->writeln(json_encode(
                 $result,
                 Constants::JSON_FLAGS | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
-            ));
+            ), OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 
@@ -1841,7 +1841,7 @@ HELP
             $this->io()->writeln(json_encode(
                 $payload,
                 Constants::JSON_FLAGS | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
-            ));
+            ), OutputInterface::OUTPUT_RAW);
         } else {
             $this->io()->error($error->getMessage());
             if ($error->isRecoveryRequired()) {

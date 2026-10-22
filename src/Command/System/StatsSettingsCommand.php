@@ -423,7 +423,7 @@ HELP
         $params = $this->loadStatsParams($format !== 'json');
 
         if ($format === 'json') {
-            $this->io()->writeln((string) json_encode($params, JSON_PRETTY_PRINT));
+            $this->io()->writeln((string) json_encode($params, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 
