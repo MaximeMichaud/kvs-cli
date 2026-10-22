@@ -1116,4 +1116,129 @@ SH
             }
         }
     }
+    #[DataProvider('overlappingBackupRoots')]
+    public function testContentTreeIsArchivedOnceWithoutLosingLinkedOrExcludedRoots(string $type, string $layout): void
+    {
+        $siteRoot = $this->tempDir;
+        $content = $this->tempDir . '/contents';
+        $contentRoot = $content;
+        $restoredContentName = 'kvs/contents';
+        if ($layout === 'same') {
+            $content = $this->tempDir;
+            $contentRoot = $content;
+            $restoredContentName = 'kvs';
+        } elseif (in_array($layout, ['separate', 'prefix-sibling', 'external-link', 'external-parent-link'], true)) {
+            $content = $this->rootDir . ($layout === 'prefix-sibling' ? '/kvs-other' : '/storage/contents');
+            $contentRoot = $content;
+            $restoredContentName = basename($content);
+        } elseif (str_starts_with($layout, 'excluded-')) {
+            $directory = substr($layout, strlen('excluded-'));
+            $content = $this->tempDir . '/' . $directory . '/contents';
+            $contentRoot = $content;
+            $restoredContentName = 'contents';
+        }
+        mkdir($content . '/videos_sources', 0755, true);
+        file_put_contents($this->tempDir . '/site-marker.txt', "Synthetic site\n");
+        file_put_contents($content . '/videos_sources/media-marker.txt', "Synthetic media\n");
+        symlink('site-marker.txt', $this->tempDir . '/internal-link');
+        symlink('.', $this->tempDir . '/internal-cycle');
+        if ($layout === 'site-link') {
+            $siteRoot = $this->rootDir . '/linked-site';
+            symlink($this->tempDir, $siteRoot);
+            $restoredContentName = 'linked-site/contents';
+        } elseif ($layout === 'site-parent-link') {
+            symlink($this->rootDir, $this->rootDir . '/alias');
+            $siteRoot = $this->rootDir . '/alias/kvs';
+        } elseif ($layout === 'content-link') {
+            $contentRoot = $this->rootDir . '/linked-content';
+            symlink($content, $contentRoot);
+        } elseif ($layout === 'internal-link' || $layout === 'external-link') {
+            $contentRoot = $this->tempDir . '/linked-content';
+            symlink($content, $contentRoot);
+            if ($layout === 'external-link') {
+                $restoredContentName = 'linked-content';
+            }
+        } elseif ($layout === 'external-parent-link') {
+            symlink(dirname($content), $this->tempDir . '/storage');
+            $contentRoot = $this->tempDir . '/storage/contents';
+        } elseif ($layout === 'dot-parent') {
+            mkdir($this->tempDir . '/unused');
+            $contentRoot = $this->tempDir . '/unused/../contents';
+        } elseif ($layout === 'trailing') {
+            $siteRoot .= '/';
+            $contentRoot .= '/';
+        }
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config[\'content_path_videos_sources\'] = '
+                . var_export($contentRoot . '/videos_sources', true) . ';'
+        );
+        $toolsDir = $this->rootDir . '/archive-tools';
+        mkdir($toolsDir);
+        $this->writeTool($toolsDir, 'mysqldump', "#!/bin/sh\nprintf '%128s\\n' 'Synthetic SQL dump'\n");
+        $outputDir = $this->rootDir . '/archives';
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        try {
+            $config = new Configuration(['path' => $siteRoot, 'disable_db_env_overrides' => true]);
+            $tester = new CommandTester(new BackupCommand($config));
+            $tester->execute(['--create' => true, '--type' => $type, '--output' => $outputDir]);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        } finally {
+            $previousPath === false ? putenv('PATH') : putenv('PATH=' . $previousPath);
+        }
+        $archives = glob($outputDir . '/*_' . $type . '.tar.gz');
+        $this->assertNotFalse($archives);
+        $this->assertCount(1, $archives);
+        $archive = $archives[0];
+        if ($type === 'full') {
+            $outer = $this->rootDir . '/outer';
+            mkdir($outer);
+            (new Process(['tar', 'xzf', $archive, '-C', $outer]))->mustRun();
+            $inner = glob($outer . '/*_files.tar.gz');
+            $this->assertNotFalse($inner);
+            $this->assertCount(1, $inner);
+            $archive = $inner[0];
+        }
+        $listing = (new Process(['tar', 'tzf', $archive]))->mustRun()->getOutput();
+        $mediaEntries = array_filter(
+            explode("\n", $listing),
+            static fn (string $entry): bool => str_ends_with($entry, '/media-marker.txt')
+        );
+        // Make every source path unavailable before checking the independent restoration.
+        rename($this->tempDir, $this->tempDir . '-offline');
+        if (is_dir($content)) {
+            rename($content, $content . '-offline');
+        }
+        $restored = $this->rootDir . '/restored';
+        mkdir($restored);
+        (new Process(['tar', 'xzf', $archive, '-C', $restored]))->mustRun();
+        $restoredSite = $restored . '/' . basename($siteRoot);
+        $restoredContent = $restored . '/' . $restoredContentName;
+        $this->assertSame("Synthetic site\n", file_get_contents($restoredSite . '/site-marker.txt'));
+        $this->assertSame(
+            "Synthetic media\n",
+            file_get_contents($restoredContent . '/videos_sources/media-marker.txt')
+        );
+        $this->assertTrue(is_link($restoredSite . '/internal-link'));
+        $this->assertSame('site-marker.txt', readlink($restoredSite . '/internal-link'));
+        $this->assertTrue(is_link($restoredSite . '/internal-cycle'));
+        $this->assertSame('.', readlink($restoredSite . '/internal-cycle'));
+        $this->assertCount(1, $mediaEntries, 'The content tree must have only one archive entry per file.');
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function overlappingBackupRoots(): iterable
+    {
+        foreach (['files', 'full'] as $type) {
+            $layouts = [
+                'nested', 'same', 'separate', 'prefix-sibling', 'site-link', 'site-parent-link',
+                'content-link', 'internal-link', 'external-link', 'external-parent-link', 'dot-parent', 'trailing',
+                'excluded-cache', 'excluded-tmp', 'excluded-temp', 'excluded-events.log',
+            ];
+            foreach ($layouts as $layout) {
+                yield $type . ' ' . $layout => [$type, $layout];
+            }
+        }
+    }
 }

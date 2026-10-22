@@ -27,6 +27,7 @@ class BackupCommand extends BaseCommand
     private const CREATE_TYPES = ['full', 'db', 'files'];
     private const LIST_FORMATS = ['table', 'json', 'csv', 'yaml', 'count'];
     private const MIN_DATABASE_DUMP_BYTES = 100;
+    private const ARCHIVE_EXCLUDE_PATTERNS = ['*.log', '*/cache/*', '*/tmp/*', '*/temp/*'];
 
     protected function configure(): void
     {
@@ -374,12 +375,10 @@ HELP
 
         $tarFile = "$outputDir/{$backupName}_files.tar.gz";
 
-        $excludes = [
-            '--exclude=*.log',
-            '--exclude=*/cache/*',
-            '--exclude=*/tmp/*',
-            '--exclude=*/temp/*',
-        ];
+        $excludes = array_map(
+            static fn (string $pattern): string => '--exclude=' . $pattern,
+            self::ARCHIVE_EXCLUDE_PATTERNS
+        );
 
         $command = array_merge(
             ['tar', 'czf', $tarFile],
@@ -387,7 +386,7 @@ HELP
             ['-C', dirname($kvsPath), $this->getArchiveRootArgument($kvsPath)]
         );
 
-        if (is_dir($contentPath)) {
+        if (is_dir($contentPath) && !$this->isContentIncludedInSiteBackup($kvsPath, $contentPath)) {
             $command[] = '-C';
             $command[] = dirname($contentPath);
             $command[] = $this->getArchiveRootArgument($contentPath);
@@ -425,6 +424,36 @@ HELP
             $this->io()->error('Files backup failed: ' . $process->getErrorOutput());
             return false;
         }
+    }
+
+    private function isContentIncludedInSiteBackup(string $kvsPath, string $contentPath): bool
+    {
+        $siteRoot = realpath($kvsPath);
+        $contentRoot = realpath($contentPath);
+        if ($siteRoot === false || $contentRoot === false) {
+            return false;
+        }
+        $prefix = rtrim($siteRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if ($contentRoot !== $siteRoot && !str_starts_with($contentRoot, $prefix)) {
+            return false;
+        }
+
+        // Tar traverses the real directory tree, but does not follow links inside it.
+        $relative = $contentRoot === $siteRoot ? '' : substr($contentRoot, strlen($prefix));
+        $archivePath = $this->getArchiveRootArgument($kvsPath);
+        $parts = $relative === '' ? [] : explode(DIRECTORY_SEPARATOR, $relative);
+        foreach (array_merge([''], $parts) as $part) {
+            if ($part !== '') {
+                $archivePath .= '/' . $part;
+            }
+            foreach (self::ARCHIVE_EXCLUDE_PATTERNS as $pattern) {
+                if (fnmatch($pattern, $archivePath) || fnmatch($pattern, $archivePath . '/')) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     private function getArchiveRootArgument(string $path): string
