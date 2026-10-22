@@ -237,10 +237,12 @@ EOT
 
     private function requireImportCommand(): string
     {
-        $path = (new ExecutableFinder())->find('mysql');
+        $finder = new ExecutableFinder();
+        $path = $finder->find('mysql') ?? $finder->find('mariadb');
         if ($path === null) {
             throw new \RuntimeException(
-                "Required import tool 'mysql' was not found in PATH. Install mysql-client or mariadb-client and try again."
+                "Required import tool 'mysql' or 'mariadb' was not found in PATH. "
+                . 'Install mysql-client or mariadb-client and try again.'
             );
         }
 

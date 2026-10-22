@@ -345,6 +345,56 @@ class DatabaseImportCommandTest extends TestCase
         yield 'Bzip2' => ['bzip2', 'bz2'];
     }
 
+    #[DataProvider('importClientAvailabilityProvider')]
+    public function testImportHandlesClientAvailability(bool $available): void
+    {
+        $toolsDir = $this->tempDir . '/import-client-tools';
+        $bytesFile = $this->tempDir . '/mariadb-import.bytes';
+        if ($available) {
+            $this->createFakeMysql($toolsDir, $bytesFile);
+            rename($toolsDir . '/mysql', $toolsDir . '/mariadb');
+            $wc = (new ExecutableFinder())->find('wc');
+            $this->assertNotNull($wc);
+            symlink($wc, $toolsDir . '/wc');
+        } else {
+            mkdir($toolsDir);
+        }
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir);
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+            $tester->setInputs(['yes']);
+            $tester->execute(['file' => $this->sqlFile], ['decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame($available ? 0 : 1, $tester->getStatusCode(), $display);
+            if ($available) {
+                $this->assertSame((string) filesize($this->sqlFile), trim((string) file_get_contents($bytesFile)));
+            } else {
+                $this->assertStringContainsString("Required import tool 'mysql' or 'mariadb'", $display);
+                $this->assertFileDoesNotExist($bytesFile);
+            }
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    /** @return iterable<string, array{bool}> */
+    public static function importClientAvailabilityProvider(): iterable
+    {
+        yield 'MariaDB client only' => [true];
+        yield 'no database client' => [false];
+    }
+
     public function testImportSuppressesMariaDbSslPasswordWarning(): void
     {
         $toolsDir = $this->tempDir . '/tools-mariadb-warning';
