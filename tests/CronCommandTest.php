@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\CronCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -63,6 +64,79 @@ class CronCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Running cron task: conversion', $output);
         $this->assertEquals(0, $this->tester->getStatusCode());
+    }
+
+    #[DataProvider('nativeRefusals')]
+    public function testCronRejectsNativeRefusalWithZeroExitCode(string $message, ?string $task): void
+    {
+        $script = $task === null ? 'cron.php' : 'cron_conversion.php';
+        file_put_contents($this->tempDir . '/admin/include/' . $script, '<?php die(' . var_export($message, true) . ');');
+
+        $this->tester->execute($task === null ? [] : ['task' => $task]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString(trim($message), $output);
+        $this->assertStringNotContainsString('completed successfully', $output);
+    }
+
+    /**
+     * @return iterable<string, array{string, ?string}>
+     */
+    public static function nativeRefusals(): iterable
+    {
+        foreach (['Already locked', "Already started\n", 'Not for satellite', 'Only for satellite'] as $message) {
+            foreach ([null, 'conversion'] as $task) {
+                yield trim($message) . ' / ' . ($task ?? 'default') => [$message, $task];
+            }
+        }
+    }
+
+    #[DataProvider('successfulNativeOutputs')]
+    public function testCronPreservesSuccessfulNativeOutput(string $message): void
+    {
+        foreach ([null, 'conversion'] as $task) {
+            $script = $task === null ? 'cron.php' : 'cron_conversion.php';
+            file_put_contents(
+                $this->tempDir . '/admin/include/' . $script,
+                '<?php echo ' . var_export($message, true) . ';'
+            );
+
+            $this->tester->execute($task === null ? [] : ['task' => $task]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(0, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('completed successfully', $output);
+            if ($message !== '') {
+                $this->assertStringContainsString('Finished', $output);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function successfulNativeOutputs(): iterable
+    {
+        yield 'silent success' => [''];
+        yield 'normal output' => ['INFO Finished'];
+        yield 'refusal quoted in a log' => ["Previous attempt: Already locked\nINFO Finished"];
+        yield 'refusal within multiline output' => ["Already locked\nINFO Finished"];
+    }
+
+    public function testCronPreservesNonzeroExitFailure(): void
+    {
+        foreach ([null, 'conversion'] as $task) {
+            $script = $task === null ? 'cron.php' : 'cron_conversion.php';
+            file_put_contents($this->tempDir . '/admin/include/' . $script, '<?php echo "Native failure"; exit(23);');
+
+            $this->tester->execute($task === null ? [] : ['task' => $task]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame(1, $this->tester->getStatusCode(), $output);
+            $this->assertStringContainsString('Native failure', $output);
+            $this->assertStringNotContainsString('completed successfully', $output);
+        }
     }
 
     public function testCronUsesConfiguredPhpPathWhenPhpIsNotInPath(): void

@@ -185,7 +185,7 @@ HELP
 
         $this->io()->info("Running cron task: $task");
 
-        $output = $this->executePhpScript($scriptPath);
+        $output = $this->executeCronScript($scriptPath);
 
         if ($output !== null) {
             $this->io()->success("Cron task '$task' completed successfully");
@@ -227,7 +227,7 @@ HELP
 
         $this->io()->info('Running all cron tasks...');
 
-        $output = $this->executePhpScript($cronScript);
+        $output = $this->executeCronScript($cronScript);
 
         if ($output !== null) {
             $this->io()->success('All cron tasks completed successfully');
@@ -238,6 +238,23 @@ HELP
         }
 
         return self::FAILURE;
+    }
+
+    private function executeCronScript(string $scriptPath): ?string
+    {
+        $output = $this->executePhpScript($scriptPath);
+        if ($output === null) {
+            return null;
+        }
+
+        // Native cron preflight refusals use die(string), which exits PHP with status zero.
+        $refusal = trim($output);
+        if (in_array($refusal, ['Already locked', 'Already started', 'Not for satellite', 'Only for satellite'], true)) {
+            $this->io()->error('Native cron did not run: ' . $refusal);
+            return null;
+        }
+
+        return $output;
     }
 
     private function getTimeDiff(int $timestamp): string
