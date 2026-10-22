@@ -408,6 +408,69 @@ class ContentSourceCommandTest extends TestCase
         $this->assertStringContainsString('"custom_10": "New custom value"', $this->sourceTester->getDisplay());
     }
 
+    /** @return iterable<string, array{string, string}> */
+    public static function failedSourceMutations(): iterable
+    {
+        foreach (['create', 'add', 'update'] as $action) {
+            foreach (['directory', 'sort', 'rating', 'upload', 'sql'] as $failure) {
+                yield "$action $failure failure" => [$action, $failure];
+            }
+        }
+    }
+
+    #[DataProvider('failedSourceMutations')]
+    public function testFailedSourceMutationDoesNotLeaveANewGroup(string $action, string $failure): void
+    {
+        $groupsTable = TestHelper::table('content_sources_groups');
+        $sourcesTable = TestHelper::table('content_sources');
+        $groupsBefore = $this->db->query("SELECT * FROM {$groupsTable} ORDER BY content_source_group_id")->fetchAll();
+        $sourcesBefore = $this->db->query("SELECT * FROM {$sourcesTable} ORDER BY content_source_id")->fetchAll();
+        $input = ['action' => $action, '--title' => 'Rejected Source', '--group' => 'New Source Group'];
+        if ($action === 'update') {
+            $input['id'] = '1';
+        }
+        if ($failure === 'sql') {
+            $operation = $action === 'update' ? 'UPDATE' : 'INSERT';
+            $this->db->exec(
+                "CREATE TRIGGER reject_source_mutation BEFORE {$operation} ON {$sourcesTable} " .
+                "BEGIN SELECT RAISE(ABORT, 'Synthetic source rejection'); END"
+            );
+        } else {
+            $input += match ($failure) {
+                'directory' => ['--dir' => '!!!'],
+                'sort' => ['--sort' => '-1'],
+                'rating' => ['--rating' => '11'],
+                'upload' => ['--screenshot1' => $this->kvsPath . '/missing.png'],
+            };
+        }
+
+        $exitCode = $this->sourceTester->execute($input);
+
+        $this->assertSame(Command::FAILURE, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertSame($groupsBefore, $this->db->query("SELECT * FROM {$groupsTable} ORDER BY content_source_group_id")->fetchAll());
+        $this->assertSame($sourcesBefore, $this->db->query("SELECT * FROM {$sourcesTable} ORDER BY content_source_id")->fetchAll());
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testSourceUpdateCommitsItsNewGroupAndBothAuditEntries(): void
+    {
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--group' => 'New Source Group',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $group = $this->fetchGroupByTitle('New Source Group');
+        $source = $this->fetchSourceByTitle('Alpha Source');
+        $this->assertNotNull($group);
+        $this->assertNotNull($source);
+        $this->assertSame($group['content_source_group_id'], $source['content_source_group_id']);
+        $this->assertSame(2, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
     public function testDeleteSourceDetachesContentAndRemovesRelations(): void
     {
         $this->sourceTester->setInputs(['yes']);
@@ -603,6 +666,7 @@ class ContentSourceCommandTest extends TestCase
             'id' => '1',
             '--screenshot1' => $image,
             '--custom-file1' => $custom,
+            '--group' => 'New Source Group',
         ]);
 
         $this->assertSame(Command::FAILURE, $exitCode);
@@ -615,6 +679,9 @@ class ContentSourceCommandTest extends TestCase
         $this->assertSame(0640, fileperms($folder . '/s1_alpha.png') & 0777);
         $this->assertSame(0600, fileperms($folder . '/c1_old.txt') & 0777);
         $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+        $this->assertNull($this->fetchGroupByTitle('New Source Group'));
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
     }
 
     public function testUpdateRestoresFirstUploadWhenSecondTargetIsBlocked(): void
@@ -630,6 +697,7 @@ class ContentSourceCommandTest extends TestCase
             'id' => '1',
             '--screenshot1' => $this->createTinyPng('alpha.png'),
             '--screenshot2' => $this->createTinyPng('blocked.png'),
+            '--group' => 'New Source Group',
         ]);
 
         $this->assertSame(Command::FAILURE, $exitCode);
@@ -639,6 +707,9 @@ class ContentSourceCommandTest extends TestCase
         $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_blocked.png/sentinel'));
         $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
         $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+        $this->assertNull($this->fetchGroupByTitle('New Source Group'));
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
     }
 
     public function testCreateRemovesFirstUploadWhenSecondTargetIsBlocked(): void
@@ -651,6 +722,7 @@ class ContentSourceCommandTest extends TestCase
             'action' => 'create',
             'id' => 'Rejected source',
             '--screenshot1' => $this->createTinyPng('new.png'),
+            '--group' => 'New Source Group',
         ]);
 
         $this->assertSame(Command::FAILURE, $exitCode);
@@ -662,6 +734,9 @@ class ContentSourceCommandTest extends TestCase
         $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_new.png/sentinel'));
         $this->assertSame('old screenshot', file_get_contents($this->sourceFilesPath . '/1/s1_alpha.png'));
         $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+        $this->assertNull($this->fetchGroupByTitle('New Source Group'));
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
     }
 
 

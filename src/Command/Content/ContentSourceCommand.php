@@ -617,6 +617,7 @@ HELP
             return self::FAILURE;
         }
 
+        $transactionStarted = false;
         try {
             if ($this->sourceTitleExists($db, $title, null)) {
                 $this->io()->error("Content source already exists: $title");
@@ -657,6 +658,8 @@ HELP
                 return self::FAILURE;
             }
 
+            $db->beginTransaction();
+            $transactionStarted = true;
             $groupId = $this->resolveGroupOption($db, $input, true);
             if ($groupId === false) {
                 return self::FAILURE;
@@ -678,7 +681,6 @@ HELP
             $description = $this->getRawStringOptionOrDefault($input, 'description', '');
             $customValues = $this->collectCustomValues($input, []);
 
-            $db->beginTransaction();
             $this->relaxSqlMode($db);
             try {
                 $fields = [
@@ -753,6 +755,10 @@ HELP
         } catch (\Exception $e) {
             $this->io()->error('Failed to create content source: ' . $e->getMessage());
             return self::FAILURE;
+        } finally {
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
         }
     }
 
@@ -768,6 +774,7 @@ HELP
             return self::FAILURE;
         }
 
+        $transactionStarted = false;
         try {
             $source = $this->fetchSourceById($db, $sourceId);
             if ($source === null) {
@@ -782,6 +789,8 @@ HELP
             $updates = [];
             $params = ['id' => $sourceId];
             $changedFields = [];
+            $db->beginTransaction();
+            $transactionStarted = true;
             if (!$this->collectScalarUpdates($db, $input, $source, $sourceId, $updates, $params, $changedFields)) {
                 return self::FAILURE;
             }
@@ -803,7 +812,6 @@ HELP
 
             $newFiles = [];
             $fileBatch = new UploadedFileBatch();
-            $db->beginTransaction();
             $this->relaxSqlMode($db);
             try {
                 $newFiles = $this->installUploads($sourceId, array_values($fileChanges['uploads']), $fileBatch);
@@ -865,6 +873,10 @@ HELP
         } catch (\Exception $e) {
             $this->io()->error('Failed to update content source: ' . $e->getMessage());
             return self::FAILURE;
+        } finally {
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
         }
     }
 
