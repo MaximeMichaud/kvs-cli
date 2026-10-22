@@ -12,6 +12,8 @@ kvs system:backup [options]
 
 The `system:backup` command allows you to create full or partial backups of your KVS installation and list existing backup archives.
 
+Database backups require an available `mysqldump` or `mariadb-dump` client.
+
 ## Options
 
 | Option | Description |

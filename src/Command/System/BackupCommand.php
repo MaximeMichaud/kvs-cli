@@ -9,6 +9,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
@@ -242,6 +243,13 @@ HELP
             return false;
         }
 
+        $finder = new ExecutableFinder();
+        $dumpCommand = $finder->find('mysqldump') ?? $finder->find('mariadb-dump');
+        if ($dumpCommand === null) {
+            $this->io()->error('Database dump command not found');
+            return false;
+        }
+
         $sqlFile = "$outputDir/{$backupName}_db.sql";
         $errorFile = "$outputDir/{$backupName}_db.stderr";
         $gzFile = "$outputDir/{$backupName}_db.sql.gz";
@@ -252,7 +260,7 @@ HELP
         }
 
         $command = [
-            'mysqldump',
+            $dumpCommand,
             '-h', $host,
             '-P', $port,
             '-u', $dbConfig['user'],

@@ -106,6 +106,54 @@ SH
         }
     }
 
+    #[DataProvider('dumpClientAvailabilityProvider')]
+    public function testDatabaseBackupHandlesDumpClientAvailability(bool $available): void
+    {
+        $toolsDir = $this->tempDir . '/dump-client-tools';
+        mkdir($toolsDir);
+        if ($available) {
+            $this->writeTool($toolsDir, 'mariadb-dump', <<<'SH'
+#!/bin/sh
+printf '%128s\n' 'Synthetic MariaDB dump'
+SH);
+        }
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir);
+        try {
+            $this->tester->execute([
+                '--create' => true,
+                '--type' => 'db',
+                '--output' => $this->tempDir . '/backups',
+            ]);
+
+            $output = $this->tester->getDisplay();
+            $this->assertSame($available ? 0 : 1, $this->tester->getStatusCode(), $output);
+            $archives = glob($this->tempDir . '/backups/*_db.sql.gz') ?: [];
+            $this->assertCount($available ? 1 : 0, $archives);
+            $this->assertSame([], glob($this->tempDir . '/backups/.kvs-backup-*') ?: []);
+            if ($available) {
+                $this->assertSame(sprintf('%128s', 'Synthetic MariaDB dump') . "\n", gzdecode(file_get_contents($archives[0])));
+            } else {
+                $this->assertStringContainsString('Database dump command not found', $output);
+                $this->assertStringNotContainsString('Backup created', $output);
+            }
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    /** @return iterable<string, array{bool}> */
+    public static function dumpClientAvailabilityProvider(): iterable
+    {
+        yield 'MariaDB client only' => [true];
+        yield 'no dump client' => [false];
+    }
+
     public function testBackupCreateRejectsInvalidTypeBeforeCreatingOutputDirectory(): void
     {
         $outputDir = $this->rootDir . '/invalid-type-output';
