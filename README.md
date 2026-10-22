@@ -196,6 +196,9 @@ Priority order:
 2. `KVS_PATH` environment variable
 3. Auto-detection (walks up directory tree)
 
+Relative paths supplied through `--path` or `KVS_PATH` are resolved from the
+directory where the command starts, including commands that enter the admin directory.
+
 ## Requirements
 
 - PHP 8.1+

@@ -4,6 +4,7 @@ namespace KVS\CLI\Config;
 
 use KVS\CLI\Constants;
 use PhpParser\Node;
+use Symfony\Component\Filesystem\Path;
 
 class Configuration
 {
@@ -48,13 +49,13 @@ class Configuration
                 }
                 throw new \Exception("The path '$path' does not contain a valid KVS installation.");
             }
-            return $path;
+            return $this->anchorKvsPath($path);
         }
 
         // 2. Check KVS_PATH environment variable
         $envPath = getenv('KVS_PATH');
         if ($envPath !== false && $envPath !== '' && $this->isKvsInstallation($envPath)) {
-            return $envPath;
+            return $this->anchorKvsPath($envPath);
         }
 
         // 3. Auto-detect from current directory (walk up the tree)
@@ -75,6 +76,21 @@ class Configuration
         }
 
         throw new \Exception('KVS installation not found. Use --path=' . \KVS\CLI\Application::EXAMPLE_PATH . ' or run from KVS directory.');
+    }
+
+    private function anchorKvsPath(string $path): string
+    {
+        if (Path::isAbsolute($path)) {
+            return $path;
+        }
+
+        $directory = getcwd();
+        if ($directory === false) {
+            throw new \RuntimeException('Failed to get current working directory');
+        }
+
+        // Keep symlinks and dot segments so logical parents and filesystem traversal stay unchanged.
+        return $directory . DIRECTORY_SEPARATOR . $path;
     }
 
     private function isKvsInstallation(string $path): bool

@@ -442,4 +442,140 @@ class BaseCommandTest extends TestCase
         $command->assemble([['Images', 2], ['Missing', null]], ['count' => 2, 'enabled' => false, 'nested' => $nested]);
         $this->assertSame([['images' => '2', 'missing' => '', 'count' => 2, 'enabled' => false, 'nested' => $nested]], $command->captured);
     }
+
+    /**
+     * @dataProvider installationAdminContextPathProvider
+     */
+    public function testInstallationAdminContextUsesStablePathsAndRestoresProcessState(string $kind, bool $callbackFails): void
+    {
+        $root = $this->tempDir;
+        $previousDirectory = getcwd();
+        $previousIncludePath = get_include_path();
+        $previousSession = $_SESSION ?? null;
+        $previousConfig = $GLOBALS['config'] ?? null;
+        $warnings = [];
+        set_error_handler(static function (int $severity) use (&$warnings): bool {
+            $warnings[] = $severity;
+            return true;
+        });
+
+        try {
+            foreach (['site', 'physical/site'] as $site) {
+                $directory = $root . '/' . $site . '/admin/include';
+                mkdir($directory, 0755, true);
+                file_put_contents($directory . '/setup_db.php', '<?php');
+                file_put_contents($directory . '/functions_base.php', '<?php');
+                file_put_contents($directory . '/functions.php', '<?php');
+                file_put_contents($directory . '/fixture_extra.php', '<?php $config["fixture_extra"] = "loaded";');
+                file_put_contents(
+                    $directory . '/setup.php',
+                    '<?php $config = ["project_path" => "Synthetic stale path", "project_name" => '
+                    . var_export($site, true) . ', "project_version" => "7.0.0"];'
+                );
+            }
+            mkdir($root . '/work');
+            mkdir($root . '/physical/nested');
+            $this->assertTrue(symlink($root . '/site', $root . '/alias'));
+            $this->assertTrue(symlink($root . '/physical/nested', $root . '/jump'));
+            $directory = match ($kind) {
+                'dot' => $root . '/site',
+                'parent' => $root . '/work',
+                default => $root,
+            };
+            $path = match ($kind) {
+                'absolute' => $root . '/site',
+                'dot' => '.',
+                'child' => 'site',
+                'parent' => '../site',
+                'relative alias' => 'alias',
+                'absolute alias' => $root . '/alias',
+                'alias parent' => 'jump/../site',
+            };
+            chdir($directory);
+            $expectedPath = str_starts_with($path, '/') ? $path : $directory . '/' . $path;
+            $expectedSite = $kind === 'alias parent' ? 'physical/site' : 'site';
+            $configuration = new Configuration(['path' => $path, 'disable_db_env_overrides' => true]);
+            $command = new class ($configuration) extends BaseCommand {
+                protected function configure(): void
+                {
+                    $this->setName('test:relative-context');
+                }
+
+                public function runInContext(callable $callback): mixed
+                {
+                    return $this->runWithKvsAdminContext($callback, ['fixture_extra.php']);
+                }
+            };
+            $_SESSION = ['synthetic_session' => true];
+            $GLOBALS['config'] = ['synthetic_config' => true];
+            $called = false;
+            $callbackData = null;
+            $failure = null;
+            try {
+                $command->runInContext(static function () use (&$called, &$callbackData, $callbackFails): void {
+                    global $config;
+                    $called = true;
+                    $callbackData = [
+                        'cwd' => getcwd(),
+                        'project_path' => $config['project_path'] ?? null,
+                        'project_name' => $config['project_name'] ?? null,
+                        'extra_loaded' => $config['fixture_extra'] ?? null,
+                        'project_file_exists' => is_file(($config['project_path'] ?? '') . '/admin/include/setup.php'),
+                        'session_login' => $_SESSION['userdata']['login'] ?? null,
+                    ];
+                    if ($callbackFails) {
+                        throw new \RuntimeException('Synthetic callback failure');
+                    }
+                });
+            } catch (\Throwable $error) {
+                $failure = $error;
+            }
+
+            $this->assertSame($directory, getcwd());
+            $this->assertSame($previousIncludePath, get_include_path());
+            $this->assertSame(['synthetic_session' => true], $_SESSION);
+            $this->assertSame(['synthetic_config' => true], $GLOBALS['config']);
+            $this->assertSame([], $warnings);
+            $this->assertTrue($called, 'The synthetic callback must be reached after loading its includes.');
+            $this->assertSame([
+                'cwd' => $root . '/' . $expectedSite . '/admin',
+                'project_path' => $expectedPath,
+                'project_name' => $expectedSite,
+                'extra_loaded' => 'loaded',
+                'project_file_exists' => true,
+                'session_login' => 'kvs-cli',
+            ], $callbackData);
+            if ($callbackFails) {
+                $this->assertInstanceOf(\RuntimeException::class, $failure);
+                $this->assertSame('Synthetic callback failure', $failure->getMessage());
+            } else {
+                $this->assertNull($failure);
+            }
+        } finally {
+            restore_error_handler();
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+            set_include_path($previousIncludePath);
+            if ($previousSession === null) {
+                unset($_SESSION);
+            } else {
+                $_SESSION = $previousSession;
+            }
+            if ($previousConfig === null) {
+                unset($GLOBALS['config']);
+            } else {
+                $GLOBALS['config'] = $previousConfig;
+            }
+        }
+    }
+
+    public static function installationAdminContextPathProvider(): iterable
+    {
+        foreach (['absolute', 'dot', 'child', 'parent', 'relative alias', 'absolute alias', 'alias parent'] as $kind) {
+            foreach ([false, true] as $failure) {
+                yield $kind . ($failure ? ' callback failure' : ' callback success') => [$kind, $failure];
+            }
+        }
+    }
 }
