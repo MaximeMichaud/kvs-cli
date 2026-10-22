@@ -12,6 +12,8 @@ kvs system:cache [options]
 
 The `system:cache` command allows you to clear and view cache statistics for your KVS installation.
 
+Missing cache directories are skipped. Inaccessible paths, invalid directory types, and file inspection or deletion failures return a nonzero exit status. Statistics are marked incomplete when only some directories can be inspected. A failed clear may have already removed files from other accessible directories.
+
 ## Options
 
 ### --clear

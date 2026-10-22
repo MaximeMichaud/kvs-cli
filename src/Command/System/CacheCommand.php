@@ -106,25 +106,28 @@ HELP
         ];
 
         foreach ($cacheDirs as $dir) {
-            if (!is_dir($dir)) {
-                continue;
-            }
-
-            $finder = new Finder();
-            $finder->files()->in($dir);
-
-            $count = 0;
-            foreach ($finder as $file) {
-                if (!$this->removeCacheFile($file->getPathname())) {
-                    $this->io()->error('Failed to delete cache file: ' . $file->getPathname());
-                    $success = false;
+            try {
+                $finder = $this->findCacheFiles($dir);
+                if ($finder === null) {
                     continue;
                 }
-                $count++;
-            }
 
-            if ($count > 0) {
-                $this->io()->info("Cleared $count files from " . basename($dir));
+                $count = 0;
+                foreach ($finder as $file) {
+                    if (!$this->removeCacheFile($file->getPathname())) {
+                        $this->io()->error('Failed to delete cache file: ' . $file->getPathname());
+                        $success = false;
+                        continue;
+                    }
+                    $count++;
+                }
+
+                if ($count > 0) {
+                    $this->io()->info("Cleared $count files from " . basename($dir));
+                }
+            } catch (\RuntimeException $e) {
+                $this->io()->error('Could not clear cache directory ' . $dir . ': ' . $e->getMessage());
+                $success = false;
             }
         }
 
@@ -134,6 +137,30 @@ HELP
     protected function removeCacheFile(string $path): bool
     {
         return @unlink($path);
+    }
+
+    private function findCacheFiles(string $dir): ?Finder
+    {
+        if (!is_dir($dir)) {
+            $parent = $dir;
+            while (!is_dir($parent)) {
+                if (file_exists($parent) || is_link($parent) || dirname($parent) === $parent) {
+                    throw new \RuntimeException('Cache path is not an accessible directory.');
+                }
+                $parent = dirname($parent);
+            }
+            if (!is_executable($parent)) {
+                throw new \RuntimeException('Cannot verify cache path through an inaccessible parent.');
+            }
+
+            return null;
+        }
+
+        if (!is_readable($dir) || !is_executable($dir)) {
+            throw new \RuntimeException('Cache directory is not readable or searchable.');
+        }
+
+        return (new Finder())->files()->in($dir);
     }
 
     private function clearDatabaseCache(): bool
@@ -191,6 +218,7 @@ HELP
     private function showStats(): int
     {
         $stats = [];
+        $success = true;
 
         $cacheDirs = [
             'Engine cache' => $this->config->getAdminPath() . '/data/engine',
@@ -201,28 +229,34 @@ HELP
         ];
 
         foreach ($cacheDirs as $name => $dir) {
-            if (!is_dir($dir)) {
-                continue;
+            try {
+                $finder = $this->findCacheFiles($dir);
+                if ($finder === null) {
+                    continue;
+                }
+
+                $size = 0;
+                $count = 0;
+                foreach ($finder as $file) {
+                    $size += $file->getSize();
+                    $count++;
+                }
+
+                $stats[] = [
+                    $name,
+                    $count,
+                    format_bytes($size),
+                ];
+            } catch (\RuntimeException $e) {
+                $this->io()->error('Could not inspect cache directory ' . $dir . ': ' . $e->getMessage());
+                $success = false;
             }
-
-            $finder = new Finder();
-            $finder->files()->in($dir);
-
-            $size = 0;
-            $count = 0;
-            foreach ($finder as $file) {
-                $size += $file->getSize();
-                $count++;
-            }
-
-            $stats[] = [
-                $name,
-                $count,
-                format_bytes($size),
-            ];
         }
 
         if ($stats === []) {
+            if (!$success) {
+                return self::FAILURE;
+            }
             $this->io()->warning('No cache directories found');
             $this->io()->text('Cache directories will be created when KVS starts generating cache.');
             return self::SUCCESS;
@@ -232,6 +266,11 @@ HELP
             ['Cache Type', 'Files', 'Size'],
             $stats
         );
+
+        if (!$success) {
+            $this->io()->warning('Cache statistics are incomplete.');
+            return self::FAILURE;
+        }
 
         $totalFiles = array_sum(array_column($stats, 1));
         if ($totalFiles === 0) {
