@@ -229,18 +229,15 @@ class LogCommand extends BaseCommand
         }
 
         $lines = [];
+        $position = $lastPosition;
         while (($line = fgets($fp)) !== false) {
             if (!str_ends_with($line, "\n")) {
-                if (fseek($fp, -strlen($line), SEEK_CUR) !== 0) {
-                    fclose($fp);
-                    return null;
-                }
                 break;
             }
             $lines[] = $line;
+            $position = ftell($fp);
         }
 
-        $position = ftell($fp);
         if ($position !== false) {
             $lastPosition = $position;
         }
