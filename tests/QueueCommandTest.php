@@ -1423,4 +1423,41 @@ class QueueCommandTest extends TestCase
         $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'history', '--limit' => '1'], 'csv', 'status');
         $this->assertSame(['status' => 'Completed'], $row);
     }
+
+    /**
+     * @return iterable<string, array{string, string, int}>
+     */
+    public static function selectedTaskDataFormats(): iterable
+    {
+        foreach (['table', 'json', 'csv', 'yaml'] as $format) {
+            yield "active $format" => [$format, 'background_tasks', 10];
+            yield "history $format" => [$format, 'background_tasks_history', 301];
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('selectedTaskDataFormats')]
+    public function testQueueShowRendersSelectedTaskData(string $format, string $table, int $taskId): void
+    {
+        $data = ['source' => 'upload', 'formats' => ['preview', 'full'], 'enabled' => true];
+        $serialized = serialize($data);
+        $this->db->prepare('UPDATE ' . TestHelper::table($table) . ' SET data = ? WHERE task_id = ?')
+            ->execute([$serialized, $taskId]);
+        $arguments = ['action' => 'show', 'id' => (string) $taskId, '--no-truncate' => true];
+
+        if ($format === 'table') {
+            $this->tester->execute([...$arguments, '--fields' => 'task_id,data']);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertStringContainsString('upload', $this->tester->getDisplay());
+            $this->assertStringContainsString('preview', $this->tester->getDisplay());
+            $this->assertStringContainsString('full', $this->tester->getDisplay());
+        } else {
+            $row = TestHelper::readCommandExportRow($this->tester, $arguments, $format, 'data');
+            $decoded = $format === 'csv' ? json_decode($row['data'], true, flags: JSON_THROW_ON_ERROR) : $row['data'];
+            $this->assertSame($data, $decoded);
+        }
+
+        $query = $this->db->prepare('SELECT data FROM ' . TestHelper::table($table) . ' WHERE task_id = ?');
+        $query->execute([$taskId]);
+        $this->assertSame($serialized, $query->fetchColumn());
+    }
 }

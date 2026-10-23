@@ -761,6 +761,9 @@ HELP
         if (is_string($data) && $data !== '') {
             $unserialized = @unserialize($data, ['allowed_classes' => false]);
             $extra['data'] = $unserialized !== false ? $unserialized : $data;
+            if ($this->isTableFormat($input) && (is_array($unserialized) || is_object($unserialized))) {
+                $extra['data'] = print_r($unserialized, true);
+            }
         }
 
         $videoId = $this->getTaskNumericField($task, 'video_id');
