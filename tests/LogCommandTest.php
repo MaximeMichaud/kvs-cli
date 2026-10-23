@@ -471,4 +471,39 @@ class LogCommandTest extends TestCase
             chmod($file, 0644);
         }
     }
+
+    /** @dataProvider literalLogMessages */
+    public function testLogViewPreservesLiteralFormattingTags(string $message, bool $decorated, ?string $color): void
+    {
+        file_put_contents($this->tempDir . '/admin/logs/system.log', $message . "\n");
+
+        $this->tester->execute(['type' => 'system', '--tail' => '1'], ['decorated' => $decorated]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $expected = $decorated && $color !== null ? "\033[{$color}m{$message}\033[39m" : $message;
+        $this->assertStringContainsString(' ' . $expected . "\n", $output);
+    }
+
+    /** @return iterable<string, array{string, bool, string|null}> */
+    public static function literalLogMessages(): iterable
+    {
+        $messages = [
+            'plain' => ['PLAIN: alpha=beta', null],
+            'error' => ['ERROR: received <info>literal-value</info>', '31'],
+            'warning-with-error-text' => ['WARNING: received <error>literal-value</error>', '31'],
+            'warning-only' => ['WARNING: plain warning text', '33'],
+            'info' => ['INFO: received <comment>literal-value</comment>', '36'],
+            'question' => ['PLAIN: received <question>literal-value</question>', null],
+            'custom-style' => ['ERROR: received <fg=red>literal-value</>', '31'],
+            'unknown-tag' => ['PLAIN: received <unknown>literal-value</unknown>', null],
+            'backslash' => ['PLAIN: received \\<info>literal-value\\</info>', '36'],
+            'plain-trailing-backslash' => ['PLAIN: ending slash\\', null],
+            'styled-trailing-backslash' => ['INFO: ending slash\\', '36'],
+        ];
+        foreach ($messages as $name => [$message, $color]) {
+            yield $name . '-plain' => [$message, false, $color];
+            yield $name . '-decorated' => [$message, true, $color];
+        }
+    }
 }

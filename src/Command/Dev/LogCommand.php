@@ -4,6 +4,7 @@ namespace KVS\CLI\Command\Dev;
 
 use KVS\CLI\Command\BaseCommand;
 use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Formatter\OutputFormatterStyle;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
@@ -463,14 +464,17 @@ class LogCommand extends BaseCommand
             return;
         }
 
-        if (str_contains(strtolower($line), 'error')) {
-            $this->io()->text("<fg=red>$line</>");
-        } elseif (str_contains(strtolower($line), 'warning')) {
-            $this->io()->text("<fg=yellow>$line</>");
-        } elseif (str_contains(strtolower($line), 'info')) {
-            $this->io()->text("<fg=cyan>$line</>");
-        } else {
-            $this->io()->text($line);
+        $lowercaseLine = strtolower($line);
+        $color = match (true) {
+            str_contains($lowercaseLine, 'error') => 'red',
+            str_contains($lowercaseLine, 'warning') => 'yellow',
+            str_contains($lowercaseLine, 'info') => 'cyan',
+            default => null,
+        };
+        if ($color !== null && $this->io()->isDecorated()) {
+            $line = (new OutputFormatterStyle($color))->apply($line);
         }
+
+        $this->io()->writeln(' ' . $line, OutputInterface::OUTPUT_RAW);
     }
 }
