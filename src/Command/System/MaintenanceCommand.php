@@ -7,6 +7,8 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Filesystem\Path;
 
 #[AsCommand(name: 'maintenance', description: 'Enable/disable website maintenance mode', aliases: ['maint'])]
 class MaintenanceCommand extends BaseCommand
@@ -155,8 +157,58 @@ EOT
     private function saveSettings(string $settingsFile, array $settings): void
     {
         $contents = serialize($settings);
-        if (@file_put_contents($settingsFile, $contents) !== strlen($contents)) {
-            throw new \RuntimeException('Failed to write maintenance settings: ' . $settingsFile);
+        $error = 'Failed to write maintenance settings: ' . $settingsFile;
+        $target = $settingsFile;
+        $links = [];
+        while (is_link($target)) {
+            $link = readlink($target);
+            $linkMetadata = lstat($target);
+            if ($link === false || $linkMetadata === false) {
+                throw new \RuntimeException($error);
+            }
+            $linkDirectory = realpath(dirname($target));
+            $identity = $linkMetadata['dev'] . ':' . $linkMetadata['ino'] . ':'
+                . ($linkDirectory === false ? dirname($target) : $linkDirectory);
+            if (isset($links[$identity])) {
+                throw new \RuntimeException($error);
+            }
+            $links[$identity] = true;
+            $target = Path::isAbsolute($link) ? $link : dirname($target) . '/' . $link;
+        }
+        if (file_exists($target) && (!is_file($target) || !is_writable($target))) {
+            throw new \RuntimeException($error);
+        }
+
+        $metadata = @stat($target);
+        $directory = dirname($target);
+        $resolvedDirectory = realpath($directory);
+        if ($resolvedDirectory !== false) {
+            $directory = $resolvedDirectory;
+        }
+        $temporaryFile = (new Filesystem())->tempnam($directory, '.kvs-maintenance-');
+        try {
+            if (
+                dirname($temporaryFile) !== $directory
+                || @file_put_contents($temporaryFile, $contents) !== strlen($contents)
+            ) {
+                throw new \RuntimeException($error);
+            }
+            if ($metadata !== false) {
+                if (
+                    (fileowner($temporaryFile) !== $metadata['uid'] && !@chown($temporaryFile, $metadata['uid']))
+                    || (filegroup($temporaryFile) !== $metadata['gid'] && !@chgrp($temporaryFile, $metadata['gid']))
+                ) {
+                    throw new \RuntimeException($error . '; cannot preserve file ownership');
+                }
+            }
+            $permissions = $metadata === false ? 0666 & ~umask() : $metadata['mode'] & 0777;
+            if (!@chmod($temporaryFile, $permissions) || !@rename($temporaryFile, $target)) {
+                throw new \RuntimeException($error);
+            }
+        } finally {
+            if (is_file($temporaryFile)) {
+                @unlink($temporaryFile);
+            }
         }
     }
 }

@@ -103,7 +103,7 @@ class MaintenanceCommandTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
         $this->assertStringContainsString('Failed to write maintenance settings', $tester->getDisplay());
-        $this->assertSame($contents, $settings->getContent());
+        $this->assertSame($contents, $this->readVirtualSettings($settings));
     }
 
     /** @return array<string, array{string}> */
@@ -122,7 +122,7 @@ class MaintenanceCommandTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
         $this->assertStringContainsString('Failed to read maintenance settings', $tester->getDisplay());
-        $this->assertSame($contents, $settings->getContent());
+        $this->assertSame($contents, $this->readVirtualSettings($settings));
         $this->assertStringNotContainsString('Maintenance mode is DISABLED', $tester->getDisplay());
     }
 
@@ -136,7 +136,7 @@ class MaintenanceCommandTest extends TestCase
 
         $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
         $this->assertStringContainsString('Invalid maintenance settings', $tester->getDisplay());
-        $this->assertSame($contents, $settings->getContent());
+        $this->assertSame($contents, $this->readVirtualSettings($settings));
     }
 
     public function testMaintenancePreservesOtherSettings(): void
@@ -149,7 +149,7 @@ class MaintenanceCommandTest extends TestCase
             $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
             $this->assertSame(
                 ['CUSTOM_SETTING' => 'preserve', 'DISABLE_WEBSITE' => $mode],
-                unserialize($settings->getContent())
+                unserialize($this->readVirtualSettings($settings))
             );
         }
     }
@@ -182,5 +182,109 @@ class MaintenanceCommandTest extends TestCase
         $output = $this->tester->getDisplay();
         $this->assertStringContainsString('Invalid action', $output);
         $this->assertEquals(1, $this->tester->getStatusCode());
+    }
+
+    public function testMaintenancePreservesSymbolicDirectoryResolution(): void
+    {
+        $directory = $this->tempDir . '/admin/data/system';
+        $storage = $this->tempDir . '/shared-settings';
+        mkdir($storage . '/nested', 0755, true);
+        $actual = $storage . '/params.dat';
+        $decoy = $directory . '/params.dat';
+        file_put_contents($actual, serialize(['DISABLE_WEBSITE' => 0, 'CUSTOM_SETTING' => 'actual']));
+        $decoyContents = serialize(['DISABLE_WEBSITE' => 0, 'CUSTOM_SETTING' => 'decoy']);
+        file_put_contents($decoy, $decoyContents);
+        $this->assertTrue(symlink($storage . '/nested', $directory . '/bridge'));
+        $settingsFile = $directory . '/website_ui_params.dat';
+        $this->assertTrue(symlink('bridge/../params.dat', $settingsFile));
+
+        $this->tester->execute(['action' => 'on']);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(
+            serialize(['DISABLE_WEBSITE' => 1, 'CUSTOM_SETTING' => 'actual']),
+            file_get_contents($actual)
+        );
+        $this->assertSame($decoyContents, file_get_contents($decoy));
+        $this->assertSame('bridge/../params.dat', readlink($settingsFile));
+    }
+
+    #[DataProvider('maintenanceModes')]
+    public function testMaintenancePreservesSettingsAfterPartialWrite(string $action, int $initialMode): void
+    {
+        $contents = serialize(['DISABLE_WEBSITE' => $initialMode, 'CUSTOM_SETTING' => 'preserve']);
+        [$tester, $settings] = $this->createVirtualSettingsTester($contents, 0644);
+        vfsStream::setQuota(32);
+        try {
+            $tester->execute(['action' => $action]);
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString('Failed to write maintenance settings', $tester->getDisplay());
+            $this->assertSame($contents, $this->readVirtualSettings($settings));
+        } finally {
+            vfsStream::setQuota(-1);
+        }
+    }
+
+    private function readVirtualSettings(vfsStreamFile $settings): string
+    {
+        $root = \org\bovigo\vfs\vfsStreamWrapper::getRoot();
+        $this->assertNotNull($root);
+        $current = $root->getChild($settings->path());
+        $this->assertInstanceOf(vfsStreamFile::class, $current);
+
+        return $current->getContent();
+    }
+
+    #[DataProvider('hardlinkedSymbolicTargets')]
+    public function testMaintenancePreservesHardlinkedSymbolicTargets(bool $targetExists): void
+    {
+        $directory = $this->tempDir . '/admin/data/system';
+        mkdir($directory . '/nested/nested', 0755, true);
+        $settingsFile = $directory . '/website_ui_params.dat';
+        $secondLink = $directory . '/nested/website_ui_params.dat';
+        $actual = $directory . '/nested/nested/website_ui_params.dat';
+        $settings = ['DISABLE_WEBSITE' => 0, 'CUSTOM_SETTING' => 'preserve'];
+        if ($targetExists) {
+            file_put_contents($actual, serialize($settings));
+            chmod($actual, 0640);
+        }
+        $metadata = $targetExists ? stat($actual) : false;
+        $this->assertTrue(symlink('nested/website_ui_params.dat', $settingsFile));
+        $this->assertTrue(link($settingsFile, $secondLink));
+        $this->assertTrue(is_link($secondLink));
+        $firstLinkMetadata = lstat($settingsFile);
+        $secondLinkMetadata = lstat($secondLink);
+        $this->assertNotFalse($firstLinkMetadata);
+        $this->assertNotFalse($secondLinkMetadata);
+        $this->assertSame($firstLinkMetadata['dev'], $secondLinkMetadata['dev']);
+        $this->assertSame($firstLinkMetadata['ino'], $secondLinkMetadata['ino']);
+
+        $this->tester->execute(['action' => 'on']);
+        clearstatcache();
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $expected = $targetExists ? $settings : [];
+        $expected['DISABLE_WEBSITE'] = 1;
+        $this->assertSame(serialize($expected), file_get_contents($actual));
+        $this->assertTrue(is_link($settingsFile));
+        $this->assertTrue(is_link($secondLink));
+        $this->assertSame('nested/website_ui_params.dat', readlink($settingsFile));
+        $this->assertSame('nested/website_ui_params.dat', readlink($secondLink));
+        $this->assertSame($firstLinkMetadata['ino'], lstat($settingsFile)['ino']);
+        $this->assertSame($secondLinkMetadata['ino'], lstat($secondLink)['ino']);
+        if ($metadata !== false) {
+            $current = stat($actual);
+            $this->assertNotFalse($current);
+            $this->assertSame($metadata['mode'] & 0777, $current['mode'] & 0777);
+            $this->assertSame($metadata['uid'], $current['uid']);
+            $this->assertSame($metadata['gid'], $current['gid']);
+        }
+        $this->assertSame([], glob($directory . '/nested/nested/.kvs-maintenance-*'));
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function hardlinkedSymbolicTargets(): array
+    {
+        return ['existing target' => [true], 'dangling target' => [false]];
     }
 }

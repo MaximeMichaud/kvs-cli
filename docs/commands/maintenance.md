@@ -116,6 +116,19 @@ echo "Deployment completed successfully!"
 # maintenance off happens automatically via trap
 ```
 
+## Settings File Updates
+
+Maintenance settings are written to a temporary file and replace the existing
+configuration only after the complete content has been written. Failed writes
+leave the previous settings intact. Symbolic links continue to point to their
+existing targets.
+
+Atomic replacement requires a writable target directory as well as a writable
+settings file. Existing file permissions, owner, and group are preserved. If the
+current account cannot preserve ownership or group, the command fails without
+replacing the file. An account with group write access alone may therefore need
+to run the command as the file owner or another account with the required rights.
+
 ## Aliases
 
 - `kvs maint`
