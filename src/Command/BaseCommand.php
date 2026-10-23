@@ -1198,10 +1198,11 @@ abstract class BaseCommand extends Command
         InputInterface $input,
         array $rows,
         array $defaultFields,
-        ?array $knownFields = null
+        ?array $knownFields = null,
+        bool $literalTableValues = false
     ): int {
         try {
-            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields);
+            $formatter = new Formatter($input->getOptions(), $defaultFields, $knownFields, $literalTableValues);
             $formatter->display($rows, $this->io());
             return self::SUCCESS;
         } catch (\InvalidArgumentException $e) {
@@ -1305,8 +1306,12 @@ abstract class BaseCommand extends Command
      * @param list<list<mixed>> $rows
      * @param array<string, mixed> $extraFields
      */
-    protected function displayDetailRows(InputInterface $input, array $rows, array $extraFields = []): int
-    {
+    protected function displayDetailRows(
+        InputInterface $input,
+        array $rows,
+        array $extraFields = [],
+        bool $literalTableValues = false
+    ): int {
         $record = [];
         foreach ($rows as $row) {
             if (!isset($row[0])) {
@@ -1327,7 +1332,7 @@ abstract class BaseCommand extends Command
             $record[$key] = $value;
         }
 
-        return $this->displayFormattedRows($input, [$record], array_keys($record));
+        return $this->displayFormattedRows($input, [$record], array_keys($record), null, $literalTableValues);
     }
 
     /**

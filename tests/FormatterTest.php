@@ -615,4 +615,52 @@ class FormatterTest extends TestCase
         }
         $this->assertSame($payload, $value);
     }
+
+    /**
+     * @return iterable<string, array{string, bool, bool}>
+     */
+    public static function literalTableValues(): iterable
+    {
+        $values = [
+            'tag' => 'Keep <info>text</info>',
+            'escaped tag' => 'Keep \\<info>text</info>',
+            'trailing backslash' => 'Keep <info>text</info>\\',
+        ];
+        foreach ([49, 50, 51] as $length) {
+            $values["length $length"] = '<info>' . str_repeat('x', $length - 13) . '</info>';
+        }
+        foreach ($values as $name => $value) {
+            foreach ([false, true] as $decorated) {
+                foreach ([false, true] as $noTruncate) {
+                    yield "$name " . (int) $decorated . ' ' . (int) $noTruncate => [$value, $decorated, $noTruncate];
+                }
+            }
+        }
+    }
+
+    #[DataProvider('literalTableValues')]
+    public function testLiteralTableValuesAreEscapedAfterTruncation(
+        string $value,
+        bool $decorated,
+        bool $noTruncate
+    ): void {
+        $formatter = new Formatter(['no-truncate' => $noTruncate], ['title'], null, true);
+        $output = new BufferedOutput(decorated: $decorated);
+        $formatter->display([['title' => $value]], $output);
+        $plain = preg_replace('/\x1b\[[0-9;]*m/', '', $output->fetch());
+        $expected = !$noTruncate && strlen($value) > 50 ? substr($value, 0, 47) . '...' : $value;
+        $this->assertIsString($plain);
+        $this->assertStringContainsString($expected, $plain);
+        $this->assertSame(!$noTruncate && strlen($value) > 50, str_contains($plain, 'Tip: Use --no-truncate'));
+    }
+
+    public function testTableValuesKeepExistingStyleInterpretationByDefault(): void
+    {
+        $formatter = new Formatter([], ['title']);
+        $output = new BufferedOutput(decorated: true);
+        $formatter->display([['title' => '<fg=red>Styled value</>']], $output);
+        $display = $output->fetch();
+        $this->assertStringContainsString("\033[31mStyled value\033[", $display);
+        $this->assertStringNotContainsString('<fg=red>', $display);
+    }
 }

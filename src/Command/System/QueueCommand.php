@@ -527,7 +527,8 @@ HELP
                     $formatter = new Formatter(
                         $input->getOptions(),
                         ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error'],
-                        $knownFields
+                        $knownFields,
+                        true
                     );
                     $formatter->display([], $this->io());
                 }
@@ -570,7 +571,7 @@ HELP
                         $task['type'],
                         $task['content_id'],
                         $task['priority'],
-                        $task['server'],
+                        Formatter::escapeLiteralText($task['server']),
                         $task['error'],
                     ];
                 }
@@ -580,7 +581,8 @@ HELP
                 $formatter = new Formatter(
                     $input->getOptions(),
                     ['task_id', 'status', 'type', 'content_id', 'priority', 'server', 'error'],
-                    $knownFields
+                    $knownFields,
+                    true
                 );
                 $formatter->display($tasks, $this->io());
             }
@@ -729,7 +731,8 @@ HELP
                 return $this->displayDetailRows(
                     $input,
                     $info,
-                    $this->getTaskShowExtraFields($input, $task, $taskId, $isHistory)
+                    $this->getTaskShowExtraFields($input, $task, $taskId, $isHistory),
+                    true
                 );
             }
 
@@ -894,7 +897,7 @@ HELP
         }
 
         $serverDisplay = is_string($serverName) ? $serverName : ($serverId > 0 ? "Server #{$serverId}" : 'None');
-        $info[] = ['Server', $serverDisplay];
+        $info[] = ['Server', $withColor ? Formatter::escapeLiteralText($serverDisplay) : $serverDisplay];
 
         if ($errorCode > 0) {
             $errorText = self::ERROR_CODES[$errorCode] ?? "Error #{$errorCode}";
@@ -903,7 +906,7 @@ HELP
 
         $message = is_string($task['message'] ?? null) ? $task['message'] : '';
         if ($message !== '') {
-            $info[] = ['Message', $message];
+            $info[] = ['Message', $withColor ? Formatter::escapeLiteralText($message) : $message];
         }
 
         $this->appendTaskLifecycleInfo($info, $task, $isHistory);
@@ -959,9 +962,9 @@ HELP
         $this->io()->section('Task Data');
         $unserialized = @unserialize($data);
         if ($unserialized !== false) {
-            $this->io()->text(print_r($unserialized, true));
+            $this->io()->text(Formatter::escapeLiteralText(print_r($unserialized, true)));
         } else {
-            $this->io()->text($data);
+            $this->io()->text(Formatter::escapeLiteralText($data));
         }
     }
 
@@ -1305,7 +1308,8 @@ HELP
                     $formatter = new Formatter(
                         $input->getOptions(),
                         ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date'],
-                        $knownFields
+                        $knownFields,
+                        true
                     );
                     $formatter->display([], $this->io());
                 }
@@ -1355,7 +1359,8 @@ HELP
                 $formatter = new Formatter(
                     $input->getOptions(),
                     ['task_id', 'status', 'type', 'content_id', 'duration', 'end_date'],
-                    $knownFields
+                    $knownFields,
+                    true
                 );
                 $formatter->display($tasks, $this->io());
             }

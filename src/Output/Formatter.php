@@ -4,6 +4,7 @@ namespace KVS\CLI\Output;
 
 use KVS\CLI\Constants;
 use Symfony\Component\Console\Helper\Table;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Yaml\Yaml;
 
@@ -66,8 +67,12 @@ class Formatter
      * @param list<string> $defaultFields Default fields to display if --fields not specified
      * @param list<string>|null $knownFields All fields that can be displayed even when there are no rows
      */
-    public function __construct(array $options, array $defaultFields, ?array $knownFields = null)
-    {
+    public function __construct(
+        array $options,
+        array $defaultFields,
+        ?array $knownFields = null,
+        private bool $literalTableValues = false
+    ) {
         $fieldsOption = $options['fields'] ?? null;
         $fieldOption = $options['field'] ?? null;
         $this->args = [
@@ -337,7 +342,9 @@ class Formatter
                     $value = substr($value, 0, Constants::DEFAULT_TRUNCATE_LENGTH - 3) . '...';
                 }
 
-                $row[] = $value;
+                $row[] = $this->literalTableValues && is_string($value)
+                    ? self::escapeLiteralText($value)
+                    : $value;
             }
             $table->addRow($row);
         }
@@ -358,6 +365,12 @@ class Formatter
         ) {
             $output->writeln('<comment>💡 Tip: Use --no-truncate to see full text</comment>');
         }
+    }
+
+    public static function escapeLiteralText(string $text): string
+    {
+        // Older Console 6.4 releases do not escape tags already preceded by a backslash.
+        return OutputFormatter::escapeTrailingBackslash(str_replace(['<', '>'], ['\\<', '\\>'], $text));
     }
 
     /**

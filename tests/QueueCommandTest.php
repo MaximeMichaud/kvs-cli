@@ -1460,4 +1460,82 @@ class QueueCommandTest extends TestCase
         $query->execute([$taskId]);
         $this->assertSame($serialized, $query->fetchColumn());
     }
+
+    /**
+     * @return iterable<string, array{array<string, string|bool>, string, bool}>
+     */
+    public static function literalQueueTableCases(): iterable
+    {
+        $actions = [
+            'list' => ['action' => 'list', '--limit' => '1'],
+            'list fields' => ['action' => 'list', '--limit' => '1', '--fields' => 'server,message,format_postfix'],
+            'history fields' => ['action' => 'history', '--limit' => '1', '--fields' => 'server,message,format_postfix'],
+            'show active' => ['action' => 'show', 'id' => '30'],
+            'show history' => ['action' => 'show', 'id' => '303'],
+            'show active fields' => ['action' => 'show', 'id' => '30', '--fields' => 'server,message,data'],
+            'show history fields' => ['action' => 'show', 'id' => '303', '--fields' => 'server,message,data'],
+        ];
+        $payloads = [
+            'tag' => 'Literal <info>worker</info>',
+            'escaped tag' => 'Literal \\<info>worker</info>',
+            'trailing backslash' => 'Literal <info>worker</info>\\',
+        ];
+        foreach ($actions as $action => $arguments) {
+            foreach ($payloads as $name => $payload) {
+                foreach ([false, true] as $decorated) {
+                    yield "$action $name " . ($decorated ? 'decorated' : 'plain') => [
+                        [...$arguments, '--no-truncate' => true], $payload, $decorated,
+                    ];
+                }
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('literalQueueTableCases')]
+    public function testQueueTablesPreserveLiteralTaskText(array $arguments, string $payload, bool $decorated): void
+    {
+        $this->db->prepare('UPDATE ' . TestHelper::table('admin_conversion_servers') . ' SET title = ?')
+            ->execute([$payload]);
+        foreach (['background_tasks', 'background_tasks_history'] as $table) {
+            $this->db->prepare('UPDATE ' . TestHelper::table($table) . ' SET message = ?, data = ?')
+                ->execute([$payload, serialize(['format_postfix' => $payload])]);
+        }
+        $this->tester->execute($arguments, ['decorated' => $decorated]);
+        $display = $this->tester->getDisplay();
+        $plain = preg_replace('/\x1b\[[0-9;]*m/', '', $display);
+        $this->assertSame(0, $this->tester->getStatusCode(), $display);
+        $this->assertIsString($plain);
+        $this->assertStringContainsString($payload, $plain);
+        $expectedOccurrences = $arguments['action'] === 'list' && !isset($arguments['--fields']) ? 1 : 3;
+        $this->assertGreaterThanOrEqual($expectedOccurrences, substr_count($plain, $payload));
+        if (!isset($arguments['--fields'])) {
+            $label = ($arguments['id'] ?? '') === '303' ? 'Completed' : 'Error';
+            $color = $label === 'Completed' ? 32 : 31;
+            $this->assertStringNotContainsString('<fg=', $plain);
+            $this->assertSame($decorated, str_contains($display, "\033[{$color}m{$label}\033["));
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testQueueLiteralTextProtectionDoesNotChangeExports(string $format): void
+    {
+        $payload = 'Literal \\<info>worker</info>\\';
+        $data = ['source' => $payload];
+        $this->db->prepare('UPDATE ' . TestHelper::table('admin_conversion_servers') . ' SET title = ?')
+            ->execute([$payload]);
+        foreach (['background_tasks', 'background_tasks_history'] as $table) {
+            $this->db->prepare('UPDATE ' . TestHelper::table($table) . ' SET message = ?, data = ?')
+                ->execute([$payload, serialize($data)]);
+        }
+        foreach ([['action' => 'list'], ['action' => 'history'], ['action' => 'show', 'id' => '30']] as $arguments) {
+            $row = TestHelper::readCommandExportRow($this->tester, $arguments, $format, 'server,message,data');
+            $this->assertSame($payload, $row['server']);
+            $this->assertSame($payload, $row['message']);
+            $expected = $arguments['action'] === 'show' ? $data : serialize($data);
+            $actual = $arguments['action'] === 'show' && $format === 'csv'
+                ? json_decode($row['data'], true, flags: JSON_THROW_ON_ERROR)
+                : $row['data'];
+            $this->assertSame($expected, $actual);
+        }
+    }
 }

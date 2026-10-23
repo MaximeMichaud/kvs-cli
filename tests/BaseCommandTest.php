@@ -402,7 +402,8 @@ class BaseCommandTest extends TestCase
                 \Symfony\Component\Console\Input\InputInterface $input,
                 array $rows,
                 array $defaultFields,
-                ?array $knownFields = null
+                ?array $knownFields = null,
+                bool $literalTableValues = false
             ): int {
                 $this->captured = $rows;
                 return self::SUCCESS;
@@ -432,7 +433,8 @@ class BaseCommandTest extends TestCase
                 \Symfony\Component\Console\Input\InputInterface $input,
                 array $rows,
                 array $defaultFields,
-                ?array $knownFields = null
+                ?array $knownFields = null,
+                bool $literalTableValues = false
             ): int {
                 $this->captured = $rows;
                 return self::SUCCESS;
