@@ -506,4 +506,41 @@ class LogCommandTest extends TestCase
             yield $name . '-decorated' => [$message, true, $color];
         }
     }
+
+    /** @dataProvider partialLogTransitions */
+    public function testFollowWaitsForCompleteLogRecords(string $transition): void
+    {
+        $logFile = $this->tempDir . '/admin/logs/system.log';
+        file_put_contents($logFile, "previous-complete-entry\n");
+        $lastPosition = (int) filesize($logFile);
+        $lastInode = fileinode($logFile);
+        if ($transition === 'replace') {
+            rename($logFile, $logFile . '.1');
+        }
+        file_put_contents($logFile, 'FRAGMENT-LEFT', $transition === 'append' ? FILE_APPEND : 0);
+
+        $method = new \ReflectionMethod(LogCommand::class, 'readNewFollowLines');
+        $args = [$logFile, &$lastPosition, &$lastInode];
+        $this->assertSame([], $method->invokeArgs($this->command, $args));
+
+        file_put_contents($logFile, "-RIGHT\nSECOND-COMPLETE\nTHIRD-", FILE_APPEND);
+        $this->assertSame(
+            ["FRAGMENT-LEFT-RIGHT\n", "SECOND-COMPLETE\n"],
+            $method->invokeArgs($this->command, $args)
+        );
+        $this->assertSame([], $method->invokeArgs($this->command, $args));
+
+        file_put_contents($logFile, "COMPLETE\n", FILE_APPEND);
+        $this->assertSame(["THIRD-COMPLETE\n"], $method->invokeArgs($this->command, $args));
+        $this->assertSame((int) filesize($logFile), $lastPosition);
+        $this->assertSame(fileinode($logFile), $lastInode);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function partialLogTransitions(): iterable
+    {
+        foreach (['append', 'replace', 'truncate'] as $transition) {
+            yield $transition => [$transition];
+        }
+    }
 }

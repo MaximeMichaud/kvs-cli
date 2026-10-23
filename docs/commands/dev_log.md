@@ -79,6 +79,10 @@ kvs log error
 kvs log cron --follow
 ```
 
+New entries are displayed when their terminating newline arrives. Incomplete
+trailing entries remain buffered until they are complete. Regular `--tail` reads
+still display the final entry even if it has no trailing newline.
+
 Press `Ctrl+C` to stop.
 
 ### Clear Log File
