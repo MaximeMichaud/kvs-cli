@@ -16,14 +16,14 @@ video content.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `delete`, `stats` (default: `list`) |
 | `id` | Conditional | Video ID, required for `show` and `delete` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `error`, `processing`, `deleting`, `deleted`) |
 | `--limit=N` | 20 | Number of results to show |
 | `--search=TEXT` | - | Search in titles, directories, descriptions, URLs, and custom fields |
@@ -91,7 +91,14 @@ kvs video show <id>
 
 ### delete
 
-Delete a video through KVS native cleanup.
+Queue a video for KVS native background deletion after confirmation.
+Only disabled, active, or error content can be queued. The current status is
+checked again before applying the change.
+
+The content, `background_tasks`, and `admin_audit_log` tables must use InnoDB.
+The command checks the stored task and audit entry before committing the change;
+failed queue attempts are rolled back. KVS background processing performs the
+later file, reference, and counter cleanup.
 
 ```bash
 kvs video delete <id>
@@ -116,7 +123,7 @@ target video.
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `video_id` | `id` | Video ID |
 | `title` | - | Video title |
 | `dir` | - | Directory slug |

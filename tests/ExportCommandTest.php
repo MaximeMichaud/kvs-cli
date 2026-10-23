@@ -507,6 +507,66 @@ PHP)
     }
 
     /**
+     * @param string|null $compression
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideFailedDumpOutputs')]
+    public function testExportPreservesExistingFileWhenDumpFails(string $mode, ?string $compression): void
+    {
+        if ($compression !== null && (new \Symfony\Component\Process\ExecutableFinder())->find($compression) === null) {
+            $this->markTestSkipped('The compression command is not available');
+        }
+
+        [$toolsDir] = $this->createDumpCaptureTools('preserve-existing-' . $mode . '-' . ($compression ?? 'none'));
+        $dumpScript = $mode === 'empty'
+            ? "#!/bin/sh\nexit 0\n"
+            : "#!/bin/sh\nprintf '%128s\\n' 'partial SQL dump'\necho 'Synthetic dump failure' >&2\nexit 7\n";
+        file_put_contents($toolsDir . '/mysqldump', $dumpScript);
+
+        $outputFile = $this->tempDir . '/exports/existing.sql';
+        $sentinel = "Original backup sentinel\n";
+        file_put_contents($outputFile, $sentinel);
+        chmod($outputFile, 0600);
+        $directoryBefore = scandir(dirname($outputFile));
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+
+        try {
+            $tester = new CommandTester(new ExportCommand(new Configuration(['path' => $this->tempDir])));
+            $input = ['--output' => $outputFile];
+            if ($compression !== null) {
+                $input['--compress'] = $compression;
+            }
+            $tester->execute($input, ['decorated' => false]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertFileExists($outputFile, 'A failed export must preserve the existing backup');
+            $this->assertSame($sentinel, file_get_contents($outputFile));
+            clearstatcache(true, $outputFile);
+            $this->assertSame(0600, fileperms($outputFile) & 0777);
+            $this->assertSame($directoryBefore, scandir(dirname($outputFile)));
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    /**
+     * @return list<array{string, string|null}>
+     */
+    public static function provideFailedDumpOutputs(): array
+    {
+        return [
+            ['partial', null],
+            ['empty', null],
+            ['partial', 'gzip'],
+            ['empty', 'gzip'],
+        ];
+    }
+
+    /**
      * @return array{string, string}
      */
     private function createDumpCaptureTools(string $suffix): array

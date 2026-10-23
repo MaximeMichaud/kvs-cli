@@ -240,4 +240,117 @@ class ShellCommandTest extends TestCase
             $this->assertTrue(class_exists('Psy\Shell'));
         }
     }
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideStandaloneBootstraps')]
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\PreserveGlobalState(false)]
+    public function testShellBootstrapLoadsStandalonePhpFileFromItsOwnDirectory(bool $namespaced, bool $relative): void
+    {
+        $customDir = $this->tempDir . '/bootstrap';
+        mkdir($customDir, 0755);
+        $bootstrapFile = $customDir . '/custom-bootstrap.php';
+        file_put_contents(
+            $customDir . '/helper.php',
+            '<?php $GLOBALS["shell_bootstrap_test_helper"] = "ready";'
+        );
+        file_put_contents(
+            $bootstrapFile,
+            ($namespaced ? "<?php\nnamespace ShellBootstrapFixture;\n" : "<?php\n")
+            . 'require __DIR__ . "/helper.php";' . "\n"
+            . '$GLOBALS["shell_bootstrap_test_dir"] = __DIR__;' . "\n"
+            . '$GLOBALS["shell_bootstrap_test_path"] = $kvsPath;' . "\n"
+            . '$GLOBALS["shell_bootstrap_test_config"] = is_array($config);' . "\n"
+        );
+        $originalCwd = getcwd();
+        if ($relative) {
+            chdir($customDir);
+        }
+
+        try {
+            $input = new \Symfony\Component\Console\Input\ArrayInput(
+                ['--bootstrap' => $relative ? './custom-bootstrap.php' : $bootstrapFile],
+                $this->command->getDefinition()
+            );
+            $method = new \ReflectionMethod(ShellCommand::class, 'createBootstrap');
+            $code = $method->invoke($this->command, $input);
+            $this->assertIsString($code);
+            token_get_all($code, TOKEN_PARSE);
+
+            $generatedFile = $this->tempDir . '/generated-bootstrap.php';
+            file_put_contents($generatedFile, $code);
+            (static function (string $file): void {
+                require $file;
+            })($generatedFile);
+
+            $this->assertSame('ready', $GLOBALS['shell_bootstrap_test_helper']);
+            $this->assertSame(realpath($customDir), $GLOBALS['shell_bootstrap_test_dir']);
+            $this->assertSame($this->tempDir, $GLOBALS['shell_bootstrap_test_path']);
+            $this->assertTrue($GLOBALS['shell_bootstrap_test_config']);
+        } finally {
+            if (is_string($originalCwd)) {
+                chdir($originalCwd);
+            }
+            unset(
+                $GLOBALS['shell_bootstrap_test_helper'],
+                $GLOBALS['shell_bootstrap_test_dir'],
+                $GLOBALS['shell_bootstrap_test_path'],
+                $GLOBALS['shell_bootstrap_test_config']
+            );
+        }
+    }
+
+    /**
+     * @return list<array{bool, bool}>
+     */
+    public static function provideStandaloneBootstraps(): array
+    {
+        return [
+            [false, false],
+            [true, false],
+            [false, true],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('provideBootstrapFailures')]
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\PreserveGlobalState(false)]
+    public function testShellReportsBootstrapErrorsBeforeStartingRepl(string $code, string $expectedError): void
+    {
+        $bootstrapFile = $this->tempDir . '/broken-bootstrap.php';
+        file_put_contents($bootstrapFile, $code);
+        $command = new class ($this->config) extends ShellCommand {
+            protected function getMysqliConnection(bool $quiet = false): ?\mysqli
+            {
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        $originalEnv = getenv('KVS_ENV');
+        putenv('KVS_ENV=dev');
+
+        try {
+            $tester->execute(['--bootstrap' => $bootstrapFile], ['decorated' => false]);
+
+            $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertStringContainsString('Failed to load shell bootstrap:', $tester->getDisplay());
+            $this->assertStringContainsString($expectedError, $tester->getDisplay());
+            $this->assertStringNotContainsString('kvs>>>', $tester->getDisplay());
+        } finally {
+            if ($originalEnv === false) {
+                putenv('KVS_ENV');
+            } else {
+                putenv('KVS_ENV=' . $originalEnv);
+            }
+        }
+    }
+
+    /**
+     * @return list<array{string, string}>
+     */
+    public static function provideBootstrapFailures(): array
+    {
+        return [
+            ["<?php\nfunction broken_bootstrap( {", 'syntax error'],
+            ["<?php\nthrow new RuntimeException('bootstrap sentinel error');", 'bootstrap sentinel error'],
+        ];
+    }
 }

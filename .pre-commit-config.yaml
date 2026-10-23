@@ -1,0 +1,139 @@
+# Repository checks run against the staged snapshot before every commit and push.
+minimum_pre_commit_version: '3.5.0'
+fail_fast: false
+default_language_version:
+  python: python3
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [manual]
+
+repos:
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0
+    hooks:
+      - id: shellcheck
+        name: ShellCheck
+        files: '(^bin/kvs-docker$|\.(sh|bash|ksh|zsh)$)'
+  - repo: https://github.com/openstack/bashate
+    rev: 2.1.1
+    hooks:
+      - id: bashate
+        name: Bash style
+        args: ['-i', 'E001,E002,E003,E005,E006,E010,E011,E020']
+        files: '(^bin/kvs-docker$|\.(sh|bash)$)'
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.49.1
+    hooks:
+      - id: markdownlint
+        name: Markdown style
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1000', '--enforce-all']
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-yaml
+      - id: check-xml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: ['--markdown-linebreak-ext=md']
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detect potential secrets
+        args: ['--baseline', '.secrets.baseline', '--no-verify']
+        require_serial: true
+        exclude: '^composer\.lock$'
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.19.2
+    hooks:
+      - id: commitizen
+        name: Conventional commit message
+        stages: [commit-msg]
+      - id: commitizen-branch
+        name: Conventional branch commits
+        stages: [pre-push]
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint-docker
+        name: GitHub Actions validation
+        pass_filenames: false
+        always_run: true
+  - repo: local
+    hooks:
+      - id: php-syntax
+        name: PHP syntax
+        language: system
+        entry: php tools/lint-php.php
+        pass_filenames: false
+        always_run: true
+      - id: phpcs
+        name: PHP code style
+        language: system
+        entry: vendor/bin/phpcs --standard=phpcs.xml -n
+        pass_filenames: false
+        always_run: true
+      - id: phpstan
+        name: PHPStan level 10
+        language: system
+        entry: env XDEBUG_MODE=off vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+        pass_filenames: false
+        always_run: true
+      - id: editorconfig
+        require_serial: true
+        name: EditorConfig
+        language: system
+        entry: vendor/bin/ec
+        exclude: '(^tests/fixtures/|\.php$|^bin/kvs$)'
+      - id: composer-validate
+        name: Composer validation
+        language: system
+        entry: composer validate --strict --no-interaction
+        pass_filenames: false
+        always_run: true
+      - id: composer-audit
+        name: Composer security audit
+        language: system
+        entry: composer audit --no-interaction
+        pass_filenames: false
+        always_run: true
+      - id: phpunit
+        verbose: true
+        name: Complete PHPUnit suite
+        language: system
+        entry: env XDEBUG_MODE=off vendor/bin/phpunit --configuration phpunit.xml.dist --no-progress --fail-on-warning --fail-on-risky --fail-on-deprecation
+        pass_filenames: false
+        always_run: true
+      - id: lowest-dependencies
+        verbose: true
+        name: Minimum dependency PHPUnit suite
+        language: system
+        entry: bash tools/test-lowest-dependencies.sh
+        pass_filenames: false
+        always_run: true
+      - id: installer-shell
+        name: Installer and launcher contracts
+        language: system
+        entry: bash tests/installer-shell.sh
+        pass_filenames: false
+        always_run: true
+      - id: installer-bash32
+        name: Installer and launcher on Bash 3.2
+        language: system
+        entry: bash tools/test-bash32.sh
+        pass_filenames: false
+        always_run: true
+      - id: repository-checks
+        name: All repository checks
+        language: system
+        entry: pre-commit run --all-files --hook-stage manual --show-diff-on-failure
+        pass_filenames: false
+        always_run: true
+        require_serial: true
+        verbose: true
+        stages: [pre-commit, pre-push]

@@ -7,6 +7,9 @@ use KVS\CLI\Command\System\MaintenanceCommand;
 use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use PHPUnit\Framework\Attributes\DataProvider;
+use org\bovigo\vfs\vfsStream;
+use org\bovigo\vfs\vfsStreamFile;
 
 class MaintenanceCommandTest extends TestCase
 {
@@ -82,6 +85,94 @@ class MaintenanceCommandTest extends TestCase
         $settingsFile = $this->tempDir . '/admin/data/system/website_ui_params.dat';
         $settings = unserialize(file_get_contents($settingsFile));
         $this->assertEquals(0, $settings['DISABLE_WEBSITE']);
+    }
+
+    /** @return array<string, array{string, int}> */
+    public static function maintenanceModes(): array
+    {
+        return ['enable' => ['on', 0], 'disable' => ['off', 1]];
+    }
+
+    #[DataProvider('maintenanceModes')]
+    public function testMaintenanceRejectsReadOnlySettings(string $action, int $initialMode): void
+    {
+        $contents = serialize(['DISABLE_WEBSITE' => $initialMode, 'CUSTOM_SETTING' => 'preserve']);
+        [$tester, $settings] = $this->createVirtualSettingsTester($contents, 0444);
+
+        $tester->execute(['action' => $action]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Failed to write maintenance settings', $tester->getDisplay());
+        $this->assertSame($contents, $settings->getContent());
+    }
+
+    /** @return array<string, array{string}> */
+    public static function settingsActions(): array
+    {
+        return ['status' => ['status'], 'enable' => ['on'], 'disable' => ['off']];
+    }
+
+    #[DataProvider('settingsActions')]
+    public function testMaintenanceRejectsUnreadableSettings(string $action): void
+    {
+        $contents = serialize(['DISABLE_WEBSITE' => 1, 'CUSTOM_SETTING' => 'preserve']);
+        [$tester, $settings] = $this->createVirtualSettingsTester($contents, 0200);
+
+        $tester->execute(['action' => $action]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Failed to read maintenance settings', $tester->getDisplay());
+        $this->assertSame($contents, $settings->getContent());
+        $this->assertStringNotContainsString('Maintenance mode is DISABLED', $tester->getDisplay());
+    }
+
+    #[DataProvider('settingsActions')]
+    public function testMaintenanceRejectsInvalidSettings(string $action): void
+    {
+        $contents = 'invalid serialized settings';
+        [$tester, $settings] = $this->createVirtualSettingsTester($contents, 0644);
+
+        $tester->execute(['action' => $action]);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('Invalid maintenance settings', $tester->getDisplay());
+        $this->assertSame($contents, $settings->getContent());
+    }
+
+    public function testMaintenancePreservesOtherSettings(): void
+    {
+        [$tester, $settings] = $this->createVirtualSettingsTester(serialize(['CUSTOM_SETTING' => 'preserve']), 0644);
+
+        foreach (['on' => 1, 'off' => 0] as $action => $mode) {
+            $tester->execute(['action' => $action]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame(
+                ['CUSTOM_SETTING' => 'preserve', 'DISABLE_WEBSITE' => $mode],
+                unserialize($settings->getContent())
+            );
+        }
+    }
+
+    /** @return array{CommandTester, vfsStreamFile} */
+    private function createVirtualSettingsTester(string $contents, int $permissions): array
+    {
+        $root = vfsStream::setup('maintenance', 0755, [
+            'admin' => [
+                'include' => ['setup_db.php' => '<?php', 'setup.php' => '<?php'],
+                'data' => ['system' => ['website_ui_params.dat' => $contents]],
+            ],
+        ]);
+        $settings = $root->getChild('admin/data/system/website_ui_params.dat');
+        $this->assertInstanceOf(vfsStreamFile::class, $settings);
+        $settings->chmod($permissions);
+        $config = $this->getMockBuilder(Configuration::class)
+            ->setConstructorArgs([['path' => $this->tempDir]])
+            ->onlyMethods(['getKvsPath'])
+            ->getMock();
+        $config->method('getKvsPath')->willReturn($root->url());
+
+        return [new CommandTester(new MaintenanceCommand($config)), $settings];
     }
 
     public function testInvalidMode(): void

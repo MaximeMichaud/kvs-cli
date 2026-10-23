@@ -3,7 +3,9 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Application;
+use KVS\CLI\Config\Configuration;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 
@@ -73,6 +75,60 @@ class ApplicationTest extends TestCase
         // Should have at least help and list commands
         $this->assertArrayHasKey('help', $commands);
         $this->assertArrayHasKey('list', $commands);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function commandRegistrationContexts(): array
+    {
+        return [
+            'default commands' => ['default'],
+            'configured installation' => ['configured'],
+            'standalone evaluation' => ['standalone'],
+        ];
+    }
+
+    #[DataProvider('commandRegistrationContexts')]
+    public function testCommandRegistrationExcludesInstallerMigrationCommands(string $context): void
+    {
+        $site = TestHelper::createTempDir('kvs-command-ownership-');
+        try {
+            TestHelper::createMockKvsInstallation($site);
+            $config = new Configuration(['path' => $site]);
+            if ($context === 'configured') {
+                $this->app->registerKvsCommands($config);
+            } elseif ($context === 'standalone') {
+                $this->app->registerStandaloneContextCommands($config);
+            }
+
+            $commands = $this->app->all();
+            $retired = [
+                'migrate:scan', 'scan', 'migrate:package', 'package',
+                'migrate:import', 'import', 'migrate:to-docker', 'to-docker',
+            ];
+            foreach ($retired as $name) {
+                $this->assertArrayNotHasKey($name, $commands, 'Installation migration belongs to KVS-install');
+            }
+            $this->assertArrayNotHasKey('system:scan', $commands);
+
+            if ($context === 'configured') {
+                $diagnostics = [
+                    'system:status' => 'status',
+                    'system:check' => 'check',
+                    'system:stats' => 'stats',
+                    'db:import' => 'database:import',
+                ];
+                foreach ($diagnostics as $name => $alias) {
+                    $this->assertArrayHasKey($name, $commands);
+                    $this->assertSame($commands[$name], $commands[$alias]);
+                }
+                $this->assertSame($commands['db:import'], $commands['db:restore']);
+            } elseif ($context === 'standalone') {
+                $this->assertArrayHasKey('eval', $commands);
+                $this->assertArrayHasKey('eval-file', $commands);
+            }
+        } finally {
+            TestHelper::removeDir($site);
+        }
     }
 
     public function testApplicationHasPathOption(): void
@@ -232,46 +288,5 @@ class ApplicationTest extends TestCase
         $display = $output->fetch();
         $this->assertSame(0, $exitCode);
         $this->assertSame('ok', trim($display));
-    }
-
-    public function testMigrateScanJsonInvalidPathWorksWithoutKvs(): void
-    {
-        $this->app->setAutoExit(false);
-
-        $missingPath = sys_get_temp_dir() . '/kvs-scan-missing-' . bin2hex(random_bytes(4));
-        $input = new ArrayInput([
-            'command' => 'migrate:scan',
-            'path' => $missingPath,
-            '--json' => true,
-            '--force' => true,
-        ]);
-        $input->setInteractive(false);
-        $output = new BufferedOutput();
-
-        $oldCwd = getcwd();
-        $oldKvsPath = getenv('KVS_PATH');
-        try {
-            putenv('KVS_PATH');
-            chdir(sys_get_temp_dir());
-            $exitCode = $this->app->run($input, $output);
-        } finally {
-            if ($oldCwd !== false) {
-                chdir($oldCwd);
-            }
-            if ($oldKvsPath === false) {
-                putenv('KVS_PATH');
-            } else {
-                putenv('KVS_PATH=' . $oldKvsPath);
-            }
-        }
-
-        $display = $output->fetch();
-        $data = json_decode($display, true, flags: JSON_THROW_ON_ERROR);
-
-        $this->assertSame(1, $exitCode);
-        $this->assertIsArray($data);
-        $this->assertTrue($data['error']);
-        $this->assertStringContainsString('does not contain a valid KVS installation', $data['message']);
-        $this->assertStringNotContainsString('[ERROR]', $display);
     }
 }

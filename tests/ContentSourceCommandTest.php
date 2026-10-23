@@ -8,6 +8,7 @@ use KVS\CLI\Config\Configuration;
 use KVS\CLI\Constants;
 use PDO;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -309,6 +310,167 @@ class ContentSourceCommandTest extends TestCase
         }
     }
 
+    /** @return iterable<string, array{string, bool, array<string, string>}> */
+    public static function invalidMutationOutputOptions(): iterable
+    {
+        $invalid = [
+            'count' => ['--format' => 'count'],
+            'unknown field' => ['--field' => 'missing_output_field'],
+            'conflicting fields' => ['--field' => 'title', '--fields' => 'title'],
+            'alias without its target' => ['--field' => 'date'],
+        ];
+        foreach ($invalid as $name => $options) {
+            foreach (['create', 'add', 'update'] as $action) {
+                yield "$action source $name" => [$action, false, $options];
+            }
+            yield "update group $name" => ['update', true, $options];
+        }
+    }
+
+    /** @param array<string, string> $options */
+    #[DataProvider('invalidMutationOutputOptions')]
+    public function testMutationRejectsInvalidOutputBeforeChangingDataOrFiles(
+        string $action,
+        bool $group,
+        array $options
+    ): void {
+        $table = TestHelper::table($group ? 'content_sources_groups' : 'content_sources');
+        $idField = $group ? 'content_source_group_id' : 'content_source_id';
+        $before = $this->db->query("SELECT * FROM {$table} ORDER BY {$idField}")->fetchAll();
+        $tester = $group ? $this->groupTester : $this->sourceTester;
+        $input = ['action' => $action, '--title' => 'Changed Content'];
+        if ($action === 'update') {
+            $input['id'] = '1';
+            if (!$group) {
+                $input['--screenshot1'] = '';
+            }
+        } else {
+            $input['--group'] = 'New audit group';
+        }
+
+        $exitCode = $tester->execute(array_merge($input, $options));
+
+        $this->assertSame(Command::FAILURE, $exitCode, $tester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM {$table} ORDER BY {$idField}")->fetchAll());
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertSame(2, $this->countTableRows('content_sources_groups'));
+        $screenshot = $this->sourceFilesPath . '/1/s1_alpha.png';
+        $this->assertFileExists($screenshot);
+        $this->assertSame('old screenshot', file_get_contents($screenshot));
+        $this->assertStringNotContainsString('successfully', $tester->getDisplay());
+    }
+
+    public function testSourceUpdateSupportsAliasesWhenClearingOptionalFields(): void
+    {
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--custom1' => '',
+            '--custom-file1' => '',
+            '--format' => 'json',
+            '--fields' => 'id,custom_1,custom_file_1,comments,subscribers,tags,date,added_date',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"custom_1": ""', $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"custom_file_1": ""', $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"tags": "Existing Tag"', $this->sourceTester->getDisplay());
+    }
+
+    public function testSourceGroupUpdateSupportsEmptyDetailAlias(): void
+    {
+        $exitCode = $this->groupTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--custom1' => '',
+            '--format' => 'json',
+            '--fields' => 'id,custom_1,content_sources,date,added_date',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->groupTester->getDisplay());
+        $this->assertStringContainsString('"custom_1": ""', $this->groupTester->getDisplay());
+    }
+
+    public function testSourceCreateKeepsNativeColumnsAndNewDetailAliasesSelectable(): void
+    {
+        $this->db->exec('ALTER TABLE ' . TestHelper::table('content_sources') . ' ADD native_extra TEXT DEFAULT "native value"');
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'create',
+            '--title' => 'New source',
+            '--custom10' => 'New custom value',
+            '--format' => 'json',
+            '--fields' => 'id,native_extra,custom_10,tags,categories',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"native_extra": "native value"', $this->sourceTester->getDisplay());
+        $this->assertStringContainsString('"custom_10": "New custom value"', $this->sourceTester->getDisplay());
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function failedSourceMutations(): iterable
+    {
+        foreach (['create', 'add', 'update'] as $action) {
+            foreach (['directory', 'sort', 'rating', 'upload', 'sql'] as $failure) {
+                yield "$action $failure failure" => [$action, $failure];
+            }
+        }
+    }
+
+    #[DataProvider('failedSourceMutations')]
+    public function testFailedSourceMutationDoesNotLeaveANewGroup(string $action, string $failure): void
+    {
+        $groupsTable = TestHelper::table('content_sources_groups');
+        $sourcesTable = TestHelper::table('content_sources');
+        $groupsBefore = $this->db->query("SELECT * FROM {$groupsTable} ORDER BY content_source_group_id")->fetchAll();
+        $sourcesBefore = $this->db->query("SELECT * FROM {$sourcesTable} ORDER BY content_source_id")->fetchAll();
+        $input = ['action' => $action, '--title' => 'Rejected Source', '--group' => 'New Source Group'];
+        if ($action === 'update') {
+            $input['id'] = '1';
+        }
+        if ($failure === 'sql') {
+            $operation = $action === 'update' ? 'UPDATE' : 'INSERT';
+            $this->db->exec(
+                "CREATE TRIGGER reject_source_mutation BEFORE {$operation} ON {$sourcesTable} " .
+                "BEGIN SELECT RAISE(ABORT, 'Synthetic source rejection'); END"
+            );
+        } else {
+            $input += match ($failure) {
+                'directory' => ['--dir' => '!!!'],
+                'sort' => ['--sort' => '-1'],
+                'rating' => ['--rating' => '11'],
+                'upload' => ['--screenshot1' => $this->kvsPath . '/missing.png'],
+            };
+        }
+
+        $exitCode = $this->sourceTester->execute($input);
+
+        $this->assertSame(Command::FAILURE, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertSame($groupsBefore, $this->db->query("SELECT * FROM {$groupsTable} ORDER BY content_source_group_id")->fetchAll());
+        $this->assertSame($sourcesBefore, $this->db->query("SELECT * FROM {$sourcesTable} ORDER BY content_source_id")->fetchAll());
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testSourceUpdateCommitsItsNewGroupAndBothAuditEntries(): void
+    {
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--group' => 'New Source Group',
+        ]);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $group = $this->fetchGroupByTitle('New Source Group');
+        $source = $this->fetchSourceByTitle('Alpha Source');
+        $this->assertNotNull($group);
+        $this->assertNotNull($source);
+        $this->assertSame($group['content_source_group_id'], $source['content_source_group_id']);
+        $this->assertSame(2, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
     public function testDeleteSourceDetachesContentAndRemovesRelations(): void
     {
         $this->sourceTester->setInputs(['yes']);
@@ -481,6 +643,196 @@ class ContentSourceCommandTest extends TestCase
         return $rows;
     }
 
+
+    public function testUpdateRestoresExistingUploadsWhenSqlFails(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        file_put_contents($folder . '/s2_alpha.png', 'old second screenshot');
+        chmod($folder . '/s1_alpha.png', 0640);
+        chmod($folder . '/c1_old.txt', 0600);
+        $table = TestHelper::table('content_sources');
+        $this->db->exec("UPDATE $table SET screenshot2 = 's2_alpha.png' WHERE content_source_id = 1");
+        $before = $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch();
+        $this->db->exec(
+            "CREATE TRIGGER reject_upload_update BEFORE UPDATE ON $table " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic upload rejection'); END"
+        );
+        $image = $this->createTinyPng('alpha.png');
+        $custom = $this->kvsPath . '/old.txt';
+        file_put_contents($custom, 'new custom file');
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--screenshot1' => $image,
+            '--custom-file1' => $custom,
+            '--group' => 'New Source Group',
+        ]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertStringContainsString('Synthetic upload rejection', $this->sourceTester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch());
+        $this->assertFileExists($folder . '/s1_alpha.png');
+        $this->assertSame(hash('sha256', 'old screenshot'), hash_file('sha256', $folder . '/s1_alpha.png'));
+        $this->assertSame('old second screenshot', file_get_contents($folder . '/s2_alpha.png'));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+        $this->assertSame(0640, fileperms($folder . '/s1_alpha.png') & 0777);
+        $this->assertSame(0600, fileperms($folder . '/c1_old.txt') & 0777);
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+        $this->assertNull($this->fetchGroupByTitle('New Source Group'));
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testUpdateRestoresFirstUploadWhenSecondTargetIsBlocked(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        mkdir($folder . '/s2_blocked.png');
+        file_put_contents($folder . '/s2_blocked.png/sentinel', 'preserve unrelated bytes');
+        $table = TestHelper::table('content_sources');
+        $before = $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch();
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'update',
+            'id' => '1',
+            '--screenshot1' => $this->createTinyPng('alpha.png'),
+            '--screenshot2' => $this->createTinyPng('blocked.png'),
+            '--group' => 'New Source Group',
+        ]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch());
+        $this->assertFileExists($folder . '/s1_alpha.png');
+        $this->assertSame(hash('sha256', 'old screenshot'), hash_file('sha256', $folder . '/s1_alpha.png'));
+        $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_blocked.png/sentinel'));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+        $this->assertNull($this->fetchGroupByTitle('New Source Group'));
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    public function testCreateRemovesFirstUploadWhenSecondTargetIsBlocked(): void
+    {
+        $folder = $this->sourceFilesPath . '/3';
+        mkdir($folder . '/s2_new.png', 0777, true);
+        file_put_contents($folder . '/s2_new.png/sentinel', 'preserve unrelated bytes');
+
+        $exitCode = $this->sourceTester->execute([
+            'action' => 'create',
+            'id' => 'Rejected source',
+            '--screenshot1' => $this->createTinyPng('new.png'),
+            '--group' => 'New Source Group',
+        ]);
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $this->assertSame(
+            2,
+            (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('content_sources'))->fetchColumn()
+        );
+        $this->assertFileDoesNotExist($folder . '/s1_new.png');
+        $this->assertSame('preserve unrelated bytes', file_get_contents($folder . '/s2_new.png/sentinel'));
+        $this->assertSame('old screenshot', file_get_contents($this->sourceFilesPath . '/1/s1_alpha.png'));
+        $this->assertSame([], glob($folder . '/.kvs-cli-upload-*'));
+        $this->assertNull($this->fetchGroupByTitle('New Source Group'));
+        $this->assertSame(0, $this->countTableRows('admin_audit_log'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+
+    public function testUpdateReportsRestorationFailureAndRetainsOriginalBackup(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        $image = $this->createTinyPng('alpha.png');
+        $table = TestHelper::table('content_sources');
+        $before = $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch();
+        $this->denyUploadDirectoryOnUpdate($folder, true);
+
+        try {
+            $exitCode = $this->sourceTester->execute([
+                'action' => 'update',
+                'id' => '1',
+                '--screenshot1' => $image,
+            ]);
+        } finally {
+            chmod($folder, 0777);
+        }
+
+        $this->assertSame(Command::FAILURE, $exitCode);
+        $output = $this->sourceTester->getDisplay();
+        $this->assertStringContainsString('Synthetic upload rejection', $output);
+        $this->assertStringContainsString('upload rollback failed', $output);
+        $this->assertStringContainsString('original upload retained at', preg_replace('/\s+/', ' ', $output) ?? $output);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $table WHERE content_source_id = 1")->fetch());
+        $backups = glob($folder . '/.kvs-cli-upload-*');
+        $this->assertIsArray($backups);
+        $this->assertCount(1, $backups);
+        $this->assertSame('old screenshot', file_get_contents($backups[0]));
+        $this->assertSame(file_get_contents($image), file_get_contents($folder . '/s1_alpha.png'));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+    }
+
+    public function testUpdateKeepsCommittedUploadWhenBackupCleanupFails(): void
+    {
+        $folder = $this->sourceFilesPath . '/1';
+        $image = $this->createTinyPng('alpha.png');
+        $this->denyUploadDirectoryOnUpdate($folder, false);
+
+        try {
+            $exitCode = $this->sourceTester->execute([
+                'action' => 'update',
+                'id' => '1',
+                '--description' => 'Committed upload description',
+                '--screenshot1' => $image,
+            ]);
+        } finally {
+            chmod($folder, 0777);
+        }
+
+        $this->assertSame(Command::SUCCESS, $exitCode);
+        $this->assertStringContainsString(
+            'Could not remove upload backup',
+            preg_replace('/\\s+/', ' ', $this->sourceTester->getDisplay()) ?? ''
+        );
+        $this->assertSame(
+            'Committed upload description',
+            $this->db->query(
+                'SELECT description FROM ' . TestHelper::table('content_sources') . ' WHERE content_source_id = 1'
+            )->fetchColumn()
+        );
+        $this->assertSame(file_get_contents($image), file_get_contents($folder . '/s1_alpha.png'));
+        $backups = glob($folder . '/.kvs-cli-upload-*');
+        $this->assertIsArray($backups);
+        $this->assertCount(1, $backups);
+        $this->assertSame('old screenshot', file_get_contents($backups[0]));
+        $this->assertSame('old custom file', file_get_contents($folder . '/c1_old.txt'));
+    }
+
+    private function denyUploadDirectoryOnUpdate(string $folder, bool $reject): void
+    {
+        chmod($folder, 0555);
+        if (is_writable($folder)) {
+            chmod($folder, 0777);
+            $this->markTestSkipped('The current user can write a read-only upload directory.');
+        }
+        chmod($folder, 0777);
+        $callback = static function () use ($folder): int {
+            chmod($folder, 0555);
+            return 0;
+        };
+        if ($this->db instanceof \Pdo\Sqlite) {
+            $this->db->createFunction('deny_upload_directory', $callback);
+        } else {
+            $this->db->sqliteCreateFunction('deny_upload_directory', $callback);
+        }
+        $this->db->exec(
+            'CREATE TRIGGER deny_upload_directory BEFORE UPDATE ON ' . TestHelper::table('content_sources')
+            . ' BEGIN SELECT deny_upload_directory();'
+            . ($reject ? " SELECT RAISE(ABORT, 'Synthetic upload rejection');" : '')
+            . ' END'
+        );
+    }
+
     private function createTinyPng(string $filename): string
     {
         $path = $this->kvsPath . '/' . $filename;
@@ -495,9 +847,136 @@ class ContentSourceCommandTest extends TestCase
         return $path;
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function sourceCacheMutations(): iterable
+    {
+        yield 'update' => ['update'];
+        yield 'delete' => ['delete'];
+    }
+
+    #[DataProvider('sourceCacheMutations')]
+    public function testSourceMutationWarnsWhenCommittedCacheCleanupFails(string $action): void
+    {
+        $hash = md5('1');
+        $directory = $this->kvsPath . '/admin/data/engine/content_sources_info/' . substr($hash, 0, 2);
+        $this->assertTrue(is_dir($directory) || mkdir($directory, 0777, true));
+        $cache = $directory . '/' . $hash . '.dat';
+        file_put_contents($cache, 'Original cached source');
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+
+        try {
+            $arguments = ['action' => $action, 'id' => '1'];
+            if ($action === 'update') {
+                $arguments['--description'] = 'Committed source description';
+            } else {
+                $this->sourceTester->setInputs(['yes']);
+            }
+            $exitCode = $this->sourceTester->execute($arguments);
+
+            $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+            $display = preg_replace('/\s+/', ' ', $this->sourceTester->getDisplay()) ?? '';
+            $this->assertStringContainsString('cleanup failed', $display);
+            $this->assertStringContainsString('Could not remove content source cache', $display);
+            $this->assertSame('Original cached source', file_get_contents($cache));
+            if ($action === 'update') {
+                $this->assertSame('Committed source description', $this->db->query(
+                    'SELECT description FROM ' . TestHelper::table('content_sources') . ' WHERE content_source_id = 1'
+                )->fetchColumn());
+            } else {
+                $this->assertNull($this->fetchSourceByTitle('Alpha Source'));
+            }
+        } finally {
+            chmod($directory, 0755);
+        }
+
+        if ($action === 'update') {
+            $exitCode = $this->sourceTester->execute([
+                'action' => 'update', 'id' => '1', '--description' => 'Recovered source description',
+            ]);
+            $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+            $this->assertFileDoesNotExist($cache);
+        }
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function rejectedSourceSideEffects(): iterable
+    {
+        foreach (['videos_feeds_import', 'tags', 'categories', 'users'] as $table) {
+            yield $table => [$table, false];
+        }
+        yield 'missing trigger dependency on present table' => ['videos_feeds_import', true];
+    }
+
+    #[DataProvider('rejectedSourceSideEffects')]
+    public function testSourceDeletionRollsBackRealOptionalSchemaErrors(string $table, bool $missingDependency): void
+    {
+        $before = $this->snapshotSourceDatabase();
+        $body = $missingDependency
+            ? 'SELECT * FROM missing_fixture_dependency;'
+            : "SELECT RAISE(ABORT, 'Synthetic optional SQL rejection');";
+        $this->db->exec(
+            'CREATE TRIGGER reject_source_side_effect BEFORE UPDATE ON ' . TestHelper::table($table)
+            . ' BEGIN ' . $body . ' END'
+        );
+        $this->sourceTester->setInputs(['yes']);
+        $exitCode = $this->sourceTester->execute(['action' => 'delete', 'id' => '1']);
+
+        $this->assertSame(Command::FAILURE, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertSame($before, $this->snapshotSourceDatabase());
+        $this->assertStringNotContainsString('deleted successfully', $this->sourceTester->getDisplay());
+        $this->assertSame('old screenshot', file_get_contents($this->sourceFilesPath . '/1/s1_alpha.png'));
+        $this->assertSame('old custom file', file_get_contents($this->sourceFilesPath . '/1/c1_old.txt'));
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /** @return iterable<string, array{string, string|null}> */
+    public static function missingLegacySourceSchema(): iterable
+    {
+        yield 'feed table' => ['videos_feeds_import', null];
+        yield 'tag counter' => ['tags', 'total_content_sources'];
+        yield 'category counter' => ['categories', 'total_content_sources'];
+        yield 'user counter' => ['users', 'comments_cs_count'];
+    }
+
+    #[DataProvider('missingLegacySourceSchema')]
+    public function testSourceDeletionAllowsMissingLegacyOptionalSchema(string $table, ?string $column): void
+    {
+        $name = TestHelper::table($table);
+        $this->db->exec($column === null ? "DROP TABLE $name" : "ALTER TABLE $name DROP COLUMN $column");
+        $this->sourceTester->setInputs(['yes']);
+        $exitCode = $this->sourceTester->execute(['action' => 'delete', 'id' => '1']);
+
+        $this->assertSame(Command::SUCCESS, $exitCode, $this->sourceTester->getDisplay());
+        $this->assertNull($this->fetchSourceByTitle('Alpha Source'));
+        $this->assertDirectoryDoesNotExist($this->sourceFilesPath . '/1');
+        $this->assertFalse($this->db->inTransaction());
+    }
+
+    /** @return array<string, list<array<string, mixed>>> */
+    private function snapshotSourceDatabase(): array
+    {
+        $tables = $this->db->query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            ->fetchAll(PDO::FETCH_COLUMN);
+        $state = [];
+        foreach ($tables as $table) {
+            if (!is_string($table) || !str_starts_with($table, TestHelper::getTablePrefix())) {
+                continue;
+            }
+            $state[$table] = $this->db->query('SELECT * FROM ' . $table)->fetchAll(PDO::FETCH_ASSOC);
+        }
+        return $state;
+    }
+
     private function createDatabase(): PDO
     {
-        $db = new PDO('sqlite::memory:');
+        $db = class_exists(\Pdo\Sqlite::class)
+            ? new \Pdo\Sqlite('sqlite::memory:')
+            : new PDO('sqlite::memory:');
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         $db->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);

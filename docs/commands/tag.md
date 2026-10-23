@@ -16,7 +16,7 @@ content tags.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `create`, `delete`, `merge`, `update`, `enable`, `disable`, `stats` (default: `list`) |
 | `identifier` | Conditional | Tag ID or name |
 | `target` | Conditional | Target tag ID for `merge` |
@@ -24,7 +24,7 @@ content tags.
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--name=NAME` | - | New tag name for `update` |
 | `--status=STATUS` | - | Filter or set status (`active`, `inactive`, `disabled`, `0`, `1`) |
 | `--limit=N` | 50 | Number of results to show |
@@ -113,7 +113,7 @@ modify tag data.
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `tag_id` | `id` | Tag ID |
 | `tag` | `tag_rename` | Tag name |
 | `tag_dir` | - | URL slug |

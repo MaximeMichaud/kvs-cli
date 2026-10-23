@@ -774,7 +774,7 @@ HELP
 
         // Prefer source file
         foreach ($extensions as $ext) {
-            if (file_exists("$videoPath/source.$ext")) {
+            if (is_file("$videoPath/source.$ext")) {
                 return "$videoPath/source.$ext";
             }
         }
@@ -782,8 +782,13 @@ HELP
         // Fallback to any video file
         foreach ($extensions as $ext) {
             $files = glob("$videoPath/*.$ext");
-            if ($files !== false && $files !== []) {
-                return $files[0];
+            if ($files === false) {
+                continue;
+            }
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    return $file;
+                }
             }
         }
 

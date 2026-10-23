@@ -16,14 +16,14 @@ statistics for KVS user accounts.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `create`, `delete`, `stats` (default: `list`) |
 | `id` | Conditional | User ID or username, required for `show` and `delete` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `premium`, `not-confirmed`, `unconfirmed`, `anonymous`, `generated`, `webmaster`, `0-6`) |
 | `--limit=N` | 20 | Number of results to show |
 | `--search=TEXT` | - | Search in user admin text fields |
@@ -90,10 +90,14 @@ kvs user stats
 The `create` and `delete` actions modify user data. `delete` uses KVS native
 cleanup and may queue associated videos and albums for background deletion.
 
+List filters and output options are not supported by these actions. They are
+rejected before prompting or changing user data. `create` does not accept an ID
+or username argument or `--yes`; `delete` accepts `--yes` to skip confirmation.
+
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `user_id` | `id` | User ID |
 | `username` | - | Login username |
 | `display_name` | - | Display name |
@@ -183,7 +187,7 @@ Custom user fields can also be filtered when they exist in the KVS installation.
 ## Status Values
 
 | Value | Alias | Description |
-|-------|-------|-------------|
+| ------- | ------- | ------------- |
 | 0 | `disabled` | Account disabled |
 | 1 | `not-confirmed`, `unconfirmed` | Email not confirmed |
 | 2 | `active` | Regular active user |

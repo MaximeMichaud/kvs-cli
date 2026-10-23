@@ -16,14 +16,14 @@ channel, or series records.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `stats` (default: `list`) |
 | `id` | Conditional | DVD ID, required for `show` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `inactive`) |
 | `--limit=N` | 20 | Number of results to show |
 | `--search=TEXT` | - | Search in DVD titles, directories, descriptions, and synonyms |
@@ -73,7 +73,7 @@ kvs dvd stats
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `dvd_id` | `id` | DVD ID |
 | `title` | - | DVD, channel, or series title |
 | `dir` | - | Directory slug |

@@ -20,7 +20,7 @@ counters, messages, comments, and subscriptions.
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--removal-requested` | - | Match users who requested account deletion |
 | `--no-content` | - | Match users with no videos, albums, posts, playlists, or comments |
 | `--inactive-days=N` | - | Match users who have not logged in for N days |

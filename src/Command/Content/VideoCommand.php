@@ -1439,12 +1439,13 @@ HELP
             $resolutionType = is_numeric($video['resolution_type']) ? (int) $video['resolution_type'] : 0;
             $privacyId = is_numeric($video['is_private']) ? (int) $video['is_private'] : 0;
             $accessLevelId = is_numeric($video['access_level_id'] ?? null) ? (int) $video['access_level_id'] : 0;
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['Title', $title],
-                ['Status', StatusFormatter::video($statusId)],
-                ['Resolution', $this->formatResolutionType($resolutionType)],
-                ['Type', StatusFormatter::contentPrivacy($privacyId)],
-                ['Access', StatusFormatter::contentAccessLevel($accessLevelId)],
+                ['Status', StatusFormatter::video($statusId, $withColor)],
+                ['Resolution', $this->formatResolutionType($resolutionType, $withColor)],
+                ['Type', StatusFormatter::contentPrivacy($privacyId, $withColor)],
+                ['Access', StatusFormatter::contentAccessLevel($accessLevelId, $withColor)],
                 ['Duration', $this->formatDuration($duration)],
                 ['File Size', format_bytes($fileSize)],
                 ['Dimensions', $dimensions],
@@ -1845,15 +1846,7 @@ HELP
 
     protected function deleteVideoWithKvs(int $videoId): void
     {
-        $this->runWithKvsAdminContext(function () use ($videoId): void {
-            if (!function_exists('delete_video')) {
-                throw new \RuntimeException('KVS delete_video function is not available');
-            }
-
-            if (delete_video($videoId) !== true) {
-                throw new \RuntimeException("KVS refused to delete video #$videoId");
-            }
-        }, ['functions_servers.php', 'functions_admin.php']);
+        $this->queueContentDeletionWithKvs('video', $videoId);
     }
 
     private function showStats(InputInterface $input): int

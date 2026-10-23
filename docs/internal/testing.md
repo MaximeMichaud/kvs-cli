@@ -35,7 +35,7 @@ XDEBUG_MODE=coverage ./vendor/bin/phpunit --coverage-html coverage-report
 
 ## Test Structure
 
-```
+```text
 tests/
 ├── bootstrap.php              # Test bootstrapper
 ├── BaseTestCase.php          # Base class for all tests
@@ -471,6 +471,7 @@ $command = new class ($config) extends BaseCommand {
 ## Best Practices
 
 1. **Skip when dependencies unavailable**
+
    ```php
    if (!is_dir($kvsPath)) {
        $this->markTestSkipped('KVS installation not found');
@@ -482,6 +483,7 @@ $command = new class ($config) extends BaseCommand {
    - Cleanup happens automatically in `tearDown()`
 
 3. **Use data providers for variations**
+
    ```php
    /**
     * @dataProvider statusProvider
@@ -490,6 +492,7 @@ $command = new class ($config) extends BaseCommand {
    ```
 
 4. **Test error conditions**
+
    ```php
    public function testInvalidId(): void
    {
@@ -499,6 +502,7 @@ $command = new class ($config) extends BaseCommand {
    ```
 
 5. **Test all output formats**
+
    ```php
    public function testJsonFormat(): void
    public function testCsvFormat(): void

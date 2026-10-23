@@ -6,6 +6,7 @@ use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\StatusFormatter;
+use KVS\CLI\Service\UploadedFileBatch;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -541,6 +542,7 @@ HELP
 
             $title = $this->stringValue($source['title'] ?? '');
             $statusId = is_numeric($source['status_id'] ?? null) ? (int) $source['status_id'] : 0;
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', (string) $sourceId],
                 ['Title', $title],
@@ -549,7 +551,7 @@ HELP
                     ? $this->stringValue($source['url'] ?? '')
                     : 'None'],
                 ['Group', $this->formatSourceGroup($source)],
-                ['Status', StatusFormatter::contentSource($statusId)],
+                ['Status', StatusFormatter::contentSource($statusId, $withColor)],
                 ['Rating', $this->stringValue($source['rating'] ?? '0')],
                 ['Rating amount', $this->stringValue($source['rating_amount'] ?? '0')],
                 ['Videos', $this->stringValue($source['videos_amount'] ?? '0')],
@@ -616,9 +618,18 @@ HELP
             return self::FAILURE;
         }
 
+        $transactionStarted = false;
         try {
             if ($this->sourceTitleExists($db, $title, null)) {
                 $this->io()->error("Content source already exists: $title");
+                return self::FAILURE;
+            }
+
+            $stmt = $db->prepare("SELECT * FROM {$this->table('content_sources')} WHERE 1 = 0");
+            $stmt->execute();
+            $columns = $this->getStatementColumnNames($stmt);
+            $source = array_fill_keys($columns, null);
+            if (!$this->validateSourceDetailOutput($input, $source)) {
                 return self::FAILURE;
             }
 
@@ -648,6 +659,8 @@ HELP
                 return self::FAILURE;
             }
 
+            $db->beginTransaction();
+            $transactionStarted = true;
             $groupId = $this->resolveGroupOption($db, $input, true);
             if ($groupId === false) {
                 return self::FAILURE;
@@ -665,11 +678,10 @@ HELP
             }
 
             $sourceId = 0;
-            $createdFiles = [];
+            $fileBatch = new UploadedFileBatch();
             $description = $this->getRawStringOptionOrDefault($input, 'description', '');
             $customValues = $this->collectCustomValues($input, []);
 
-            $db->beginTransaction();
             $this->relaxSqlMode($db);
             try {
                 $fields = [
@@ -706,7 +718,7 @@ HELP
                 $stmt->execute($fields);
 
                 $sourceId = (int) $db->lastInsertId();
-                $createdFiles = $this->installUploads($sourceId, array_values($uploads));
+                $this->installUploads($sourceId, array_values($uploads), $fileBatch);
                 $this->syncTags($db, $sourceId, $this->getRawStringOption($input, 'tags'));
                 $this->syncCategories($db, $sourceId, $this->getRawStringOption($input, 'categories'));
                 $this->writeAdminAuditLog($db, 100, $sourceId, Constants::OBJECT_TYPE_CONTENT_SOURCE);
@@ -717,11 +729,26 @@ HELP
                 if ($db->inTransaction()) {
                     $db->rollBack();
                 }
-                $this->removeFiles($createdFiles);
+                $fileFailures = $fileBatch->rollback();
                 if ($sourceId > 0) {
                     $this->removeEmptySourceDirectory($sourceId);
                 }
+                if ($fileFailures !== []) {
+                    throw new \RuntimeException(
+                        $mutationError->getMessage() . '; upload rollback failed: ' . implode('; ', $fileFailures),
+                        0,
+                        $mutationError
+                    );
+                }
                 throw $mutationError;
+            }
+
+            try {
+                $fileBatch->commit();
+            } catch (\Throwable $cleanupError) {
+                $this->io()->warning(
+                    'Content source created, but upload backup cleanup failed: ' . $cleanupError->getMessage()
+                );
             }
 
             $this->io()->success('Content source created successfully!');
@@ -729,6 +756,10 @@ HELP
         } catch (\Exception $e) {
             $this->io()->error('Failed to create content source: ' . $e->getMessage());
             return self::FAILURE;
+        } finally {
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
         }
     }
 
@@ -744,6 +775,7 @@ HELP
             return self::FAILURE;
         }
 
+        $transactionStarted = false;
         try {
             $source = $this->fetchSourceById($db, $sourceId);
             if ($source === null) {
@@ -751,9 +783,15 @@ HELP
                 return self::FAILURE;
             }
 
+            if (!$this->validateSourceDetailOutput($input, $source)) {
+                return self::FAILURE;
+            }
+
             $updates = [];
             $params = ['id' => $sourceId];
             $changedFields = [];
+            $db->beginTransaction();
+            $transactionStarted = true;
             if (!$this->collectScalarUpdates($db, $input, $source, $sourceId, $updates, $params, $changedFields)) {
                 return self::FAILURE;
             }
@@ -774,10 +812,10 @@ HELP
             }
 
             $newFiles = [];
-            $db->beginTransaction();
+            $fileBatch = new UploadedFileBatch();
             $this->relaxSqlMode($db);
             try {
-                $newFiles = $this->installUploads($sourceId, array_values($fileChanges['uploads']));
+                $newFiles = $this->installUploads($sourceId, array_values($fileChanges['uploads']), $fileBatch);
                 if ($updates !== []) {
                     $stmt = $db->prepare("
                         UPDATE {$this->table('content_sources')}
@@ -808,22 +846,38 @@ HELP
                 if ($db->inTransaction()) {
                     $db->rollBack();
                 }
-                $this->removeFiles($newFiles);
+                $fileFailures = $fileBatch->rollback();
+                if ($fileFailures !== []) {
+                    throw new \RuntimeException(
+                        $mutationError->getMessage() . '; upload rollback failed: ' . implode('; ', $fileFailures),
+                        0,
+                        $mutationError
+                    );
+                }
                 throw $mutationError;
             }
 
             try {
+                $fileBatch->commit();
                 $this->removeFiles(array_values(array_diff(array_unique($fileChanges['old_files']), $newFiles)));
             } catch (\Throwable $cleanupError) {
                 $this->io()->warning('Content source updated, but old file cleanup failed: ' . $cleanupError->getMessage());
             }
-            $this->removeSourceCache($sourceId);
+            try {
+                $this->removeSourceCache($sourceId);
+            } catch (\Throwable $cleanupError) {
+                $this->io()->warning('Content source updated, but cache cleanup failed: ' . $cleanupError->getMessage());
+            }
 
             $this->io()->success('Content source updated successfully!');
             return $this->showSource((string) $sourceId, $input);
         } catch (\Exception $e) {
             $this->io()->error('Failed to update content source: ' . $e->getMessage());
             return self::FAILURE;
+        } finally {
+            if ($transactionStarted && $db->inTransaction()) {
+                $db->rollBack();
+            }
         }
     }
 
@@ -889,7 +943,8 @@ HELP
                 "UPDATE {$this->table('videos_feeds_import')}
                  SET videos_content_source_id = 0
                  WHERE videos_content_source_id = :id",
-                ['id' => $sourceId]
+                ['id' => $sourceId],
+                "SELECT videos_content_source_id FROM {$this->table('videos_feeds_import')} LIMIT 0"
             );
             $this->recountRelatedTags($db, $tagIds);
             $this->recountRelatedCategories($db, $categoryIds);
@@ -1322,7 +1377,30 @@ HELP
             $fields[$field] = $source[$field] ?? '';
         }
 
+        foreach (self::CUSTOM_FIELDS as $field) {
+            $fields['custom_' . substr($field, 6)] = $source[$field] ?? '';
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $fields["custom_file_{$i}"] = $source["custom_file{$i}"] ?? '';
+        }
+
         return $this->getRequestedDetailFields($input, $fields);
+    }
+
+    /** @param array<string, mixed> $source */
+    private function validateSourceDetailOutput(InputInterface $input, array $source): bool
+    {
+        $detailFields = [
+            'id', 'title', 'dir', 'url', 'group', 'status', 'rating', 'rating_amount',
+            'videos', 'albums', 'comments', 'subscribers', 'sort', 'added',
+        ];
+        $extraFields = $this->getRequestedDetailFieldsForSource($input, $source + ['tags' => '', 'categories' => '']);
+
+        return $this->validateDetailOutputOptions(
+            $input,
+            $this->getStringArgument($input, 'action') ?? 'create',
+            array_merge($detailFields, array_keys($extraFields))
+        );
     }
 
     private function getFieldFilterCondition(string $fieldFilter): ?string
@@ -2099,15 +2177,13 @@ HELP
      * @param list<array{source: string, filename: string}> $uploads
      * @return list<string>
      */
-    private function installUploads(int $sourceId, array $uploads): array
+    private function installUploads(int $sourceId, array $uploads, UploadedFileBatch $fileBatch): array
     {
         $created = [];
         foreach ($uploads as $upload) {
             $target = $this->getSourceFilePath($sourceId, $upload['filename']);
             $this->ensureDirectory(dirname($target));
-            if (!@copy($upload['source'], $target)) {
-                throw new \RuntimeException(sprintf('Could not copy file to %s', $target));
-            }
+            $fileBatch->copy($upload['source'], $target);
             @chmod($target, 0666);
             $created[] = $target;
         }
@@ -2232,8 +2308,8 @@ HELP
         }
         $hash = md5((string) $sourceId);
         $cacheFile = rtrim($projectPath, '/') . "/admin/data/engine/content_sources_info/{$hash[0]}{$hash[1]}/{$hash}.dat";
-        if (is_file($cacheFile)) {
-            @unlink($cacheFile);
+        if (is_file($cacheFile) && !@unlink($cacheFile)) {
+            throw new \RuntimeException("Could not remove content source cache: $cacheFile");
         }
     }
 
@@ -2272,7 +2348,8 @@ HELP
                     SELECT COUNT(*) FROM {$this->table('tags_content_sources')} WHERE tag_id = :id
                  )
                  WHERE tag_id = :id",
-                ['id' => $tagId]
+                ['id' => $tagId],
+                "SELECT total_content_sources FROM {$this->table('tags')} LIMIT 0"
             );
         }
     }
@@ -2290,7 +2367,8 @@ HELP
                     SELECT COUNT(*) FROM {$this->table('categories_content_sources')} WHERE category_id = :id
                  )
                  WHERE category_id = :id",
-                ['id' => $categoryId]
+                ['id' => $categoryId],
+                "SELECT total_content_sources FROM {$this->table('categories')} LIMIT 0"
             );
         }
     }
@@ -2313,7 +2391,8 @@ HELP
                     WHERE user_id = :id AND is_approved = 1
                  )
                  WHERE user_id = :id",
-                ['id' => $userId]
+                ['id' => $userId],
+                "SELECT comments_cs_count, comments_total_count FROM {$this->table('users')} LIMIT 0"
             );
         }
     }
@@ -2321,14 +2400,31 @@ HELP
     /**
      * @param array<string, mixed> $params
      */
-    private function safeExecute(\PDO $db, string $sql, array $params): void
+    private function safeExecute(\PDO $db, string $sql, array $params, string $schemaProbe): void
     {
         try {
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
-        } catch (\PDOException) {
-            // Optional KVS tables and counters may be absent in hermetic tests.
+        } catch (\PDOException $error) {
+            if ($this->isMissingOptionalSchema($error)) {
+                try {
+                    $db->query($schemaProbe);
+                } catch (\PDOException $schemaError) {
+                    // Tolerate only an actually absent legacy table or counter.
+                    if ($this->isMissingOptionalSchema($schemaError)) {
+                        return;
+                    }
+                }
+            }
+            throw $error;
         }
+    }
+
+    private function isMissingOptionalSchema(\PDOException $error): bool
+    {
+        return in_array($error->getCode(), ['42S02', '42S22'], true)
+            || str_contains($error->getMessage(), 'no such table: ')
+            || str_contains($error->getMessage(), 'no such column: ');
     }
 
     /**

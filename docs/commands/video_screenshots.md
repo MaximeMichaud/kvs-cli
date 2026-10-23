@@ -48,7 +48,7 @@ kvs video:screenshots regenerate <video_id> [options]
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--count=<n>` | 10 | Number of screenshots to generate for `generate` and `regenerate` |
 | `--fields=<fields>` | `index,filename,formats,dimensions` | Comma-separated fields for `list` output |
 | `--format=<format>` | table | `list` output format: `table`, `csv`, `json`, `yaml`, `count` |

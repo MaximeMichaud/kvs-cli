@@ -25,8 +25,6 @@ class ExperimentResult
     /** @var array<string, bool> */
     private array $confirmations = [];
 
-    private ?int $efficiencyScore = null;
-
     /** @var array<string, mixed> */
     private array $stackScore = [];
 
@@ -131,14 +129,6 @@ class ExperimentResult
     }
 
     /**
-     * Set efficiency score (performance per CPU core)
-     */
-    public function setEfficiencyScore(int $score): void
-    {
-        $this->efficiencyScore = $score;
-    }
-
-    /**
      * Set stack score (software freshness)
      *
      * @param array<string, mixed> $score
@@ -182,7 +172,6 @@ class ExperimentResult
             'version' => '1.0',
             'score' => $this->benchmarkResult->calculateScore(),
             'rating' => $this->benchmarkResult->getRating(),
-            'efficiency_score' => $this->efficiencyScore,
             'stack_score' => $this->arrayOrNull($this->stackScore),
             'config_score' => $this->arrayOrNull($this->configScore),
             'system' => $systemInfo,
@@ -209,6 +198,7 @@ class ExperimentResult
             'fileio' => $this->arrayOrObject($benchData['fileio_results'] ?? []),
             'http' => $this->arrayOrObject($benchData['http_results'] ?? []),
             'weights' => $benchData['weights'] ?? null,
+            'scoring' => $benchData['scoring'] ?? null,
         ];
     }
 

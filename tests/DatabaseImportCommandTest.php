@@ -4,8 +4,11 @@ namespace KVS\CLI\Tests;
 
 use KVS\CLI\Command\Database\ImportCommand;
 use KVS\CLI\Config\Configuration;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Process\ExecutableFinder;
+use Symfony\Component\Process\Process;
 
 class DatabaseImportCommandTest extends TestCase
 {
@@ -236,10 +239,11 @@ class DatabaseImportCommandTest extends TestCase
         $this->assertSame((string) (32 * 1024 * 1024), trim((string) file_get_contents($bytesFile)));
     }
 
-    public function testInvalidGzipImportFailsInsteadOfImportingRawBytes(): void
+    #[DataProvider('invalidGzipProvider')]
+    public function testInvalidGzipImportFailsBeforeInvokingDatabaseClient(string $contents): void
     {
         $gzipFile = $this->tempDir . '/invalid.sql.gz';
-        file_put_contents($gzipFile, 'not a gzip stream');
+        file_put_contents($gzipFile, $contents);
 
         $toolsDir = $this->tempDir . '/tools-invalid-gzip-import';
         $bytesFile = $this->tempDir . '/invalid-gzip-import.bytes';
@@ -271,6 +275,124 @@ class DatabaseImportCommandTest extends TestCase
                 putenv('PATH=' . $previousPath);
             }
         }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidGzipProvider(): iterable
+    {
+        $firstMember = gzencode("SELECT 1;\n");
+        $lastMember = gzencode("SELECT 2;\n");
+        $invalidChecksum = $firstMember . $lastMember;
+        $checksumOffset = strlen($invalidChecksum) - 8;
+        $invalidChecksum[$checksumOffset] = chr(ord($invalidChecksum[$checksumOffset]) ^ 1);
+
+        yield 'invalid header' => ['not a gzip stream'];
+        yield 'truncated second member' => [$firstMember . substr($lastMember, 0, 10)];
+        yield 'invalid final checksum' => [$invalidChecksum];
+    }
+
+    public function testImportAcceptsValidConcatenatedGzipMembers(): void
+    {
+        $gzipFile = $this->tempDir . '/concatenated.sql.gz';
+        $firstMember = "SELECT 1;\n";
+        $lastMember = "SELECT 2;\n";
+        file_put_contents($gzipFile, gzencode($firstMember) . gzencode($lastMember));
+        $toolsDir = $this->tempDir . '/tools-concatenated-import';
+        $bytesFile = $this->tempDir . '/concatenated-import.bytes';
+        $this->createFakeMysql($toolsDir, $bytesFile);
+
+        [$exitCode, $output] = $this->runImportSubprocess($toolsDir, $gzipFile);
+
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+        $this->assertSame((string) strlen($firstMember . $lastMember), trim((string) file_get_contents($bytesFile)));
+    }
+
+    #[DataProvider('additionalCompressionProvider')]
+    public function testImportValidatesOtherCompressionFormats(string $command, string $extension): void
+    {
+        $compressor = (new ExecutableFinder())->find($command);
+        if ($compressor === null) {
+            $this->markTestSkipped("Compression tool $command is not available.");
+        }
+        $sql = "SELECT 1;\n";
+        $process = new Process([$compressor, '-c']);
+        $process->setInput($sql);
+        $process->mustRun();
+        $compressed = $process->getOutput();
+        $file = $this->tempDir . '/compressed.sql.' . $extension;
+        file_put_contents($file, $compressed);
+        $toolsDir = $this->tempDir . '/tools-compressed-import';
+        $bytesFile = $this->tempDir . '/compressed-import.bytes';
+        $this->createFakeMysql($toolsDir, $bytesFile);
+
+        [$exitCode, $output] = $this->runImportSubprocess($toolsDir, $file);
+        $this->assertSame(0, $exitCode, implode("\n", $output));
+        $this->assertSame((string) strlen($sql), trim((string) file_get_contents($bytesFile)));
+
+        unlink($bytesFile);
+        file_put_contents($file, substr($compressed, 0, -1));
+        [$exitCode, $output] = $this->runImportSubprocess($toolsDir, $file);
+        $this->assertSame(1, $exitCode, implode("\n", $output));
+        $this->assertFileDoesNotExist($bytesFile);
+        $this->assertStringContainsString('Import file is empty or invalid', implode("\n", $output));
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function additionalCompressionProvider(): iterable
+    {
+        yield 'Zstandard' => ['zstd', 'zst'];
+        yield 'XZ' => ['xz', 'xz'];
+        yield 'Bzip2' => ['bzip2', 'bz2'];
+    }
+
+    #[DataProvider('importClientAvailabilityProvider')]
+    public function testImportHandlesClientAvailability(bool $available): void
+    {
+        $toolsDir = $this->tempDir . '/import-client-tools';
+        $bytesFile = $this->tempDir . '/mariadb-import.bytes';
+        if ($available) {
+            $this->createFakeMysql($toolsDir, $bytesFile);
+            rename($toolsDir . '/mysql', $toolsDir . '/mariadb');
+            $wc = (new ExecutableFinder())->find('wc');
+            $this->assertNotNull($wc);
+            symlink($wc, $toolsDir . '/wc');
+        } else {
+            mkdir($toolsDir);
+        }
+
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $toolsDir);
+        try {
+            $command = new ImportCommand(new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => true,
+            ]));
+            $tester = new CommandTester($command);
+            $tester->setInputs(['yes']);
+            $tester->execute(['file' => $this->sqlFile], ['decorated' => false]);
+
+            $display = $tester->getDisplay();
+            $this->assertSame($available ? 0 : 1, $tester->getStatusCode(), $display);
+            if ($available) {
+                $this->assertSame((string) filesize($this->sqlFile), trim((string) file_get_contents($bytesFile)));
+            } else {
+                $this->assertStringContainsString("Required import tool 'mysql' or 'mariadb'", $display);
+                $this->assertFileDoesNotExist($bytesFile);
+            }
+        } finally {
+            if ($previousPath === false) {
+                putenv('PATH');
+            } else {
+                putenv('PATH=' . $previousPath);
+            }
+        }
+    }
+
+    /** @return iterable<string, array{bool}> */
+    public static function importClientAvailabilityProvider(): iterable
+    {
+        yield 'MariaDB client only' => [true];
+        yield 'no database client' => [false];
     }
 
     public function testImportSuppressesMariaDbSslPasswordWarning(): void

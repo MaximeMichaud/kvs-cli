@@ -77,20 +77,26 @@ HELP
             return self::FAILURE;
         }
 
+        $success = true;
         if ($type === null || $type === '' || $type === 'file') {
-            $this->clearFileCache();
+            $success = $this->clearFileCache();
         }
 
         if ($type === null || $type === '' || $type === 'db') {
-            $this->clearDatabaseCache();
+            $success = $this->clearDatabaseCache() && $success;
+        }
+
+        if (!$success) {
+            return self::FAILURE;
         }
 
         $this->io()->success('Cache cleared successfully');
         return self::SUCCESS;
     }
 
-    private function clearFileCache(): void
+    private function clearFileCache(): bool
     {
+        $success = true;
         $cacheDirs = [
             $this->config->getAdminPath() . '/data/engine',
             $this->config->getAdminPath() . '/smarty/cache',
@@ -100,30 +106,68 @@ HELP
         ];
 
         foreach ($cacheDirs as $dir) {
-            if (!is_dir($dir)) {
-                continue;
-            }
+            try {
+                $finder = $this->findCacheFiles($dir);
+                if ($finder === null) {
+                    continue;
+                }
 
-            $finder = new Finder();
-            $finder->files()->in($dir);
+                $count = 0;
+                foreach ($finder as $file) {
+                    if (!$this->removeCacheFile($file->getPathname())) {
+                        $this->io()->error('Failed to delete cache file: ' . $file->getPathname());
+                        $success = false;
+                        continue;
+                    }
+                    $count++;
+                }
 
-            $count = 0;
-            foreach ($finder as $file) {
-                unlink($file->getRealPath());
-                $count++;
-            }
-
-            if ($count > 0) {
-                $this->io()->info("Cleared $count files from " . basename($dir));
+                if ($count > 0) {
+                    $this->io()->info("Cleared $count files from " . basename($dir));
+                }
+            } catch (\RuntimeException $e) {
+                $this->io()->error('Could not clear cache directory ' . $dir . ': ' . $e->getMessage());
+                $success = false;
             }
         }
+
+        return $success;
     }
 
-    private function clearDatabaseCache(): void
+    protected function removeCacheFile(string $path): bool
+    {
+        return @unlink($path);
+    }
+
+    private function findCacheFiles(string $dir): ?Finder
+    {
+        if (!is_dir($dir)) {
+            $parent = $dir;
+            while (!is_dir($parent)) {
+                if (file_exists($parent) || is_link($parent) || dirname($parent) === $parent) {
+                    throw new \RuntimeException('Cache path is not an accessible directory.');
+                }
+                $parent = dirname($parent);
+            }
+            if (!is_executable($parent)) {
+                throw new \RuntimeException('Cannot verify cache path through an inaccessible parent.');
+            }
+
+            return null;
+        }
+
+        if (!is_readable($dir) || !is_executable($dir)) {
+            throw new \RuntimeException('Cache directory is not readable or searchable.');
+        }
+
+        return (new Finder())->files()->in($dir);
+    }
+
+    private function clearDatabaseCache(): bool
     {
         $db = $this->getDatabaseConnection();
         if ($db === null) {
-            return;
+            return false;
         }
 
         try {
@@ -148,8 +192,11 @@ HELP
                 );
             }
         } catch (\Exception $e) {
-            $this->io()->warning('Could not clear database cache: ' . $e->getMessage());
+            $this->io()->error('Could not clear database cache: ' . $e->getMessage());
+            return false;
         }
+
+        return true;
     }
 
     protected function databaseCacheTableExists(\PDO $db, string $table): bool
@@ -171,6 +218,7 @@ HELP
     private function showStats(): int
     {
         $stats = [];
+        $success = true;
 
         $cacheDirs = [
             'Engine cache' => $this->config->getAdminPath() . '/data/engine',
@@ -181,28 +229,34 @@ HELP
         ];
 
         foreach ($cacheDirs as $name => $dir) {
-            if (!is_dir($dir)) {
-                continue;
+            try {
+                $finder = $this->findCacheFiles($dir);
+                if ($finder === null) {
+                    continue;
+                }
+
+                $size = 0;
+                $count = 0;
+                foreach ($finder as $file) {
+                    $size += $file->getSize();
+                    $count++;
+                }
+
+                $stats[] = [
+                    $name,
+                    $count,
+                    format_bytes($size),
+                ];
+            } catch (\RuntimeException $e) {
+                $this->io()->error('Could not inspect cache directory ' . $dir . ': ' . $e->getMessage());
+                $success = false;
             }
-
-            $finder = new Finder();
-            $finder->files()->in($dir);
-
-            $size = 0;
-            $count = 0;
-            foreach ($finder as $file) {
-                $size += $file->getSize();
-                $count++;
-            }
-
-            $stats[] = [
-                $name,
-                $count,
-                format_bytes($size),
-            ];
         }
 
         if ($stats === []) {
+            if (!$success) {
+                return self::FAILURE;
+            }
             $this->io()->warning('No cache directories found');
             $this->io()->text('Cache directories will be created when KVS starts generating cache.');
             return self::SUCCESS;
@@ -212,6 +266,11 @@ HELP
             ['Cache Type', 'Files', 'Size'],
             $stats
         );
+
+        if (!$success) {
+            $this->io()->warning('Cache statistics are incomplete.');
+            return self::FAILURE;
+        }
 
         $totalFiles = array_sum(array_column($stats, 1));
         if ($totalFiles === 0) {

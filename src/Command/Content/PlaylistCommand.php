@@ -610,9 +610,10 @@ HELP
             $subscribersCountVal = $playlist['subscribers_count'] ?? 0;
             $subscribersCount = is_numeric($subscribersCountVal) ? (int) $subscribersCountVal : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['Title', $title],
-                ['Status', StatusFormatter::playlist($statusId)],
+                ['Status', StatusFormatter::playlist($statusId, $withColor)],
                 ['Type', $type],
                 ['Owner', $username],
                 ['Videos', number_format($totalVideos)],

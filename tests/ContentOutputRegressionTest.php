@@ -1379,4 +1379,58 @@ class ContentOutputRegressionTest extends TestCase
     {
         return new Configuration(['path' => $this->tempDir]);
     }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv', 'field'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    private function createExportContractVideo(bool $raw = true): CommandTester
+    {
+        $db = $this->createSqliteConnection();
+        $db->exec(
+            'CREATE TABLE ktvs_videos (' .
+            'video_id INTEGER, title TEXT, status_id INTEGER, resolution_type INTEGER, is_private INTEGER, ' .
+            'duration INTEGER, file_size INTEGER, file_dimensions TEXT, post_date TEXT, rating REAL, ' .
+            'rating_amount INTEGER, video_viewed INTEGER, favourites_count INTEGER, description TEXT)'
+        );
+        $db->exec('CREATE TABLE ktvs_categories (category_id INTEGER, title TEXT)');
+        $db->exec('CREATE TABLE ktvs_categories_videos (id INTEGER, category_id INTEGER, video_id INTEGER)');
+        $db->exec('CREATE TABLE ktvs_tags (tag_id INTEGER, tag TEXT)');
+        $db->exec('CREATE TABLE ktvs_tags_videos (id INTEGER, tag_id INTEGER, video_id INTEGER)');
+        $db->prepare('INSERT INTO ktvs_videos VALUES (20, ?, 1, 2, 2, 120, 5050, ?, ?, 20, 5, 15, 7, ?)')->execute([
+            $raw ? 'Literal <fg=red>title</>' : 'Synthetic title',
+            '1280x720',
+            '2024-01-02 00:00:00',
+            $raw ? 'Literal <info>description</info>' : 'Synthetic description',
+        ]);
+        return new CommandTester($this->createVideoCommand($db));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractVideoKeepsRawTitle(string $format): void
+    {
+        $row = TestHelper::readCommandExportRow($this->createExportContractVideo(), ['action' => 'show', 'id' => '20'], $format, 'title');
+        $this->assertSame('Literal <fg=red>title</>', $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractVideoKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $row = TestHelper::readCommandExportRow(
+            $this->createExportContractVideo(false),
+            ['action' => 'show', 'id' => '20'],
+            $format,
+            $format === 'field' ? 'status' : null
+        );
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $this->assertSame('FHD', $row['resolution']);
+            $this->assertSame('Premium', $row['type']);
+            $this->assertSame('From access type', $row['access']);
+        }
+    }
 }

@@ -227,7 +227,7 @@ class CacheBench
     {
         $keyBase = 'kvs_bench_bulk_';
         $batchSize = 100;
-        $batches = max(1, intdiv($this->iterations, $batchSize));
+        $batches = max(10, intdiv($this->iterations, $batchSize));
 
         $setTimings = [];
         $getTimings = [];
@@ -368,7 +368,10 @@ class CacheBench
         if ($this->memcached === null) {
             return false;
         }
-        return $this->memcached->set($key, $value, $ttl);
+        if (!$this->memcached->set($key, $value, $ttl)) {
+            throw new \RuntimeException('Cache SET failed during benchmark');
+        }
+        return true;
     }
 
     /**
@@ -379,7 +382,11 @@ class CacheBench
         if ($this->memcached === null) {
             return false;
         }
-        return $this->memcached->get($key);
+        $value = $this->memcached->get($key);
+        if ($value === false) {
+            throw new \RuntimeException('Cache GET failed during benchmark');
+        }
+        return $value;
     }
 
     /**
@@ -392,7 +399,10 @@ class CacheBench
         if ($this->memcached === null) {
             return false;
         }
-        return $this->memcached->setMulti($data, $ttl);
+        if (!$this->memcached->setMulti($data, $ttl)) {
+            throw new \RuntimeException('Cache multi-SET failed during benchmark');
+        }
+        return true;
     }
 
     /**
@@ -407,8 +417,8 @@ class CacheBench
             return [];
         }
         $result = $this->memcached->getMulti($keys);
-        if (!is_array($result)) {
-            return [];
+        if (!is_array($result) || count($result) !== count($keys)) {
+            throw new \RuntimeException('Cache multi-GET failed during benchmark');
         }
         /** @var array<string, mixed> $result */
         return $result;

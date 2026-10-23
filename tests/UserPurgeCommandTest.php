@@ -141,7 +141,28 @@ function delete_users($userIds, $withContent, $context)
     );
 }
 PHP);
-        $command = new class (TestHelper::createTestConfiguration($this->kvsPath)) extends UserPurgeCommand {
+        $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        foreach (
+            ['users', 'users_events', 'users_subscriptions', 'users_ignores', 'users_blogs', 'friends',
+            'messages', 'users_blocked_passwords', 'fav_videos', 'fav_albums', 'comments', 'log_logins_users',
+            'feedbacks', 'dvds'] as $table
+        ) {
+            $db->exec('CREATE TABLE ' . TestHelper::table($table) . ' (
+                user_id INTEGER, user_target_id INTEGER, subscribed_object_id INTEGER,
+                subscribed_object_type_id INTEGER, ignored_user_id INTEGER, user_from_id INTEGER, friend_id INTEGER
+            )');
+        }
+        $command = new class (TestHelper::createTestConfiguration($this->kvsPath), $db) extends UserPurgeCommand {
+            public function __construct(Configuration $config, private PDO $db)
+            {
+                parent::__construct($config);
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?PDO
+            {
+                return $this->db;
+            }
+
             public function invokeCleanup(bool $withContent): void
             {
                 $this->deleteUsersWithKvs([3], $withContent);

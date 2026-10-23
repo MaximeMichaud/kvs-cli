@@ -175,480 +175,143 @@ class RemoteBenchmarkClient
      */
     private function generateBenchmarkCode(string $token): string
     {
-        $cpuIter = $this->cpuIterations;
-        $cacheIter = $this->cacheIterations;
-        $fileIter = $this->fileIterations;
-        $dbIter = $this->dbIterations;
-        $timeout = $this->timeout;
-
-        // Get database config from KVS
         $dbConfig = $this->config->getDatabaseConfig();
-        // Use original host if fallback was applied (Docker: host sees 127.0.0.1 but FPM sees container name)
-        $originalHost = $dbConfig['_original_host'] ?? null;
-        $dbHost = is_string($originalHost) && $originalHost !== ''
-            ? addslashes($originalHost)
-            : addslashes($dbConfig['host'] ?? '127.0.0.1');
-        $dbUser = addslashes($dbConfig['user'] ?? '');
-        $dbPass = addslashes($dbConfig['password'] ?? '');
-        $dbName = addslashes($dbConfig['database'] ?? '');
-        $tablePrefix = addslashes($this->config->getTablePrefix());
-
-        // Get memcached config
+        $dbConfig['host'] = $dbConfig['_original_host'] ?? $dbConfig['host'] ?? '127.0.0.1';
         $mcHost = $this->config->get('memcache_server', '127.0.0.1');
-        $mcHost = is_string($mcHost) ? addslashes($mcHost) : '127.0.0.1';
         $mcPort = $this->config->get('memcache_port', 11211);
-        $mcPort = is_int($mcPort) ? $mcPort : 11211;
+        $settings = var_export([
+            'token' => $token,
+            'timeout' => $this->timeout,
+            'database' => $dbConfig,
+            'prefix' => $this->config->getTablePrefix(),
+            'cache' => [
+                'host' => is_string($mcHost) ? $mcHost : '127.0.0.1',
+                'port' => is_numeric($mcPort) ? (int) $mcPort : 11211,
+            ],
+            'cpu_iterations' => $this->cpuIterations,
+            'cache_iterations' => $this->cacheIterations,
+            'file_iterations' => $this->fileIterations,
+            'db_iterations' => $this->dbIterations,
+        ], true);
+
+        $sources = $this->getBenchmarkSources();
 
         return <<<PHP
 <?php
-/**
- * KVS CLI Remote Benchmark
- * Auto-generated and auto-deleted after execution.
- */
-
-// Security: Validate token
-if ((\$_GET['t'] ?? '') !== '{$token}') {
+// Generated from the same workload classes used by CLI execution.
+declare(strict_types=1);
+namespace {
+\$settings = {$settings};
+if (!is_string(\$_GET['t'] ?? null) || !hash_equals(\$settings['token'], \$_GET['t'])) {
     http_response_code(403);
     header('Content-Type: application/json');
     echo json_encode(['error' => 'Forbidden']);
     return;
 }
-
-// Prevent caching
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate');
-header('Pragma: no-cache');
-
-// Capture original limits BEFORE modifying them
-\$originalMaxExecTime = (int) ini_get('max_execution_time');
+\$originalMaxExecTime = ini_get('max_execution_time');
 \$originalMemoryLimit = ini_get('memory_limit');
-
-// Set execution limits for benchmark
-set_time_limit({$timeout});
-ini_set('memory_limit', '256M');
-error_reporting(E_ALL);
+set_time_limit(\$settings['timeout']);
 ini_set('display_errors', '0');
-
+}
+{$sources}
+namespace {
 \$startTime = microtime(true);
-\$results = [
+\$result = new \\KVS\\CLI\\BenchmarkRuntime\\Benchmark\\BenchmarkResult();
+\$opcacheStatus = function_exists('opcache_get_status') ? opcache_get_status(false) : false;
+\$response = [
     'php_info' => [
         'version' => PHP_VERSION,
         'sapi' => PHP_SAPI,
-        'opcache_enabled' => function_exists('opcache_get_status') && filter_var(ini_get('opcache.enable'), FILTER_VALIDATE_BOOLEAN),
-        'jit_enabled' => false,
+        'opcache_enabled' => is_array(\$opcacheStatus),
+        'jit_enabled' => is_array(\$opcacheStatus) && (\$opcacheStatus['jit']['enabled'] ?? false),
         'memory_limit' => \$originalMemoryLimit,
         'max_execution_time' => \$originalMaxExecTime,
-        'server_software' => \$_SERVER['SERVER_SOFTWARE'] ?? 'unknown',
+        'server_software' => \$_SERVER['SERVER_SOFTWARE'] ?? '',
     ],
-    'cpu' => [],
     'cache' => ['connected' => false, 'results' => []],
-    'fileio' => [],
     'database' => ['connected' => false, 'results' => []],
 ];
-
-// Check JIT
-if (function_exists('opcache_get_status')) {
-    \$status = @opcache_get_status(false);
-    if (is_array(\$status) && isset(\$status['jit']['enabled'])) {
-        \$results['php_info']['jit_enabled'] = (bool) \$status['jit']['enabled'];
-    }
-}
-
-// ============================================================
-// CPU BENCHMARKS
-// ============================================================
-
-function runCpuBenchmarks(int \$iterations): array {
-    \$results = [];
-
-    // MD5 hashing (100 strings per iteration)
-    \$secretKey = 'kvs_cryptographic_verification_key_12345';
-    \$paths = [];
-    for (\$i = 0; \$i < 100; \$i++) {
-        \$paths[] = "/content/videos/{\$i}/video_{\$i}_720p.mp4";
-    }
-
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        foreach (\$paths as \$path) {
-            \$hash = md5(\$secretKey . \$path);
+try {
+    (new \\KVS\\CLI\\BenchmarkRuntime\\Benchmark\\CpuBench(\$settings['cpu_iterations']))->run(\$result);
+    (new \\KVS\\CLI\\BenchmarkRuntime\\Benchmark\\FileIOBench(\$settings['file_iterations']))->run(\$result);
+    \$cache = new \\KVS\\CLI\\BenchmarkRuntime\\Benchmark\\CacheBench(\$settings['cache'], \$settings['cache_iterations']);
+    if (\$cache->connect()) {
+        try {
+            \$response['cache']['connected'] = true;
+            \$response['cache']['type'] = \$cache->detectBackendType();
+            \$response['cache']['version'] = \$cache->getCacheVersion();
+            \$cache->run(\$result);
+        } finally {
+            \$cache->close();
         }
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
     }
-    \$results['md5_simple'] = calcStats(\$timings, 'MD5 Hash (100 strings)');
-
-    // Serialize config
-    \$configData = [
-        'project_path' => '/var/www/kvs',
-        'project_url' => 'https://example.com',
-        'version' => '7.0.0',
-        'categories' => array_map(fn(\$i) => ['id' => \$i, 'title' => "Cat \$i"], range(1, 50)),
-    ];
-
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        \$s = serialize(\$configData);
-        \$d = unserialize(\$s);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['serialize_config'] = calcStats(\$timings, 'Serialize Config');
-
-    // JSON encode/decode
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        \$j = json_encode(\$configData);
-        \$d = json_decode(\$j, true);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['json_config'] = calcStats(\$timings, 'JSON Config');
-
-    // String operations
-    \$template = '<div class="video-item">{TITLE}</div><span>{VIEWS} views</span>';
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        for (\$j = 0; \$j < 100; \$j++) {
-            \$output = str_replace(['{TITLE}', '{VIEWS}'], ["Video \$j", (string)(\$j * 1000)], \$template);
-        }
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['str_replace'] = calcStats(\$timings, 'str_replace (100x)');
-
-    // Regex
-    \$urls = ['/videos/123/my-video', '/categories/popular/page/5', '/user/profile/john'];
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        foreach (\$urls as \$url) {
-            preg_match('#^/videos/(\\d+)/([a-z0-9-]+)\$#', \$url, \$m);
-            preg_match('#^/categories/([a-z]+)/page/(\\d+)\$#', \$url, \$m);
-        }
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['regex_routing'] = calcStats(\$timings, 'Regex Routing');
-
-    // Array operations
-    \$videos = array_map(fn(\$i) => ['id' => \$i, 'title' => "Video \$i", 'views' => mt_rand(100, 100000)], range(1, 500));
-
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        \$titles = array_map(fn(\$v) => \$v['title'], \$videos);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['array_map'] = calcStats(\$timings, 'array_map (500 items)');
-
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        \$popular = array_filter(\$videos, fn(\$v) => \$v['views'] > 50000);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['array_filter'] = calcStats(\$timings, 'array_filter (500 items)');
-
-    return \$results;
-}
-
-// ============================================================
-// CACHE BENCHMARKS
-// ============================================================
-
-function runCacheBenchmarks(string \$host, int \$port, int \$iterations): array {
-    \$result = ['connected' => false, 'type' => 'unknown', 'version' => 'unknown', 'results' => []];
-
-    if (!class_exists('Memcached')) {
-        return \$result;
-    }
-
-    try {
-        \$mc = new Memcached();
-        \$mc->addServer(\$host, \$port);
-        \$mc->setOption(Memcached::OPT_CONNECT_TIMEOUT, 1000);
-
-        // Test connection
-        \$mc->set('_kvs_bench_test', '1', 1);
-        if (\$mc->getResultCode() !== Memcached::RES_SUCCESS) {
-            return \$result;
-        }
-
-        \$result['connected'] = true;
-
-        // Get version
-        \$stats = \$mc->getStats();
-        \$server = "\$host:\$port";
-        \$result['version'] = \$stats[\$server]['version'] ?? 'unknown';
-
-        // Detect type (Dragonfly vs Memcached)
-        \$version = \$result['version'];
-        if (stripos(\$version, 'dragonfly') !== false || preg_match('/^v\\d+\\.\\d+/', \$version)) {
-            \$result['type'] = 'dragonfly';
-        } else {
-            \$result['type'] = 'memcached';
-        }
-
-        // Simple SET
-        \$timings = [];
-        for (\$i = 0; \$i < \$iterations; \$i++) {
-            \$start = hrtime(true);
-            \$mc->set('kvs_bench_' . \$i, 'test_value_' . \$i, 60);
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['simple_set'] = calcStats(\$timings, 'Simple SET');
-
-        // Simple GET
-        \$timings = [];
-        for (\$i = 0; \$i < \$iterations; \$i++) {
-            \$start = hrtime(true);
-            \$mc->get('kvs_bench_' . \$i);
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['simple_get'] = calcStats(\$timings, 'Simple GET');
-
-        // Large value (~50KB)
-        \$largeValue = str_repeat('Lorem ipsum dolor sit amet. ', 2000);
-        \$timings = [];
-        for (\$i = 0; \$i < min(20, \$iterations); \$i++) {
-            \$start = hrtime(true);
-            \$mc->set('kvs_bench_large_' . \$i, \$largeValue, 60);
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['page_set'] = calcStats(\$timings, 'Page SET (~50KB)');
-
-        \$mc->quit();
-
-    } catch (Exception \$e) {
-        \$result['error'] = \$e->getMessage();
-    }
-
-    return \$result;
-}
-
-// ============================================================
-// FILE I/O BENCHMARKS
-// ============================================================
-
-function runFileIOBenchmarks(int \$iterations): array {
-    \$results = [];
-    \$tempDir = sys_get_temp_dir() . '/kvs_bench_' . uniqid();
-    @mkdir(\$tempDir, 0755, true);
-
-    // Serialize write/read
-    \$configData = [
-        'project_path' => '/var/www/kvs',
-        'settings' => ['videos_per_page' => 20, 'cache_ttl' => 300],
-        'categories' => array_map(fn(\$i) => ['id' => \$i, 'title' => "Cat \$i"], range(1, 50)),
-    ];
-
-    \$testFile = \$tempDir . '/test_config.dat';
-    file_put_contents(\$testFile, serialize(\$configData));
-
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        \$content = file_get_contents(\$testFile);
-        \$data = unserialize(\$content);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['config_load'] = calcStats(\$timings, 'Config Load (read+unserialize)');
-
-    // Write 10KB
-    \$content = str_repeat('Sample content. ', 500);
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$file = \$tempDir . "/write_test_{\$i}.tmp";
-        \$start = hrtime(true);
-        file_put_contents(\$file, \$content);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['write_10kb'] = calcStats(\$timings, 'Write 10KB file');
-
-    // Read 10KB
-    \$testReadFile = \$tempDir . '/read_test.txt';
-    file_put_contents(\$testReadFile, \$content);
-    \$timings = [];
-    for (\$i = 0; \$i < \$iterations; \$i++) {
-        \$start = hrtime(true);
-        \$data = file_get_contents(\$testReadFile);
-        \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-    }
-    \$results['read_10kb'] = calcStats(\$timings, 'Read 10KB file');
-
-    // Cleanup
-    \$files = glob(\$tempDir . '/*');
-    if (\$files) {
-        foreach (\$files as \$f) @unlink(\$f);
-    }
-    @rmdir(\$tempDir);
-
-    return \$results;
-}
-
-// ============================================================
-// DATABASE BENCHMARKS
-// ============================================================
-
-function runDatabaseBenchmarks(string \$host, string \$user, string \$pass, string \$dbname, string \$prefix, int \$iterations): array {
-    \$result = ['connected' => false, 'type' => 'unknown', 'version' => 'unknown', 'results' => []];
-
-    if (\$dbname === '' || \$user === '') {
-        \$result['error'] = 'Missing database credentials (host=' . \$host . ', user=' . (\$user ?: 'empty') . ', db=' . (\$dbname ?: 'empty') . ')';
-        return \$result;
-    }
-
-    try {
-        \$dsn = "mysql:host={\$host};dbname={\$dbname};charset=utf8mb4";
-        \$pdo = new PDO(\$dsn, \$user, \$pass, [
+    \$dbConfig = \$settings['database'];
+    if ((\$dbConfig['database'] ?? '') !== '' && (\$dbConfig['user'] ?? '') !== '') {
+        \$dsn = 'mysql:host=' . \$dbConfig['host'] . ';dbname=' . \$dbConfig['database'] . ';charset=utf8mb4';
+        \$pdo = new PDO(\$dsn, \$dbConfig['user'], \$dbConfig['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
-
-        \$result['connected'] = true;
-
-        // Get version
-        \$stmt = \$pdo->query('SELECT VERSION() as v');
-        \$row = \$stmt->fetch();
-        \$result['version'] = \$row['v'] ?? 'unknown';
-        \$result['type'] = stripos(\$result['version'], 'mariadb') !== false ? 'mariadb' : 'mysql';
-
-        // Check if videos table exists
-        \$videosTable = \$prefix . 'videos';
-        try {
-            \$pdo->query("SELECT 1 FROM {\$videosTable} LIMIT 1");
-        } catch (PDOException \$e) {
-            return \$result;
-        }
-
-        // Video listing
-        \$query = "SELECT video_id, title, added_date, video_viewed, rating, duration, status_id
-                   FROM {\$videosTable} WHERE status_id = 1 ORDER BY added_date DESC LIMIT 20";
-        \$timings = [];
-        for (\$i = 0; \$i < \$iterations; \$i++) {
-            \$start = hrtime(true);
-            \$stmt = \$pdo->query(\$query);
-            \$stmt->fetchAll();
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['video_listing'] = calcDbStats(\$timings, 'Video Listing (20 items)');
-
-        // Video count
-        \$query = "SELECT COUNT(*) FROM {\$videosTable} WHERE status_id = 1";
-        \$timings = [];
-        for (\$i = 0; \$i < \$iterations; \$i++) {
-            \$start = hrtime(true);
-            \$stmt = \$pdo->query(\$query);
-            \$stmt->fetchColumn();
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['video_count'] = calcDbStats(\$timings, 'Video Count Query');
-
-        // LIKE search
-        \$query = "SELECT video_id, title FROM {\$videosTable} WHERE status_id = 1 AND title LIKE '%test%' LIMIT 20";
-        \$timings = [];
-        for (\$i = 0; \$i < \$iterations; \$i++) {
-            \$start = hrtime(true);
-            \$stmt = \$pdo->query(\$query);
-            \$stmt->fetchAll();
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['search'] = calcDbStats(\$timings, 'LIKE Search Query');
-
-        // INSERT (temp table)
-        \$tempTable = \$prefix . 'bench_temp_' . uniqid();
-        \$pdo->exec("CREATE TEMPORARY TABLE {\$tempTable} (id INT AUTO_INCREMENT PRIMARY KEY, data VARCHAR(255))");
-        \$stmt = \$pdo->prepare("INSERT INTO {\$tempTable} (data) VALUES (?)");
-        \$timings = [];
-        for (\$i = 0; \$i < \$iterations * 5; \$i++) {
-            \$start = hrtime(true);
-            \$stmt->execute(['benchmark_data_' . \$i]);
-            \$timings[] = (hrtime(true) - \$start) / 1_000_000;
-        }
-        \$result['results']['insert'] = calcDbStats(\$timings, 'INSERT (temp table)');
-
-    } catch (PDOException \$e) {
-        \$result['error'] = \$e->getMessage();
+        \$version = (string) \$pdo->query('SELECT VERSION()')->fetchColumn();
+        \$response['database']['connected'] = true;
+        \$response['database']['version'] = \$version;
+        \$response['database']['type'] = stripos(\$version, 'mariadb') !== false ? 'mariadb' : 'mysql';
+        (new \\KVS\\CLI\\BenchmarkRuntime\\Benchmark\\DatabaseBench(
+            \$pdo, \$settings['prefix'], \$settings['db_iterations']
+        ))->run(\$result);
     }
-
-    return \$result;
-}
-
-// ============================================================
-// HELPER FUNCTIONS
-// ============================================================
-
-function calcStats(array \$timings, string \$name): array {
-    if (empty(\$timings)) {
-        return ['name' => \$name, 'avg' => 0, 'min' => 0, 'max' => 0, 'p50' => 0, 'p95' => 0, 'std_dev' => 0, 'ops_sec' => 0, 'samples' => 0];
-    }
-
-    sort(\$timings);
-    \$count = count(\$timings);
-    \$sum = array_sum(\$timings);
-    \$avg = \$sum / \$count;
-
-    \$squaredDiffs = array_map(fn(\$t) => (\$t - \$avg) ** 2, \$timings);
-    \$variance = array_sum(\$squaredDiffs) / \$count;
-    \$stdDev = sqrt(\$variance);
-
-    \$p50idx = max(0, min(\$count - 1, (int) ceil(0.50 * \$count) - 1));
-    \$p95idx = max(0, min(\$count - 1, (int) ceil(0.95 * \$count) - 1));
-
-    return [
-        'name' => \$name,
-        'avg' => round(\$avg, 4),
-        'min' => round(\$timings[0], 4),
-        'max' => round(\$timings[\$count - 1], 4),
-        'p50' => round(\$timings[\$p50idx], 4),
-        'p95' => round(\$timings[\$p95idx], 4),
-        'std_dev' => round(\$stdDev, 4),
-        'ops_sec' => \$avg > 0 ? round(1000 / \$avg, 2) : 0,
-        'samples' => \$count,
-    ];
-}
-
-function calcDbStats(array \$timings, string \$name): array {
-    if (empty(\$timings)) {
-        return ['name' => \$name, 'avg_ms' => 0, 'queries_sec' => 0, 'samples' => 0];
-    }
-
-    \$count = count(\$timings);
-    \$avg = array_sum(\$timings) / \$count;
-
-    return [
-        'name' => \$name,
-        'avg_ms' => round(\$avg, 4),
-        'queries_sec' => \$avg > 0 ? round(1000 / \$avg, 2) : 0,
-        'samples' => \$count,
-    ];
-}
-
-// ============================================================
-// EXECUTE BENCHMARKS
-// ============================================================
-
-try {
-    // CPU benchmarks
-    \$results['cpu'] = runCpuBenchmarks({$cpuIter});
-
-    // Cache benchmarks
-    \$results['cache'] = runCacheBenchmarks('{$mcHost}', {$mcPort}, {$cacheIter});
-
-    // File I/O benchmarks
-    \$results['fileio'] = runFileIOBenchmarks({$fileIter});
-
-    // Database benchmarks
-    \$results['database'] = runDatabaseBenchmarks('{$dbHost}', '{$dbUser}', '{$dbPass}', '{$dbName}', '{$tablePrefix}', {$dbIter});
-
-    \$results['execution_time'] = round(microtime(true) - \$startTime, 2);
-
 } catch (Throwable \$e) {
-    \$results['error'] = \$e->getMessage();
+    \$response['error'] = \$e->getMessage();
+} finally {
+    \\KVS\\CLI\\BenchmarkRuntime\\Service\\TempFileManager::cleanupAll();
 }
-
-echo json_encode(\$results, JSON_PRETTY_PRINT);
+\$response['cpu'] = \$result->getCpuResults();
+\$response['fileio'] = \$result->getFileIOResults();
+\$response['cache']['results'] = \$result->getCacheResults();
+\$response['database']['results'] = \$result->getDbResults();
+\$response['execution_time'] = microtime(true) - \$startTime;
+echo json_encode(\$response, JSON_THROW_ON_ERROR);
+}
 PHP;
+    }
+
+    /**
+     * Embed trusted source files directly, without eval or a server-side autoloader.
+     */
+    private function getBenchmarkSources(): string
+    {
+        $files = [
+            '../Constants.php',
+            '../Service/TempFileManager.php',
+            'BenchmarkHelper.php',
+            'BenchmarkResult.php',
+            'CpuBench.php',
+            'CacheBench.php',
+            'FileIOBench.php',
+            'DatabaseBench.php',
+        ];
+        $sources = '';
+        foreach ($files as $file) {
+            $source = file_get_contents(__DIR__ . '/' . $file);
+            if ($source === false) {
+                throw new \RuntimeException('Unable to load benchmark workload: ' . $file);
+            }
+            $source = str_replace('KVS\\CLI', 'KVS\\CLI\\BenchmarkRuntime', $source);
+            $source = preg_replace(
+                '/\A<\?php\s*(?:declare\(strict_types=1\);\s*)?namespace ([^;]+);/',
+                'namespace $1 {',
+                $source,
+                1,
+                $count
+            );
+            if ($source === null || $count !== 1) {
+                throw new \RuntimeException('Unable to embed benchmark workload: ' . $file);
+            }
+            $sources .= $source . "\n}\n";
+        }
+        return $sources;
     }
 
     /**

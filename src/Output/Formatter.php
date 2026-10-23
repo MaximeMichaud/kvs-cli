@@ -205,7 +205,7 @@ class Formatter
             // Cast to string - database values are typically strings/ints/null.
             // Empty values are still real field values and must preserve row count.
             $stringValue = is_scalar($value) || $value === null ? (string)$value : '';
-            $output->writeln($stringValue);
+            $output->writeln($stringValue, OutputInterface::OUTPUT_RAW);
         }
     }
 
@@ -383,7 +383,7 @@ class Formatter
         if ($json === false) {
             throw new \RuntimeException('Failed to encode JSON: ' . json_last_error_msg());
         }
-        $output->writeln($json);
+        $output->writeln($json, OutputInterface::OUTPUT_RAW);
     }
 
     /**
@@ -400,7 +400,7 @@ class Formatter
         }
 
         // Header row
-        fputcsv($handle, $fields, ',', '"', '\\');
+        fputcsv($handle, $fields, ',', '"', '');
 
         // Data rows
         foreach ($items as $item) {
@@ -410,7 +410,7 @@ class Formatter
                 $value = $this->getFieldValue($item, $field);
                 $row[] = $this->formatCsvValue($value);
             }
-            fputcsv($handle, $row, ',', '"', '\\');
+            fputcsv($handle, $row, ',', '"', '');
         }
 
         fclose($handle);
@@ -457,7 +457,7 @@ class Formatter
             return;
         }
 
-        $output->write(Yaml::dump($filtered, 4, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE));
+        $output->write(Yaml::dump($filtered, 4, 2, Yaml::DUMP_EMPTY_ARRAY_AS_SEQUENCE), false, OutputInterface::OUTPUT_RAW);
     }
 
     /**

@@ -1382,4 +1382,45 @@ class QueueCommandTest extends TestCase
             }
         };
     }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractQueueKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>value</>';
+        $this->db->prepare('UPDATE ' . TestHelper::table('background_tasks') . ' SET message = ? WHERE task_id = 30')->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'show', 'id' => '30'], $format, 'message');
+        $this->assertSame($payload, $row['message']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractQueueKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $payload = 'Synthetic plain value';
+        $this->db->prepare('UPDATE ' . TestHelper::table('background_tasks') . ' SET message = ? WHERE task_id = 30')->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'show', 'id' => '30'], $format);
+        $this->assertSame('Error', $row['status']);
+        if ($format !== 'field') {
+            $this->assertSame('03 - Unexpected error', $row['error_code']);
+        }
+    }
+
+    public function testExportContractQueueListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'list', '--limit' => '1'], 'csv', 'status');
+        $this->assertSame(['status' => 'Error'], $row);
+    }
+
+    public function testExportContractQueueHistoryListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['action' => 'history', '--limit' => '1'], 'csv', 'status');
+        $this->assertSame(['status' => 'Completed'], $row);
+    }
 }

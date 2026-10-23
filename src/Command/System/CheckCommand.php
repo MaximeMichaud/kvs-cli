@@ -138,9 +138,11 @@ HELP
                     'warnings' => $this->warnings,
                 ],
             ], Constants::JSON_FLAGS);
-            if ($json !== false) {
-                $output->writeln($json);
+            if ($json === false) {
+                $this->io()->error('Failed to encode diagnostic results as JSON: ' . json_last_error_msg());
+                return self::FAILURE;
             }
+            $output->writeln($json, OutputInterface::OUTPUT_RAW);
         } else {
             $this->io()->newLine();
             $this->io()->writeln(str_repeat('─', 42));
@@ -814,7 +816,8 @@ HELP
         $serverValue = $this->config->get('memcache_server', '127.0.0.1');
         $server = is_string($serverValue) ? $serverValue : '127.0.0.1';
         $portValue = $this->config->get('memcache_port', Constants::DEFAULT_MEMCACHE_PORT);
-        $port = is_int($portValue) ? $portValue : Constants::DEFAULT_MEMCACHE_PORT;
+        $port = is_int($portValue) || (is_string($portValue) && ctype_digit($portValue))
+            ? (int) $portValue : Constants::DEFAULT_MEMCACHE_PORT;
 
         // Detect cache type (Dragonfly vs Memcached) before printing section
         $cacheType = 'Memcached';

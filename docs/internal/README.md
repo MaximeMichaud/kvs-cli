@@ -5,7 +5,7 @@ This section documents the internal architecture of KVS-CLI for developers who w
 ## Documentation Index
 
 | Document | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | [Architecture Overview](architecture.md) | High-level system architecture |
 | [Adding Commands](adding-commands.md) | How to add new commands |
 | [Testing](testing.md) | Test suite documentation |
@@ -13,7 +13,7 @@ This section documents the internal architecture of KVS-CLI for developers who w
 
 ## Quick Architecture Overview
 
-```
+```text
 kvs-cli/
 ├── bin/kvs              # Entry point
 ├── src/
@@ -47,7 +47,7 @@ The application uses a modular bootstrap system:
 
 Commands are organized in `src/Command/`:
 
-```
+```text
 Command/
 ├── BaseCommand.php          # Base class
 ├── Content/                 # Content commands

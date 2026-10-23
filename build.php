@@ -161,6 +161,9 @@ try {
         $phar->addFile($sourceFile, $localName);
     }
 
+    // Bundle the matching launcher for Docker self-updates.
+    $phar->addFile($sourceDir . '/bin/kvs-docker', 'bin/kvs-docker');
+
     // Add VERSION file
     $phar->addFile($sourceDir . '/VERSION', 'VERSION');
 

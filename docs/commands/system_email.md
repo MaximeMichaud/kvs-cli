@@ -15,7 +15,7 @@ The `system:email` command manages email configuration for KVS, including SMTP s
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `show`, `test`, `set`, `log`, `templates` (default: `show`) |
 
 ## Options
@@ -23,7 +23,7 @@ The `system:email` command manages email configuration for KVS, including SMTP s
 ### General Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--format=FORMAT` | Output format: `table`, `json` |
 | `--lines=N` | Number of log lines to show (default: 50) |
 | `--force` | Skip experimental feature confirmation |
@@ -31,7 +31,7 @@ The `system:email` command manages email configuration for KVS, including SMTP s
 ### SMTP Configuration
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--smtp-host=HOST` | SMTP server hostname |
 | `--smtp-port=PORT` | SMTP server port |
 | `--smtp-user=USER` | SMTP username |
@@ -42,21 +42,21 @@ The `system:email` command manages email configuration for KVS, including SMTP s
 ### From Address
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--from-email=EMAIL` | From email address |
 | `--from-name=NAME` | From display name |
 
 ### Mailer Configuration
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--mailer=TYPE` | Mailer type (`php`, `smtp`, `custom`) |
 | `--debug=LEVEL` | Debug level (0=none, 1=basic, 2=extended) |
 
 ### Test Email Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--to=EMAIL` | Test email recipient |
 | `--subject=TEXT` | Test email subject |
 | `--body=TEXT` | Test email body |
@@ -122,7 +122,7 @@ kvs email templates
 ## Mailer Types
 
 | Type | Description | Use Case |
-|------|-------------|----------|
+| ------ | ------------- | ---------- |
 | `php` | PHP mail() function | Simple hosting, no SMTP |
 | `smtp` | SMTP server | Full control, recommended |
 | `custom` | Custom mail script | Advanced customization |
@@ -130,14 +130,14 @@ kvs email templates
 ## SMTP Security
 
 | Type | Description | Port |
-|------|-------------|------|
+| ------ | ------------- | ------ |
 | `tls` | TLS encryption (recommended) | 587 |
 | `ssl` | SSL encryption | 465 |
 
 ## Debug Levels
 
 | Level | Description | Output |
-|-------|-------------|--------|
+| ------- | ------------- | -------- |
 | 0 | None (default) | No logging |
 | 1 | Basic logging | Sent emails, errors |
 | 2 | Extended logging | Full SMTP conversation |
@@ -264,7 +264,7 @@ kvs email set \
 
 ### show
 
-```
+```text
 Email Settings
 ==============
 

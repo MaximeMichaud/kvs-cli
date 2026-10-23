@@ -2,10 +2,14 @@
 
 **KVS-CLI** is a command-line interface for managing [KVS (Kernel Video Sharing)](http://kernel-team.com) installations. Inspired by [WP-CLI](https://wp-cli.org/), it provides a powerful set of commands for content management, system administration, and development tasks.
 
+Use [KVS-install](https://github.com/MaximeMichaud/KVS-install) for installation and
+migration. KVS CLI provides application diagnostics through `system:status`,
+`system:check`, and `system:stats`.
+
 ## Quick Links
 
 | Section | Description |
-|---------|-------------|
+| --------- | ------------- |
 | [Installation](installation.md) | How to install and configure KVS-CLI |
 | [Quick Start](quickstart.md) | Get up and running in 5 minutes |
 | [Command Reference](commands/) | Complete list of all commands |
@@ -70,7 +74,7 @@ kvs check
 ### Content Management
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | [`video`](commands/video.md) | Manage videos |
 | [`album`](commands/album.md) | Manage photo albums |
 | [`user`](commands/user.md) | Manage users and user statistics |
@@ -85,7 +89,7 @@ kvs check
 ### System Administration
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | [`system:status`](commands/system_status.md) | Show system status |
 | [`system:check`](commands/system_check.md) | Run health checks |
 | [`system:cache`](commands/system_cache.md) | Manage cache |
@@ -100,14 +104,14 @@ kvs check
 ### Database Operations
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | [`db:export`](commands/db_export.md) | Export database to SQL |
 | [`db:import`](commands/db_import.md) | Import database from SQL |
 
 ### Development Tools
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | [`eval`](commands/eval.md) | Execute PHP code |
 | [`eval-file`](commands/eval_file.md) | Execute PHP files |
 | [`shell`](commands/shell.md) | Interactive PHP shell |
@@ -119,7 +123,7 @@ kvs check
 ### Utility Commands
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | [`self-update`](commands/self_update.md) | Update KVS-CLI |
 | [`completion`](commands/completion.md) | Generate shell completion |
 
@@ -127,7 +131,7 @@ kvs check
 
 Most commands support these options:
 
-```
+```text
 --format=<format>    Output format, commonly table, json, csv, yaml, count
 --fields=<fields>    Comma-separated list of fields to display
 --limit=<n>          Limit number of results (default: 20)
@@ -162,7 +166,7 @@ kvs video list --format=ids | xargs -I {} kvs video show {}
 ## Environment Variables
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `KVS_PATH` | Path to KVS installation |
 | `KVS_DB_HOST` | Database host override |
 | `KVS_DB_USER` | Database user override |

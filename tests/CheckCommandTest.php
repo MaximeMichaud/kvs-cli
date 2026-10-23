@@ -525,4 +525,104 @@ PHP);
             }
         };
     }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directCheckPaths(): iterable
+    {
+        foreach (['plain-tool', '<info>literal-tool'] as $name) {
+            foreach ([false, true] as $decorated) {
+                yield $name . ($decorated ? ' decorated' : ' plain') => [$name, $decorated];
+            }
+        }
+    }
+
+    #[DataProvider('directCheckPaths')]
+    public function testDirectJsonPreservesDiagnosticToolPath(string $filename, bool $decorated): void
+    {
+        [$tester, $tool] = $this->createDiagnosticExportFixture($filename);
+        $tester->execute(['--json' => true, '--skip-online-checks' => true], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($tool, $data['results']['tools']['tools']['ffmpeg']['path']);
+        $this->assertSame('skip', $data['results']['internet']['status']);
+        $this->assertSame('skip', $data['results']['end_of_life']['status']);
+        $this->assertSame('not_configured', $data['results']['memcached']['status']);
+    }
+
+    /** @return array{CommandTester, string} */
+    private function createDiagnosticExportFixture(string $filename): array
+    {
+        $tool = $this->tempDir . '/' . $filename;
+        file_put_contents($tool, "#!/bin/sh\nprintf '%s\\n' 'ffmpeg version 1.0' 'libx264 aac libavfilter webp avif'\n");
+        chmod($tool, 0755);
+        $setup = "<?php \$config['project_version'] = '7.0.0'; \$config['memcache_server'] = '';\n";
+        foreach (['ffmpeg_path', 'image_magick_path', 'mysqldump_path'] as $key) {
+            $setup .= '$config[' . var_export($key, true) . '] = ' . var_export($tool, true) . ";\n";
+        }
+        file_put_contents($this->tempDir . '/admin/include/setup.php', $setup);
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $detector = $this->createMock(\KVS\CLI\Docker\DockerDetector::class);
+        $detector->method('getSummary')->willReturn([
+            'docker_available' => false, 'kvs_in_docker' => false, 'prefix' => null, 'containers' => [],
+        ]);
+        $command = new class ($configuration, $detector) extends CheckCommand {
+            public function __construct(Configuration $config, private \KVS\CLI\Docker\DockerDetector $detector)
+            {
+                parent::__construct($config);
+            }
+
+            protected function docker(): \KVS\CLI\Docker\DockerDetector
+            {
+                return $this->detector;
+            }
+
+            protected function isDockerMode(): bool
+            {
+                return false;
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        return [$tester, $tool];
+    }
+
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function jsonEncodingDiagnosticCases(): iterable
+    {
+        foreach ([false, true] as $valid) {
+            foreach ([false, true] as $decorated) {
+                yield (int) $valid . ' ' . (int) $decorated => [$valid, $decorated];
+            }
+        }
+    }
+
+    #[DataProvider('jsonEncodingDiagnosticCases')]
+    public function testJsonEncodingCheckReportsTheEncodingFailure(bool $valid, bool $decorated): void
+    {
+        $filename = $valid ? 'synthetic-tool-é' : "synthetic-tool-\xff";
+        [$tester, $tool] = $this->createDiagnosticExportFixture($filename);
+        $contents = file_get_contents($tool);
+        $tester->execute(['--json' => true, '--skip-online-checks' => true], ['decorated' => $decorated]);
+        $display = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), 'The fixture intentionally has no database connection.');
+        $this->assertSame($contents, file_get_contents($tool));
+        if ($valid) {
+            $this->assertJson($display);
+            $data = json_decode($display, true);
+            $this->assertSame($tool, $data['results']['tools']['tools']['ffmpeg']['path']);
+            $this->assertSame('skip', $data['results']['internet']['status']);
+        } else {
+            $this->assertStringContainsString('Failed to encode diagnostic results as JSON:', $display);
+            $this->assertStringContainsString('Malformed UTF-8', $display);
+            $this->assertStringNotContainsString($tool, $display);
+            $this->assertStringNotContainsString("\xff", $display);
+        }
+    }
 }

@@ -246,4 +246,58 @@ class VideoCommandDeleteTest extends TestCase
         $db->exec('CREATE TABLE ktvs_stats_videos_users_views (video_id INTEGER)');
         $db->exec('CREATE TABLE ktvs_comments (comment_id INTEGER, object_id INTEGER, object_type_id INTEGER)');
     }
+
+    /**
+     * @dataProvider nativeDeletionResultProvider
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testNativeDeletionRequiresAPersistedTaskAndRollsBackFailures(
+        string $result,
+        string $engine,
+        int $expectedStatus,
+        int $expectedContentStatus
+    ): void {
+        $db = \KVS\CLI\Tests\Support\NativeDeletionFixture::create($this->tempDir, 'video', $result, $engine);
+        $configuration = new Configuration(['path' => $this->tempDir]);
+        $command = new class ($configuration, $db) extends VideoCommand {
+            public function __construct(Configuration $configuration, private \PDO $database)
+            {
+                parent::__construct($configuration);
+                $this->setName('content:video');
+            }
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                return $this->database;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->setInputs(['yes']);
+        $tester->execute(['action' => 'delete', 'id' => '1']);
+
+        $queued = $expectedStatus === 0;
+        $this->assertSame($expectedStatus, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($expectedContentStatus, (int) $db->query('SELECT status_id FROM fixture_videos')->fetchColumn());
+        $this->assertSame($queued ? 1 : 0, (int) $db->query('SELECT COUNT(*) FROM fixture_background_tasks')->fetchColumn());
+        $this->assertSame($queued ? 1 : 0, (int) $db->query('SELECT COUNT(*) FROM fixture_admin_audit_log')->fetchColumn());
+        $this->assertFalse($db->inTransaction());
+        if (!$queued) {
+            $this->assertStringNotContainsString('queued for KVS deletion', $tester->getDisplay());
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, string, int, int}>
+     */
+    public static function nativeDeletionResultProvider(): iterable
+    {
+        yield 'native success without a task' => ['no-task', 'InnoDB', 1, 1];
+        yield 'native success without an audit entry' => ['missing-audit', 'InnoDB', 1, 1];
+        yield 'native false after writing' => ['false', 'InnoDB', 1, 1];
+        yield 'native exception after writing' => ['throw', 'InnoDB', 1, 1];
+        yield 'native success with persisted task' => ['queued', 'InnoDB', 0, 4];
+        yield 'status changed after confirmation' => ['status-changed', 'InnoDB', 1, 3];
+        yield 'nontransactional storage' => ['queued', 'MyISAM', 1, 1];
+    }
 }

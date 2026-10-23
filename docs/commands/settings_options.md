@@ -15,7 +15,7 @@ The `settings:options` command manages system-wide configuration options stored 
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `get`, `set` (default: `list`) |
 | `name` | Conditional | Option name (required for `get` and `set`) |
 | `value` | Conditional | New value (required for `set`) |
@@ -23,7 +23,7 @@ The `settings:options` command manages system-wide configuration options stored 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `-p, --prefix=PREFIX` | Filter by prefix (e.g., `ENABLE`, `ANTISPAM`) |
 | `-c, --category=CATEGORY` | Filter by category (see below) |
 | `-s, --search=SEARCH` | Search in option names |
@@ -37,7 +37,7 @@ The `settings:options` command manages system-wide configuration options stored 
 ## Categories
 
 | Category | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `website` | Album, video, screenshot, category, tag, model, DVD settings |
 | `memberzone` | User, tokens, premium, awards settings |
 | `antispam` | Anti-spam configuration |
@@ -67,7 +67,7 @@ kvs options list --category=system
 kvs options list --search=AVATAR
 ```
 
-### get <name>
+### get `<name>`
 
 Get the value of a specific option.
 
@@ -76,7 +76,7 @@ kvs options get ENABLE_ANTI_HOTLINK
 kvs options get ANTISPAM_BLACKLIST_ACTION
 ```
 
-### set <name> <value>
+### set `<name> <value>`
 
 Set a new value for an option.
 
@@ -158,7 +158,7 @@ kvs options list --format=json > options-backup.json
 
 ### List
 
-```
+```text
 KVS Options
 ===========
 
@@ -174,10 +174,10 @@ KVS Options
 ### Get
 
 ```bash
-$ kvs options get ENABLE_ANTI_HOTLINK
+kvs options get ENABLE_ANTI_HOTLINK
 ```
 
-```
+```text
 1
 ```
 
@@ -186,7 +186,7 @@ $ kvs options get ENABLE_ANTI_HOTLINK
 ### System Flags
 
 | Option | Description | Values |
-|--------|-------------|--------|
+| -------- | ------------- | -------- |
 | `ENABLE_ANTI_HOTLINK` | Anti-hotlink protection | 0\|1 |
 | `ENABLE_VIDEO_EDIT` | Allow video editing | 0\|1 |
 | `ENABLE_ALBUM_EDIT` | Allow album editing | 0\|1 |
@@ -195,7 +195,7 @@ $ kvs options get ENABLE_ANTI_HOTLINK
 ### Content Settings
 
 | Option | Description | Type |
-|--------|-------------|------|
+| -------- | ------------- | ------ |
 | `VIDEO_SCREENSHOT_COUNT` | Default screenshots per video | number |
 | `MAX_UPLOAD_SIZE` | Max upload size in bytes | number |
 | `VIDEO_AVATAR_SIZE` | Video thumbnail dimensions | text |
@@ -203,7 +203,7 @@ $ kvs options get ENABLE_ANTI_HOTLINK
 ### Anti-Spam
 
 | Option | Description | Values |
-|--------|-------------|--------|
+| -------- | ------------- | -------- |
 | `ANTISPAM_BLACKLIST_ACTION` | Action for blacklisted content | delete\|deactivate |
 | `ANTISPAM_COMMENTS_CAPTCHA` | Comments captcha threshold | count/seconds |
 

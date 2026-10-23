@@ -5,6 +5,9 @@
 
 Command-line interface for [KVS (Kernel Video Sharing)](https://www.kernel-video-sharing.com/) CMS.
 
+KVS CLI manages an existing application. Installation and migration are provided by
+[KVS-install](https://github.com/MaximeMichaud/KVS-install).
+
 Tested with KVS 6.3.2, 6.4.0, 7.0.0.
 
 > **⚠️ Beta Notice**: This CLI has been tested with limited datasets. Read operations should work reliably, but exercise caution with any create, update, or delete operations. Always backup your data before performing write operations.
@@ -193,6 +196,9 @@ Priority order:
 2. `KVS_PATH` environment variable
 3. Auto-detection (walks up directory tree)
 
+Relative paths supplied through `--path` or `KVS_PATH` are resolved from the
+directory where the command starts, including commands that enter the admin directory.
+
 ## Requirements
 
 - PHP 8.1+
@@ -203,23 +209,44 @@ Priority order:
 
 ### Setup
 
+Install PHP 8.1+, Composer, Python 3, [pre-commit](https://pre-commit.com/),
+Docker, and the test prerequisites: a MySQL/MariaDB client, Fish, Zsh, and Bash completion.
+The PHP test runtime needs PDO MySQL, PDO SQLite, MySQLi, GD, Intl, Mbstring, and XML.
+SQLite 3.44+ is required by tests that use ordered aggregate functions.
+Then install the project dependencies and activate the hooks:
+
 ```bash
 composer install
+composer prepare
 ```
 
-Git hooks are installed automatically via the `composer install` post-install script.
+`composer prepare` runs `pre-commit install --install-hooks`. Hook tools use pinned
+versions in isolated environments; no global PHP or Python dependencies are installed.
+GitHub Actions validation uses the official actionlint Docker image so its embedded
+ShellCheck version is the same locally and in CI.
+The Bash compatibility check runs the `bash:3.2` Docker image. The minimum dependency
+check builds the PHP 8.1 test image from `tools/php81.Dockerfile`; subsequent runs
+reuse Docker layers and the Composer download cache. It has no access to the host
+Docker socket.
 
 ### Git Hooks
 
-This project uses [lefthook](https://github.com/evilmartians/lefthook) to run checks automatically:
+Every commit and push runs all repository checks: PHP syntax, PHPCS, PHPStan level 10,
+EditorConfig, ShellCheck, Bash style, Markdown, JSON/YAML/XML validation, secret
+scanning, Composer validation and audit, the complete PHPUnit suite, the lowest
+dependency analysis and test suite on PHP 8.1 in a temporary Docker container, and installer tests on
+native Bash and Bash 3.2.
+The commit message and pushed commits must follow Conventional Commits.
 
-- **pre-commit** — PHPCS (PSR-12), PHPStan (level 10), EditorConfig, YAML/JSON lint
-- **pre-push** — PHPUnit
+The commit hook temporarily stashes unstaged tracked changes and checks all tracked
+files, so a working copy cannot hide an error in the staged commit. A failed check
+blocks the commit. Formatting hooks may update files; review and stage those changes
+before trying again.
 
-To run all checks manually:
+To run the repository checks manually:
 
 ```bash
-lefthook run pre-commit --all-files
+pre-commit run --all-files --hook-stage manual --show-diff-on-failure
 ```
 
 ### Testing

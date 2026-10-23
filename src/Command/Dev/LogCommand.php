@@ -137,6 +137,10 @@ class LogCommand extends BaseCommand
 
         $content = $this->tail($logFile, $lines);
 
+        if ($content === null) {
+            $this->io()->error('Unable to read log file');
+            return self::FAILURE;
+        }
         if ($content === []) {
             $this->io()->info('No log entries');
         } else {
@@ -267,7 +271,10 @@ class LogCommand extends BaseCommand
             return self::SUCCESS;
         }
 
-        file_put_contents($logFile, '');
+        if (@file_put_contents($logFile, '') === false) {
+            $this->io()->error('Unable to clear log file');
+            return self::FAILURE;
+        }
         $this->io()->success('Log file cleared');
 
         return self::SUCCESS;
@@ -395,24 +402,30 @@ class LogCommand extends BaseCommand
      *
      * @param string $file Path to the file
      * @param int $lines Number of lines to read
-     * @return array<int, string> Array of lines
+     * @return array<int, string>|null Lines, or null when reading fails
      */
-    private function tail(string $file, int $lines): array
+    private function tail(string $file, int $lines): ?array
     {
-        $result = [];
-        $fp = fopen($file, 'r');
+        $fp = @fopen($file, 'r');
 
         if ($fp === false) {
-            return $result;
+            return null;
         }
 
         $buffer = 4096;
-        fseek($fp, 0, SEEK_END);
+        if (fseek($fp, 0, SEEK_END) !== 0) {
+            fclose($fp);
+            return null;
+        }
         $position = ftell($fp);
 
-        if ($position === 0 || $position === false) {
+        if ($position === false) {
             fclose($fp);
-            return $result;
+            return null;
+        }
+        if ($position === 0) {
+            fclose($fp);
+            return [];
         }
 
         $output = '';
@@ -420,10 +433,14 @@ class LogCommand extends BaseCommand
         while ($position > 0 && substr_count($output, "\n") <= $lines) {
             $seek = min($position, $buffer);
             $position -= $seek;
-            fseek($fp, $position, SEEK_SET);
+            if (fseek($fp, $position, SEEK_SET) !== 0) {
+                fclose($fp);
+                return null;
+            }
             $readChunk = fread($fp, $seek);
             if ($readChunk === false) {
-                break;
+                fclose($fp);
+                return null;
             }
             $output = $readChunk . $output;
         }

@@ -15,7 +15,7 @@ The `db:export` command creates a SQL dump of your KVS database. It supports mul
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `-o, --output=<file>` | Auto-generated | Output file path |
 | `--tables=<tables>` | All | Comma-separated table names |
 | `--no-data` | - | Export structure only (no data) |
@@ -24,7 +24,7 @@ The `db:export` command creates a SQL dump of your KVS database. It supports mul
 ## Compression Formats
 
 | Format | Extension | Description |
-|--------|-----------|-------------|
+| -------- | ----------- | ------------- |
 | `gzip` | `.gz` | Standard, best compatibility |
 | `zstd` | `.zst` | Fast, great compression ratio |
 | `xz` | `.xz` | Maximum compression, slower |
@@ -40,7 +40,7 @@ kvs db:export
 
 Output:
 
-```
+```text
 Exporting database...
  Database: kvs_production
  Tables: 156

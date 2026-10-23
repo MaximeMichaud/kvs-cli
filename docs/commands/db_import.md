@@ -12,18 +12,20 @@ kvs db:import <file>
 
 The `db:import` command imports a SQL dump into your KVS database. It automatically detects and handles compressed files.
 
+The command uses an available `mysql` or `mariadb` client. Compressed archives undergo a full decompression check before confirmation and are decompressed again during the streamed import. This adds a validation pass without storing the expanded SQL. Archive validation does not validate SQL statements or make the import transactional.
+
 **Warning:** This will overwrite all existing data in the database!
 
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `file` | Yes | Path to SQL file |
 
 ## Supported Formats
 
 | Extension | Format |
-|-----------|--------|
+| ----------- | -------- |
 | `.sql` | Uncompressed SQL |
 | `.gz`, `.gzip` | Gzip compressed |
 | `.zst`, `.zstd` | Zstandard compressed |
@@ -40,7 +42,7 @@ kvs db:import backup.sql
 
 Output:
 
-```
+```text
 Importing database from backup.sql...
  Size: 245.6 MB
  ⚠ This will overwrite all existing data!

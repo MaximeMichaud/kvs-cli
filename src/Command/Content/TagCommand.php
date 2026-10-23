@@ -373,11 +373,12 @@ HELP
             $tagDir = is_string($tag['tag_dir'] ?? null) ? $tag['tag_dir'] : '';
             $addedDate = is_string($tag['added_date'] ?? null) ? $tag['added_date'] : 'N/A';
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', $tagId],
                 ['Name', $tagName],
                 ['Slug', $tagDir],
-                ['Status', StatusFormatter::tag($statusId)],
+                ['Status', StatusFormatter::tag($statusId, $withColor)],
             ];
 
             foreach ($this->getTagUsageLabels() as $suffix => $label) {

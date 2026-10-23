@@ -9,6 +9,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Yaml\Yaml;
 
@@ -26,12 +27,14 @@ class BackupCommand extends BaseCommand
     private const CREATE_TYPES = ['full', 'db', 'files'];
     private const LIST_FORMATS = ['table', 'json', 'csv', 'yaml', 'count'];
     private const MIN_DATABASE_DUMP_BYTES = 100;
+    private const ARCHIVE_EXCLUDE_PATTERNS = ['*.log', '*/cache/*', '*/tmp/*', '*/temp/*'];
 
     protected function configure(): void
     {
         $this
             ->setHelp(<<<'HELP'
 Create and list KVS backups.
+Database backups temporarily stage uncompressed SQL in the output directory before compression.
 
 <info>EXAMPLES:</info>
   <comment>kvs system:backup --list</comment>
@@ -145,29 +148,59 @@ HELP
 
         $timestamp = date('Y-m-d_H-i-s');
         $backupName = "kvs_backup_{$type}_{$timestamp}";
-        $success = true;
-
-        if ($type === 'full' || $type === 'db') {
-            $success = $this->createDatabaseBackup($outputDir, $backupName);
-        }
-
-        if ($type === 'full' || $type === 'files') {
-            $success = $this->createFilesBackup($outputDir, $backupName) && $success;
-        }
-
-        if ($type === 'full' && $success) {
-            $success = $this->createFullArchive($outputDir, $backupName);
-        }
-
-        if (!$success) {
-            if ($type === 'full') {
-                $this->cleanupPartialBackupFiles($outputDir, $backupName);
-            }
+        $workingDir = $outputDir . '/.kvs-backup-' . bin2hex(random_bytes(8));
+        if (!@mkdir($workingDir, 0700)) {
+            $this->io()->error('Failed to create backup working directory');
             return self::FAILURE;
         }
 
-        $this->io()->success('Backup created: ' . $this->getCreatedBackupPath($outputDir, $backupName, $type));
-        return self::SUCCESS;
+        $success = false;
+        try {
+            $success = true;
+            if ($type === 'full' || $type === 'db') {
+                $success = $this->createDatabaseBackup($workingDir, $backupName);
+            }
+
+            if ($type === 'full' || $type === 'files') {
+                $success = $this->createFilesBackup($workingDir, $backupName) && $success;
+            }
+
+            if ($type === 'full' && $success) {
+                $success = $this->createFullArchive($workingDir, $backupName);
+            }
+
+            if (!$success) {
+                return self::FAILURE;
+            }
+
+            $source = $this->getCreatedBackupPath($workingDir, $backupName, $type);
+            $publishedFile = $this->publishBackup($source, $outputDir, $backupName, $type);
+            if ($publishedFile === null) {
+                $success = false;
+                return self::FAILURE;
+            }
+
+            $this->io()->success('Backup created: ' . $publishedFile);
+            return self::SUCCESS;
+        } finally {
+            $this->cleanupPartialBackupFiles($workingDir, $backupName, !$success);
+            @rmdir($workingDir);
+        }
+    }
+
+    private function publishBackup(string $source, string $outputDir, string $backupName, string $type): ?string
+    {
+        for ($suffix = 0;; $suffix++) {
+            $name = $backupName . ($suffix === 0 ? '' : '_' . $suffix);
+            $target = $this->getCreatedBackupPath($outputDir, $name, $type);
+            if (@link($source, $target)) {
+                return $target;
+            }
+            if (!file_exists($target) && !is_link($target)) {
+                $this->io()->error('Failed to publish backup archive');
+                return null;
+            }
+        }
     }
 
     private function getCreatedBackupPath(string $outputDir, string $backupName, string $type): string
@@ -180,7 +213,7 @@ HELP
         };
     }
 
-    private function cleanupPartialBackupFiles(string $outputDir, string $backupName): void
+    private function cleanupPartialBackupFiles(string $outputDir, string $backupName, bool $report = true): void
     {
         $partialFiles = [
             "$outputDir/{$backupName}_db.sql",
@@ -197,7 +230,7 @@ HELP
             }
         }
 
-        if ($removed !== []) {
+        if ($report && $removed !== []) {
             $this->io()->info('Removed partial backup files: ' . implode(', ', $removed));
         }
     }
@@ -211,6 +244,15 @@ HELP
             return false;
         }
 
+        $finder = new ExecutableFinder();
+        $dumpCommand = $finder->find('mysqldump') ?? $finder->find('mariadb-dump');
+        if ($dumpCommand === null) {
+            $this->io()->error('Database dump command not found');
+            return false;
+        }
+
+        $sqlFile = "$outputDir/{$backupName}_db.sql";
+        $errorFile = "$outputDir/{$backupName}_db.stderr";
         $gzFile = "$outputDir/{$backupName}_db.sql.gz";
         $host = $dbConfig['host'];
         $port = $dbConfig['port'] ?? (string) Constants::DEFAULT_MYSQL_PORT;
@@ -219,7 +261,7 @@ HELP
         }
 
         $command = [
-            'mysqldump',
+            $dumpCommand,
             '-h', $host,
             '-P', $port,
             '-u', $dbConfig['user'],
@@ -231,51 +273,88 @@ HELP
             $dbConfig['database'],
         ];
 
-        $process = new Process($command);
+        // Process pipe readers can accumulate output before invoking a callback.
+        $process = Process::fromShellCommandline(
+            'exec ' . implode(' ', array_map(escapeshellarg(...), $command))
+            . ' > ' . escapeshellarg($sqlFile) . ' 2> ' . escapeshellarg($errorFile)
+        );
         $process->setTimeout(Constants::DB_PROCESS_TIMEOUT);
+        $process->disableOutput();
 
         $this->io()->info('Creating database backup...');
 
-        $fp = $this->withSecureFileUmask(
-            static fn () => gzopen($gzFile, 'w9')
-        );
-        if ($fp === false) {
+        try {
+            if (!$this->writeSecureFile($sqlFile, '') || !$this->writeSecureFile($errorFile, '')) {
+                $this->io()->error('Failed to create temporary SQL dump files');
+                return false;
+            }
+
+            $this->withSecureFileUmask(static fn (): int => $process->run());
+            if (!$process->isSuccessful()) {
+                clearstatcache(true, $errorFile);
+                $errorSize = filesize($errorFile);
+                $errorOutput = $errorSize === false ? false : file_get_contents(
+                    $errorFile,
+                    false,
+                    null,
+                    max(0, $errorSize - 65536),
+                    65536
+                );
+                $this->io()->error('Database backup failed: ' . ($errorOutput !== false
+                    ? $errorOutput : 'Unable to read dump error output'));
+                return false;
+            }
+
+            clearstatcache(true, $sqlFile);
+            $dumpBytes = filesize($sqlFile);
+            if ($dumpBytes === false || $dumpBytes < self::MIN_DATABASE_DUMP_BYTES) {
+                $this->io()->error('Database backup failed: SQL dump is empty or incomplete');
+                return false;
+            }
+
+            if (!$this->compressDatabaseDump($sqlFile, $gzFile)) {
+                return false;
+            }
+
+            if (!$this->restrictFilePermissions($gzFile)) {
+                $this->io()->error('Failed to set compressed backup file permissions');
+                return false;
+            }
+
+            $this->io()->info('Database backup created: ' . basename($gzFile));
+            return true;
+        } finally {
+            @unlink($sqlFile);
+            @unlink($errorFile);
+        }
+    }
+
+    private function compressDatabaseDump(string $sqlFile, string $gzFile): bool
+    {
+        $input = @fopen($sqlFile, 'rb');
+        if ($input === false) {
+            $this->io()->error('Failed to read SQL dump file');
+            return false;
+        }
+        $output = $this->withSecureFileUmask(static fn () => gzopen($gzFile, 'w9'));
+        if ($output === false) {
+            fclose($input);
             $this->io()->error('Failed to create compressed backup file');
             return false;
         }
 
         $writeFailed = false;
-        $dumpBytes = 0;
-        $errorOutput = '';
-        $process->disableOutput();
-
         try {
-            $process->run(static function (
-                string $type,
-                string $buffer
-            ) use (
-                $fp,
-                &$writeFailed,
-                &$dumpBytes,
-                &$errorOutput
-            ): void {
-                if ($type === Process::OUT) {
-                    $dumpBytes += strlen($buffer);
-                    if (gzwrite($fp, $buffer) === false) {
-                        $writeFailed = true;
-                    }
-                    return;
+            while (!feof($input)) {
+                $chunk = fread($input, 65536);
+                if ($chunk === false || ($chunk !== '' && gzwrite($output, $chunk) !== strlen($chunk))) {
+                    $writeFailed = true;
+                    break;
                 }
-
-                if ($type === Process::ERR && $buffer !== '') {
-                    $errorOutput .= $buffer;
-                    if (strlen($errorOutput) > 65536) {
-                        $errorOutput = substr($errorOutput, -65536);
-                    }
-                }
-            });
+            }
         } finally {
-            if (!gzclose($fp)) {
+            fclose($input);
+            if (!gzclose($output)) {
                 $writeFailed = true;
             }
         }
@@ -286,24 +365,6 @@ HELP
             return false;
         }
 
-        if (!$process->isSuccessful()) {
-            @unlink($gzFile);
-            $this->io()->error('Database backup failed: ' . $errorOutput);
-            return false;
-        }
-
-        if ($dumpBytes < self::MIN_DATABASE_DUMP_BYTES) {
-            @unlink($gzFile);
-            $this->io()->error('Database backup failed: SQL dump is empty or incomplete');
-            return false;
-        }
-
-        if (!$this->restrictFilePermissions($gzFile)) {
-            $this->io()->error('Failed to set compressed backup file permissions');
-            return false;
-        }
-
-        $this->io()->info('Database backup created: ' . basename($gzFile));
         return true;
     }
 
@@ -314,23 +375,22 @@ HELP
 
         $tarFile = "$outputDir/{$backupName}_files.tar.gz";
 
-        $excludes = [
-            '--exclude=*.log',
-            '--exclude=*/cache/*',
-            '--exclude=*/tmp/*',
-            '--exclude=*/temp/*',
-        ];
+        $excludes = array_map(
+            static fn (string $pattern): string => '--exclude=' . $pattern,
+            self::ARCHIVE_EXCLUDE_PATTERNS
+        );
 
         $command = array_merge(
             ['tar', 'czf', $tarFile],
             $excludes,
-            ['-C', dirname($kvsPath), basename($kvsPath)]
+            $this->getBackupArtifactExcludes($outputDir, [$kvsPath, $contentPath]),
+            ['-C', dirname($kvsPath), $this->getArchiveRootArgument($kvsPath)]
         );
 
-        if (is_dir($contentPath)) {
+        if (is_dir($contentPath) && !$this->isContentIncludedInSiteBackup($kvsPath, $contentPath)) {
             $command[] = '-C';
             $command[] = dirname($contentPath);
-            $command[] = basename($contentPath);
+            $command[] = $this->getArchiveRootArgument($contentPath);
         }
 
         $process = new Process($command);
@@ -367,6 +427,95 @@ HELP
         }
     }
 
+    /**
+     * @param list<string> $archiveRoots
+     * @return list<string>
+     */
+    private function getBackupArtifactExcludes(string $workingDir, array $archiveRoots): array
+    {
+        $destination = realpath(dirname($workingDir));
+        if ($destination === false) {
+            return [];
+        }
+        $memberPrefixes = [];
+        foreach ($archiveRoots as $path) {
+            $root = realpath($path);
+            if ($root === false) {
+                continue;
+            }
+            $prefix = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+            if ($destination === $root || str_starts_with($destination, $prefix)) {
+                $relative = $destination === $root ? '' : substr($destination, strlen($prefix)) . '/';
+                $memberPrefixes[] = $this->getArchiveRootArgument($path) . '/' . $relative;
+            }
+        }
+        if ($memberPrefixes === []) {
+            return [];
+        }
+
+        $names = [basename($workingDir)];
+        $pattern = '/^kvs_backup_(full|files|db)_\d{4}-\d{2}-\d{2}_'
+            . '\d{2}-\d{2}-\d{2}(?:_[1-9]\d*)?_\1\.(tar|sql)\.gz$/D';
+        $entries = scandir($destination);
+        foreach ($entries === false ? [] : $entries as $name) {
+            if (
+                preg_match($pattern, $name, $matches) === 1
+                && $matches[2] === ($matches[1] === 'db' ? 'sql' : 'tar')
+                && is_file($destination . DIRECTORY_SEPARATOR . $name)
+            ) {
+                $names[] = $name;
+            }
+        }
+
+        $excludes = [];
+        foreach ($memberPrefixes as $prefix) {
+            foreach ($names as $name) {
+                // Both GNU tar and BSD tar support escaped glob metacharacters.
+                $excludes[] = '--exclude=' . strtr($prefix . $name, [
+                    '\\' => '\\\\', '*' => '\\*', '?' => '\\?', '[' => '\\[', ']' => '\\]',
+                ]);
+            }
+        }
+        return array_values(array_unique($excludes));
+    }
+
+    private function isContentIncludedInSiteBackup(string $kvsPath, string $contentPath): bool
+    {
+        $siteRoot = realpath($kvsPath);
+        $contentRoot = realpath($contentPath);
+        if ($siteRoot === false || $contentRoot === false) {
+            return false;
+        }
+        $prefix = rtrim($siteRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if ($contentRoot !== $siteRoot && !str_starts_with($contentRoot, $prefix)) {
+            return false;
+        }
+
+        // Tar traverses the real directory tree, but does not follow links inside it.
+        $relative = $contentRoot === $siteRoot ? '' : substr($contentRoot, strlen($prefix));
+        $archivePath = $this->getArchiveRootArgument($kvsPath);
+        $parts = $relative === '' ? [] : explode(DIRECTORY_SEPARATOR, $relative);
+        foreach (array_merge([''], $parts) as $part) {
+            if ($part !== '') {
+                $archivePath .= '/' . $part;
+            }
+            foreach (self::ARCHIVE_EXCLUDE_PATTERNS as $pattern) {
+                if (fnmatch($pattern, $archivePath) || fnmatch($pattern, $archivePath . '/')) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private function getArchiveRootArgument(string $path): string
+    {
+        $name = basename($path);
+        // Dereference the selected root while preserving symbolic links within its tree.
+        return is_link(rtrim($path, DIRECTORY_SEPARATOR)) ? $name . '/.' : $name;
+    }
+
     private function createFullArchive(string $outputDir, string $backupName): bool
     {
         $dbFile = "$outputDir/{$backupName}_db.sql.gz";
@@ -382,6 +531,7 @@ HELP
             ];
 
             $process = new Process($command);
+            $process->setTimeout(Constants::FILE_BACKUP_TIMEOUT);
             $this->withSecureFileUmask(
                 static fn (): int => $process->run()
             );
@@ -397,6 +547,7 @@ HELP
 
                 $gzCommand = ['gzip', '-9', $fullFile];
                 $gzProcess = new Process($gzCommand);
+                $gzProcess->setTimeout(Constants::FILE_BACKUP_TIMEOUT);
                 $this->withSecureFileUmask(
                     static fn (): int => $gzProcess->run()
                 );
@@ -449,7 +600,12 @@ HELP
 
         $files = [];
         foreach ($backupDirs as $backupDir) {
-            $files = array_merge($files, $this->findBackupFiles($backupDir));
+            $found = $this->findBackupFiles($backupDir);
+            if ($found === false) {
+                $this->io()->error('Cannot read backup directory: ' . $backupDir);
+                return self::FAILURE;
+            }
+            $files = array_merge($files, $found);
         }
 
         if ($files === []) {
@@ -495,13 +651,13 @@ HELP
     }
 
     /**
-     * @return list<string>
+     * @return list<string>|false
      */
-    private function findBackupFiles(string $backupDir): array
+    private function findBackupFiles(string $backupDir): array|false
     {
-        $entries = scandir($backupDir);
+        $entries = @scandir($backupDir);
         if ($entries === false) {
-            return [];
+            return false;
         }
 
         $files = [];
@@ -553,15 +709,15 @@ HELP
                 if ($json === false) {
                     throw new \RuntimeException('Failed to encode JSON: ' . json_last_error_msg());
                 }
-                $this->io()->writeln($json);
+                $this->io()->writeln($json, OutputInterface::OUTPUT_RAW);
                 return;
 
             case 'csv':
-                $this->io()->write($this->formatBackupsCsv($backups));
+                $this->io()->write($this->formatBackupsCsv($backups), false, OutputInterface::OUTPUT_RAW);
                 return;
 
             case 'yaml':
-                $this->io()->write(Yaml::dump($backups, 2, 2));
+                $this->io()->write(Yaml::dump($backups, 2, 2), false, OutputInterface::OUTPUT_RAW);
                 return;
         }
     }
@@ -576,9 +732,9 @@ HELP
             throw new \RuntimeException('Failed to open temporary CSV stream');
         }
 
-        fputcsv($stream, ['file', 'size', 'created'], ',', '"', '\\');
+        fputcsv($stream, ['file', 'size', 'created'], ',', '"', '');
         foreach ($backups as $backup) {
-            fputcsv($stream, [$backup['file'], $backup['size'], $backup['created']], ',', '"', '\\');
+            fputcsv($stream, [$backup['file'], $backup['size'], $backup['created']], ',', '"', '');
         }
 
         rewind($stream);

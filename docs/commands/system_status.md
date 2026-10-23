@@ -18,7 +18,7 @@ The `system:status` command displays comprehensive information about your KVS in
 
 Shows KVS installation paths and version:
 
-```
+```text
 Installation
 ------------
  KVS Path      /var/www/kvs
@@ -31,7 +31,7 @@ Installation
 
 Shows database connection information:
 
-```
+```text
 Database
 --------
  Host          127.0.0.1
@@ -45,7 +45,7 @@ Database
 
 Shows server and PHP information:
 
-```
+```text
 System
 ------
  Operating System   CachyOS Linux (kernel 6.18.1)
@@ -62,7 +62,7 @@ System
 
 Shows content counts:
 
-```
+```text
 Content Statistics
 ------------------
  Videos      15,432
@@ -78,7 +78,7 @@ Content Statistics
 
 Shows external tool availability:
 
-```
+```text
 Services Status
 ---------------
  ✓ FFmpeg       /usr/bin/ffmpeg       6.0.0
@@ -91,7 +91,7 @@ Services Status
 
 Shows conversion queue status:
 
-```
+```text
 Video Processing
 ----------------
  Pending       12
@@ -104,7 +104,7 @@ Video Processing
 
 Shows content directory sizes:
 
-```
+```text
 Storage Breakdown
 -----------------
  Videos Sources    156.7 GB  12,543 files
@@ -121,7 +121,7 @@ Storage Breakdown
 
 Shows health check results:
 
-```
+```text
 System Health
 -------------
  ✓ Database connectivity    OK
@@ -135,7 +135,7 @@ System Health
 
 Shows security-related settings:
 
-```
+```text
 Security
 --------
  ✓ Maintenance mode    DISABLED

@@ -434,7 +434,7 @@ HELP
         }
 
         $name = $this->getStringArgument($input, 'name');
-        $value = $this->getStringArgument($input, 'value');
+        $value = $input->getArgument('value');
 
         if ($name === null || $name === '') {
             $this->io()->error('Option name is required');
@@ -442,7 +442,7 @@ HELP
             return self::FAILURE;
         }
 
-        if ($value === null) {
+        if (!is_string($value)) {
             $this->io()->error('Option value is required');
             $this->io()->text('Usage: kvs options set <name> <value>');
             $this->io()->text('Use empty string "" to clear a value');
@@ -492,13 +492,7 @@ HELP
 
             $mirroredSettingsFiles = $this->loadMirroredSettingsFiles($name);
 
-            // Update the option
-            $stmt = $db->prepare(
-                "UPDATE {$this->table('options')} SET value = :value WHERE variable = :name"
-            );
-            $stmt->execute(['value' => $value, 'name' => $name]);
-            $syncedFiles = $this->writeMirroredSettingsFiles($mirroredSettingsFiles, $name, $value);
-            $this->applyKvsOptionSideEffects($db, $name, $oldValue, $value);
+            $syncedFiles = $this->updateOptionAndMirrors($db, $mirroredSettingsFiles, $name, $oldValue, $value);
             $this->writeAdminAuditLog(
                 $db,
                 $this->getKvsOptionsAuditActionId($mirroredSettingsFiles, $name),
@@ -525,7 +519,7 @@ HELP
     }
 
     /**
-     * @return list<array{file: string, path: string, data: array<string, mixed>}>
+     * @return list<array{file: string, path: string, data: array<string, mixed>, contents: string}>
      */
     private function loadMirroredSettingsFiles(string $name): array
     {
@@ -538,13 +532,16 @@ HELP
                 continue;
             }
 
-            $contents = file_get_contents($path);
+            $contents = @file_get_contents($path);
             if ($contents === false) {
                 throw new \RuntimeException("Cannot read mirrored KVS settings file: $path");
             }
 
             $data = @unserialize($contents, ['allowed_classes' => false]);
-            if (!is_array($data) || !array_key_exists($name, $data)) {
+            if (!is_array($data)) {
+                throw new \RuntimeException("Invalid mirrored KVS settings file: $path");
+            }
+            if (!array_key_exists($name, $data)) {
                 continue;
             }
 
@@ -563,6 +560,7 @@ HELP
                 'file' => $file,
                 'path' => $path,
                 'data' => $data,
+                'contents' => $contents,
             ];
         }
 
@@ -570,7 +568,130 @@ HELP
     }
 
     /**
-     * @param list<array{file: string, path: string, data: array<string, mixed>}> $settingsFiles
+     * @param list<array{file: string, path: string, data: array<string, mixed>, contents: string}> $settingsFiles
+     * @return list<string>
+     */
+    private function updateOptionAndMirrors(
+        \PDO $db,
+        array $settingsFiles,
+        string $name,
+        string $oldValue,
+        string $value
+    ): array {
+        $tables = $this->getOptionTransactionTables($name, $oldValue, $value);
+        $requiresTransaction = $settingsFiles !== [] || count($tables) > 1;
+        if ($requiresTransaction) {
+            $this->requireOptionTransaction($db, $tables);
+        }
+
+        $transactionStarted = false;
+        try {
+            if ($requiresTransaction) {
+                if (!$db->beginTransaction()) {
+                    throw new \RuntimeException('Cannot start an option transaction');
+                }
+                $transactionStarted = true;
+            }
+
+            $stmt = $db->prepare("UPDATE {$this->table('options')} SET value = :value WHERE variable = :name");
+            $stmt->execute(['value' => $value, 'name' => $name]);
+            $syncedFiles = $this->writeMirroredSettingsFiles($settingsFiles, $name, $value);
+            $this->applyKvsOptionSideEffects($db, $name, $oldValue, $value);
+            if ($transactionStarted && !$db->commit()) {
+                throw new \RuntimeException('Cannot commit the option transaction');
+            }
+            return $syncedFiles;
+        } catch (\Throwable $e) {
+            $recoveryErrors = [];
+            if ($transactionStarted) {
+                try {
+                    if (!$db->rollBack()) {
+                        $recoveryErrors[] = 'Could not roll back the option update';
+                    }
+                } catch (\Throwable $rollbackError) {
+                    $recoveryErrors[] = 'Could not roll back the option update: ' . $rollbackError->getMessage();
+                }
+            }
+            $recoveryErrors = array_merge($recoveryErrors, $this->restoreMirroredSettingsFiles($settingsFiles));
+            $message = $e->getMessage();
+            if ($recoveryErrors !== []) {
+                $message .= '; ' . implode('; ', $recoveryErrors);
+            }
+            throw new \RuntimeException($message, 0, $e);
+        }
+    }
+
+    /** @return list<string> */
+    private function getOptionTransactionTables(string $name, string $oldValue, string $value): array
+    {
+        $tables = [$this->table('options')];
+        if ($name === 'ROTATOR_SCHEDULE_INTERVAL') {
+            $tables[] = $this->multiTable('admin_processes');
+        }
+        if ($name === 'ROTATOR_SCREENSHOTS_ENABLE' && (int) $oldValue === 0 && (int) $value === 1) {
+            $tables[] = $this->table('videos');
+        }
+        return $tables;
+    }
+
+    /** @param list<string> $tables */
+    private function requireOptionTransaction(\PDO $db, array $tables): void
+    {
+        if ($db->inTransaction()) {
+            throw new \RuntimeException('Cannot update options inside an existing database transaction');
+        }
+        $driver = $db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'sqlite') {
+            return;
+        }
+        if ($driver !== 'mysql') {
+            throw new \RuntimeException('Cannot atomically update options with this database driver');
+        }
+
+        $stmt = $db->prepare(
+            'SELECT engines.TRANSACTIONS FROM information_schema.TABLES AS tables '
+            . 'JOIN information_schema.ENGINES AS engines ON engines.ENGINE = tables.ENGINE '
+            . 'WHERE tables.TABLE_SCHEMA = DATABASE() AND tables.TABLE_NAME = :table'
+        );
+        foreach ($tables as $table) {
+            $stmt->execute(['table' => $table]);
+            if ($stmt->fetchColumn() !== 'YES') {
+                throw new \RuntimeException(
+                    "Cannot atomically update options: table $table is not transactional"
+                );
+            }
+        }
+    }
+
+    /**
+     * @param list<array{file: string, path: string, data: array<string, mixed>, contents: string}> $settingsFiles
+     * @return list<string>
+     */
+    private function restoreMirroredSettingsFiles(array $settingsFiles): array
+    {
+        $errors = [];
+        foreach ($settingsFiles as $settingsFile) {
+            try {
+                if (@file_get_contents($settingsFile['path']) === $settingsFile['contents']) {
+                    continue;
+                }
+                if (
+                    @file_put_contents($settingsFile['path'], $settingsFile['contents'], LOCK_EX)
+                        !== strlen($settingsFile['contents'])
+                    || @file_get_contents($settingsFile['path']) !== $settingsFile['contents']
+                ) {
+                    $errors[] = 'Could not restore mirrored KVS settings file: ' . $settingsFile['path'];
+                }
+            } catch (\Throwable $e) {
+                $errors[] = 'Could not restore mirrored KVS settings file: ' . $settingsFile['path']
+                    . ': ' . $e->getMessage();
+            }
+        }
+        return $errors;
+    }
+
+    /**
+     * @param list<array{file: string, path: string, data: array<string, mixed>, contents: string}> $settingsFiles
      * @return list<string>
      */
     private function writeMirroredSettingsFiles(array $settingsFiles, string $name, string $value): array
@@ -581,7 +702,8 @@ HELP
             $data = $settingsFile['data'];
             $data[$name] = $this->castMirroredOptionValue($value, $data[$name]);
 
-            if (file_put_contents($settingsFile['path'], serialize($data), LOCK_EX) === false) {
+            $contents = serialize($data);
+            if (@file_put_contents($settingsFile['path'], $contents, LOCK_EX) !== strlen($contents)) {
                 throw new \RuntimeException(
                     "Cannot update mirrored KVS settings file: {$settingsFile['path']}"
                 );
@@ -594,7 +716,7 @@ HELP
     }
 
     /**
-     * @param list<array{file: string, path: string, data: array<string, mixed>}> $settingsFiles
+     * @param list<array{file: string, path: string, data: array<string, mixed>, contents: string}> $settingsFiles
      */
     private function getKvsOptionsAuditActionId(array $settingsFiles, string $name): int
     {

@@ -15,7 +15,7 @@ The `system:antispam` command manages KVS anti-spam protection including blackli
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `show`, `set`, `add`, `remove`, `blacklist` (default: `show`) |
 
 ## Options
@@ -23,14 +23,14 @@ The `system:antispam` command manages KVS anti-spam protection including blackli
 ### General
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--format=FORMAT` | Output format: `table`, `json` |
 | `--force` | Skip experimental feature confirmation |
 
 ### Blacklist Management
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--words=LIST` | Blacklisted words (comma-separated) |
 | `--words-ignore-feedbacks` | Ignore feedbacks for word check (0\|1) |
 | `--domains=LIST` | Blocked email domains (comma-separated) |
@@ -43,7 +43,7 @@ The `system:antispam` command manages KVS anti-spam protection including blackli
 ### Duplicate Detection
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--duplicates-comments` | Delete comment duplicates (0\|1) |
 | `--duplicates-messages` | Delete message duplicates (0\|1) |
 
@@ -52,7 +52,7 @@ The `system:antispam` command manages KVS anti-spam protection including blackli
 For each content type, use prefix: `videos-`, `albums-`, `posts-`, `playlists-`, `dvds-`, `comments-`, `messages-`, `feedbacks-`
 
 | Suffix | Description | Format |
-|--------|-------------|--------|
+| -------- | ------------- | -------- |
 | `-captcha` | Force captcha after threshold | `count/seconds` |
 | `-disable` | Deactivate content after threshold | `count/seconds` |
 | `-delete` | Auto-delete content after threshold | `count/seconds` |
@@ -124,7 +124,7 @@ Rules use `count/seconds` format:
 ## Content Sections
 
 | Section | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `videos` | Video uploads |
 | `albums` | Album/image uploads |
 | `posts` | Blog posts |
@@ -137,7 +137,7 @@ Rules use `count/seconds` format:
 ## Rule Types
 
 | Type | Description | Effect |
-|------|-------------|--------|
+| ------ | ------------- | -------- |
 | `captcha` | Force captcha | Show CAPTCHA after threshold |
 | `disable` | Deactivate | Mark content as inactive |
 | `delete` | Auto-delete | Permanently remove content |
@@ -248,7 +248,7 @@ kvs antispam set --comments-history=all
 
 ## Sample Output
 
-```
+```text
 Anti-Spam Settings
 ==================
 

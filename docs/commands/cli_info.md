@@ -13,7 +13,7 @@ kvs cli:info [options]
 ## Options
 
 | Option | Description | Default |
-|--------|-------------|---------|
+| -------- | ------------- | --------- |
 | `--format=<format>` | Output format: `list` or `json` | list |
 
 ## Output
@@ -21,7 +21,7 @@ kvs cli:info [options]
 The command displays:
 
 | Field | Description |
-|-------|-------------|
+| ------- | ------------- |
 | OS | Operating system name, version, and architecture |
 | Shell | Current shell (bash, zsh, etc.) |
 | PHP binary | Path to PHP executable |
@@ -44,7 +44,8 @@ kvs cli:info
 ```
 
 Output:
-```
+
+```text
 OS:              Linux 6.1.0-18-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.76-1 (2024-02-01) x86_64
 Shell:           /bin/bash
 PHP binary:      /usr/bin/php
@@ -66,6 +67,7 @@ kvs cli:info --format=json
 ```
 
 Output:
+
 ```json
 {
     "os": "Linux 6.1.0-18-amd64 #1 SMP PREEMPT_DYNAMIC ...",
@@ -110,6 +112,7 @@ kvs info
 ```
 
 If `KVS path` shows `<not detected>`, you need to either:
+
 - Run the command from within your KVS directory
 - Use the `--path` option
 - Set the `KVS_PATH` environment variable

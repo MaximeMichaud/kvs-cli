@@ -278,6 +278,72 @@ class FormatsCommandTest extends TestCase
         $this->assertContains('missing', $statuses);
     }
 
+    public function testCheckUsesOnlyTheVideosAssignedFormatGroup(): void
+    {
+        $this->db->exec(
+            'INSERT INTO ' . TestHelper::table('formats_videos') .
+            ' (format_video_id, title, postfix, status_id, format_video_group_id)' .
+            " VALUES (4, 'Other group format', '_other.mp4', 1, 2)"
+        );
+
+        $this->tester->execute(['action' => 'available', '--format' => 'json']);
+        $available = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertContains('_other.mp4', array_column($available, 'postfix'));
+
+        $arguments = ['action' => 'check', 'video_id' => '10', '--format' => 'json'];
+        $this->tester->execute($arguments);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertCount(3, $rows);
+        $this->assertNotContains('_other.mp4', array_column($rows, 'postfix'));
+
+        $this->db->exec('UPDATE ' . TestHelper::table('videos') . ' SET format_video_group_id = 2 WHERE video_id = 10');
+        $this->tester->execute($arguments);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame(['_other.mp4'], array_column($rows, 'postfix'));
+        $this->assertSame('missing', $rows[0]['status']);
+    }
+
+    public function testCheckFailsWithoutAnAssignedFormatGroup(): void
+    {
+        $this->db->exec('UPDATE ' . TestHelper::table('videos') . ' SET format_video_group_id = 0 WHERE video_id = 10');
+
+        $this->tester->execute(['action' => 'check', 'video_id' => '10', '--format' => 'json']);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame([], json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR));
+    }
+
+    public function testCheckDoesNotTreatADirectoryAsAnAvailableVideoFile(): void
+    {
+        $path = $this->storagePath . '/0/10/10_720p.mp4';
+        unlink($path);
+        mkdir($path);
+
+        $this->tester->execute(['action' => 'check', 'video_id' => '10', '--format' => 'json']);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+        $byPostfix = array_column($rows, null, 'postfix');
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame('missing', $byPostfix['_720p.mp4']['status']);
+    }
+
+    public function testListIgnoresDirectoriesWithVideoFileExtensions(): void
+    {
+        mkdir($this->storagePath . '/0/10/10_directory.mp4');
+
+        $this->tester->execute(['action' => 'list', 'video_id' => '10', '--format' => 'json']);
+        $rows = json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->assertSame(0, $this->tester->getStatusCode());
+        $this->assertContains('10_720p.mp4', array_column($rows, 'file'));
+        $this->assertNotContains('10_directory.mp4', array_column($rows, 'file'));
+    }
+
     public function testCheckFormatsJsonFailsWhenRequiredFormatIsMissing(): void
     {
         $videoDir = $this->storagePath . '/0/13';
@@ -515,7 +581,8 @@ class FormatsCommandTest extends TestCase
 
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('videos') . ' (' .
-            'video_id INTEGER, server_group_id INTEGER, load_type_id INTEGER, status_id INTEGER, file_formats TEXT)'
+            'video_id INTEGER, server_group_id INTEGER, load_type_id INTEGER, status_id INTEGER, file_formats TEXT, ' .
+            'format_video_group_id INTEGER DEFAULT 1)'
         );
         $db->exec(
             'CREATE TABLE ' . TestHelper::table('admin_servers') . ' (' .

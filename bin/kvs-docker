@@ -52,16 +52,27 @@ while (($#)); do
     esac
 done
 
-# Older PHAR releases do not know that their container copy is temporary.
+# Updates run against the temporary copy, then return verified files to the host.
+self_update=false
+read_only_update=false
 for arg in ${args[@]+"${args[@]}"}; do
     [[ $arg == -* ]] && continue
     case $arg in
         sel|self|self-*|selfu*|self:*)
-            fail 'Update kvs.phar and the Docker launcher on the host using the Docker installation instructions.'
+            self_update=true
             ;;
     esac
     break
 done
+if [[ $self_update == true ]]; then
+    for arg in ${args[@]+"${args[@]}"}; do
+        case $arg in --check|--help|-h) read_only_update=true ;; esac
+    done
+    if [[ $read_only_update == false ]]; then
+        [[ -w $phar && -w $(dirname -- "$phar") && -w ${BASH_SOURCE[0]} && -w $launcher_dir ]] ||
+            fail 'The host PHAR and launcher must be writable. Try: sudo kvs self-update.'
+    fi
+fi
 
 if [[ -n $requested_path && -d $requested_path ]]; then
     requested_path=$(cd -- "$requested_path" && pwd -P)
@@ -179,6 +190,8 @@ IFS=$'\t' read -r runtime_dir cache_file cache_hit <<< "$runtime_info"
     fail 'Docker returned an invalid temporary directory.'
 [[ $cache_file == /* && $cache_file != *$'\n'* && ( $cache_hit == true || $cache_hit == false ) ]] ||
     fail 'Docker returned invalid PHAR cache information.'
+host_update_dir=
+launcher_update_dir=
 execution_pid=
 keep_runtime=false
 # The pending token prevents a canceled invocation from starting PHP work later.
@@ -224,6 +237,8 @@ cleanup() {
     if [[ $keep_runtime == false ]]; then
         docker exec "$container" rm -rf -- "$runtime_dir" </dev/null >/dev/null 2>&1 || true
     fi
+    [[ -z $host_update_dir ]] || rm -rf -- "$host_update_dir"
+    [[ -z $launcher_update_dir ]] || rm -rf -- "$launcher_update_dir"
 }
 # shellcheck disable=SC2329
 interrupt() {
@@ -301,10 +316,18 @@ if (!$cacheHit) {
 }
 require $argv[0];
 '
+# Native self-update is safe here because only the staged archive is replaced.
+launcher_flag=1
+if [[ $self_update == true ]]; then
+    launcher_flag=0
+    if [[ ${GITHUB_TOKEN+x} ]]; then
+        exec_options+=(-e GITHUB_TOKEN)
+    fi
+fi
 # An explicit stdin descriptor keeps pipes and interactive input available to
 # the asynchronous Docker client while wait remains interruptible.
 exec 3<&0
-docker exec "${exec_options[@]}" -e KVS_CLI_DOCKER_LAUNCHER=1 -e "KVS_PATH=$container_path" \
+docker exec "${exec_options[@]}" -e "KVS_CLI_DOCKER_LAUNCHER=$launcher_flag" -e "KVS_PATH=$container_path" \
     -w "$container_path" "$container" php -r "$php_bootstrap" "$cache_file" "$phar_hash" "$cache_hit" \
     "$runtime_dir/kvs.phar" --path="$container_path" ${args[@]+"${args[@]}"} <&3 &
 execution_pid=$!
@@ -312,4 +335,49 @@ exec 3<&-
 status=0
 wait "$execution_pid" || status=$?
 execution_pid=
-exit "$status"
+((status == 0)) || exit "$status"
+
+if [[ $self_update == true && $read_only_update == false ]]; then
+    host_update_dir=$(mktemp -d "$(dirname -- "$phar")/.kvs-update.XXXXXXXXXX")
+    docker cp -q -L -- "$container:$runtime_dir/kvs.phar" "$host_update_dir/kvs.phar"
+    # Cancellations and already-current releases must leave the installation alone.
+    if cmp -s "$phar" "$host_update_dir/kvs.phar"; then
+        exit 0
+    fi
+
+    # New PHARs carry the matching launcher; older releases can update the PHAR alone.
+    # shellcheck disable=SC2016
+    extract_launcher='
+$phar = new Phar($argv[1]);
+if (!isset($phar["bin/kvs-docker"])) {
+    exit(3);
+}
+exit(file_put_contents(dirname($argv[1]) . "/kvs-docker", $phar["bin/kvs-docker"]->getContent()) === false ? 1 : 0);
+'
+    launcher_status=0
+    docker exec "$container" php -r "$extract_launcher" "$runtime_dir/kvs.phar" || launcher_status=$?
+    if ((launcher_status == 0)); then
+        launcher_update_dir=$(mktemp -d "$launcher_dir/.kvs-update.XXXXXXXXXX")
+        docker cp -q -L -- "$container:$runtime_dir/kvs-docker" "$launcher_update_dir/kvs-docker"
+        bash -n "$launcher_update_dir/kvs-docker" || fail 'Downloaded Docker launcher has invalid Bash syntax.'
+        cp -p -- "${BASH_SOURCE[0]}" "$launcher_update_dir/next-launcher"
+        cp -- "$launcher_update_dir/kvs-docker" "$launcher_update_dir/next-launcher"
+    elif ((launcher_status != 3)); then
+        fail 'Cannot extract the Docker launcher from the updated PHAR.'
+    fi
+
+    # Stage in each destination directory so replacement stays on the same filesystem.
+    cp -p -- "$phar" "$host_update_dir/previous.phar"
+    cp -p -- "$phar" "$host_update_dir/next.phar"
+    cp -- "$host_update_dir/kvs.phar" "$host_update_dir/next.phar"
+    mv -f -- "$host_update_dir/next.phar" "$phar"
+    if [[ -n $launcher_update_dir ]]; then
+        if ! mv -f -- "$launcher_update_dir/next-launcher" "${BASH_SOURCE[0]}"; then
+            mv -f -- "$host_update_dir/previous.phar" "$phar"
+            fail 'Cannot replace the host Docker launcher; the previous PHAR was restored.'
+        fi
+    fi
+    printf '\n [OK] Updated the host KVS CLI installation.\n'
+fi
+
+exit 0

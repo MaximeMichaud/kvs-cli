@@ -26,7 +26,7 @@ kvs benchmark --compare=baseline.json --export=current.json
 ## Command Options
 
 | Option | Short | Default | Description |
-|--------|-------|---------|-------------|
+| -------- | ------- | --------- | ------------- |
 | `--url` | `-u` | - | Base URL for HTTP tests |
 | `--samples` | `-s` | 5 | Number of HTTP samples per endpoint |
 | `--db-iterations` | - | 10 | Iterations for DB tests |
@@ -43,6 +43,7 @@ kvs benchmark --compare=baseline.json --export=current.json
 ### 1. HTTP Response Times
 
 Tests real page response times using curl:
+
 - Homepage
 - Video Listing
 - Categories
@@ -56,6 +57,7 @@ Metrics: avg, min, max, p50, p95, p99 (in milliseconds)
 Tests actual KVS queries:
 
 **Basic Queries (page loads):**
+
 - Video Listing (20 items)
 - Video Count Query
 - Category Listing + Counts
@@ -63,11 +65,13 @@ Tests actual KVS queries:
 - User Lookup (prepared statement)
 
 **Heavy Queries (cron-style):**
+
 - Category Summary (JOIN with aggregation)
 - Stats Aggregation (30 days grouping)
 - Complex JOIN (5 tables with GROUP_CONCAT)
 
 **Write Operations:**
+
 - INSERT (temp table)
 - UPDATE Counter
 
@@ -76,6 +80,7 @@ Metrics: avg (ms), queries/sec
 ### 3. Cache Performance (Memcached)
 
 Tests KVS-style caching patterns:
+
 - Simple GET/SET operations
 - Large value operations (~50KB page content)
 - Bulk operations (multi-get/set with 100 keys)
@@ -86,6 +91,7 @@ Metrics: avg, p50, p95, p99, ops/sec, hit ratio
 ### 4. File I/O Performance
 
 Tests KVS file operations:
+
 - Serialize/Unserialize (config arrays)
 - Language file serialization (~500 strings)
 - Config load (file_get_contents + unserialize)
@@ -98,6 +104,7 @@ Metrics: avg, min, max, ops/sec
 ### 5. System Information
 
 Collected automatically:
+
 - PHP version, SAPI, OPcache, JIT status
 - Database type (MySQL/MariaDB) and version
 - Memcached version
@@ -166,7 +173,7 @@ kvs benchmark --tag=mysql-8 --compare=bench-mariadb.json
 
 ## Architecture
 
-```
+```text
 src/Benchmark/
 ├── BenchmarkRunner.php   # Orchestrates all tests
 ├── BenchmarkResult.php   # Stores results with serialization

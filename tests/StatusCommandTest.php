@@ -117,14 +117,22 @@ class StatusCommandTest extends TestCase
 
             public function exec(string $service, string $command, int $timeout = 10): ?string
             {
+                $command = str_replace("'\\''", "'", $command);
+                $marker = str_contains($command, 'KVS_STORAGE_OK') ? "\nKVS_STORAGE_OK\n" : '';
+                if (str_contains($command, 'storage_path=')) {
+                    return "EXISTS\n" . $marker;
+                }
                 if (str_contains($command, "test -d '/container/contents'")) {
-                    return "EXISTS\n";
+                    return "EXISTS\n" . $marker;
+                }
+                if (str_contains($command, "test -d '/container/contents/videos_sources'")) {
+                    return "EXISTS\n" . $marker;
                 }
                 if (str_contains($command, "du -sb '/container/contents/videos_sources'")) {
-                    return "123\n";
+                    return "123\n" . $marker;
                 }
                 if (str_contains($command, "find '/container/contents/videos_sources'")) {
-                    return "2\n";
+                    return "2\n" . $marker;
                 }
 
                 return null;
@@ -191,6 +199,397 @@ class StatusCommandTest extends TestCase
         $this->assertStringContainsString('123.00 B', $output);
         $this->assertStringContainsString('2 files', $output);
         $this->assertStringNotContainsString('Directory not accessible from PHP container', $output);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function storageEnumerationModes(): iterable
+    {
+        yield 'local' => ['local'];
+        yield 'mapped Docker path' => ['docker-local-enumeration'];
+        yield 'remote Docker enumeration' => ['docker-remote-enumeration'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storageEnumerationModes')]
+    public function testStorageRetainsDirectoriesWhoseDisplayLabelsCollide(string $mode): void
+    {
+        $contentPath = $this->config->getContentPath();
+        $fixtures = [
+            'albums' => [17],
+            'albums_sources' => [31, 37],
+            'screenshots' => [47],
+            'videos_screenshots' => [59, 61],
+        ];
+        foreach ($fixtures as $directory => $sizes) {
+            mkdir($contentPath . '/' . $directory, 0755, true);
+            foreach ($sizes as $index => $size) {
+                file_put_contents($contentPath . '/' . $directory . '/' . $index . '.bin', str_repeat('x', $size));
+            }
+        }
+
+        $config = $mode === 'docker-remote-enumeration'
+            ? new class (['path' => $this->tempDir]) extends Configuration {
+                public function getContentPath(): string
+                {
+                    return $this->getKvsPath() . '/not-mounted';
+                }
+            }
+            : $this->config;
+        $docker = new class ($fixtures) extends DockerDetector {
+            /** @param array<string, list<int>> $fixtures */
+            public function __construct(private array $fixtures)
+            {
+            }
+
+            public function mapHostPathToContainer(string $hostPath, string $service = 'php'): ?string
+            {
+                return '/container/contents';
+            }
+
+            public function exec(string $service, string $command, int $timeout = 10): ?string
+            {
+                $command = str_replace("'\\''", "'", $command);
+                $marker = str_contains($command, 'KVS_STORAGE_OK') ? "\nKVS_STORAGE_OK\n" : '';
+                if (str_contains($command, 'storage_path=')) {
+                    return "EXISTS\n" . $marker;
+                }
+                if (str_contains($command, 'test -d ')) {
+                    return "EXISTS\n" . $marker;
+                }
+                if (str_contains($command, '-mindepth 1 -maxdepth 1')) {
+                    return implode("\n", array_keys($this->fixtures)) . "\n" . $marker;
+                }
+                foreach ($this->fixtures as $directory => $sizes) {
+                    if (str_contains($command, "'/container/contents/$directory'")) {
+                        $measurement = str_contains($command, 'du -sb ') ? array_sum($sizes) : count($sizes);
+                        return (string) $measurement . $marker;
+                    }
+                }
+                return null;
+            }
+        };
+        $command = new class ($config, $docker, $mode !== 'local') extends StatusCommand {
+            public function __construct(
+                Configuration $config,
+                private DockerDetector $testDocker,
+                private bool $dockerMode
+            ) {
+                parent::__construct($config);
+            }
+
+            protected function isDockerMode(): bool
+            {
+                return $this->dockerMode;
+            }
+
+            protected function docker(): DockerDetector
+            {
+                return $this->testDocker;
+            }
+
+            protected function execute(
+                \Symfony\Component\Console\Input\InputInterface $input,
+                \Symfony\Component\Console\Output\OutputInterface $output
+            ): int {
+                (new \ReflectionMethod(StatusCommand::class, 'showStorageBreakdown'))->invoke($this);
+                return self::SUCCESS;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute([]);
+        $display = $tester->getDisplay();
+        $this->assertSame(0, $tester->getStatusCode(), $display);
+        $rows = [];
+        $total = null;
+        foreach (explode("\n", $display) as $line) {
+            if (!str_starts_with($line, '│')) {
+                continue;
+            }
+            $cells = array_map('trim', array_slice(explode('│', $line), 1, -1));
+            if ($cells[0] === 'Total Content') {
+                $total = $cells[1];
+            } elseif ($cells[0] !== 'Type' && $cells[0] !== '---') {
+                $rows[] = [$cells[1], $cells[2]];
+            }
+        }
+        sort($rows);
+        $expected = [['17.00 B', '1 files'], ['68.00 B', '2 files'], ['47.00 B', '1 files'], ['120.00 B', '2 files']];
+        sort($expected);
+        $this->assertSame($expected, $rows, $mode . ': every directory must retain its own size and file count');
+        $this->assertSame('252.00 B', $total, $mode . ': total must include all four directories');
+    }
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function unreadableStorageDirectories(): iterable
+    {
+        foreach ([false, true] as $dockerMode) {
+            foreach ([false, true] as $rootDenied) {
+                $label = ($dockerMode ? 'Docker' : 'local') . ($rootDenied ? ' root' : ' child');
+                yield $label => [$dockerMode, $rootDenied];
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('unreadableStorageDirectories')]
+    public function testStorageReportsUnreadableDirectoriesAsUnavailable(bool $dockerMode, bool $rootDenied): void
+    {
+        $content = $this->config->getContentPath();
+        mkdir($content . '/videos', 0755, true);
+        mkdir($content . '/videos_sources', 0755, true);
+        mkdir($content . '/empty', 0755, true);
+        file_put_contents($content . '/videos/healthy.bin', str_repeat('h', 31));
+        file_put_contents($content . '/videos_sources/hidden.bin', str_repeat('s', 17));
+        $blocked = $rootDenied ? $content : $content . '/videos_sources';
+        chmod($blocked, 0000);
+        clearstatcache();
+        if (is_readable($blocked)) {
+            chmod($blocked, 0755);
+            $this->markTestSkipped('Directory permission refusal requires an unprivileged process');
+        }
+        $tester = $this->createStorageOnlyTester($dockerMode);
+        try {
+            $tester->execute([]);
+            $rows = $this->storageRows($tester->getDisplay());
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            if ($rootDenied) {
+                $this->assertSame(['Unavailable', ''], $rows['Total Content'] ?? null, $tester->getDisplay());
+                $this->assertStringNotContainsString('Not found', $tester->getDisplay());
+            } else {
+                $this->assertSame(['Unavailable', 'Unavailable'], $rows['Videos Sources'] ?? null);
+                $this->assertSame(['31.00 B', ''], $rows['Total Content (partial)'] ?? null);
+                $this->assertSame(['0 B', '0 files'], $rows['Empty'] ?? null);
+            }
+            $this->assertStringContainsString('Storage data unavailable', $tester->getDisplay());
+        } finally {
+            chmod($blocked, 0755);
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function failingStorageTools(): iterable
+    {
+        foreach (['du', 'find', 'awk'] as $tool) {
+            yield $tool => [$tool];
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('failingStorageTools')]
+    public function testDockerStorageRejectsToolOutputWhenItsProducerFails(string $tool): void
+    {
+        $content = $this->config->getContentPath();
+        mkdir($content . '/videos', 0755, true);
+        file_put_contents($content . '/videos/file.bin', str_repeat('x', 17));
+        $tools = $this->tempDir . '/storage-tools';
+        mkdir($tools);
+        file_put_contents($tools . '/' . $tool, "#!/bin/sh\nprintf '999\\tignored\\n'\nexit 7\n");
+        chmod($tools . '/' . $tool, 0755);
+        $previousPath = getenv('PATH');
+        putenv('PATH=' . $tools . PATH_SEPARATOR . ($previousPath !== false ? $previousPath : ''));
+        try {
+            $tester = $this->createStorageOnlyTester(true);
+            $tester->execute([]);
+            $rows = $this->storageRows($tester->getDisplay());
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame(['Unavailable', 'Unavailable'], $rows['Videos'] ?? null, $tester->getDisplay());
+            $this->assertArrayHasKey('Total Content (partial)', $rows);
+            $this->assertStringContainsString('Storage data unavailable', $tester->getDisplay());
+        } finally {
+            $previousPath === false ? putenv('PATH') : putenv('PATH=' . $previousPath);
+        }
+    }
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function absentOrEmptyStorage(): iterable
+    {
+        foreach ([false, true] as $dockerMode) {
+            foreach ([false, true] as $absent) {
+                yield ($dockerMode ? 'Docker' : 'local') . ($absent ? ' absent' : ' empty') => [$dockerMode, $absent];
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('absentOrEmptyStorage')]
+    public function testStorageDistinguishesHealthyEmptyAndAbsentDirectories(bool $dockerMode, bool $absent): void
+    {
+        $content = $this->config->getContentPath();
+        if ($absent && is_dir($content)) {
+            rmdir($content);
+        } elseif (!$absent && !is_dir($content)) {
+            mkdir($content, 0755, true);
+        }
+        $tester = $this->createStorageOnlyTester($dockerMode);
+        $tester->execute([]);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        if (!$absent) {
+            $this->assertSame(['0 B', ''], $this->storageRows($tester->getDisplay())['Total Content'] ?? null);
+            $this->assertStringNotContainsString('Storage data unavailable', $tester->getDisplay());
+        } else {
+            $this->assertArrayNotHasKey('Total Content', $this->storageRows($tester->getDisplay()));
+        }
+    }
+
+    /** @return iterable<string, array{bool}> */
+    public static function nativeStorageModes(): iterable
+    {
+        yield 'local' => [false];
+        yield 'Docker' => [true];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeStorageModes')]
+    public function testStorageCountsFileNamesWithNewlinesOnce(bool $dockerMode): void
+    {
+        $content = $this->config->getContentPath();
+        mkdir($content . '/videos', 0755, true);
+        file_put_contents($content . "/videos/one\nfile.bin", str_repeat('x', 17));
+        $tester = $this->createStorageOnlyTester($dockerMode);
+        $tester->execute([]);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame(['17.00 B', '1 files'], $this->storageRows($tester->getDisplay())['Videos'] ?? null);
+    }
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function externalStoragePaths(): iterable
+    {
+        foreach ([false, true] as $dockerMode) {
+            foreach ([false, true] as $symlink) {
+                $label = ($dockerMode ? 'Docker' : 'local') . ($symlink ? ' symlink' : ' configured');
+                yield $label => [$dockerMode, $symlink];
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('externalStoragePaths')]
+    public function testStorageDoesNotMistakeAnUnsearchableExternalAncestorForAbsence(
+        bool $dockerMode,
+        bool $symlink
+    ): void {
+        $blocked = $this->tempDir . '/external/blocked';
+        $content = $blocked . '/contents';
+        mkdir($content . '/videos', 0755, true);
+        file_put_contents($content . '/videos/owned.bin', str_repeat('x', 17));
+        $path = $content;
+        if ($symlink) {
+            $path = $this->tempDir . '/content-link';
+            symlink($content, $path);
+        }
+        $this->useStoragePath($path);
+        chmod($blocked, 0000);
+        clearstatcache();
+        if (is_executable($blocked)) {
+            chmod($blocked, 0755);
+            $this->markTestSkipped('Ancestor traversal refusal requires an unprivileged process');
+        }
+        try {
+            $this->assertFalse(is_dir($path), 'The actual content directory must be hidden by the refused ancestor');
+            $tester = $this->createStorageOnlyTester($dockerMode);
+            $tester->execute([]);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame(['Unavailable', ''], $this->storageRows($tester->getDisplay())['Total Content'] ?? null);
+            $this->assertStringContainsString('Storage data unavailable', $tester->getDisplay());
+        } finally {
+            chmod($blocked, 0755);
+            clearstatcache();
+        }
+        $tester = $this->createStorageOnlyTester($dockerMode);
+        $tester->execute([]);
+        $this->assertSame(['17.00 B', '1 files'], $this->storageRows($tester->getDisplay())['Videos'] ?? null);
+        $this->assertStringNotContainsString('Storage data unavailable', $tester->getDisplay());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeStorageModes')]
+    public function testStorageAcceptsVerifiedAbsentExternalPath(bool $dockerMode): void
+    {
+        $this->useStoragePath($this->tempDir . '/absent-external/nested/contents');
+        $tester = $this->createStorageOnlyTester($dockerMode);
+        $tester->execute([]);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertArrayNotHasKey('Total Content', $this->storageRows($tester->getDisplay()));
+        $this->assertStringNotContainsString('Storage data unavailable', $tester->getDisplay());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('nativeStorageModes')]
+    public function testStorageAcceptsVerifiedAbsentExternalSymlinkTarget(bool $dockerMode): void
+    {
+        $path = $this->tempDir . '/missing-content-link';
+        symlink('missing-external/nested/contents', $path);
+        $this->useStoragePath($path);
+        $tester = $this->createStorageOnlyTester($dockerMode);
+        $tester->execute([]);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertArrayNotHasKey('Total Content', $this->storageRows($tester->getDisplay()));
+        $this->assertStringNotContainsString('Storage data unavailable', $tester->getDisplay());
+        $this->assertTrue(is_link($path));
+    }
+
+    private function useStoragePath(string $path): void
+    {
+        $this->config = new class (['path' => $this->tempDir], $path) extends Configuration {
+            public function __construct(array $options, private string $storagePath)
+            {
+                parent::__construct($options);
+            }
+
+            public function getContentPath(): string
+            {
+                return $this->storagePath;
+            }
+        };
+    }
+
+    private function createStorageOnlyTester(bool $dockerMode): CommandTester
+    {
+        $docker = new class extends DockerDetector {
+            public function mapHostPathToContainer(string $hostPath, string $service = 'php'): ?string
+            {
+                return $hostPath;
+            }
+
+            public function exec(string $service, string $command, int $timeout = 10): ?string
+            {
+                $output = @shell_exec($command);
+                return is_string($output) ? $output : null;
+            }
+        };
+        $command = new class ($this->config, $docker, $dockerMode) extends StatusCommand {
+            public function __construct(
+                Configuration $config,
+                private DockerDetector $testDocker,
+                private bool $dockerMode
+            ) {
+                parent::__construct($config);
+            }
+
+            protected function isDockerMode(): bool
+            {
+                return $this->dockerMode;
+            }
+
+            protected function docker(): DockerDetector
+            {
+                return $this->testDocker;
+            }
+
+            protected function execute(
+                \Symfony\Component\Console\Input\InputInterface $input,
+                \Symfony\Component\Console\Output\OutputInterface $output
+            ): int {
+                (new \ReflectionMethod(StatusCommand::class, 'showStorageBreakdown'))->invoke($this);
+                return self::SUCCESS;
+            }
+        };
+        return new CommandTester($command);
+    }
+
+    /** @return array<string, array{string, string}> */
+    private function storageRows(string $display): array
+    {
+        $rows = [];
+        foreach (explode("\n", $display) as $line) {
+            if (str_starts_with($line, '│')) {
+                $cells = array_map('trim', array_slice(explode('│', $line), 1, -1));
+                $rows[$cells[0]] = [$cells[1], $cells[2]];
+            }
+        }
+        return $rows;
     }
 
     public function testStatusReadsKvsVersionFromVersionFile(): void

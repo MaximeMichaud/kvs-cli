@@ -492,4 +492,367 @@ PHP
 
         TestHelper::removeDir($tempDir);
     }
+
+    /**
+     * @dataProvider databaseDefinitionSyntaxProvider
+     */
+    public function testDatabaseReaderSelectsSyntacticDefinitions(string $body, ?string $expected): void
+    {
+        $this->assertSame($expected, $this->readSyntheticDatabaseDefinitions($body)['password'] ?? null);
+    }
+
+    /**
+     * @return iterable<string, array{string, ?string}>
+     */
+    public static function databaseDefinitionSyntaxProvider(): iterable
+    {
+        $actual = "define('DB_PASS', 'Synthetic actual');";
+        $fake = "define('DB_PASS', 'Synthetic example');";
+        yield 'literal control' => [$actual, 'Synthetic actual'];
+        yield 'line comment' => ['// ' . $fake . "\n" . $actual, 'Synthetic actual'];
+        yield 'block comment' => ['/* ' . $fake . " */\n" . $actual, 'Synthetic actual'];
+        yield 'documentation comment' => ['/** ' . $fake . " */\n" . $actual, 'Synthetic actual'];
+        yield 'quoted example' => ['$example = "' . $fake . '";' . "\n" . $actual, 'Synthetic actual'];
+        yield 'nowdoc example' => ["\$example = <<<'EXAMPLE'\n" . $fake . "\nEXAMPLE;\n" . $actual, 'Synthetic actual'];
+        yield 'comment inside a real call' => [
+            "define('DB_PASS', /* $fake */ 'Synthetic actual');", 'Synthetic actual',
+        ];
+        yield 'method call' => ['$object->' . $fake . "\n" . $actual, 'Synthetic actual'];
+        yield 'static call' => ['Fixture::' . $fake . "\n" . $actual, 'Synthetic actual'];
+        yield 'foreign qualified function' => ['Fixture\\' . $fake . "\n" . $actual, 'Synthetic actual'];
+        yield 'relative function' => ['namespace\\' . $fake . "\n" . $actual, 'Synthetic actual'];
+        yield 'fully qualified define' => ['\\' . $actual, 'Synthetic actual'];
+        yield 'simple define in a namespace' => ['namespace Fixture; ' . $actual, 'Synthetic actual'];
+        yield 'fully qualified define in a namespace' => ['namespace Fixture; \\' . $actual, 'Synthetic actual'];
+        yield 'function body retains syntactic selection' => ['function fixture() { ' . $actual . ' }', 'Synthetic actual'];
+        yield 'first literal wins' => [$actual . "\n" . $fake, 'Synthetic actual'];
+        yield 'double-quoted key and value' => ['define("DB_PASS", "Synthetic actual");', 'Synthetic actual'];
+        yield 'only a comment' => ['// ' . $fake, null];
+        yield 'third argument remains unsupported' => ["define('DB_PASS', 'Synthetic example', false);", null];
+        yield 'named arguments remain unsupported' => ["define(constant_name: 'DB_PASS', value: 'Synthetic example');", null];
+        yield 'concatenation remains unsupported' => ["define('DB_PASS', 'Synthetic ' . 'example');", null];
+        yield 'nowdoc value remains unsupported' => ["define('DB_PASS', <<<'VALUE'\nSynthetic example\nVALUE\n);", null];
+    }
+
+    /**
+     * @dataProvider databaseStringLiteralProvider
+     */
+    public function testDatabaseReaderDecodesQuotedLiteralBytes(string $literal, string $expected): void
+    {
+        $this->assertSame($expected, $this->readSyntheticDatabaseDefinitions("define('DB_PASS', $literal);")['password'] ?? null);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function databaseStringLiteralProvider(): iterable
+    {
+        foreach (["Synthetic apostrophe's", 'Synthetic \\path\\tail', 'Synthetic "quote"; value', "Synthetic\nline", ''] as $index => $value) {
+            yield 'single quoted ' . $index => [var_export($value, true), $value];
+        }
+        yield 'double quoted escaped bytes' => ['"Synthetic \\nline \\\\path \\"quote\\""', "Synthetic \nline \\path \"quote\""];
+    }
+
+    /**
+     * @dataProvider databaseEnvironmentExpressionProvider
+     */
+    public function testDatabaseReaderPreservesEnvironmentFormsAndPriorities(string $body, string|false $environment, ?string $expected): void
+    {
+        $name = 'KVS_READER_SYNTHETIC_VALUE';
+        $previous = getenv($name);
+        $environment === false ? putenv($name) : putenv($name . '=' . $environment);
+        try {
+            $this->assertSame($expected, $this->readSyntheticDatabaseDefinitions($body)['password'] ?? null);
+        } finally {
+            $previous === false ? putenv($name) : putenv($name . '=' . $previous);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, string|false, ?string}>
+     */
+    public static function databaseEnvironmentExpressionProvider(): iterable
+    {
+        $env = "getenv('KVS_READER_SYNTHETIC_VALUE')";
+        $cases = [
+            'missing' => [false, 'Synthetic default', 'Synthetic default', null],
+            'empty' => ['', 'Synthetic default', '', ''],
+            'zero' => ['0', '0', '0', '0'],
+            'nonempty' => ['Synthetic environment', 'Synthetic environment', 'Synthetic environment', 'Synthetic environment'],
+        ];
+        foreach ($cases as $label => [$value, $ternaryValue, $coalesceValue, $directValue]) {
+            yield 'short ternary ' . $label => [
+                "define('DB_PASS', $env ?: 'Synthetic default');", $value, $ternaryValue,
+            ];
+            yield 'coalesce ' . $label => [
+                "define('DB_PASS', $env ?? 'Synthetic default');", $value, $coalesceValue,
+            ];
+            yield 'direct getenv ' . $label => ["define('DB_PASS', $env);", $value, $directValue];
+        }
+        $direct = "define('DB_PASS', $env);";
+        $coalesce = "define('DB_PASS', $env ?? 'Synthetic coalesce');";
+        $ternary = "define('DB_PASS', $env ?: 'Synthetic ternary');";
+        $literal = "define('DB_PASS', 'Synthetic literal');";
+        yield 'literal before environment' => [$literal . $ternary . $coalesce . $direct, 'Synthetic environment', 'Synthetic literal'];
+        yield 'literal after environment' => [$direct . $coalesce . $ternary . $literal, 'Synthetic environment', 'Synthetic literal'];
+        yield 'ternary before coalesce' => [$ternary . $coalesce . $direct, false, 'Synthetic ternary'];
+        yield 'ternary after coalesce' => [$direct . $coalesce . $ternary, false, 'Synthetic ternary'];
+        yield 'coalesce before direct' => [$coalesce . $direct, false, 'Synthetic coalesce'];
+        yield 'coalesce after direct' => [$direct . $coalesce, false, 'Synthetic coalesce'];
+        yield 'first expression within the same form' => [
+            $ternary . "define('DB_PASS', $env ?: 'Synthetic second');", false, 'Synthetic ternary',
+        ];
+        yield 'escaped fallback' => [
+            "define('DB_PASS', $env ?: " . var_export("Synthetic default's \\path;", true) . ');', false,
+            "Synthetic default's \\path;",
+        ];
+        yield 'commented literal cannot override getenv' => [
+            "// $literal\n$ternary", 'Synthetic environment', 'Synthetic environment',
+        ];
+    }
+
+    public function testDatabaseReaderDoesNotExecuteTheDatabaseConfiguration(): void
+    {
+        $directory = TestHelper::createTempDir();
+        $marker = $directory . '/must-not-exist';
+        try {
+            $body = "file_put_contents(" . var_export($marker, true) . ", 'unexpected'); define('DB_PASS', 'Synthetic actual');";
+            $this->assertSame('Synthetic actual', $this->readSyntheticDatabaseDefinitions($body)['password'] ?? null);
+            $this->assertFileDoesNotExist($marker);
+        } finally {
+            TestHelper::removeDir($directory);
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function readSyntheticDatabaseDefinitions(string $body): array
+    {
+        $directory = TestHelper::createTempDir();
+        mkdir($directory . '/admin/include', 0755, true);
+        file_put_contents($directory . '/admin/include/setup_db.php', "<?php\n" . $body . "\n");
+        file_put_contents($directory . '/admin/include/setup.php', '<?php $config = [];');
+        try {
+            return (new Configuration(['path' => $directory, 'disable_db_env_overrides' => true]))->getDatabaseConfig();
+        } finally {
+            TestHelper::removeDir($directory);
+        }
+    }
+
+    /**
+     * @dataProvider installationPathProvider
+     */
+    public function testInstallationPathKeepsConfigurationStableAcrossWorkingDirectories(string $source, string $kind): void
+    {
+        $root = TestHelper::createTempDir('relative-installation-');
+        $previousDirectory = getcwd();
+        $previousEnvironment = getenv('KVS_PATH');
+        $warnings = [];
+        set_error_handler(static function (int $severity) use (&$warnings): bool {
+            $warnings[] = $severity;
+            return true;
+        });
+
+        try {
+            foreach (['site', 'physical/site'] as $site) {
+                $directory = $root . '/' . $site;
+                mkdir($directory . '/admin/include', 0755, true);
+                mkdir($directory . '/contents', 0755, true);
+                file_put_contents($directory . '/admin/include/setup_db.php', "<?php define('DB_HOST', '127.0.0.1');");
+                file_put_contents($directory . '/admin/include/version.php', '<?php $config["project_version"] = "7.0.0";');
+                file_put_contents(
+                    $directory . '/admin/include/setup.php',
+                    '<?php include_once "version.php"; $config["project_name"] = ' . var_export($site, true) . ';'
+                    . ' $config["project_path"] = "Synthetic configured project path";'
+                    . ' $config["tables_prefix"] = "fixture_";'
+                );
+            }
+            mkdir($root . '/work');
+            mkdir($root . '/physical/nested');
+            $this->assertTrue(symlink($root . '/site', $root . '/alias'));
+            $this->assertTrue(symlink($root . '/site', $root . '/site alias'));
+            $this->assertTrue(symlink($root . '/physical/nested', $root . '/jump'));
+
+            $directory = match ($kind) {
+                'dot', 'autodetect root' => $root . '/site',
+                'parent' => $root . '/work',
+                'autodetect nested' => $root . '/site/admin/include',
+                'autodetect alias' => $root . '/alias',
+                default => $root,
+            };
+            $path = match ($kind) {
+                'absolute' => $root . '/site',
+                'dot' => '.',
+                'child' => 'site',
+                'dot child' => './site',
+                'parent' => '../site',
+                'trailing slash' => 'site/',
+                'relative alias' => 'alias',
+                'absolute alias' => $root . '/alias',
+                'relative alias parent' => 'jump/../site',
+                'absolute alias parent' => $root . '/jump/../site',
+                'space alias' => 'site alias',
+                default => null,
+            };
+            $this->assertTrue(chdir($directory));
+            $originalDirectory = getcwd();
+            $expectedPath = $path === null ? $root . '/site'
+                : (str_starts_with($path, '/') ? $path : $originalDirectory . '/' . $path);
+            $expectedSite = str_contains($kind, 'alias parent') ? 'physical/site' : 'site';
+            $expectedBackupParent = $path === null ? dirname($expectedPath)
+                : (str_starts_with($path, '/') ? dirname($path) : $originalDirectory . '/' . dirname($path));
+            $options = ['disable_db_env_overrides' => true];
+            putenv('KVS_PATH');
+            if ($source === 'option') {
+                $options['path'] = $path;
+            } elseif ($source === 'environment') {
+                putenv('KVS_PATH=' . $path);
+            }
+
+            $configuration = new Configuration($options);
+            $this->assertSame([], $warnings, 'Loading a valid installation must not emit warnings.');
+            $this->assertSame($originalDirectory, getcwd());
+            $this->assertSame('7.0.0', $configuration->getKvsVersion());
+            $this->assertSame($expectedSite, $configuration->get('project_name'));
+            $this->assertSame('fixture_', $configuration->getTablePrefix());
+            $this->assertSame('Synthetic configured project path', $configuration->get('project_path'));
+            $this->assertSame($expectedPath, $configuration->getKvsPath());
+            $this->assertSame(realpath($expectedBackupParent), realpath(dirname($configuration->getKvsPath())));
+            $this->assertSame($root . '/' . $expectedSite, realpath($configuration->getKvsPath()));
+
+            $this->assertTrue(chdir($root . '/work'));
+            $this->assertFileExists($configuration->getAdminPath() . '/include/setup.php');
+            $this->assertSame($root . '/' . $expectedSite . '/contents', realpath($configuration->getContentPath()));
+            $configuration->reloadDatabaseConfig();
+            $this->assertSame('127.0.0.1', $configuration->getDatabaseConfig()['host'] ?? null);
+
+            $this->assertTrue(chdir($originalDirectory));
+            $reloaded = new Configuration($options);
+            $this->assertSame('7.0.0', $reloaded->getKvsVersion(), 'The include_once version fallback must still work.');
+            $this->assertSame($expectedSite, $reloaded->get('project_name'));
+            $this->assertSame([], $warnings);
+        } finally {
+            restore_error_handler();
+            $previousEnvironment === false ? putenv('KVS_PATH') : putenv('KVS_PATH=' . $previousEnvironment);
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+            TestHelper::removeDir($root);
+        }
+    }
+
+    public static function installationPathProvider(): iterable
+    {
+        foreach (['option', 'environment'] as $source) {
+            foreach (
+                [
+                'absolute', 'dot', 'child', 'dot child', 'parent', 'trailing slash', 'relative alias',
+                'absolute alias', 'relative alias parent', 'absolute alias parent', 'space alias',
+                ] as $kind
+            ) {
+                yield $source . ' ' . $kind => [$source, $kind];
+            }
+        }
+        foreach (['root', 'nested', 'alias'] as $kind) {
+            yield 'autodetect ' . $kind => ['autodetect', 'autodetect ' . $kind];
+        }
+    }
+
+    /**
+     * @dataProvider invalidInstallationPathProvider
+     */
+    public function testInstallationPathValidationStillRejectsInvalidExplicitInputs(string $path): void
+    {
+        $root = TestHelper::createTempDir('invalid-installation-');
+        $previousDirectory = getcwd();
+        $previousEnvironment = getenv('KVS_PATH');
+        mkdir($root . '/admin/include', 0755, true);
+        file_put_contents($root . '/admin/include/setup_db.php', '<?php');
+        file_put_contents($root . '/admin/include/setup.php', '<?php');
+        try {
+            chdir($root);
+            putenv('KVS_PATH=' . $root);
+            $missing = new Configuration(['path' => $path, 'allow_missing_kvs' => true]);
+            $this->assertSame('', $missing->getKvsPath());
+            $this->expectException(\Exception::class);
+            $this->expectExceptionMessage('does not contain a valid KVS installation');
+            new Configuration(['path' => $path]);
+        } finally {
+            $previousEnvironment === false ? putenv('KVS_PATH') : putenv('KVS_PATH=' . $previousEnvironment);
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+            TestHelper::removeDir($root);
+        }
+    }
+
+    public static function invalidInstallationPathProvider(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'NUL' => ["site\0"];
+        yield 'literal tilde' => ['~/synthetic-site'];
+        yield 'missing child' => ['missing-site'];
+    }
+
+    public function testInstallationPathOptionKeepsPriorityOverEnvironmentAndAutodetection(): void
+    {
+        $root = TestHelper::createTempDir('installation-priority-');
+        $previousDirectory = getcwd();
+        $previousEnvironment = getenv('KVS_PATH');
+        $warnings = [];
+        set_error_handler(static function (int $severity) use (&$warnings): bool {
+            $warnings[] = $severity;
+            return true;
+        });
+        try {
+            foreach (['', '/selected', '/environment'] as $suffix) {
+                mkdir($root . $suffix . '/admin/include', 0755, true);
+                file_put_contents($root . $suffix . '/admin/include/setup_db.php', '<?php');
+                file_put_contents($root . $suffix . '/admin/include/setup.php', '<?php $config = [];');
+            }
+            chdir($root);
+            putenv('KVS_PATH=environment');
+            $selected = new Configuration(['path' => 'selected']);
+            $this->assertSame($root . '/selected', realpath($selected->getKvsPath()));
+            $environment = new Configuration();
+            $this->assertSame($root . '/environment', realpath($environment->getKvsPath()));
+            putenv('KVS_PATH=missing-site');
+            $autodetected = new Configuration();
+            $this->assertSame($root, $autodetected->getKvsPath());
+            $this->assertSame([], $warnings);
+        } finally {
+            restore_error_handler();
+            $previousEnvironment === false ? putenv('KVS_PATH') : putenv('KVS_PATH=' . $previousEnvironment);
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+            TestHelper::removeDir($root);
+        }
+    }
+
+    public function testInstallationPathFailsExplicitlyWhenRelativeBaseCannotBeRead(): void
+    {
+        $root = TestHelper::createTempDir('unavailable-working-directory-');
+        $previousDirectory = getcwd();
+        mkdir($root . '/site/admin/include', 0755, true);
+        mkdir($root . '/removed');
+        file_put_contents($root . '/site/admin/include/setup_db.php', '<?php');
+        file_put_contents($root . '/site/admin/include/setup.php', '<?php $config = [];');
+        try {
+            chdir($root . '/removed');
+            rmdir($root . '/removed');
+            $this->assertFalse(getcwd());
+            $absolute = new Configuration(['path' => $root . '/site']);
+            $this->assertSame($root . '/site', $absolute->getKvsPath());
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Failed to get current working directory');
+            new Configuration(['path' => '../site']);
+        } finally {
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+            TestHelper::removeDir($root);
+        }
+    }
 }

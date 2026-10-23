@@ -108,6 +108,58 @@ class UserCommandCreateTest extends TestCase
         $this->assertSame(0, (int) $db->query('SELECT COUNT(*) FROM ktvs_users')->fetchColumn());
     }
 
+    /**
+     * @dataProvider unsupportedCreateInputs
+     * @param array<string, string|bool> $arguments
+     */
+    public function testCreateRejectsUnsupportedInputsBeforePromptingOrInserting(array $arguments): void
+    {
+        $db = new \PDO('sqlite::memory:');
+        $db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        $this->createSchema($db);
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->setInputs(['fixture-new', 'fixture-new@example.invalid', 'SyntheticPassword1', 'Fixture New']);
+
+        $tester->execute(['action' => 'create'] + $arguments);
+
+        $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertStringContainsString('create action does not support', $tester->getDisplay());
+        $this->assertStringNotContainsString('Create New User', $tester->getDisplay());
+        $this->assertSame(0, (int) $db->query('SELECT COUNT(*) FROM ktvs_users')->fetchColumn());
+    }
+
+    /** @return iterable<string, array{array<string, string|bool>}> */
+    public static function unsupportedCreateInputs(): iterable
+    {
+        $options = [
+            '--status' => 'disabled',
+            '--search' => 'unrelated-user',
+            '--country' => '1',
+            '--gender' => 'female',
+            '--ip' => '127.0.0.2',
+            '--activity' => 'no/logins',
+            '--field-filter' => 'filled/avatar',
+            '--banned-status' => 'permanent',
+            '--removal-requested' => true,
+            '--trusted' => true,
+            '--untrusted' => true,
+            '--limit' => '20',
+            '--format' => 'json',
+            '--fields' => 'username',
+            '--field' => 'username',
+            '--no-truncate' => true,
+            '--yes' => true,
+        ];
+        foreach ($options as $option => $value) {
+            yield $option => [[$option => $value]];
+        }
+        yield 'positional identifier' => [['id' => 'unrelated-user']];
+        yield 'invalid format' => [['--format' => 'invalid']];
+        yield 'explicit default format' => [['--format' => 'table']];
+        yield 'unknown fields' => [['--fields' => 'nonexistent_field']];
+        yield 'conflicting trust' => [['--trusted' => true, '--untrusted' => true]];
+    }
+
     private function createSchema(\PDO $db): void
     {
         $db->exec(

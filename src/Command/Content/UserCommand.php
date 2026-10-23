@@ -22,7 +22,7 @@ use function KVS\CLI\Utils\truncate;
 class UserCommand extends BaseCommand
 {
     /** @var list<string> */
-    private const SHOW_UNSUPPORTED_OPTIONS = [
+    private const LIST_ONLY_OPTIONS = [
         'status',
         'search',
         'country',
@@ -34,7 +34,6 @@ class UserCommand extends BaseCommand
         'removal-requested',
         'trusted',
         'untrusted',
-        'yes',
         'limit',
     ];
 
@@ -964,7 +963,7 @@ HELP
             return self::FAILURE;
         }
 
-        if ($this->rejectUnsupportedOptionsForAction($input, 'show', self::SHOW_UNSUPPORTED_OPTIONS)) {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'show', [...self::LIST_ONLY_OPTIONS, 'yes'])) {
             return self::FAILURE;
         }
         if ($this->rejectCountFormatForSingularAction($input, 'show')) {
@@ -992,11 +991,12 @@ HELP
             $birthDate = $this->getStr($user['birth_date'] ?? null);
             $ip = array_key_exists('ip', $user) ? $this->formatKvsIp($user['ip']) : '';
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['User ID', (string) $userId],
                 ['Username', $username],
                 ['Email', $this->getStr($user['email'] ?? null)],
-                ['Status', StatusFormatter::user($this->getInt($user['status_id'] ?? null))],
+                ['Status', StatusFormatter::user($this->getInt($user['status_id'] ?? null), $withColor)],
                 ['Display Name', $displayName !== '' ? $displayName : 'N/A'],
                 ['Country', $countryCode !== '' ? $countryCode : 'N/A'],
                 ['Gender', $this->formatGender($this->getInt($user['gender_id'] ?? null))],
@@ -1143,6 +1143,19 @@ HELP
 
     private function createUser(InputInterface $input): int
     {
+        if ($this->rejectUnsupportedArgument($input, 'create', 'id', 'a user ID or username argument')) {
+            return self::FAILURE;
+        }
+        if (
+            $this->rejectUnsupportedOptions(
+                $input,
+                'create',
+                [...self::LIST_ONLY_OPTIONS, 'yes', 'format', 'fields', 'field', 'no-truncate']
+            )
+        ) {
+            return self::FAILURE;
+        }
+
         $this->io()->section('Create New User');
 
         $username = $this->io()->ask('Username');
@@ -1245,6 +1258,16 @@ HELP
 
     private function deleteUser(?string $id, InputInterface $input): int
     {
+        if (
+            $this->rejectUnsupportedOptions(
+                $input,
+                'delete',
+                [...self::LIST_ONLY_OPTIONS, 'format', 'fields', 'field', 'no-truncate']
+            )
+        ) {
+            return self::FAILURE;
+        }
+
         if ($id === null || $id === '') {
             $this->io()->error('User ID or username is required');
             return self::FAILURE;
@@ -1361,7 +1384,9 @@ HELP
                 throw new \RuntimeException('KVS delete_users function is not available');
             }
 
-            $deleteUsers($userIds, true, 'ap');
+            $this->runVerifiedKvsUserCleanup($userIds, static function () use ($deleteUsers, $userIds): void {
+                $deleteUsers($userIds, true, 'ap');
+            });
         });
     }
 
@@ -1376,7 +1401,7 @@ HELP
             return self::FAILURE;
         }
 
-        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', self::SHOW_UNSUPPORTED_OPTIONS)) {
+        if ($this->rejectUnsupportedOptionsForAction($input, 'stats', [...self::LIST_ONLY_OPTIONS, 'yes'])) {
             return self::FAILURE;
         }
 

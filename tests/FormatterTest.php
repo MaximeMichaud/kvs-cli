@@ -554,4 +554,65 @@ class FormatterTest extends TestCase
         $this->assertArrayHasKey('id', $decoded[0]);
         $this->assertArrayNotHasKey('nonexistent', $decoded[0]);
     }
+
+    public static function exportContractPayloads(): iterable
+    {
+        $payloads = [
+            'plain' => 'Synthetic plain text',
+            'ordinary-html' => 'Keep <strong>text</strong>',
+            'named-style' => 'Keep <info>text</info>',
+            'custom-style' => 'Keep <fg=red;options=bold>text</>',
+            'escaped-style' => 'Keep ' . chr(92) . '<info>text</info>',
+            'backslash-quote' => 'Keep ' . chr(92) . '"quoted' . chr(92) . '" text',
+        ];
+        foreach ($payloads as $name => $payload) {
+            foreach (['json', 'yaml', 'csv', 'field'] as $format) {
+                foreach ([false, true] as $decorated) {
+                    yield "$name $format " . ($decorated ? 'decorated' : 'plain') => [$payload, $format, $decorated];
+                }
+            }
+        }
+    }
+
+    #[DataProvider('exportContractPayloads')]
+    public function testExportContractPreservesRawValues(string $payload, string $format, bool $decorated): void
+    {
+        $options = $format === 'field' ? ['field' => 'value'] : ['format' => $format];
+        $formatter = new Formatter($options, ['value']);
+        $output = new BufferedOutput(decorated: $decorated);
+        ob_start();
+        try {
+            $formatter->display([['value' => $payload]], $output);
+            $direct = (string) ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $text = $format === 'csv' ? $direct : $output->fetch();
+        if ($format === 'field') {
+            $this->assertSame($payload . PHP_EOL, $text);
+            return;
+        }
+        try {
+            if ($format === 'json') {
+                $value = json_decode($text, true, flags: JSON_THROW_ON_ERROR)[0]['value'];
+            } elseif ($format === 'yaml') {
+                $value = Yaml::parse($text)[0]['value'];
+            } else {
+                $stream = fopen('php://memory', 'r+');
+                try {
+                    fwrite($stream, $text);
+                    rewind($stream);
+                    fgetcsv($stream, escape: '');
+                    $record = fgetcsv($stream, escape: '');
+                    $this->assertCount(1, $record);
+                    $value = $record[0];
+                } finally {
+                    fclose($stream);
+                }
+            }
+        } catch (\Throwable $error) {
+            $this->fail('Export must parse without Console markup processing: ' . $error->getMessage());
+        }
+        $this->assertSame($payload, $value);
+    }
 }

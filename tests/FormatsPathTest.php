@@ -24,7 +24,9 @@ class FormatsPathTest extends TestCase
         $this->db = new \PDO('sqlite::memory:');
         $this->db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->db->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        $this->db->exec('CREATE TABLE ktvs_videos (video_id INTEGER, server_group_id INTEGER)');
+        $this->db->exec('CREATE TABLE ktvs_videos (
+            video_id INTEGER, server_group_id INTEGER, format_video_group_id INTEGER DEFAULT 1
+        )');
         $this->db->exec('CREATE TABLE ktvs_admin_servers (
             server_id INTEGER,
             group_id INTEGER,
@@ -188,6 +190,7 @@ class FormatsPathTest extends TestCase
         $secondaryDir = $secondaryPath . '/1000/1234';
         mkdir($secondaryDir, 0755, true);
         rename($primaryFile, $secondaryDir . '/1234.mp4');
+        mkdir($primaryFile);
 
         $quotedPath = $this->db->quote($secondaryPath);
         $this->db->exec(

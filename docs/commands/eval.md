@@ -12,32 +12,41 @@ kvs eval '<code>'
 
 The `eval` command executes PHP code with the KVS context pre-loaded. This provides access to database connections, configuration, and helper classes.
 
+For local development, enable code execution in the current shell:
+
+```bash
+export KVS_ENV=dev
+```
+
+These commands require an allowed development or test environment, or an explicit `KVS_ALLOW_EVAL=true` override. The environment check also applies to `--skip-kvs`.
+
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `code` | Yes | PHP code to execute |
 
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--skip-kvs` | Skip loading KVS context |
 
 ## Available Variables
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `$kvsPath` | Path to KVS installation |
-| `$kvsConfig` | Configuration object |
-| `$db` | PDO database connection |
-| `$config` | Configuration array |
+| `$kvsConfig` | KVS CLI configuration object |
+| `$db` | MySQLi connection, or `null` when unavailable |
+| `$kvs_db` | Alias for `$db` |
+| `$config` | KVS CMS configuration array |
 | `$dbConfig` | Database configuration |
 
 ## Available Classes
 
 | Class | Description |
-|-------|-------------|
+| ------- | ------------- |
 | `Video` | Video model |
 | `User` | User model |
 | `Album` | Album model |
@@ -48,6 +57,8 @@ The `eval` command executes PHP code with the KVS context pre-loaded. This provi
 | `DB` | Database helper |
 
 ## Model Methods
+
+These are lightweight read helpers using the configured table prefix. They do not load every KVS admin function or perform CMS mutation bookkeeping.
 
 All model classes support:
 
@@ -60,11 +71,13 @@ Video::count($where)  // Count records
 ## DB Helper Methods
 
 ```php
-DB::query($sql)           // Execute query, return results
-DB::query($sql, $params)  // With prepared statement
-DB::escape($value)        // Escape value
-DB::exec($sql)            // Execute without results
+DB::query($sql)           // SELECT: array of associative rows; false on error
+DB::query($sql, $params)  // Prepared statement with positional ? parameters
+DB::escape($value)        // Escape a value, without adding quotes
+DB::exec($sql)            // Affected-row count, or false on error
 ```
+
+`DB::query()` returns a boolean or an affected-row count for statements without a result set. A helper may print an error and return `false` without making the command fail. Check results with `=== false` and throw an exception or exit with a nonzero code when failure must stop a script. `DB::exec()` can successfully return `0`.
 
 ## Examples
 
@@ -88,13 +101,13 @@ kvs eval 'print_r(Video::all(5));'
 
 ```bash
 # Direct SQL query
-kvs eval 'print_r(DB::query("SELECT COUNT(*) as total FROM ktvs_videos"));'
+kvs eval '$prefix = $kvsConfig->getTablePrefix(); print_r(DB::query("SELECT COUNT(*) as total FROM {$prefix}videos"));'
 
 # With prepared statement
-kvs eval 'print_r(DB::query("SELECT * FROM ktvs_videos WHERE status_id = ?", [1]));'
+kvs eval '$prefix = $kvsConfig->getTablePrefix(); print_r(DB::query("SELECT * FROM {$prefix}videos WHERE status_id = ?", [1]));'
 
 # Get single value
-kvs eval 'echo $db->query("SELECT COUNT(*) FROM ktvs_videos")->fetchColumn();'
+kvs eval '$prefix = $kvsConfig->getTablePrefix(); echo $db->query("SELECT COUNT(*) FROM {$prefix}videos")->fetch_row()[0];'
 ```
 
 ### Configuration Access
@@ -129,7 +142,8 @@ kvs eval 'return [
 
 # Find recent videos
 kvs eval '
-$sql = "SELECT video_id, title FROM ktvs_videos
+$prefix = $kvsConfig->getTablePrefix();
+$sql = "SELECT video_id, title FROM {$prefix}videos
         WHERE added_date > DATE_SUB(NOW(), INTERVAL 7 DAY)
         ORDER BY added_date DESC LIMIT 10";
 print_r(DB::query($sql));
@@ -156,6 +170,6 @@ fi
 
 ## See Also
 
-- [`eval-file`](eval-file.md) - Execute PHP file
+- [`eval-file`](eval_file.md) - Execute PHP file
 - [`shell`](shell.md) - Interactive shell
 - [`config`](config.md) - View configuration

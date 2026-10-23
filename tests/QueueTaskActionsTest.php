@@ -339,4 +339,33 @@ class QueueTaskActionsTest extends TestCase
         ], ['interactive' => false]);
         return json_decode($this->tester->getDisplay(), true, flags: JSON_THROW_ON_ERROR);
     }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesQueueFailureMessage(string $payload, bool $decorated): void
+    {
+        $this->db->prepare('UPDATE ' . self::PREFIX . 'background_tasks SET message = ? WHERE task_id = 11')
+            ->execute([$payload]);
+        $before = $this->activeTask();
+        $this->tester->execute([
+            'action' => 'wait', 'id' => '11', '--timeout' => '0', '--format' => 'json',
+        ], ['decorated' => $decorated]);
+        $text = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame($payload, $data['message']);
+        $this->assertSame('failed', $data['outcome']);
+        $this->assertSame(1, $data['exit_code']);
+        $this->assertSame($before, $this->activeTask());
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directJsonPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                yield $name => [$payload, $decorated];
+            }
+        }
+    }
 }

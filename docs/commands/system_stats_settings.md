@@ -15,7 +15,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `show`, `set` (default: `show`) |
 
 ## Options
@@ -23,14 +23,14 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### General
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--format=FORMAT` | Output format: `table`, `json` |
 | `--force` | Skip experimental feature confirmation |
 
 ### Traffic Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--traffic` | Collect traffic stats (0\|1) |
 | `--traffic-countries` | Collect country data (0\|1) |
 | `--traffic-devices` | Collect device data (0\|1) |
@@ -40,7 +40,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### Player Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--player` | Collect player stats (0\|1) |
 | `--player-countries` | Collect country data (0\|1) |
 | `--player-devices` | Collect device data (0\|1) |
@@ -51,7 +51,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### Video Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--videos` | Collect video stats (0\|1) |
 | `--videos-unique` | Collect unique views (0\|1) |
 | `--videos-embeds-unique` | Collect unique embed views (0\|1) |
@@ -64,7 +64,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### Album Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--albums` | Collect album stats (0\|1) |
 | `--albums-unique` | Collect unique views (0\|1) |
 | `--albums-images` | Collect album image stats (0\|1) |
@@ -75,7 +75,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### Memberzone Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--memberzone` | Collect memberzone stats (0\|1) |
 | `--memberzone-video-files` | Collect video file downloads (0\|1) |
 | `--memberzone-album-images` | Collect album image views (0\|1) |
@@ -84,7 +84,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### Search Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--search` | Collect search stats (0\|1) |
 | `--search-keep` | Retention period in days (0=forever) |
 | `--search-inactive` | Mark inactive searches (0\|1) |
@@ -97,7 +97,7 @@ The `system:stats-settings` command configures which statistics KVS collects and
 ### Performance Statistics
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--performance` | Collect performance stats (0\|1) |
 
 ## Actions
@@ -129,7 +129,7 @@ kvs stats-settings set --videos-keep=30
 ## Country Filter Modes
 
 | Mode | Description |
-|------|-------------|
+| ------ | ------------- |
 | `none` | No filtering (collect all) |
 | `include` | Only collect from specified countries |
 | `exclude` | Collect from all except specified countries |
@@ -244,7 +244,7 @@ kvs stats-settings set \
 
 ## Sample Output
 
-```
+```text
 Statistics Collection Settings
 ===============================
 
@@ -309,6 +309,7 @@ Performance Stats
 ### Recommended Settings
 
 **Small Sites (<1,000 videos)**:
+
 ```bash
 kvs stats-settings set \
   --traffic=1 --traffic-keep=90 \
@@ -317,6 +318,7 @@ kvs stats-settings set \
 ```
 
 **Medium Sites (1,000-10,000 videos)**:
+
 ```bash
 kvs stats-settings set \
   --traffic=1 --traffic-keep=30 \
@@ -326,6 +328,7 @@ kvs stats-settings set \
 ```
 
 **Large Sites (>10,000 videos)**:
+
 ```bash
 kvs stats-settings set \
   --traffic=1 --traffic-keep=7 \

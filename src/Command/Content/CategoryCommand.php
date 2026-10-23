@@ -559,12 +559,13 @@ HELP
 
             $statusId = isset($category['status_id']) && is_numeric($category['status_id']) ? (int) $category['status_id'] : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', is_scalar($categoryId) ? (string) $categoryId : '0'],
                 ['Title', $categoryTitle],
                 ['Group', $groupDisplay],
                 ['Group ID', $groupIdStr],
-                ['Status', StatusFormatter::category($statusId)],
+                ['Status', StatusFormatter::category($statusId, $withColor)],
                 ['Videos', (string) $videoCount],
                 ['Albums', (string) $albumCount],
                 ['Posts', (string) $postCount],
@@ -1393,6 +1394,22 @@ HELP
     {
         $contentPath = $this->config->getCategoriesPath();
         $path = rtrim($contentPath, '/') . '/' . $categoryId;
+        $parent = dirname($path);
+        while (!is_dir($parent) && dirname($parent) !== $parent) {
+            if (is_link($parent)) {
+                throw new \RuntimeException('Cannot inspect category files: ' . $path);
+            }
+            $parent = dirname($parent);
+        }
+        if (!is_executable($parent)) {
+            throw new \RuntimeException('Cannot inspect category files: ' . $path);
+        }
+        if (is_link($path)) {
+            if (!@unlink($path)) {
+                throw new \RuntimeException('Could not remove category storage link: ' . $path);
+            }
+            return;
+        }
         if (!is_dir($path)) {
             return;
         }
@@ -1412,14 +1429,23 @@ HELP
                 continue;
             }
 
-            if ($item->isDir()) {
-                @rmdir($item->getPathname());
-            } else {
-                @unlink($item->getPathname());
+            $removed = $item->isDir() && !$item->isLink()
+                ? @rmdir($item->getPathname())
+                : @unlink($item->getPathname());
+            if (!$removed) {
+                throw new \RuntimeException(sprintf(
+                    'Could not remove %s; category file cleanup may be incomplete.',
+                    $item->getPathname()
+                ));
             }
         }
 
-        @rmdir($path);
+        if (!@rmdir($path)) {
+            throw new \RuntimeException(sprintf(
+                'Could not remove category directory %s; file cleanup may be incomplete.',
+                $path
+            ));
+        }
     }
 
     private function slugifyCategoryDir(string $title): string
@@ -1507,6 +1533,21 @@ HELP
 
             if (!is_array($category)) {
                 $this->io()->error("Category not found: $categoryId");
+                return self::FAILURE;
+            }
+            $category = array_filter($category, 'is_string', ARRAY_FILTER_USE_KEY);
+
+            $detailFields = ['id', 'title', 'group', 'group_id', 'status', 'videos', 'albums', 'posts', 'other', 'total_usage', 'added'];
+            $extraFields = $this->getRequestedCategoryDetailFields(
+                $input,
+                $category,
+                (string) $categoryId,
+                0,
+                ['videos' => 0, 'albums' => 0, 'posts' => 0],
+                0,
+                0
+            );
+            if (!$this->validateDetailOutputOptions($input, 'update', array_merge($detailFields, array_keys($extraFields)))) {
                 return self::FAILURE;
             }
 

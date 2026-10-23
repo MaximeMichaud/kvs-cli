@@ -15,7 +15,7 @@ The `system:stats` command displays comprehensive site statistics including cont
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--videos` | Show detailed video statistics |
 | `--albums` | Show detailed album statistics |
 | `--users` | Show detailed user statistics |
@@ -34,7 +34,7 @@ total counters for the matched items, not traffic events that happened during th
 selected period.
 
 | Period | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `today` | Items created today |
 | `week` | Items created in the last 7 days |
 | `month` | Items created in the last 30 days |
@@ -117,7 +117,7 @@ kvs stats --period=today
 
 ### Overall Statistics
 
-```
+```text
 KVS Site Statistics
 ===================
 
@@ -151,10 +151,10 @@ Top 10 Videos (by views)
 ### Video Statistics
 
 ```bash
-$ kvs stats --videos
+kvs stats --videos
 ```
 
-```
+```text
 Video Statistics
 ================
 
@@ -188,10 +188,10 @@ Top 10 Videos (by views)
 ### Category Statistics
 
 ```bash
-$ kvs stats --categories --top=5
+kvs stats --categories --top=5
 ```
 
-```
+```text
 Category Statistics
 ===================
 

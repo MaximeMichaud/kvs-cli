@@ -15,13 +15,13 @@ The `system:cron` command allows you to manually trigger KVS cron jobs. This is 
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `job` | No | Specific job name to run (runs all if omitted) |
 
 ## Available Jobs
 
 | Job | Description |
-|-----|-------------|
+| ----- | ------------- |
 | `main` | Main cron job (statistics, cleanup) |
 | `conversion` | Video conversion processing |
 | `optimize` | Database optimization |
@@ -38,7 +38,7 @@ kvs cron
 
 Output:
 
-```
+```text
 Running KVS cron jobs...
 
  ✓ Main cron completed (2.3s)

@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\ServerCommand;
 use KVS\CLI\Config\Configuration;
 use KVS\CLI\Service\StorageClusterDataPublisher;
@@ -1542,6 +1543,85 @@ class ServerCommandTest extends TestCase
         $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
     }
 
+    public function testServerSetWeightsSupportsSymlinkedClusterDirectory(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $aliasDirectory = TestHelper::createTempDir('server-cluster-alias-');
+        $alias = $aliasDirectory . '/site';
+
+        try {
+            $this->assertTrue(symlink($this->kvsPath, $alias));
+            $this->useClusterPublisher(new StorageClusterDataPublisher($alias . '/admin/data/system/cluster.dat'));
+            $arguments = [
+                'action' => 'set-weights',
+                'id' => '10',
+                '--weight' => $this->weightOptions($weights),
+                '--if-revision' => $this->readWeightRevision(),
+            ];
+
+            [$status, , $display] = $this->executeWeightJson([...$arguments, '--dry-run' => true]);
+            $this->assertSame(0, $status, $display);
+            $this->assertSame($databaseBefore, $this->fetchWeightRows());
+            $this->assertSame($clusterBefore, file_get_contents($alias . '/admin/data/system/cluster.dat'));
+
+            [$status, $result, $display] = $this->executeWeightJson($arguments);
+            $this->assertSame(0, $status, $display);
+            $this->assertTrue($result['cluster_data_updated']);
+            $this->assertSame($weights, $this->fetchWeightMap(10));
+            foreach ($this->readClusterRows() as $row) {
+                if ((int) $row['group_id'] === 10) {
+                    $this->assertSame($weights[(int) $row['server_id']], (int) $row['lb_weight']);
+                }
+            }
+        } finally {
+            TestHelper::removeDir($aliasDirectory);
+        }
+    }
+
+    public function testServerSetWeightsRejectsTemporaryFileOutsideClusterDirectory(): void
+    {
+        $weights = $this->prepareWeightFixture();
+        $this->writeCurrentClusterData();
+        $databaseBefore = $this->fetchWeightRows();
+        $clusterBefore = file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat');
+        $otherDirectory = TestHelper::createTempDir('server-cluster-outside-');
+
+        try {
+            $publisher = new class ($this->kvsPath . '/admin/data/system/cluster.dat', $otherDirectory) extends StorageClusterDataPublisher {
+                public function __construct(string $clusterFile, private string $otherDirectory)
+                {
+                    parent::__construct($clusterFile);
+                }
+
+                protected function createTemporaryFile(string $directory): string|false
+                {
+                    return tempnam($this->otherDirectory, 'cluster-');
+                }
+            };
+            $this->useClusterPublisher($publisher);
+
+            [$status, $result] = $this->executeWeightJson([
+                'action' => 'set-weights',
+                'id' => '10',
+                '--weight' => $this->weightOptions($weights),
+                '--if-revision' => $this->readWeightRevision(),
+                '--dry-run' => true,
+            ]);
+
+            $this->assertSame(1, $status);
+            $this->assertSame('dry_run_validation_failed', $result['error']['code']);
+            $this->assertStringContainsString('target directory', $result['error']['message']);
+            $this->assertSame($databaseBefore, $this->fetchWeightRows());
+            $this->assertSame($clusterBefore, file_get_contents($this->kvsPath . '/admin/data/system/cluster.dat'));
+            $this->assertSame([], glob($otherDirectory . '/cluster-*'));
+        } finally {
+            TestHelper::removeDir($otherDirectory);
+        }
+    }
+
     public function testServerSetWeightsRollsBackTemporaryFileWriteFailure(): void
     {
         $weights = $this->prepareWeightFixture();
@@ -1860,6 +1940,120 @@ class ServerCommandTest extends TestCase
         $this->assertSame(1, (int) $clusterRows[1]['status_id']);
     }
 
+    /** @return array<string, array{string, bool}> */
+    public static function statusPublicationFailures(): array
+    {
+        return [
+            'enable before publication' => ['enable', false],
+            'enable after publication' => ['enable', true],
+            'disable before publication' => ['disable', false],
+            'disable after publication' => ['disable', true],
+        ];
+    }
+
+    #[DataProvider('statusPublicationFailures')]
+    public function testServerStatusPublicationFailureRestoresDatabaseAndClusterBytes(
+        string $action,
+        bool $publish
+    ): void {
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            " SET lb_countries = '' WHERE server_id = 1"
+        );
+        $this->db->exec(
+            'UPDATE ' . TestHelper::table('admin_servers') .
+            ' SET status_id = ' . ($action === 'enable' ? '0' : '1') .
+            ', error_id = 4, error_iteration = 7, error_streaming_id = 2, error_streaming_iteration = 9 ' .
+            'WHERE server_id = 2'
+        );
+        $this->writeCurrentClusterData();
+        $path = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $contents = (string) file_get_contents($path) . "\n";
+        file_put_contents($path, $contents);
+        $before = $this->fetchServerRow(2);
+        $publisher = new class ($path, $publish) extends StorageClusterDataPublisher {
+            public bool $published = false;
+
+            public function __construct(string $file, private bool $publishBeforeFailure)
+            {
+                parent::__construct($file);
+            }
+
+            public function publish(array $rows, int $permissions): string
+            {
+                if ($this->publishBeforeFailure) {
+                    parent::publish($rows, $permissions);
+                    $this->published = true;
+                }
+                throw new \RuntimeException('Synthetic status publication failure');
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        $this->tester->execute(['--force' => true, 'action' => $action, 'id' => 2]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($publish, $publisher->published);
+        $this->assertSame($before, $this->fetchServerRow(2));
+        $this->assertSame($contents, file_get_contents($path));
+    }
+
+    public function testServerStatusReportsWhenItsDatabaseCannotBeRestored(): void
+    {
+        $this->writeCurrentClusterData();
+        $path = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $contents = file_get_contents($path);
+        $publisher = new class ($path) extends StorageClusterDataPublisher {
+            public function publish(array $rows, int $permissions): string
+            {
+                throw new \RuntimeException('Synthetic status publication failure');
+            }
+        };
+        $this->useClusterPublisher($publisher);
+        $this->db->exec(
+            'CREATE TRIGGER reject_status_restore BEFORE UPDATE ON ' . TestHelper::table('admin_servers') .
+            " WHEN OLD.server_id = 2 AND NEW.status_id = 0 " .
+            "BEGIN SELECT RAISE(FAIL, 'Synthetic status restore rejection'); END"
+        );
+
+        $this->tester->execute(['--force' => true, 'action' => 'enable', 'id' => 2]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $display = preg_replace('/\s+/', ' ', $this->tester->getDisplay()) ?? $this->tester->getDisplay();
+        $this->assertStringContainsString('Could not restore storage server status', $display);
+        $this->assertSame(1, (int) $this->fetchServerRow(2)['status_id']);
+        $this->assertSame($contents, file_get_contents($path));
+    }
+
+    public function testServerStatusReportsWhenItsClusterFileCannotBeRestored(): void
+    {
+        $this->writeCurrentClusterData();
+        $path = $this->kvsPath . '/admin/data/system/cluster.dat';
+        $contents = file_get_contents($path);
+        $before = $this->fetchServerRow(2);
+        $publisher = new class ($path) extends StorageClusterDataPublisher {
+            public function publish(array $rows, int $permissions): string
+            {
+                parent::publish($rows, $permissions);
+                throw new \RuntimeException('Synthetic status publication failure');
+            }
+
+            public function restore(array $snapshot): void
+            {
+                throw new \RuntimeException('Synthetic cluster restore rejection');
+            }
+        };
+        $this->useClusterPublisher($publisher);
+
+        $this->tester->execute(['--force' => true, 'action' => 'enable', 'id' => 2]);
+
+        $this->assertSame(1, $this->tester->getStatusCode());
+        $display = preg_replace('/\s+/', ' ', $this->tester->getDisplay()) ?? $this->tester->getDisplay();
+        $this->assertStringContainsString('Could not restore storage cluster data', $display);
+        $this->assertSame($before, $this->fetchServerRow(2));
+        $this->assertNotSame($contents, file_get_contents($path));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -2138,5 +2332,134 @@ class ServerCommandTest extends TestCase
                 return $this->testPublisher ?? parent::createStorageClusterDataPublisher();
             }
         };
+    }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>value</>';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_servers') . ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format, 'title');
+        $this->assertSame($payload, $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $payload = 'Synthetic plain value';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_servers') . ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format);
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $this->assertSame('Nginx (x-accel-redirect)', $row['streaming']);
+            $this->assertSame('Local', $row['connection']);
+            $this->assertSame('Enabled', $row['debug']);
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerGroupKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>group</>';
+        $this->db->prepare('UPDATE ' . TestHelper::table('admin_servers_groups') . ' SET title = ? WHERE group_id = 10')->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', 'id' => '10'], $format, 'title');
+        $this->assertSame($payload, $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractServerGroupKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', 'id' => '10'], $format);
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $servers = $format === 'csv' ? json_decode($row['servers'], true, flags: JSON_THROW_ON_ERROR) : $row['servers'];
+            $this->assertSame(['Active', 'Inactive'], array_column($servers, 'status'));
+        }
+    }
+
+    public function testExportContractServerListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow(
+            $this->tester,
+            ['--force' => true, 'action' => 'list', '--limit' => '1'],
+            'csv',
+            'status,streaming,connection'
+        );
+        $this->assertSame(['status' => 'Active', 'streaming' => 'Nginx (x-accel-redirect)', 'connection' => 'Local'], $row);
+    }
+
+    public function testExportContractServerGroupListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'group', '--limit' => '1'], 'csv', 'status');
+        $this->assertSame(['status' => 'Active'], $row);
+    }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesStoredServerWeightCountries(string $payload, bool $decorated): void
+    {
+        $this->prepareWeightFixture();
+        $this->db->prepare('UPDATE ' . TestHelper::table('admin_servers') . ' SET lb_countries = ? WHERE server_id = 1')
+            ->execute([$payload]);
+        $before = $this->fetchWeightMap(10);
+        $this->tester->execute([
+            '--force' => true, 'action' => 'weights', 'id' => '10', '--format' => 'json',
+        ], ['decorated' => $decorated]);
+        $text = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame([$payload], $data['weights'][0]['lb_countries']);
+        $this->assertSame('weights', $data['action']);
+        $this->assertTrue($data['ok']);
+        $this->assertSame($before, $this->fetchWeightMap(10));
+    }
+
+    #[DataProvider('directJsonPayloads')]
+    public function testDirectJsonPreservesServerWeightError(string $payload, bool $decorated): void
+    {
+        $db = new class ($payload) extends PDO {
+            public function __construct(private string $failureMessage)
+            {
+                parent::__construct('sqlite::memory:');
+            }
+
+            public function prepare(string $query, array $options = []): \PDOStatement|false
+            {
+                throw new \PDOException($this->failureMessage);
+            }
+        };
+        $tester = new CommandTester($this->createCommand($db));
+        $tester->execute([
+            '--force' => true, 'action' => 'weights', 'id' => '10', '--format' => 'json',
+        ], ['decorated' => $decorated]);
+        $text = $tester->getDisplay();
+        $this->assertSame(1, $tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $data = json_decode($text, true);
+        $this->assertSame('Failed to read storage server weights: ' . $payload, $data['error']['message']);
+        $this->assertSame('weights_failed', $data['error']['code']);
+        $this->assertFalse($data['ok']);
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function directJsonPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                yield $name => [$payload, $decorated];
+            }
+        }
     }
 }

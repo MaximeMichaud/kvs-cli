@@ -394,11 +394,12 @@ HELP
                 ? (int) $group['content_sources_amount']
                 : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', $this->stringValue($group['content_source_group_id'] ?? '0')],
                 ['Title', $title],
                 ['Dir', $this->stringValue($group['dir'] ?? '')],
-                ['Status', StatusFormatter::contentSourceGroup($statusId)],
+                ['Status', StatusFormatter::contentSourceGroup($statusId, $withColor)],
                 ['External ID', $this->stringValue($group['external_id'] ?? '') !== ''
                     ? $this->stringValue($group['external_id'] ?? '')
                     : 'None'],
@@ -638,6 +639,12 @@ HELP
             $group = $this->fetchGroupById($db, $groupId);
             if ($group === null) {
                 $this->io()->error("Content source group not found: $groupId");
+                return self::FAILURE;
+            }
+
+            $detailFields = ['id', 'title', 'dir', 'status', 'external_id', 'sort', 'content_sources', 'added'];
+            $extraFields = $this->getRequestedDetailFieldsForGroup($input, $group);
+            if (!$this->validateDetailOutputOptions($input, 'update', array_merge($detailFields, array_keys($extraFields)))) {
                 return self::FAILURE;
             }
 
@@ -896,6 +903,10 @@ HELP
         $fields = [];
         foreach ($this->getKnownFields([$group]) as $field) {
             $fields[$field] = $group[$field] ?? '';
+        }
+
+        foreach (self::CUSTOM_FIELDS as $field) {
+            $fields['custom_' . substr($field, 6)] = $group[$field] ?? '';
         }
 
         return $this->getRequestedDetailFields($input, $fields);

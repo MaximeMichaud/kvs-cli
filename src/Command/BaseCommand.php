@@ -11,6 +11,7 @@ use KVS\CLI\Util\OutputBuffer;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
@@ -272,6 +273,191 @@ abstract class BaseCommand extends Command
             }
             chdir($originalDir);
         }
+    }
+
+    /**
+     * @param list<int> $userIds
+     * @param callable(): void $cleanup
+     */
+    protected function runVerifiedKvsUserCleanup(array $userIds, callable $cleanup): void
+    {
+        $db = $this->getDatabaseConnection(true);
+        if ($db === null) {
+            throw new \RuntimeException('Cannot verify native user cleanup without a database connection.');
+        }
+        $ids = implode(',', $userIds);
+        $paths = $this->getKvsUserCleanupPaths($db, $ids);
+
+        $cleanup();
+
+        $remaining = [];
+        $conditions = [
+            'users_events' => "user_id IN ($ids) OR user_target_id IN ($ids)",
+            'users_subscriptions' => "user_id IN ($ids) OR "
+                . "(subscribed_object_id IN ($ids) AND subscribed_object_type_id=1)",
+            'users_ignores' => "user_id IN ($ids) OR ignored_user_id IN ($ids)",
+            'users_blogs' => "user_id IN ($ids) OR user_from_id IN ($ids)",
+            'friends' => "user_id IN ($ids) OR friend_id IN ($ids)",
+            'messages' => "user_id IN ($ids) OR user_from_id IN ($ids)",
+        ];
+        foreach (
+            ['users_blocked_passwords', 'fav_videos', 'fav_albums', 'comments', 'log_logins_users',
+            'feedbacks', 'dvds'] as $table
+        ) {
+            $conditions[$table] = "user_id IN ($ids)";
+        }
+        foreach ($conditions as $table => $condition) {
+            try {
+                $statement = $db->query("SELECT COUNT(*) FROM {$this->table($table)} WHERE $condition");
+                if ($statement === false) {
+                    throw new \RuntimeException('Cannot query cleanup state.');
+                }
+                $count = $statement->fetchColumn();
+                if (is_numeric($count) && (int) $count > 0) {
+                    $remaining[] = $table;
+                }
+            } catch (\Exception $error) {
+                $remaining[] = $table . ' could not be verified: ' . $error->getMessage();
+            }
+        }
+        foreach ($paths as $path) {
+            clearstatcache(true, $path);
+            if (file_exists($path) || is_link($path) || !$this->canInspectKvsUserCleanupPath($path)) {
+                $remaining[] = 'avatar/cover file ' . $path;
+            }
+        }
+        if ($remaining !== []) {
+            throw new \RuntimeException(
+                'KVS cleanup is incomplete: ' . implode('; ', $remaining) . '. '
+                . 'Account data may already have been deleted; no rollback was performed.'
+            );
+        }
+    }
+
+    private function canInspectKvsUserCleanupPath(string $path): bool
+    {
+        $directory = dirname($path);
+        while (!is_dir($directory) && dirname($directory) !== $directory) {
+            if (is_link($directory)) {
+                return false;
+            }
+            $directory = dirname($directory);
+        }
+
+        return is_executable($directory);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function getKvsUserCleanupPaths(\PDO $db, string $ids): array
+    {
+        $users = $db->query("SELECT * FROM {$this->table('users')} WHERE user_id IN ($ids)");
+        if ($users === false) {
+            throw new \RuntimeException('Cannot read user cleanup data before deletion.');
+        }
+        $runtimeConfig = $this->getKvsRuntimeConfig();
+        $avatars = $runtimeConfig['content_path_avatars'] ?? $this->config->getKvsPath() . '/contents/avatars';
+        $paths = [];
+        foreach ($users->fetchAll(\PDO::FETCH_ASSOC) as $user) {
+            if (!is_array($user)) {
+                throw new \RuntimeException('Cannot read user cleanup data before deletion.');
+            }
+            foreach (['avatar', 'cover'] as $field) {
+                $file = $user[$field] ?? null;
+                if (is_string($avatars) && is_string($file) && $file !== '') {
+                    $paths[] = $avatars . '/' . $file;
+                }
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @param 'video'|'album' $kind
+     */
+    protected function queueContentDeletionWithKvs(string $kind, int $id): void
+    {
+        $this->runWithKvsAdminContext(function () use ($kind, $id): void {
+            $delete = 'delete_' . $kind;
+            if (!function_exists($delete)) {
+                throw new \RuntimeException("KVS $delete function is not available");
+            }
+            if (
+                !function_exists('sql') || !function_exists('sql_pr')
+                || !function_exists('mr2array') || !function_exists('mr2number')
+            ) {
+                throw new \RuntimeException('KVS SQL helpers are not available');
+            }
+
+            $contentTable = $this->table($kind . 's');
+            $taskTable = $this->table('background_tasks');
+            $auditTable = $this->table('admin_audit_log');
+            $engines = mr2array(sql_pr(
+                'SELECT ENGINE FROM information_schema.TABLES '
+                . 'WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN (?, ?, ?)',
+                $contentTable,
+                $taskTable,
+                $auditTable
+            ));
+            if (!is_array($engines) || count($engines) !== 3) {
+                throw new \RuntimeException('KVS deletion requires the content, background task and audit tables');
+            }
+            foreach ($engines as $row) {
+                $engine = is_array($row) ? ($row['ENGINE'] ?? null) : null;
+                if (!is_string($engine) || strcasecmp($engine, 'InnoDB') !== 0) {
+                    throw new \RuntimeException(
+                        'KVS deletion requires InnoDB content, background task and audit tables'
+                    );
+                }
+            }
+            if (sql('START TRANSACTION') !== true) {
+                throw new \RuntimeException('Unable to start the native KVS deletion transaction');
+            }
+            try {
+                $auditQuery = "SELECT COUNT(*) FROM $auditTable "
+                    . 'WHERE action_id=180 AND object_id=? AND object_type_id=?';
+                $objectType = $kind === 'video' ? 1 : 2;
+                $auditsBefore = mr2number(sql_pr($auditQuery, $id, $objectType));
+                // Offset the status because mr2number() also returns zero when the row is missing.
+                $status = mr2number(sql_pr(
+                    "SELECT status_id + 1 FROM $contentTable WHERE {$kind}_id=? FOR UPDATE",
+                    $id
+                ));
+                if (!is_numeric($status) || !in_array((int) $status, [1, 2, 3], true)) {
+                    throw new \RuntimeException("KVS $kind status changed before deletion");
+                }
+                if ($delete($id) !== true) {
+                    throw new \RuntimeException("KVS refused to delete $kind #$id");
+                }
+                $tasks = mr2number(sql_pr(
+                    "SELECT COUNT(*) FROM $taskTable WHERE type_id=? AND {$kind}_id=?",
+                    $kind === 'video' ? 2 : 11,
+                    $id
+                ));
+                $content = mr2number(sql_pr(
+                    "SELECT COUNT(*) FROM $contentTable WHERE {$kind}_id=? AND status_id=4",
+                    $id
+                ));
+                if (!is_numeric($tasks) || (int) $tasks < 1 || !is_numeric($content) || (int) $content !== 1) {
+                    throw new \RuntimeException("KVS did not persist the deletion task for $kind #$id");
+                }
+                $auditsAfter = mr2number(sql_pr($auditQuery, $id, $objectType));
+                if (
+                    !is_numeric($auditsBefore) || !is_numeric($auditsAfter)
+                    || (int) $auditsAfter !== (int) $auditsBefore + 1
+                ) {
+                    throw new \RuntimeException("KVS did not persist the deletion audit entry for $kind #$id");
+                }
+                if (sql('COMMIT') !== true) {
+                    throw new \RuntimeException('Unable to commit the native KVS deletion transaction');
+                }
+            } catch (\Throwable $error) {
+                sql('ROLLBACK');
+                throw $error;
+            }
+        }, ['functions_servers.php', 'functions_admin.php']);
     }
 
     protected function getDatabaseConnection(bool $quiet = false): ?\PDO
@@ -1025,6 +1211,27 @@ abstract class BaseCommand extends Command
     }
 
     /**
+     * Validate the final detail selection before a mutation can persist changes.
+     *
+     * @param list<string> $knownFields Fields present in the requested detail record
+     */
+    protected function validateDetailOutputOptions(InputInterface $input, string $action, array $knownFields): bool
+    {
+        if ($this->rejectCountFormatForSingularAction($input, $action)) {
+            return false;
+        }
+
+        try {
+            $formatter = new Formatter($input->getOptions(), [], $knownFields);
+            $formatter->display([], new NullOutput());
+            return true;
+        } catch (\InvalidArgumentException $e) {
+            $this->io()->error($e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * @param list<string> $optionNames
      */
     protected function rejectFieldSelectionForCountFormat(
@@ -1112,11 +1319,12 @@ abstract class BaseCommand extends Command
                 continue;
             }
 
-            $record[$key] = $this->stripConsoleMarkup($row[1] ?? '');
+            $value = $row[1] ?? '';
+            $record[$key] = is_scalar($value) ? (string) $value : $value;
         }
 
         foreach ($extraFields as $key => $value) {
-            $record[$key] = is_string($value) ? $this->stripConsoleMarkup($value) : $value;
+            $record[$key] = $value;
         }
 
         return $this->displayFormattedRows($input, [$record], array_keys($record));

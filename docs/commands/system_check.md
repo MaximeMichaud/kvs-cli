@@ -15,7 +15,7 @@ The `system:check` command performs a thorough analysis of your KVS installation
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--json` | Output results as JSON |
 | `--format=FORMAT` | Output format: `table`, `json` |
 | `--skip-online-checks` | Skip outbound network checks |
@@ -35,6 +35,7 @@ Checks if a newer version of KVS is available.
 ### PHP Extensions
 
 Checks for required extensions:
+
 - `mysqli` - Database connectivity
 - `curl` - HTTP requests
 - `zlib` - Compression
@@ -46,6 +47,7 @@ Checks for required extensions:
 ### System Tools
 
 Checks for external tools:
+
 - **FFmpeg** - Video processing
 - **ImageMagick** - Image processing
 - **mysqldump** - Database backups
@@ -65,6 +67,7 @@ Checks for external tools:
 ### PHP Settings
 
 Validates critical PHP settings:
+
 - `upload_max_filesize`
 - `post_max_size`
 - `memory_limit`
@@ -74,6 +77,7 @@ Validates critical PHP settings:
 ### Cron Status
 
 Checks last run times for:
+
 - Main cron job
 - Conversion cron
 - Optimization cron
@@ -94,6 +98,7 @@ Checks last run times for:
 ### Disk Space
 
 Checks free space on:
+
 - KVS installation path
 - Content storage path
 - Temp directories
@@ -101,6 +106,7 @@ Checks free space on:
 ### Internet Connectivity
 
 Tests outbound connectivity for:
+
 - License verification
 - Update checks
 - External services
@@ -108,6 +114,7 @@ Tests outbound connectivity for:
 ### End of Life Status
 
 Checks EOL status for:
+
 - PHP version
 - MySQL/MariaDB version
 - Operating system (if detectable)
@@ -116,7 +123,7 @@ Checks EOL status for:
 
 ### Table Format (Default)
 
-```
+```text
 KVS System Check
 ================
 
@@ -179,7 +186,7 @@ kvs check --quiet-ok
 
 Only shows warnings and errors:
 
-```
+```text
 ⚠ OPcache: JIT not enabled
 ⚠ Disk Space (Content): 15.3 GB free (12.5% available)
 ```

@@ -320,7 +320,9 @@ HELP
             if (!function_exists('delete_users')) {
                 throw new \RuntimeException('KVS delete_users function is not available');
             }
-            delete_users($userIds, $withContent, 'ap');
+            $this->runVerifiedKvsUserCleanup($userIds, static function () use ($userIds, $withContent): void {
+                delete_users($userIds, $withContent, 'ap');
+            });
         });
     }
 

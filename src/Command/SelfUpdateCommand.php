@@ -411,6 +411,14 @@ HELP
 
     private function verifyPhar(string $pharPath, SymfonyStyle $io): bool
     {
+        try {
+            new \Phar($pharPath);
+        } catch (\Exception $archiveError) {
+            $io->error('Downloaded file is not a readable PHAR archive.');
+            $io->text($archiveError->getMessage());
+            return false;
+        }
+
         // Try to run the new PHAR to verify it works
         $php = PHP_BINARY;
         $output = [];

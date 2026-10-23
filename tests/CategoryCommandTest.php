@@ -6,6 +6,8 @@ use PHPUnit\Framework\TestCase;
 use KVS\CLI\Command\Content\CategoryCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
+use org\bovigo\vfs\vfsStream;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
@@ -492,6 +494,50 @@ class CategoryCommandTest extends TestCase
         $this->assertStringContainsString('Category not found: 10abc', $this->tester->getDisplay());
     }
 
+    /** @return iterable<string, array{array<string, string>}> */
+    public static function invalidUpdateOutputOptions(): iterable
+    {
+        yield 'count' => [['--format' => 'count']];
+        yield 'unknown field' => [['--field' => 'missing_output_field']];
+        yield 'conflicting fields' => [['--field' => 'title', '--fields' => 'title']];
+        yield 'invalid format' => [['--format' => 'unsupported']];
+        yield 'alias without its target' => [['--field' => 'date']];
+    }
+
+    /** @param array<string, string> $options */
+    #[DataProvider('invalidUpdateOutputOptions')]
+    public function testCategoryUpdateRejectsInvalidOutputBeforeChangingData(array $options): void
+    {
+        $table = TestHelper::table('categories');
+        $before = $this->db->query("SELECT * FROM {$table} WHERE category_id = 10")->fetch();
+
+        $exitCode = $this->tester->execute(array_merge([
+            'action' => 'update',
+            'id' => '10',
+            '--title' => 'Changed Category',
+        ], $options));
+
+        $this->assertSame(1, $exitCode, $this->tester->getDisplay());
+        $this->assertSame($before, $this->db->query("SELECT * FROM {$table} WHERE category_id = 10")->fetch());
+        $this->assertStringNotContainsString('updated successfully', $this->tester->getDisplay());
+    }
+
+    public function testCategoryUpdateKeepsCalculatedDetailFieldsAvailable(): void
+    {
+        $exitCode = $this->tester->execute([
+            'action' => 'update',
+            'id' => '10',
+            '--title' => 'Changed Category',
+            '--format' => 'json',
+            '--fields' => 'title,group_id,total_usage,videos_amount,date,added_date',
+        ]);
+
+        $this->assertSame(0, $exitCode, $this->tester->getDisplay());
+        $this->assertStringContainsString('"title": "Changed Category"', $this->tester->getDisplay());
+        $this->assertStringContainsString('"videos_amount": 2', $this->tester->getDisplay());
+        $this->assertStringContainsString('"total_usage": "15"', $this->tester->getDisplay());
+    }
+
     public function testCategoryUpdateRejectsNonIntegerIdBeforeQuery(): void
     {
         $this->tester->execute([
@@ -544,6 +590,199 @@ class CategoryCommandTest extends TestCase
 
         $aliases = $this->command->getAliases();
         $this->assertContains('category', $aliases);
+    }
+
+    #[DataProvider('categoryCleanupFailures')]
+    public function testDeleteRejectsStorageFailuresBeforeDeletingCategory(string $failure): void
+    {
+        $root = vfsStream::setup('category-files');
+        $categories = vfsStream::newDirectory('categories')->at($root);
+        $directory = vfsStream::newDirectory('30')->at($categories);
+        $image = null;
+        if ($failure !== 'root directory') {
+            if ($failure === 'child directory') {
+                vfsStream::newDirectory('nested')->at($directory);
+            }
+            $image = vfsStream::newFile('image.png')->withContent('owned category image')->at($directory);
+        }
+        if ($failure === 'file' || $failure === 'child directory') {
+            $directory->chmod(0555);
+        } elseif ($failure === 'root directory') {
+            $categories->chmod(0555);
+        } else {
+            $categories->chmod(0000);
+        }
+        $tester = $this->createCategoryCleanupTester($categories->url());
+
+        $exitCode = $tester->execute(['action' => 'delete', 'id' => '30']);
+
+        $output = preg_replace('/\s+/', ' ', $tester->getDisplay());
+        $this->assertSame(1, $exitCode, $tester->getDisplay());
+        $this->assertStringContainsString('Failed to delete category', $output);
+        $this->assertStringContainsString($failure === 'ancestor' ? 'Cannot inspect' : 'Could not remove', $output);
+        $this->assertStringNotContainsString('deleted successfully', $output);
+        $this->assertSame(1, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE category_id = 30'
+        )->fetchColumn());
+        $this->assertSame(30, (int) $this->db->query(
+            'SELECT favourite_category_id FROM ' . TestHelper::table('users') . ' WHERE user_id = 1'
+        )->fetchColumn());
+        $this->assertTrue($categories->hasChild('30'));
+        if ($image !== null) {
+            $this->assertSame('owned category image', $image->getContent());
+            $this->assertTrue($directory->hasChild('image.png'));
+        }
+        if ($failure === 'child directory') {
+            $this->assertTrue($directory->hasChild('nested'));
+        }
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function categoryCleanupFailures(): iterable
+    {
+        foreach (['file', 'child directory', 'root directory', 'ancestor'] as $failure) {
+            yield $failure => [$failure];
+        }
+    }
+
+    #[DataProvider('categoryCleanupSuccesses')]
+    public function testDeleteRemovesOwnedFilesAndReferencesWhilePreservingOtherCategories(string $state): void
+    {
+        $root = vfsStream::setup('category-files');
+        $categories = vfsStream::newDirectory('categories')->at($root);
+        $sentinel = vfsStream::newDirectory('20')->at($categories);
+        vfsStream::newFile('sentinel.bin')->withContent('preserve other category')->at($sentinel);
+        if ($state !== 'absent') {
+            $directory = vfsStream::newDirectory('30')->at($categories);
+            if ($state === 'files') {
+                $nested = vfsStream::newDirectory('nested')->at($directory);
+                vfsStream::newFile('image.png')->withContent('owned category image')->at($nested);
+            }
+        }
+        $tester = $this->createCategoryCleanupTester($categories->url());
+
+        $exitCode = $tester->execute(['action' => 'delete', 'id' => '30']);
+
+        $this->assertSame(0, $exitCode, $tester->getDisplay());
+        $this->assertFalse($categories->hasChild('30'));
+        $this->assertSame('preserve other category', file_get_contents($sentinel->url() . '/sentinel.bin'));
+        $this->assertSame(0, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE category_id = 30'
+        )->fetchColumn());
+        $this->assertSame(1, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE category_id = 20'
+        )->fetchColumn());
+        $this->assertSame([0, 20], array_map('intval', $this->db->query(
+            'SELECT favourite_category_id FROM ' . TestHelper::table('users') . ' ORDER BY user_id'
+        )->fetchAll(PDO::FETCH_COLUMN)));
+        $this->assertSame([0, 20], array_map('intval', $this->db->query(
+            'SELECT category_id FROM ' . TestHelper::table('stats_referers_list') . ' ORDER BY referer_id'
+        )->fetchAll(PDO::FETCH_COLUMN)));
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function categoryCleanupSuccesses(): iterable
+    {
+        foreach (['absent', 'empty', 'files'] as $state) {
+            yield $state => [$state];
+        }
+    }
+
+    public function testDeleteStillReportsDatabaseFailureAfterFilesWereRemoved(): void
+    {
+        $root = vfsStream::setup('category-files');
+        $categories = vfsStream::newDirectory('categories')->at($root);
+        $directory = vfsStream::newDirectory('30')->at($categories);
+        vfsStream::newFile('image.png')->withContent('owned category image')->at($directory);
+        $tester = $this->createCategoryCleanupTester($categories->url());
+        $this->db->exec('CREATE TRIGGER category_delete_refusal BEFORE DELETE ON '
+            . TestHelper::table('categories') . " WHEN OLD.category_id = 30 BEGIN "
+            . "SELECT RAISE(ABORT, 'synthetic category delete refusal'); END");
+
+        $exitCode = $tester->execute(['action' => 'delete', 'id' => '30']);
+
+        $this->assertSame(1, $exitCode, $tester->getDisplay());
+        $output = preg_replace('/\s+/', ' ', $tester->getDisplay());
+        $this->assertStringContainsString('synthetic category delete refusal', $output);
+        $this->assertStringNotContainsString('deleted successfully', $output);
+        $this->assertFalse($categories->hasChild('30'));
+        $this->assertSame(1, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE category_id = 30'
+        )->fetchColumn());
+        $this->assertSame(30, (int) $this->db->query(
+            'SELECT favourite_category_id FROM ' . TestHelper::table('users') . ' WHERE user_id = 1'
+        )->fetchColumn());
+    }
+
+    #[DataProvider('categoryStorageLinks')]
+    public function testDeleteRemovesStorageLinksWhilePreservingTheirTargets(string $targetType, bool $nested): void
+    {
+        $categories = $this->kvsPath . '/contents/categories';
+        $directory = $categories . '/30';
+        $target = $this->kvsPath . '/linked-storage';
+        $content = 'Unselected storage must remain unchanged';
+        if ($targetType === 'directory') {
+            mkdir($target);
+            file_put_contents($target . '/sentinel.bin', $content);
+        } elseif ($targetType === 'file') {
+            file_put_contents($target, $content);
+        }
+        if ($nested) {
+            mkdir($directory);
+        }
+        $link = $nested ? $directory . '/linked-item' : $directory;
+        symlink($target, $link);
+        $tester = $this->createCategoryCleanupTester($categories);
+
+        $exitCode = $tester->execute(['action' => 'delete', 'id' => '30']);
+
+        if ($targetType !== 'missing') {
+            $sentinel = $targetType === 'directory' ? $target . '/sentinel.bin' : $target;
+            $this->assertFileExists($sentinel);
+            $this->assertSame($content, file_get_contents($sentinel));
+        } else {
+            $this->assertFileDoesNotExist($target);
+        }
+        $this->assertSame(0, $exitCode, $tester->getDisplay());
+        $this->assertFalse(is_link($link));
+        $this->assertDirectoryDoesNotExist($directory);
+        $this->assertSame(0, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE category_id = 30'
+        )->fetchColumn());
+        $this->assertSame(1, (int) $this->db->query(
+            'SELECT COUNT(*) FROM ' . TestHelper::table('categories') . ' WHERE category_id = 20'
+        )->fetchColumn());
+        $this->assertSame([0, 20], array_map('intval', $this->db->query(
+            'SELECT favourite_category_id FROM ' . TestHelper::table('users') . ' ORDER BY user_id'
+        )->fetchAll(PDO::FETCH_COLUMN)));
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function categoryStorageLinks(): iterable
+    {
+        foreach (['directory', 'file', 'missing'] as $type) {
+            yield 'category link to ' . $type => [$type, false];
+            yield 'nested link to ' . $type => [$type, true];
+        }
+    }
+
+    private function createCategoryCleanupTester(string $categoriesPath): CommandTester
+    {
+        $this->config = $this->getMockBuilder(Configuration::class)
+            ->setConstructorArgs([['path' => $this->kvsPath, 'disable_db_env_overrides' => true]])
+            ->onlyMethods(['getCategoriesPath'])
+            ->getMock();
+        $this->config->method('getCategoriesPath')->willReturn($categoriesPath);
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('users')
+            . ' (user_id INTEGER, favourite_category_id INTEGER)');
+        $this->db->exec('INSERT INTO ' . TestHelper::table('users') . ' VALUES (1, 30), (2, 20)');
+        $this->db->exec('CREATE TABLE ' . TestHelper::table('stats_referers_list')
+            . ' (referer_id INTEGER, category_id INTEGER)');
+        $this->db->exec('INSERT INTO ' . TestHelper::table('stats_referers_list') . ' VALUES (1, 30), (2, 20)');
+
+        $command = $this->createCommand($this->db);
+        (new Application())->add($command);
+        return new CommandTester($command);
     }
 
     private function createDatabase(): PDO

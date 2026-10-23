@@ -447,7 +447,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $info = $this->buildServerInfo($server);
+            $info = $this->buildServerInfo($server, !$this->shouldUseFormattedRows($input));
             $info = array_merge($info, $this->buildConnectionInfo($server));
 
             if ($this->shouldUseFormattedRows($input)) {
@@ -542,7 +542,7 @@ HELP
      * @param array<string, mixed> $server
      * @return list<array{0: string, 1: string}>
      */
-    private function buildServerInfo(array $server): array
+    private function buildServerInfo(array $server, bool $withColor = true): array
     {
         $statusId = $this->getNumericField($server, 'status_id');
         $priority = $this->getNumericField($server, 'process_priority');
@@ -566,8 +566,8 @@ HELP
 
         $info = [
             ['Title', $title],
-            ['Status', StatusFormatter::conversion($statusId)],
-            ['Priority', StatusFormatter::conversionPriority($priority)],
+            ['Status', StatusFormatter::conversion($statusId, $withColor)],
+            ['Priority', StatusFormatter::conversionPriority($priority, $withColor)],
             ['Connection', $connTypeStr],
             ['Max Tasks', (string) $maxTasks],
             ['Tasks Pending', (string) $tasksPending],
@@ -580,7 +580,7 @@ HELP
         ];
 
         if ($isDebug) {
-            $info[] = ['Debug', '<fg=yellow>Enabled</>'];
+            $info[] = ['Debug', $withColor ? '<fg=yellow>Enabled</>' : 'Enabled'];
         }
 
         $addedTimestamp = $addedDate !== '' ? strtotime($addedDate) : false;
@@ -833,7 +833,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $content = file_get_contents($logFile);
+            $content = is_file($logFile) ? file_get_contents($logFile) : false;
             if ($content === false) {
                 if ($this->shouldUseFormattedRows($input)) {
                     $status = $this->displayConversionFileRows($input, [[
@@ -961,7 +961,7 @@ HELP
                 return self::FAILURE;
             }
 
-            $content = file_get_contents($configFile);
+            $content = is_file($configFile) ? file_get_contents($configFile) : false;
             if ($content === false) {
                 if ($this->shouldUseFormattedRows($input)) {
                     $status = $this->displayConversionFileRows($input, [[
@@ -1079,11 +1079,7 @@ HELP
             StatusFormatter::CONVERSION_ACTIVE,
             'system:conversion'
         );
-        if ($result === self::SUCCESS) {
-            $this->syncConversionStatusNotifications();
-        }
-
-        return $result;
+        return $this->finishStatusUpdate($result);
     }
 
     private function disableServer(?string $id, InputInterface $input): int
@@ -1102,11 +1098,22 @@ HELP
             StatusFormatter::CONVERSION_DISABLED,
             'system:conversion'
         );
-        if ($result === self::SUCCESS) {
-            $this->syncConversionStatusNotifications();
+        return $this->finishStatusUpdate($result);
+    }
+
+    private function finishStatusUpdate(int $result): int
+    {
+        if ($result !== self::SUCCESS) {
+            return $result;
         }
 
-        return $result;
+        try {
+            $this->syncConversionStatusNotifications();
+            return self::SUCCESS;
+        } catch (\PDOException $error) {
+            $this->io()->error('Server status changed, but notification synchronization failed: ' . $error->getMessage());
+            return self::FAILURE;
+        }
     }
 
     private function toggleDebug(?string $id, bool $enable, InputInterface $input): int
@@ -1184,8 +1191,10 @@ HELP
             $debugEnabled = (int) $stmt->fetchColumn();
 
             $this->syncAdminNotification($db, self::DEBUG_NOTIFICATION_ID, $debugEnabled);
-        } catch (\PDOException) {
-            // Minimal or legacy installs may not have the shared notifications table.
+        } catch (\PDOException $error) {
+            if (!$this->isMissingNotificationTable($error)) {
+                throw $error;
+            }
         }
     }
 
@@ -1213,8 +1222,10 @@ HELP
 
             $this->syncAdminNotification($db, self::VALIDATION_NOTIFICATION_ID, $validationErrors);
             $this->syncAdminNotification($db, self::EMPTY_NOTIFICATION_ID, $activeServers === 0 ? 1 : 0);
-        } catch (\PDOException) {
-            // Minimal or legacy installs may not have the shared notifications table.
+        } catch (\PDOException $error) {
+            if (!$this->isMissingNotificationTable($error)) {
+                throw $error;
+            }
         }
     }
 
@@ -1251,9 +1262,16 @@ HELP
     private function removeConversionDebugLog(int $serverId): void
     {
         $debugLog = $this->config->getKvsPath() . '/admin/logs/debug_conversion_server_' . $serverId . '.txt';
-        if (is_file($debugLog)) {
-            @unlink($debugLog);
+        if (is_file($debugLog) && !@unlink($debugLog)) {
+            throw new \RuntimeException("Cannot remove conversion debug log: $debugLog");
         }
+    }
+
+    private function isMissingNotificationTable(\PDOException $error): bool
+    {
+        $table = $this->multiTable('admin_notifications');
+        return ($error->getCode() === '42S02' && str_contains($error->getMessage(), $table))
+            || str_contains($error->getMessage(), 'no such table: ' . $table);
     }
 
     private function showStats(InputInterface $input): int

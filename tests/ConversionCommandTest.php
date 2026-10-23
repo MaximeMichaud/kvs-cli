@@ -3,6 +3,7 @@
 namespace KVS\CLI\Tests;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use KVS\CLI\Command\System\ConversionCommand;
 use KVS\CLI\Config\Configuration;
 use PDO;
@@ -804,6 +805,102 @@ class ConversionCommandTest extends TestCase
         $this->assertStringNotContainsString('/old/kvs/root', $output);
     }
 
+    #[DataProvider('conversionDirectoryProvider')]
+    public function testConversionFileDiagnosticsRejectDirectories(string $action, string $format): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-directory';
+        $filename = $action === 'log' ? 'log.txt' : 'config.properties';
+        mkdir($serverPath . '/' . $filename, 0755, true);
+        $this->insertLocalConversionServer(56, 'Directory Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => $action,
+            'id' => '56',
+            '--format' => $format,
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $output);
+        $this->assertStringContainsString("Cannot read $action file", $output);
+        if ($format === 'json') {
+            $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertTrue($rows[0]['exists']);
+            $this->assertFalse($rows[0]['readable']);
+            $this->assertNull($rows[0]['content']);
+        }
+    }
+
+    /** @return iterable<string, array{string, string}> */
+    public static function conversionDirectoryProvider(): iterable
+    {
+        foreach (['log', 'config'] as $action) {
+            foreach (['table', 'json'] as $format) {
+                yield "$action $format" => [$action, $format];
+            }
+        }
+    }
+
+    #[DataProvider('conversionRegularFileProvider')]
+    public function testConversionFileDiagnosticsAcceptEmptyFilesAndSymlinks(string $action, bool $symlink): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-regular-file';
+        $filename = $action === 'log' ? 'log.txt' : 'config.properties';
+        mkdir($serverPath, 0755, true);
+        $content = $symlink ? "Synthetic conversion data\n" : '';
+        if ($symlink) {
+            file_put_contents($serverPath . '/target', $content);
+            symlink($serverPath . '/target', $serverPath . '/' . $filename);
+        } else {
+            file_put_contents($serverPath . '/' . $filename, $content);
+        }
+        $this->insertLocalConversionServer(56, 'Regular File Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => $action,
+            'id' => '56',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertTrue($rows[0]['exists']);
+        $this->assertTrue($rows[0]['readable']);
+        $this->assertSame($content, $rows[0]['content']);
+    }
+
+    /** @return iterable<string, array{string, bool}> */
+    public static function conversionRegularFileProvider(): iterable
+    {
+        foreach (['log', 'config'] as $action) {
+            yield "$action empty file" => [$action, false];
+            yield "$action symlink" => [$action, true];
+        }
+    }
+
+    public function testConversionLogUsesCronLogWhenLogPathIsDirectory(): void
+    {
+        $serverPath = $this->kvsPath . '/conversion-fallback-log';
+        mkdir($serverPath . '/log.txt', 0755, true);
+        file_put_contents($serverPath . '/cron_log.txt', "Synthetic fallback log\n");
+        $this->insertLocalConversionServer(56, 'Fallback Log Converter', $serverPath);
+
+        $this->tester->execute([
+            '--force' => true,
+            'action' => 'log',
+            'id' => '56',
+            '--format' => 'json',
+        ]);
+
+        $output = $this->tester->getDisplay();
+        $rows = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(0, $this->tester->getStatusCode(), $output);
+        $this->assertSame($serverPath . '/cron_log.txt', $rows[0]['file']);
+        $this->assertSame("Synthetic fallback log\n", $rows[0]['content']);
+    }
+
     public function testConversionLogRejectsUnknownFieldsWithFailureStatus(): void
     {
         $conversionPath = $this->kvsPath . '/conversion-server-log-fields';
@@ -909,6 +1006,134 @@ class ConversionCommandTest extends TestCase
         $this->assertIsArray($row);
         $this->assertSame(1, (int) $row['objects']);
         $this->assertSame('[]', $row['details']);
+    }
+
+    public function testConversionDebugOffReportsFailedLogRemovalAndCanBeRetried(): void
+    {
+        $directory = $this->kvsPath . '/admin/logs';
+        self::assertTrue(is_dir($directory) || mkdir($directory, 0777, true));
+        $path = $directory . '/debug_conversion_server_3.txt';
+        file_put_contents($path, 'Preserve this debug log');
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+
+        try {
+            foreach ([1, 2] as $attempt) {
+                $tester = new CommandTester($this->command);
+                $tester->execute(['--force' => true, 'action' => 'debug-off', 'id' => '3']);
+                $this->assertSame(1, $tester->getStatusCode(), "Attempt $attempt: " . $tester->getDisplay());
+                $this->assertSame('Preserve this debug log', file_get_contents($path));
+                $this->assertStringContainsString('Cannot remove conversion debug log', $tester->getDisplay());
+                $this->assertStringNotContainsString('Debug is already disabled', $tester->getDisplay());
+                $this->assertStringNotContainsString('[OK]', $tester->getDisplay());
+            }
+        } finally {
+            chmod($directory, 0755);
+        }
+
+        $tester = new CommandTester($this->command);
+        $tester->execute(['--force' => true, 'action' => 'debug-off', 'id' => '3']);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertFileDoesNotExist($path);
+    }
+
+    /** @return array<string, array{string, bool}> */
+    public static function rejectedConversionNotifications(): array
+    {
+        return [
+            'insert' => ['INSERT', false],
+            'update' => ['UPDATE', true],
+            'delete' => ['DELETE', true],
+        ];
+    }
+
+    /** @dataProvider rejectedConversionNotifications */
+    public function testConversionDebugReportsNotificationWriteFailures(string $operation, bool $existing): void
+    {
+        $this->createAdminNotificationsTable();
+        $servers = TestHelper::table('admin_conversion_servers');
+        $notifications = TestHelper::table('admin_notifications');
+        $this->db->exec("UPDATE $servers SET is_debug_enabled = 0");
+        if ($existing) {
+            $this->db->exec("UPDATE $servers SET is_debug_enabled = 1 WHERE server_id = 3");
+            $this->db->exec(
+                "INSERT INTO $notifications (notification_id, objects, details) " .
+                "VALUES ('settings.conversion_servers.debug', 1, '[]')"
+            );
+        }
+        $before = $this->db->query("SELECT * FROM $notifications")->fetchAll();
+        $this->db->exec(
+            "CREATE TRIGGER reject_conversion_notification BEFORE $operation ON $notifications " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic conversion notification rejection'); END"
+        );
+
+        $this->tester->execute([
+            '--force' => true, 'action' => $operation === 'DELETE' ? 'debug-off' : 'debug-on', 'id' => '3',
+        ]);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $this->assertStringContainsString('Synthetic conversion notification rejection', $display);
+        $this->assertStringNotContainsString('[OK]', $display);
+        $this->assertSame($before, $this->db->query("SELECT * FROM $notifications")->fetchAll());
+        $this->assertSame(
+            $operation === 'DELETE' ? 0 : 1,
+            (int) $this->db->query("SELECT is_debug_enabled FROM $servers WHERE server_id = 3")->fetchColumn()
+        );
+    }
+
+    public function testConversionDebugAllowsAnAbsentLegacyNotificationTable(): void
+    {
+        foreach (['debug-on', 'debug-off'] as $action) {
+            $tester = new CommandTester($this->command);
+            $tester->execute(['--force' => true, 'action' => $action, 'id' => '1']);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame(
+                $action === 'debug-on' ? 1 : 0,
+                (int) $this->db->query(
+                    'SELECT is_debug_enabled FROM ' . TestHelper::table('admin_conversion_servers') . ' WHERE server_id=1'
+                )->fetchColumn()
+            );
+        }
+    }
+
+    /** @return array<string, array{string, int}> */
+    public static function conversionStatusNotificationFailures(): array
+    {
+        return ['enable' => ['enable', 1], 'disable' => ['disable', 0]];
+    }
+
+    /** @dataProvider conversionStatusNotificationFailures */
+    public function testConversionStatusReportsFailedNotificationSynchronization(string $action, int $target): void
+    {
+        $this->createAdminNotificationsTable();
+        $servers = TestHelper::table('admin_conversion_servers');
+        $notifications = TestHelper::table('admin_notifications');
+        $this->db->exec("UPDATE $servers SET status_id = 0");
+        $this->db->exec('UPDATE ' . $servers . ' SET status_id = ' . (1 - $target) . ' WHERE server_id = 1');
+        $this->db->exec(
+            "INSERT INTO $notifications (notification_id, objects, details) " .
+            "VALUES ('settings.conversion_servers.validation', 1, '[]')"
+        );
+        $this->db->exec(
+            "CREATE TRIGGER reject_conversion_status_notification BEFORE DELETE ON $notifications " .
+            "BEGIN SELECT RAISE(ABORT, 'Synthetic status notification rejection'); END"
+        );
+
+        $this->tester->execute(['--force' => true, 'action' => $action, 'id' => '1']);
+
+        $display = $this->tester->getDisplay();
+        $this->assertSame(1, $this->tester->getStatusCode(), $display);
+        $normalized = preg_replace('/\s+/', ' ', $display) ?? $display;
+        $this->assertStringContainsString('Synthetic status notification rejection', $normalized);
+        $this->assertSame(
+            $target,
+            (int) $this->db->query("SELECT status_id FROM $servers WHERE server_id = 1")->fetchColumn()
+        );
     }
 
     public function testConversionDebugOffUpdatesKvsDebugNotification(): void
@@ -1287,5 +1512,47 @@ class ConversionCommandTest extends TestCase
                 return $this->testDb;
             }
         };
+    }
+
+    public static function exportContractFormats(): iterable
+    {
+        foreach (['json', 'yaml', 'csv'] as $format) {
+            yield $format => [$format];
+        }
+    }
+
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractConversionKeepsRawValues(string $format): void
+    {
+        $payload = 'Literal <fg=red>value</>';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_conversion_servers') .
+            ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format, 'title');
+        $this->assertSame($payload, $row['title']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('exportContractFormats')]
+    public function testExportContractConversionKeepsGeneratedLabelsPlain(string $format): void
+    {
+        $payload = 'Synthetic plain value';
+        $this->db->prepare(
+            'UPDATE ' . TestHelper::table('admin_conversion_servers') .
+            ' SET title = ?, is_debug_enabled = 1 WHERE server_id = 1'
+        )->execute([$payload]);
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'show', 'id' => '1'], $format);
+        $this->assertSame('Active', $row['status']);
+        if ($format !== 'field') {
+            $this->assertSame('Medium', $row['priority']);
+            $this->assertSame('Enabled', $row['debug']);
+        }
+    }
+
+    public function testExportContractConversionListAlreadyUsesPlainGeneratedLabels(): void
+    {
+        $row = TestHelper::readCommandExportRow($this->tester, ['--force' => true, 'action' => 'list', '--limit' => '1'], 'csv', 'status,priority');
+        $this->assertSame(['status' => 'Initializing', 'priority' => 'Very Low'], $row);
     }
 }

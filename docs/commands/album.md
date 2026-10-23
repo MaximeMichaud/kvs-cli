@@ -15,14 +15,14 @@ The `album` command allows you to list, view, and delete photo album content.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `delete` (default: `list`) |
 | `id` | Conditional | Album ID, required for `show` and `delete` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `error`, `processing`, `deleting`, `deleted`) |
 | `--limit=N` | 20 | Number of results |
 | `--user=USER` | - | Filter by user ID or username |
@@ -78,7 +78,14 @@ kvs album show <id>
 
 ### delete
 
-Delete an album through KVS native cleanup.
+Queue an album for KVS native background deletion after confirmation.
+Only disabled, active, or error content can be queued. The current status is
+checked again before applying the change.
+
+The content, `background_tasks`, and `admin_audit_log` tables must use InnoDB.
+The command checks the stored task and audit entry before committing the change;
+failed queue attempts are rolled back. KVS background processing performs the
+later file, reference, and counter cleanup.
 
 ```bash
 kvs album delete <id>
@@ -92,7 +99,7 @@ first if you need to confirm the target album.
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `album_id` | `id` | Album ID |
 | `title` | - | Album title |
 | `dir` | - | Directory slug |

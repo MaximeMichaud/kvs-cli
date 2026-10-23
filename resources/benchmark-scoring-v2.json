@@ -1,0 +1,219 @@
+{
+    "version": 2,
+    "weights": {
+        "db": 0.35,
+        "cache": 0.25,
+        "cpu": 0.25,
+        "fileio": 0.15
+    },
+    "categories": {
+        "db": {
+            "user_lookup": {
+                "baseline": 5000,
+                "minimum_samples": 10
+            },
+            "insert": {
+                "baseline": 10000,
+                "minimum_samples": 100
+            },
+            "update": {
+                "baseline": 10000,
+                "minimum_samples": 100
+            }
+        },
+        "cache": {
+            "simple_set": {
+                "baseline": 30000,
+                "minimum_samples": 100
+            },
+            "simple_get": {
+                "baseline": 40000,
+                "minimum_samples": 100
+            },
+            "page_set": {
+                "baseline": 15000,
+                "minimum_samples": 50
+            },
+            "page_get": {
+                "baseline": 20000,
+                "minimum_samples": 50
+            },
+            "bulk_set": {
+                "baseline": 500,
+                "minimum_samples": 10
+            },
+            "bulk_get": {
+                "baseline": 10000,
+                "minimum_samples": 10
+            },
+            "kvs_set": {
+                "baseline": 30000,
+                "minimum_samples": 100
+            },
+            "kvs_get": {
+                "baseline": 40000,
+                "minimum_samples": 80
+            }
+        },
+        "cpu": {
+            "md5_simple": {
+                "baseline": 30000,
+                "minimum_samples": 1000
+            },
+            "md5_session": {
+                "baseline": 150000,
+                "minimum_samples": 1000
+            },
+            "md5_cache_key": {
+                "baseline": 200000,
+                "minimum_samples": 1000
+            },
+            "md5_file_1kb": {
+                "baseline": 100000,
+                "minimum_samples": 100
+            },
+            "md5_file_100kb": {
+                "baseline": 5000,
+                "minimum_samples": 50
+            },
+            "serialize_config": {
+                "baseline": 50000,
+                "minimum_samples": 1000
+            },
+            "serialize_lang": {
+                "baseline": 15000,
+                "minimum_samples": 1000
+            },
+            "json_config": {
+                "baseline": 30000,
+                "minimum_samples": 1000
+            },
+            "json_lang": {
+                "baseline": 6000,
+                "minimum_samples": 1000
+            },
+            "str_replace": {
+                "baseline": 30000,
+                "minimum_samples": 1000
+            },
+            "htmlspecialchars": {
+                "baseline": 30000,
+                "minimum_samples": 1000
+            },
+            "concat": {
+                "baseline": 50000,
+                "minimum_samples": 1000
+            },
+            "sprintf": {
+                "baseline": 70000,
+                "minimum_samples": 1000
+            },
+            "regex_routing": {
+                "baseline": 500000,
+                "minimum_samples": 1000
+            },
+            "regex_content": {
+                "baseline": 200000,
+                "minimum_samples": 1000
+            },
+            "regex_email": {
+                "baseline": 2000000,
+                "minimum_samples": 1000
+            },
+            "math_stats": {
+                "baseline": 50000,
+                "minimum_samples": 1000
+            },
+            "math_sort": {
+                "baseline": 4000,
+                "minimum_samples": 100
+            },
+            "math_percentile": {
+                "baseline": 10000,
+                "minimum_samples": 100
+            },
+            "array_map": {
+                "baseline": 35000,
+                "minimum_samples": 1000
+            },
+            "array_filter": {
+                "baseline": 30000,
+                "minimum_samples": 1000
+            },
+            "array_column": {
+                "baseline": 80000,
+                "minimum_samples": 1000
+            },
+            "array_merge": {
+                "baseline": 500000,
+                "minimum_samples": 1000
+            },
+            "usort": {
+                "baseline": 3000,
+                "minimum_samples": 100
+            }
+        },
+        "fileio": {
+            "serialize": {
+                "baseline": 1000000,
+                "minimum_samples": 100
+            },
+            "unserialize": {
+                "baseline": 500000,
+                "minimum_samples": 100
+            },
+            "lang_serialize": {
+                "baseline": 40000,
+                "minimum_samples": 100
+            },
+            "config_load": {
+                "baseline": 100000,
+                "minimum_samples": 100
+            },
+            "read_1kb": {
+                "baseline": 120000,
+                "minimum_samples": 100
+            },
+            "read_10kb": {
+                "baseline": 100000,
+                "minimum_samples": 100
+            },
+            "read_100kb": {
+                "baseline": 40000,
+                "minimum_samples": 100
+            },
+            "write_10kb": {
+                "baseline": 50000,
+                "minimum_samples": 100
+            },
+            "write_sync": {
+                "baseline": 500,
+                "minimum_samples": 50
+            },
+            "scandir": {
+                "baseline": 40000,
+                "minimum_samples": 100
+            },
+            "glob": {
+                "baseline": 25000,
+                "minimum_samples": 100
+            },
+            "stat": {
+                "baseline": 8000,
+                "minimum_samples": 100
+            },
+            "append_no_lock": {
+                "baseline": 150000,
+                "minimum_samples": 100
+            },
+            "append_lock_ex": {
+                "baseline": 130000,
+                "minimum_samples": 100
+            },
+            "append_flock": {
+                "baseline": 120000,
+                "minimum_samples": 100
+            }
+        }
+    }
+}

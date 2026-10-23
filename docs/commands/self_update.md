@@ -17,7 +17,7 @@ The `self-update` command updates KVS-CLI to the latest available version. It ch
 ## Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--stable` | Force update to latest stable release |
 | `--preview` | Include pre-release (beta) versions |
 | `--dev` | Update to latest dev build from CI |
@@ -34,7 +34,7 @@ kvs self-update --check
 
 Output:
 
-```
+```text
 Current version: 1.0.0
 Checking for updates...
 
@@ -51,7 +51,7 @@ kvs self-update
 
 Output:
 
-```
+```text
 Current version: 1.0.0
 Checking for updates...
 
@@ -91,7 +91,7 @@ kvs self-update --dev
 
 Output:
 
-```
+```text
 Current version: 1.0.0
 Fetching latest dev build from CI...
 Extracting...
@@ -130,7 +130,7 @@ kvs self-update
 
 Output:
 
-```
+```text
 Self-update only works for PHAR installations.
 If installed via git, use: git pull && composer install
 ```

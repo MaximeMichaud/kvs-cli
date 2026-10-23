@@ -717,7 +717,7 @@ HELP
                 ),
             ];
 
-            $info = $this->buildServerInfo($server);
+            $info = $this->buildServerInfo($server, !$this->shouldUseFormattedRows($input));
             $info = array_merge($info, $this->buildConnectionInfo($server));
             $info = array_merge($info, $this->buildControlInfo($server));
 
@@ -812,7 +812,7 @@ HELP
      * @param array<string, mixed> $server
      * @return list<array{0: string, 1: string}>
      */
-    private function buildServerInfo(array $server): array
+    private function buildServerInfo(array $server, bool $withColor = true): array
     {
         $statusId = $this->getNumericField($server, 'status_id');
         $streamingType = $this->getNumericField($server, 'streaming_type_id');
@@ -834,10 +834,10 @@ HELP
         $info = [
             ['Title', $title],
             ['Group', $groupTitle],
-            ['Status', StatusFormatter::server($statusId)],
+            ['Status', StatusFormatter::server($statusId, $withColor)],
             ['Content Type', $contentTypeStr],
-            ['Streaming', StatusFormatter::serverStreaming($streamingType)],
-            ['Connection', StatusFormatter::serverConnection($connType)],
+            ['Streaming', StatusFormatter::serverStreaming($streamingType, $withColor)],
+            ['Connection', StatusFormatter::serverConnection($connType, $withColor)],
             ['URLs', $urls],
             ['Total Space', $this->formatBytes($totalSpace)],
             ['Free Space', $this->formatBytes($freeSpace) . " ({$freePercent}%)"],
@@ -845,7 +845,7 @@ HELP
         ];
 
         if ($isDebug) {
-            $info[] = ['Debug', '<fg=yellow>Enabled</>'];
+            $info[] = ['Debug', $withColor ? '<fg=yellow>Enabled</>' : 'Enabled'];
         }
 
         $info[] = ['Added', $addedTimestamp !== false ? date('Y-m-d H:i:s', $addedTimestamp) : 'Unknown'];
@@ -1375,9 +1375,10 @@ HELP
             $addedDate = isset($group['added_date']) && is_string($group['added_date']) ? $group['added_date'] : '';
             $addedTimestamp = $addedDate !== '' ? strtotime($addedDate) : false;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['Title', $title],
-                ['Status', StatusFormatter::server($statusId)],
+                ['Status', StatusFormatter::server($statusId, $withColor)],
                 ['Content Type', $contentTypeStr],
                 ['Content Count', number_format($contentCount) . " {$contentTypeStr}"],
                 ['Added', $addedTimestamp !== false ? date('Y-m-d H:i:s', $addedTimestamp) : 'Unknown'],
@@ -1421,7 +1422,7 @@ HELP
                 $serverRecords[] = [
                     'server_id' => $serverId,
                     'title' => $serverTitle,
-                    'status' => $this->stripConsoleMarkup($status),
+                    'status' => StatusFormatter::server($serverStatus, false),
                     'free_space' => $freeSpaceDisplay,
                     'load' => number_format($serverLoad, 2),
                 ];
@@ -1759,7 +1760,7 @@ HELP
             $this->io()->writeln(json_encode(
                 $result,
                 Constants::JSON_FLAGS | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
-            ));
+            ), OutputInterface::OUTPUT_RAW);
             return self::SUCCESS;
         }
 
@@ -1840,7 +1841,7 @@ HELP
             $this->io()->writeln(json_encode(
                 $payload,
                 Constants::JSON_FLAGS | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
-            ));
+            ), OutputInterface::OUTPUT_RAW);
         } else {
             $this->io()->error($error->getMessage());
             if ($error->isRecoveryRequired()) {
@@ -1941,6 +1942,34 @@ HELP
                 return self::FAILURE;
             }
 
+            $publisher = $this->createStorageClusterDataPublisher();
+            $snapshot = $publisher->snapshot();
+            $this->applyStorageServerStatus($db, $serverId, $status, $server, $publisher, $snapshot);
+
+            $title = $this->getStringField($server, 'title', (string) $serverId);
+            $newStatus = $status === StatusFormatter::SERVER_ACTIVE ? 'enabled' : 'disabled';
+            $this->io()->success("Server '{$title}' {$newStatus} successfully!");
+
+            return self::SUCCESS;
+        } catch (\Exception $e) {
+            $this->io()->error('Failed to update Server status: ' . $e->getMessage());
+            return self::FAILURE;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array{bytes: string, permissions: int} $snapshot
+     */
+    private function applyStorageServerStatus(
+        \PDO $db,
+        int $serverId,
+        int $status,
+        array $server,
+        StorageClusterDataPublisher $publisher,
+        array $snapshot
+    ): void {
+        try {
             if ($status === StatusFormatter::SERVER_ACTIVE) {
                 $stmt = $db->prepare("
                     UPDATE {$this->table('admin_servers')}
@@ -1964,17 +1993,61 @@ HELP
                 $stmt->execute(['id' => $serverId]);
             }
 
-            $this->writeStorageClusterData($db);
-
-            $title = $this->getStringField($server, 'title', (string) $serverId);
-            $newStatus = $status === StatusFormatter::SERVER_ACTIVE ? 'enabled' : 'disabled';
-            $this->io()->success("Server '{$title}' {$newStatus} successfully!");
-
-            return self::SUCCESS;
-        } catch (\Exception $e) {
-            $this->io()->error('Failed to update Server status: ' . $e->getMessage());
-            return self::FAILURE;
+            $this->writeStorageClusterData($db, $publisher, $snapshot);
+        } catch (\Throwable $e) {
+            $errors = $this->recoverStorageServerStatus($db, $serverId, $server, $publisher, $snapshot);
+            $message = $e->getMessage();
+            if ($errors !== []) {
+                $message .= '; ' . implode('; ', $errors);
+            }
+            throw new \RuntimeException($message, 0, $e);
         }
+    }
+
+    /**
+     * @param array<string, mixed> $server
+     * @param array{bytes: string, permissions: int} $snapshot
+     * @return list<string>
+     */
+    private function recoverStorageServerStatus(
+        \PDO $db,
+        int $serverId,
+        array $server,
+        StorageClusterDataPublisher $publisher,
+        array $snapshot
+    ): array {
+        $errors = [];
+        $previous = array_intersect_key($server, array_flip([
+            'status_id', 'error_iteration', 'error_streaming_iteration',
+        ]));
+        try {
+            $current = $this->fetchStorageServerForMutation($db, $serverId);
+            if ($current === null || array_intersect_key($current, $previous) !== $previous) {
+                $stmt = $db->prepare(
+                    "UPDATE {$this->table('admin_servers')} SET status_id = :status_id, "
+                    . 'error_iteration = :error_iteration, error_streaming_iteration = :error_streaming_iteration '
+                    . 'WHERE server_id = :id'
+                );
+                $stmt->execute([...$previous, 'id' => $serverId]);
+            }
+            $restored = $this->fetchStorageServerForMutation($db, $serverId);
+            if ($restored === null || array_intersect_key($restored, $previous) !== $previous) {
+                throw new \RuntimeException('The previous database values could not be verified');
+            }
+        } catch (\Throwable $e) {
+            $errors[] = 'Could not restore storage server status: ' . $e->getMessage();
+        }
+        try {
+            if ($publisher->readBytes() !== $snapshot['bytes']) {
+                $publisher->restore($snapshot);
+            }
+            if ($publisher->readBytes() !== $snapshot['bytes']) {
+                throw new \RuntimeException('The previous file bytes could not be verified');
+            }
+        } catch (\Throwable $e) {
+            $errors[] = 'Could not restore storage cluster data: ' . $e->getMessage();
+        }
+        return $errors;
     }
 
     /**
@@ -2053,10 +2126,12 @@ HELP
         }
     }
 
-    private function writeStorageClusterData(\PDO $db): void
-    {
-        $publisher = $this->createStorageClusterDataPublisher();
-        $snapshot = $publisher->snapshot();
+    /** @param array{bytes: string, permissions: int} $snapshot */
+    private function writeStorageClusterData(
+        \PDO $db,
+        StorageClusterDataPublisher $publisher,
+        array $snapshot
+    ): void {
         try {
             $fields = $publisher->fieldsFromSerializedRows($snapshot['bytes']);
         } catch (\RuntimeException) {

@@ -15,14 +15,14 @@ The `content:playlist` command allows you to list, view, create, modify, and del
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `show`, `create`, `add`, `remove`, `delete` (default: `list`) |
 | `id` | Conditional | Playlist ID, or playlist title for `create` |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--status=STATUS` | - | Filter by status (`active`, `disabled`, `inactive`) |
 | `--user=USER` | - | Filter by user ID or username; `create` requires a numeric user ID |
 | `--public` | - | Show only public playlists; create a public playlist |
@@ -108,7 +108,7 @@ The `create`, `add`, `remove`, and `delete` actions modify playlist data. Run
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `playlist_id` | `id` | Playlist ID |
 | `title` | - | Playlist title |
 | `dir` | - | Playlist directory slug |
@@ -151,7 +151,7 @@ The `--field-filter` option accepts these KVS admin-style values:
 ## Status Values
 
 | Value | Status | Description |
-|-------|--------|-------------|
+| ------- | -------- | ------------- |
 | 0 | Disabled | Playlist is inactive |
 | 1 | Active | Playlist is visible |
 
@@ -264,7 +264,7 @@ kvs playlist list --no-truncate
 
 ### List
 
-```
+```text
 Playlists
 =========
 
@@ -277,7 +277,7 @@ Playlists
 
 ### Show
 
-```
+```text
 Playlist #1
 ===========
 

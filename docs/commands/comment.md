@@ -16,14 +16,14 @@ statistics about comments across KVS object types.
 ## Arguments
 
 | Argument | Required | Description |
-|----------|----------|-------------|
+| ---------- | ---------- | ------------- |
 | `action` | No | Action: `list`, `pending`, `show`, `approve`, `reject`, `delete`, `stats` (default: `list`) |
 | `id` | Conditional | Comment ID or comma-separated comment IDs |
 
 ## Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| -------- | --------- | ------------- |
 | `--video=ID` | - | Filter by video ID |
 | `--album=ID` | - | Filter by album ID |
 | `--content-source=ID` | - | Filter by content source ID |
@@ -112,7 +112,7 @@ delete comment data. `reject` and `delete` are equivalent.
 The `--object-type` option accepts IDs and aliases:
 
 | Alias | KVS ID |
-|-------|--------|
+| ------- | -------- |
 | `video` | 1 |
 | `album` | 2 |
 | `content-source`, `content_source`, `source` | 3 |
@@ -124,7 +124,7 @@ The `--object-type` option accepts IDs and aliases:
 ## Available Fields
 
 | Field | Aliases | Description |
-|-------|---------|-------------|
+| ------- | --------- | ------------- |
 | `comment_id` | `id` | Comment ID |
 | `username` | `user` | Comment author |
 | `user_status_id` | - | Numeric user status ID |

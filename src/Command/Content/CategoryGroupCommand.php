@@ -6,6 +6,7 @@ use KVS\CLI\Command\BaseCommand;
 use KVS\CLI\Command\Traits\ToggleStatusTrait;
 use KVS\CLI\Constants;
 use KVS\CLI\Output\StatusFormatter;
+use KVS\CLI\Service\UploadedFileBatch;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputArgument;
@@ -386,11 +387,12 @@ HELP
             $addedDate = $group['added_date'] ?? null;
             $categoriesAmount = $group['categories_amount'] ?? 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['ID', $this->stringValue($group['category_group_id'] ?? '0')],
                 ['Title', $groupTitle],
                 ['Dir', $this->stringValue($group['dir'] ?? '')],
-                ['Status', StatusFormatter::categoryGroup($statusId)],
+                ['Status', StatusFormatter::categoryGroup($statusId, $withColor)],
                 ['External ID', $externalId !== '' ? $externalId : 'None'],
                 ['Sort', $this->stringValue($group['sort_id'] ?? '0')],
                 ['Categories', is_scalar($categoriesAmount) ? (string) $categoriesAmount : '0'],
@@ -504,7 +506,7 @@ HELP
             $table = $this->table('categories_groups');
             $dir = $this->resolveUniqueDir($db, $dir, null);
             $groupId = 0;
-            $createdFiles = [];
+            $fileBatch = new UploadedFileBatch();
 
             $db->beginTransaction();
             $this->relaxSqlMode($db);
@@ -539,7 +541,7 @@ HELP
                 ]);
 
                 $groupId = (int) $db->lastInsertId();
-                $createdFiles = $this->installScreenshotUploads($groupId, [$screenshot1, $screenshot2]);
+                $this->installScreenshotUploads($groupId, [$screenshot1, $screenshot2], $fileBatch);
                 $this->writeAdminAuditLog($db, 100, $groupId, Constants::OBJECT_TYPE_CATEGORY_GROUP);
                 $this->restoreSqlMode($db);
                 $db->commit();
@@ -548,11 +550,26 @@ HELP
                 if ($db->inTransaction()) {
                     $db->rollBack();
                 }
-                $this->removeFiles($createdFiles);
+                $fileFailures = $fileBatch->rollback();
                 if ($groupId > 0) {
                     $this->removeEmptyGroupDirectory($groupId);
                 }
+                if ($fileFailures !== []) {
+                    throw new \RuntimeException(
+                        $mutationError->getMessage() . '; upload rollback failed: ' . implode('; ', $fileFailures),
+                        0,
+                        $mutationError
+                    );
+                }
                 throw $mutationError;
+            }
+
+            try {
+                $fileBatch->commit();
+            } catch (\Throwable $cleanupError) {
+                $this->io()->warning(
+                    'Category group created, but upload backup cleanup failed: ' . $cleanupError->getMessage()
+                );
             }
 
             $this->io()->success('Category group created successfully!');
@@ -702,10 +719,17 @@ HELP
                 return self::FAILURE;
             }
 
+            $detailFields = ['id', 'title', 'dir', 'status', 'external_id', 'sort', 'categories', 'added'];
+            $extraFields = $this->getRequestedCategoryGroupDetailFields($input, $group);
+            if (!$this->validateDetailOutputOptions($input, 'update', array_merge($detailFields, array_keys($extraFields)))) {
+                return self::FAILURE;
+            }
+
             $updates = [];
             $params = ['id' => $groupId];
             $changedFields = [];
             $newFiles = [];
+            $fileBatch = new UploadedFileBatch();
             $oldFilesToRemove = [];
 
             if (!$this->collectScalarUpdates($db, $input, $group, $groupId, $updates, $params, $changedFields)) {
@@ -737,7 +761,7 @@ HELP
 
             $db->beginTransaction();
             try {
-                $newFiles = $this->installScreenshotUploads($groupId, array_values($screenshotUploads));
+                $newFiles = $this->installScreenshotUploads($groupId, array_values($screenshotUploads), $fileBatch);
                 $sql = "UPDATE {$this->table('categories_groups')} SET " . implode(', ', $updates) . " WHERE category_group_id = :id";
                 $stmt = $db->prepare($sql);
                 $stmt->execute($params);
@@ -753,11 +777,19 @@ HELP
                 if ($db->inTransaction()) {
                     $db->rollBack();
                 }
-                $this->removeFiles($newFiles);
+                $fileFailures = $fileBatch->rollback();
+                if ($fileFailures !== []) {
+                    throw new \RuntimeException(
+                        $mutationError->getMessage() . '; upload rollback failed: ' . implode('; ', $fileFailures),
+                        0,
+                        $mutationError
+                    );
+                }
                 throw $mutationError;
             }
 
             try {
+                $fileBatch->commit();
                 $this->removeFiles(array_values(array_diff(array_unique($oldFilesToRemove), $newFiles)));
             } catch (\Throwable $cleanupError) {
                 $this->io()->warning('Category group updated, but old screenshot cleanup failed: ' . $cleanupError->getMessage());
@@ -1189,6 +1221,11 @@ HELP
             $fields[$field] = $group[$field] ?? '';
         }
 
+        foreach (['screenshot1', 'screenshot2', 'custom1', 'custom2', 'custom3'] as $field) {
+            $alias = substr($field, 0, -1) . '_' . substr($field, -1);
+            $fields[$alias] = $group[$field] ?? '';
+        }
+
         return $this->getRequestedDetailFields($input, $fields);
     }
 
@@ -1487,7 +1524,7 @@ HELP
      * @param list<array{source: string, filename: string}|null> $uploads
      * @return list<string>
      */
-    private function installScreenshotUploads(int $groupId, array $uploads): array
+    private function installScreenshotUploads(int $groupId, array $uploads, UploadedFileBatch $fileBatch): array
     {
         $created = [];
         foreach ($uploads as $upload) {
@@ -1497,9 +1534,7 @@ HELP
 
             $target = $this->getGroupFilePath($groupId, $upload['filename']);
             $this->ensureDirectory(dirname($target));
-            if (!@copy($upload['source'], $target)) {
-                throw new \RuntimeException(sprintf('Could not copy screenshot to %s', $target));
-            }
+            $fileBatch->copy($upload['source'], $target);
             @chmod($target, 0666);
             $created[] = $target;
         }

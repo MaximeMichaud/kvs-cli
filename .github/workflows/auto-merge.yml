@@ -36,7 +36,7 @@ jobs:
             "Build PHAR"
           ]'
 
-          for i in $(seq 1 90); do
+          for ((attempt = 0; attempt < 90; attempt++)); do
             CHECKS=$(gh pr checks "${{ github.event.pull_request.number }}" \
               --repo "${{ github.repository }}" \
               --json name,bucket,workflow 2>/tmp/pr-checks.err || true)

@@ -53,6 +53,10 @@ class BenchmarkResult
 
     private string $tag = '';
 
+    public const SCORING_VERSION = 2;
+
+    private int $scoringVersion = self::SCORING_VERSION;
+
     /**
      * Record HTTP benchmark result
      *
@@ -335,7 +339,7 @@ class BenchmarkResult
      * that don't depend on data volume. Queries like video_listing, search, etc.
      * are shown for info but excluded from score - they vary by data size.
      */
-    private const BASELINE = [
+    private const LEGACY_BASELINE = [
         // Database baselines - ONLY synthetic operations (data-independent)
         // video_listing, search, stats_aggregation excluded - they depend on data volume
         'db' => [
@@ -401,11 +405,79 @@ class BenchmarkResult
         ],
     ];
 
+    // Versioned reference rates, not a measurement of a particular server model.
+    // Durable writes use a 2 ms reference (500 ops/s), rather than buffered-write throughput.
+    private const BASELINE = [
+        // Database baselines - ONLY synthetic operations (data-independent)
+        // video_listing, search, stats_aggregation excluded - they depend on data volume
+        'db' => [
+            'user_lookup' => 5000.0,       // Indexed lookup - O(1)
+            'insert' => 10000.0,           // Synthetic INSERT
+            'update' => 10000.0,           // Synthetic UPDATE
+        ],
+        // Cache baselines (ops/sec - higher = better)
+        'cache' => [
+            'simple_set' => 30000.0,
+            'simple_get' => 40000.0,
+            'page_set' => 15000.0,
+            'page_get' => 20000.0,
+            'bulk_set' => 500.0,
+            'bulk_get' => 10000.0,
+            'kvs_set' => 30000.0,
+            'kvs_get' => 40000.0,
+        ],
+        // CPU baselines (ops/sec - higher = better)
+        'cpu' => [
+            'md5_simple' => 30000.0,
+            'md5_session' => 150000.0,
+            'md5_cache_key' => 200000.0,
+            'md5_file_1kb' => 100000.0,
+            'md5_file_100kb' => 5000.0,
+            'serialize_config' => 50000.0,
+            'serialize_lang' => 15000.0,
+            'json_config' => 30000.0,
+            'json_lang' => 6000.0,
+            'str_replace' => 30000.0,
+            'htmlspecialchars' => 30000.0,
+            'concat' => 50000.0,
+            'sprintf' => 70000.0,
+            'regex_routing' => 500000.0,
+            'regex_content' => 200000.0,
+            'regex_email' => 2000000.0,
+            'math_stats' => 50000.0,
+            'math_sort' => 4000.0,
+            'math_percentile' => 10000.0,
+            'array_map' => 35000.0,
+            'array_filter' => 30000.0,
+            'array_column' => 80000.0,
+            'array_merge' => 500000.0,
+            'usort' => 3000.0,
+        ],
+        // File I/O baselines (ops/sec - higher = better)
+        'fileio' => [
+            'serialize' => 1000000.0,
+            'unserialize' => 500000.0,
+            'lang_serialize' => 40000.0,
+            'config_load' => 100000.0,
+            'read_1kb' => 120000.0,
+            'read_10kb' => 100000.0,
+            'read_100kb' => 40000.0,
+            'write_10kb' => 50000.0,
+            'write_sync' => 500.0,
+            'scandir' => 40000.0,
+            'glob' => 25000.0,
+            'stat' => 8000.0,
+            'append_no_lock' => 150000.0,
+            'append_lock_ex' => 130000.0,
+            'append_flock' => 120000.0,
+        ],
+    ];
+
     /**
      * Calculate composite performance score (Geekbench-style calibration)
      *
      * Uses baseline calibration where 1000 = reference system performance.
-     * Final score = weighted geometric mean of category scores.
+     * Final score = weighted arithmetic mean of category geometric means.
      *
      * Categories and weights:
      * - Database: 35% (most important for KVS)
@@ -429,6 +501,10 @@ class BenchmarkResult
             }
         }
 
+        if ($this->scoringVersion === self::SCORING_VERSION) {
+            return (int) round($weightedSum);
+        }
+
         if ($totalWeight === 0.0) {
             return 0;
         }
@@ -444,14 +520,15 @@ class BenchmarkResult
      */
     private function calculateCategoryScore(string $category): float
     {
-        $baselines = self::BASELINE[$category] ?? [];
+        $allBaselines = $this->scoringVersion === 1 ? self::LEGACY_BASELINE : self::BASELINE;
+        $baselines = $allBaselines[$category] ?? [];
         $scores = [];
 
         switch ($category) {
             case 'db':
                 foreach ($this->dbResults as $key => $result) {
                     $baseline = $baselines[$key] ?? null;
-                    if ($baseline !== null && $result['queries_sec'] > 0) {
+                    if ($baseline !== null && is_finite($result['queries_sec']) && $result['queries_sec'] > 0) {
                         $scores[] = ($result['queries_sec'] / $baseline) * 1000;
                     }
                 }
@@ -460,7 +537,7 @@ class BenchmarkResult
             case 'cache':
                 foreach ($this->cacheResults as $key => $result) {
                     $baseline = $baselines[$key] ?? null;
-                    if ($baseline !== null && $result['ops_sec'] > 0) {
+                    if ($baseline !== null && is_finite($result['ops_sec']) && $result['ops_sec'] > 0) {
                         $scores[] = ($result['ops_sec'] / $baseline) * 1000;
                     }
                 }
@@ -469,7 +546,7 @@ class BenchmarkResult
             case 'cpu':
                 foreach ($this->cpuResults as $key => $result) {
                     $baseline = $baselines[$key] ?? null;
-                    if ($baseline !== null && $result['ops_sec'] > 0) {
+                    if ($baseline !== null && is_finite($result['ops_sec']) && $result['ops_sec'] > 0) {
                         $scores[] = ($result['ops_sec'] / $baseline) * 1000;
                     }
                 }
@@ -478,7 +555,7 @@ class BenchmarkResult
             case 'fileio':
                 foreach ($this->fileIOResults as $key => $result) {
                     $baseline = $baselines[$key] ?? null;
-                    if ($baseline !== null && $result['ops_sec'] > 0) {
+                    if ($baseline !== null && is_finite($result['ops_sec']) && $result['ops_sec'] > 0) {
                         $scores[] = ($result['ops_sec'] / $baseline) * 1000;
                     }
                 }
@@ -489,13 +566,78 @@ class BenchmarkResult
             return 0.0;
         }
 
-        // Geometric mean
-        $product = 1.0;
-        foreach ($scores as $score) {
-            $product *= $score;
+        if ($this->scoringVersion === self::SCORING_VERSION && count($scores) !== count($baselines)) {
+            return 0.0;
         }
 
-        return pow($product, 1 / count($scores));
+        // Logarithms avoid overflow when multiplying many normalized measurements.
+        return exp(array_sum(array_map('log', $scores)) / count($scores));
+    }
+
+    public function getScoringVersion(): int
+    {
+        return $this->scoringVersion;
+    }
+
+    /**
+     * @return array{version: int, complete: bool, comparable: bool, category_scores: array<string, float>,
+     *     missing_tests: list<string>, insufficient_samples: list<string>}
+     */
+    public function getScoringDetails(): array
+    {
+        $results = [
+            'db' => $this->dbResults,
+            'cache' => $this->cacheResults,
+            'cpu' => $this->cpuResults,
+            'fileio' => $this->fileIOResults,
+        ];
+        $categoryScores = [];
+        $missing = [];
+        $insufficient = [];
+        foreach (self::BASELINE as $category => $baselines) {
+            $categoryScores[$category] = round($this->calculateCategoryScore($category), 3);
+            foreach ($baselines as $key => $unused) {
+                $measurement = $results[$category][$key] ?? null;
+                $rate = $measurement[$category === 'db' ? 'queries_sec' : 'ops_sec'] ?? 0.0;
+                if (!is_finite($rate) || $rate <= 0) {
+                    $missing[] = "$category.$key";
+                    continue;
+                }
+                $samples = $measurement[$category === 'db' ? 'total_queries' : 'samples'] ?? 0;
+                if ($samples < self::minimumSamples($category, $key)) {
+                    $insufficient[] = "$category.$key";
+                }
+            }
+        }
+
+        return [
+            'version' => $this->scoringVersion,
+            'complete' => $missing === [],
+            'comparable' => $this->scoringVersion === self::SCORING_VERSION && $missing === [] && $insufficient === [],
+            'category_scores' => $categoryScores,
+            'missing_tests' => $missing,
+            'insufficient_samples' => $insufficient,
+        ];
+    }
+
+    private static function minimumSamples(string $category, string $key): int
+    {
+        return match ($category) {
+            'cpu' => match ($key) {
+                'md5_file_1kb', 'math_sort', 'math_percentile', 'usort' => 100,
+                'md5_file_100kb' => 50,
+                default => 1000,
+            },
+            'db' => $key === 'user_lookup' ? 10 : 100,
+            'cache' => match ($key) {
+                'bulk_get', 'bulk_set' => 10,
+                'page_get', 'page_set' => 50,
+                'kvs_get' => 80,
+                default => 100,
+            },
+            'fileio' => $key === 'write_sync' ? 50 : 100,
+            default => 1,
+        };
     }
 
     /**
@@ -506,7 +648,9 @@ class BenchmarkResult
         $score = $this->calculateScore();
 
         if ($score === 0) {
-            return 'N/A - No benchmarks run';
+            return $this->hasCpuResults() || $this->hasDbResults() || $this->hasCacheResults() || $this->hasFileIOResults()
+                ? 'N/A - Incomplete benchmark suite'
+                : 'N/A - No benchmarks run';
         }
 
         // Rating based on score relative to baseline (1000)
@@ -544,6 +688,7 @@ class BenchmarkResult
             'total_time' => $this->totalTime,
             'score' => $this->calculateScore(),
             'rating' => $this->getRating(),
+            'scoring' => $this->getScoringDetails(),
             'weights' => self::WEIGHTS,  // Include weights used for calculation
         ];
 
@@ -571,6 +716,10 @@ class BenchmarkResult
         self::parseFileIOResults($result, $data);
         self::parseCpuResults($result, $data);
         self::parseMetadata($result, $data);
+        $scoring = $data['scoring'] ?? null;
+        $result->scoringVersion = is_array($scoring) && ($scoring['version'] ?? null) === self::SCORING_VERSION
+            ? self::SCORING_VERSION
+            : 1;
 
         return $result;
     }
@@ -606,6 +755,8 @@ class BenchmarkResult
                 $data[$targetKey] = $source;
             }
         }
+
+        $data['scoring'] = $data['scoring'] ?? $results['scoring'] ?? null;
 
         $system = $data['system'] ?? null;
         if (!isset($data['system_info']) && is_array($system)) {

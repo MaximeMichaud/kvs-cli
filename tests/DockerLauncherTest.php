@@ -11,6 +11,7 @@ use Symfony\Component\Process\Process;
 class DockerLauncherTest extends TestCase
 {
     private string $directory;
+    private string $initialPhar;
 
     protected function setUp(): void
     {
@@ -19,18 +20,28 @@ class DockerLauncherTest extends TestCase
         mkdir($this->directory . '/site', 0700);
         mkdir($this->directory . '/other', 0700);
         mkdir($this->directory . '/runtime', 0700);
-        file_put_contents($this->directory . '/kvs.phar', <<<'PHP'
+        $this->initialPhar = <<<'PHP'
 <?php
+if (getenv('MOCK_UPDATED_PHAR') !== false && (int) getenv('MOCK_EXIT') === 0) {
+    if (getenv('KVS_CLI_DOCKER_LAUNCHER') !== '0') {
+        exit(32);
+    }
+    file_put_contents($argv[0] . '.update', getenv('MOCK_UPDATED_PHAR'));
+    rename($argv[0] . '.update', $argv[0]);
+}
 if (getenv('MOCK_SKIP_INPUT') === '1') {
     echo "KVS CLI fixture version\n";
 } else {
     echo 'stdin=' . stream_get_contents(STDIN);
 }
 exit((int) getenv('MOCK_EXIT'));
-PHP);
+PHP;
+        file_put_contents($this->directory . '/kvs.phar', $this->initialPhar);
+        copy(__DIR__ . '/../bin/kvs-docker', $this->directory . '/kvs');
+        chmod($this->directory . '/kvs', 0755);
         foreach (
             ['bash', 'dirname', 'basename', 'sh', 'cat', 'cut', 'sleep', 'mv',
-            'mkdir', 'mktemp', 'rm', 'id', 'stat', 'ln', 'sha256sum'] as $command
+            'mkdir', 'mktemp', 'rm', 'id', 'stat', 'ln', 'sha256sum', 'cmp', 'chmod', 'cp'] as $command
         ) {
             $which = new Process(['which', $command]);
             $which->mustRun();
@@ -57,6 +68,13 @@ if ($args[0] === 'inspect') {
     exit(0);
 }
 if ($args[0] === 'cp') {
+    [$source, $destination] = array_slice($args, -2);
+    if (str_contains($source, ':')) {
+        if ((int) getenv('MOCK_RETURN_CP_EXIT') !== 0) {
+            exit((int) getenv('MOCK_RETURN_CP_EXIT'));
+        }
+        exit(copy(explode(':', $source, 2)[1], $destination) ? 0 : 1);
+    }
     if ((int) getenv('MOCK_CP_EXIT') !== 0) {
         fwrite(STDERR, "Copy failed\n");
     } elseif (stream_isatty(STDOUT) && !in_array('-q', $args, true)) {
@@ -85,6 +103,14 @@ if ($args[0] === 'exec') {
     }
     if (in_array('php', $args, true)) {
         $phpArgs = array_slice($args, array_search('php', $args, true) + 1);
+        if (in_array('-r', $args, true) && str_contains($phpArgs[1], 'new Phar($argv[1])')) {
+            $launcher = getenv('MOCK_UPDATE_LAUNCHER');
+            if ($launcher === false || $launcher === '') {
+                exit(3);
+            }
+            file_put_contents(dirname($phpArgs[2]) . '/kvs-docker', $launcher);
+            exit(0);
+        }
         if (getenv('MOCK_CANCEL_PENDING') === '1') {
             $runtime = dirname($phpArgs[5]);
             rename($runtime . '/pending', $runtime . '/canceled');
@@ -524,14 +550,158 @@ PHP);
         $this->assertStringContainsString('Cannot list Docker containers', $process->getErrorOutput());
     }
 
-    public function testOldPharSelfUpdateAliasesAreBlocked(): void
+    public function testSelfUpdateAliasesPersistTheContainerUpdateOnHost(): void
     {
+        $launcher = file_get_contents($this->directory . '/kvs') . "\n# Updated fixture\n";
         foreach (['self-update', 'selfupdate', 'self:update', 'self-up', 'sel'] as $command) {
-            $process = $this->launch([$command, '--yes']);
-            $this->assertSame(1, $process->getExitCode());
-            $this->assertStringContainsString('on the host', $process->getErrorOutput());
+            file_put_contents($this->directory . '/kvs.phar', $this->initialPhar);
+            $process = $this->launch([$command, '--dev', '--yes'], [
+                'MOCK_UPDATED_PHAR' => 'updated PHAR',
+                'MOCK_UPDATE_LAUNCHER' => $launcher,
+            ]);
+            $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+            $this->assertSame('updated PHAR', file_get_contents($this->directory . '/kvs.phar'));
+            $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+            $this->assertStringContainsString('KVS_CLI_DOCKER_LAUNCHER=0', file_get_contents($this->directory . '/calls'));
+            $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
         }
-        $this->assertFileDoesNotExist($this->directory . '/calls');
+    }
+
+    public function testFailedContainerUpdateLeavesHostFilesUnchanged(): void
+    {
+        $launcher = file_get_contents($this->directory . '/kvs');
+        $process = $this->launch(['self-update', '--dev', '--yes'], ['MOCK_EXIT' => '17']);
+
+        $this->assertSame(17, $process->getExitCode());
+        $this->assertSame($this->initialPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+    }
+
+    /** @return array<string, array{bool}> */
+    public static function selfUpdateCacheStates(): array
+    {
+        return ['cold cache' => [false], 'warm cache' => [true]];
+    }
+
+    #[DataProvider('selfUpdateCacheStates')]
+    public function testSelfUpdatePreservesOldCacheAndRunsNewHostArchive(bool $warmCache): void
+    {
+        if ($warmCache) {
+            $warmup = $this->launch(['--version']);
+            $this->assertSame(0, $warmup->getExitCode(), $warmup->getErrorOutput());
+        }
+        $updatedPhar = '<?php echo "updated release";';
+        $update = $this->launch(['self-update', '--yes'], ['MOCK_UPDATED_PHAR' => $updatedPhar]);
+
+        $this->assertSame(0, $update->getExitCode(), $update->getErrorOutput());
+        $this->assertSame($updatedPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $cachedFiles = glob($this->directory . '/runtime/kvs-cli-cache-*/*.phar');
+        $this->assertCount(1, $cachedFiles);
+        $this->assertSame($this->initialPhar, file_get_contents($cachedFiles[0]));
+
+        foreach ([1, 2] as $invocation) {
+            $next = $this->launch(['--version']);
+            $this->assertSame(0, $next->getExitCode(), $next->getErrorOutput());
+            $this->assertSame('updated release', $next->getOutput(), 'Invocation ' . $invocation);
+        }
+        $uploads = array_values(array_filter($this->copyCalls(), static fn(array $call): bool =>
+            !str_contains($call[4], ':')));
+        $this->assertCount(2, $uploads, 'Each archive must be uploaded only once.');
+        $cachedFiles = glob($this->directory . '/runtime/kvs-cli-cache-*/*.phar');
+        $this->assertCount(2, $cachedFiles);
+        $cachedContents = array_map(static fn(string $path): string => file_get_contents($path), $cachedFiles);
+        $this->assertContains($this->initialPhar, $cachedContents);
+        $this->assertContains($updatedPhar, $cachedContents);
+        $this->assertSame([], glob($this->directory . '/runtime/kvs-cli.*'));
+        $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
+    }
+
+    public function testCheckModeDoesNotInstallHostFiles(): void
+    {
+        $process = $this->launch(['self-update', '--dev', '--check'], ['MOCK_RETURN_CP_EXIT' => '23']);
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertSame($this->initialPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
+    }
+
+    public function testCopyFailureLeavesHostFilesUnchangedAndCleansStaging(): void
+    {
+        $launcher = file_get_contents($this->directory . '/kvs');
+        $process = $this->launch(['self-update', '--dev', '--yes'], [
+            'MOCK_UPDATED_PHAR' => 'updated PHAR',
+            'MOCK_RETURN_CP_EXIT' => '23',
+        ]);
+
+        $this->assertSame(23, $process->getExitCode());
+        $this->assertSame($this->initialPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+        $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
+    }
+
+    public function testOlderPharWithoutBundledLauncherCanStillUpdate(): void
+    {
+        $launcher = file_get_contents($this->directory . '/kvs');
+        $process = $this->launch(['self-update', '--yes'], ['MOCK_UPDATED_PHAR' => 'updated PHAR']);
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertSame('updated PHAR', file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+    }
+
+    public function testBrokenBundledLauncherLeavesHostFilesUnchanged(): void
+    {
+        $launcher = file_get_contents($this->directory . '/kvs');
+        $process = $this->launch(['self-update', '--yes'], [
+            'MOCK_UPDATED_PHAR' => 'updated PHAR',
+            'MOCK_UPDATE_LAUNCHER' => "#!/usr/bin/env bash\nif\n",
+        ]);
+
+        $this->assertNotSame(0, $process->getExitCode());
+        $this->assertSame($this->initialPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+        $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
+    }
+
+    public function testCancelledUpdateDoesNotReplaceHostFiles(): void
+    {
+        $launcher = file_get_contents($this->directory . '/kvs');
+        $process = $this->launch(['self-update', '--dev']);
+
+        $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertSame($this->initialPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+        $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
+    }
+
+    public function testFailedLauncherReplacementRestoresPreviousPhar(): void
+    {
+        unlink($this->directory . '/bin/mv');
+        $which = new Process(['which', 'mv']);
+        $which->mustRun();
+        $realMove = trim($which->getOutput());
+        file_put_contents($this->directory . '/bin/mv', '#!' . PHP_BINARY . "\n" . <<<'PHP'
+<?php
+if (str_ends_with($argv[3], '/next-launcher')) {
+    exit(31);
+}
+$arguments = array_map('escapeshellarg', array_slice($argv, 1));
+passthru(escapeshellarg(getenv('MOCK_REAL_MV')) . ' ' . implode(' ', $arguments), $status);
+exit($status);
+PHP);
+        chmod($this->directory . '/bin/mv', 0700);
+        $launcher = file_get_contents($this->directory . '/kvs');
+        $process = $this->launch(['self-update', '--dev', '--yes'], [
+            'MOCK_UPDATED_PHAR' => 'updated PHAR',
+            'MOCK_UPDATE_LAUNCHER' => $launcher,
+            'MOCK_REAL_MV' => $realMove,
+        ]);
+
+        $this->assertSame(1, $process->getExitCode());
+        $this->assertStringContainsString('previous PHAR was restored', $process->getErrorOutput());
+        $this->assertSame($this->initialPhar, file_get_contents($this->directory . '/kvs.phar'));
+        $this->assertSame($launcher, file_get_contents($this->directory . '/kvs'));
+        $this->assertSame([], glob($this->directory . '/.kvs-update.*'));
     }
 
     public function testCommandArgumentsAreNotMistakenForSelfUpdate(): void
@@ -567,7 +737,7 @@ PHP);
      */
     private function createProcess(array $args, array $environment = [], string $cwd = '', bool $pty = false): Process
     {
-        $process = new Process(array_merge([__DIR__ . '/../bin/kvs-docker'], $args), $this->directory . $cwd, array_merge([
+        $process = new Process(array_merge([$this->directory . '/kvs'], $args), $this->directory . $cwd, array_merge([
             'PATH' => $this->directory . '/bin',
             'KVS_CLI_PHAR' => $this->directory . '/kvs.phar',
             'KVS_PATH' => '',
@@ -586,6 +756,7 @@ PHP);
             'MOCK_EXIT' => '0',
             'MOCK_CP_EXIT' => '0',
             'MOCK_PS_EXIT' => '0',
+            'MOCK_RETURN_CP_EXIT' => '0',
         ], $environment));
         $process->setPty($pty);
         $process->setInput($pty ? null : 'sentinel input');

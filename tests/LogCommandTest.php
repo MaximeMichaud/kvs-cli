@@ -433,4 +433,42 @@ class LogCommandTest extends TestCase
 
         $this->assertStringContainsString($expectedPath, $normalizedOutput);
     }
+    public function testLogReadFailureIsNotReportedAsAnEmptyLog(): void
+    {
+        $file = $this->tempDir . '/admin/logs/system.log';
+        chmod($file, 0000);
+        clearstatcache(true, $file);
+        if (is_readable($file)) {
+            chmod($file, 0644);
+            $this->markTestSkipped('The current user can read a mode-000 file.');
+        }
+        try {
+            $this->tester->execute(['type' => 'system']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertStringNotContainsString('No log entries', $this->tester->getDisplay());
+        } finally {
+            chmod($file, 0644);
+        }
+    }
+
+    public function testLogClearFailurePreservesContentsAndReturnsFailure(): void
+    {
+        $file = $this->tempDir . '/admin/logs/system.log';
+        $before = file_get_contents($file);
+        chmod($file, 0444);
+        clearstatcache(true, $file);
+        if (is_writable($file)) {
+            chmod($file, 0644);
+            $this->markTestSkipped('The current user can write a read-only file.');
+        }
+        try {
+            $this->tester->setInputs(['yes']);
+            $this->tester->execute(['type' => 'system', '--clear' => true]);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertStringNotContainsString('Log file cleared', $this->tester->getDisplay());
+        } finally {
+            chmod($file, 0644);
+        }
+    }
 }

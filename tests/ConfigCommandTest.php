@@ -9,35 +9,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\Console\Application;
 
 /**
- * ConfigCommand Test Suite
- *
- * Coverage: 78.26% (234/299 lines)
- *
- * TESTED (✅):
- * - Configuration listing (all sections)
- * - Project, Tools, Server, Content, Database sections
- * - 3-column Content Paths & URLs display ⭐
- * - JSON export format
- * - Config get with key validation
- * - Protected value masking (passwords)
- * - --show-protected flag
- * - --file filtering (db, main, all)
- * - Input validation (key format, categories)
- *
- * NOT TESTED (❌) - See tests/COVERAGE.md for details:
- * - setDatabaseConfig() - File write operations
- * - setMainConfig() - File write operations
- * - editConfig() - Interactive editor
- * - createBackup() - File creation
- * - getConfigFilePath() - Path resolution edge cases
- *
- * Reason: These require:
- * 1. File write operations (risk of corrupting test setup)
- * 2. Mock interactive editor (passthru() not easily mockable)
- * 3. Real database connection testing
- * 4. Complex cleanup mechanisms
- *
- * Alternative: Use vfsStream for safe file system testing
+ * Tests configuration reads, writes, backups, and editor failures on isolated fixtures.
  */
 class ConfigCommandTest extends TestCase
 {
@@ -705,5 +677,1045 @@ $config["ahv"] = "secret-ahv";
 
         // Should appear exactly once in the three-column table
         $this->assertEquals(1, $videosCount, 'Videos Sources should appear exactly once in the table');
+    }
+    /**
+     * @dataProvider literalConfigurationValueProvider
+     */
+    public function testConfigSetRoundTripsLiteralValues(string $value, mixed $expected): void
+    {
+        $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => $value]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($expected, $this->loadWrittenMainConfig()['project_name']);
+    }
+
+    /**
+     * @return iterable<string, array{string, mixed}>
+     */
+    public static function literalConfigurationValueProvider(): iterable
+    {
+        yield 'replacement backreferences' => ['Price $1 and ${2}', 'Price $1 and ${2}'];
+        yield 'quotes and backslashes' => ["A 'quoted' \\ path", "A 'quoted' \\ path"];
+        yield 'semicolon and newline' => ["First; second\nthird", "First; second\nthird"];
+        yield 'leading zero numeric' => ['08', 8];
+        yield 'scientific number' => ['1e2', 100.0];
+        yield 'true' => ['true', true];
+        yield 'false' => ['false', false];
+        yield 'null' => ['null', null];
+        yield 'empty string' => ['', ''];
+    }
+
+    public function testConfigSetCanReplaceAnExistingSemicolonString(): void
+    {
+        foreach (['First; semicolon', "Next; 'quoted' value", 'Final value'] as $value) {
+            $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => $value]);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($value, $this->loadWrittenMainConfig()['project_name']);
+        }
+    }
+
+    public function testConfigSetDatabaseLiteralCanBeReadAndUpdatedAgain(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+
+        foreach (['charset-$1', "a'quote\\path;value", 'final-charset'] as $value) {
+            $this->tester->execute(['action' => 'set', 'key' => 'db.charset', 'value' => $value]);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $lint = new \Symfony\Component\Process\Process([PHP_BINARY, '-l', $file]);
+            $this->assertSame(0, $lint->run(), $lint->getOutput() . $lint->getErrorOutput());
+            $get = new CommandTester($this->command);
+            $get->execute(['action' => 'get', 'key' => 'db.charset', '--json' => true]);
+            $this->assertSame(0, $get->getStatusCode(), $get->getDisplay());
+            $this->assertSame(['db.charset' => $value], json_decode($get->getDisplay(), true, 512, JSON_THROW_ON_ERROR));
+        }
+    }
+
+    public function testConfigSetFailsWithoutChangingAnUnwritableFile(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $before = file_get_contents($file);
+        chmod($file, 0444);
+        clearstatcache(true, $file);
+        if (is_writable($file)) {
+            chmod($file, 0644);
+            $this->markTestSkipped('The current user can write a read-only file.');
+        }
+
+        try {
+            $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => 'Denied update']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+        } finally {
+            chmod($file, 0644);
+        }
+    }
+
+    public function testConfigSetRefusesMutationWhenRequestedBackupFails(): void
+    {
+        $directory = $this->tempDir . '/admin/include';
+        $file = $directory . '/setup.php';
+        $before = file_get_contents($file);
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+
+        try {
+            $this->tester->execute([
+                'action' => 'set', 'key' => 'main.project_name', 'value' => 'Unbacked update', '--backup' => true,
+            ]);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertSame([], glob($file . '.backup.*'));
+            $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+        } finally {
+            chmod($directory, 0755);
+        }
+    }
+
+    /**
+     * @dataProvider failingConfigurationEditorProvider
+     */
+    public function testConfigEditRestoresOriginalAndFailsOnEditorErrors(string $body, int $mode): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $before = file_get_contents($file);
+        chmod($file, $mode);
+        clearstatcache(true, $file);
+        $editor = $this->tempDir . '/fixture-editor';
+        file_put_contents($editor, "#!/bin/sh\n" . $body . "\n");
+        chmod($editor, 0755);
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+
+        try {
+            $this->tester->setInputs(['yes']);
+            $this->tester->execute(['action' => 'edit', '--file' => 'main']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            clearstatcache(true, $file);
+            $this->assertFileExists($file, $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertSame($mode, fileperms($file) & 0777);
+            $this->assertStringNotContainsString('Configuration file edited successfully', $this->tester->getDisplay());
+        } finally {
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+            if (file_exists($file)) {
+                chmod($file, 0644);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, int}>
+     */
+    public static function failingConfigurationEditorProvider(): iterable
+    {
+        $editors = [
+            'nonzero after changing file' => 'printf "%s" "<?php if (" > "$1"; echo "editor rejected file" >&2; exit 7',
+            'invalid PHP with zero exit' => 'printf "%s" "<?php if (" > "$1"; exit 0',
+            'removed file with nonzero exit' => 'rm -- "$1"; exit 7',
+            'removed file with zero exit' => 'rm -- "$1"; exit 0',
+        ];
+        foreach ($editors as $label => $body) {
+            foreach ([0644, 0640, 0600] as $mode) {
+                yield $label . ' mode ' . decoct($mode) => [$body, $mode];
+            }
+        }
+    }
+
+    public function testConfigEditDoesNotLaunchEditorWhenBackupFails(): void
+    {
+        $directory = $this->tempDir . '/admin/include';
+        $file = $directory . '/setup.php';
+        $before = file_get_contents($file);
+        $marker = $this->tempDir . '/editor-called';
+        $editor = $this->tempDir . '/fixture-editor';
+        file_put_contents($editor, '#!/bin/sh' . "\n" . 'touch ' . escapeshellarg($marker) . "\n");
+        chmod($editor, 0755);
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+
+        try {
+            $this->tester->execute(['action' => 'edit', '--file' => 'main']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame($before, file_get_contents($file));
+            $this->assertFileDoesNotExist($marker);
+        } finally {
+            chmod($directory, 0755);
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function loadWrittenMainConfig(): array
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $lint = new \Symfony\Component\Process\Process([PHP_BINARY, '-l', $file]);
+        $this->assertSame(0, $lint->run(), $lint->getOutput() . $lint->getErrorOutput());
+        $previousDirectory = getcwd();
+        chdir(dirname($file));
+        try {
+            return (static function (string $path): array {
+                $config = [];
+                include $path;
+                return $config;
+            })($file);
+        } finally {
+            if ($previousDirectory !== false) {
+                chdir($previousDirectory);
+            }
+        }
+    }
+    /**
+     * @dataProvider updatedDatabaseConnectionConfigurationProvider
+     */
+    public function testConfigSetTestsTheUpdatedEffectiveDatabaseConfiguration(
+        string $key,
+        string $value,
+        string $observedKey,
+        string $expected,
+        bool $environmentOverride,
+        bool $disableEnvironmentOverrides
+    ): void {
+        $previousEnvironment = [];
+        foreach (['KVS_DB_HOST', 'KVS_DB_PORT', 'KVS_DB_USER', 'KVS_DB_PASS', 'KVS_DB_NAME'] as $name) {
+            $previousEnvironment[$name] = getenv($name);
+            putenv($name);
+        }
+        if ($environmentOverride) {
+            putenv('KVS_DB_HOST=127.0.0.2:32124');
+            putenv('KVS_DB_PORT=32125');
+        }
+
+        try {
+            $configuration = new Configuration([
+                'path' => $this->tempDir,
+                'disable_db_env_overrides' => $disableEnvironmentOverrides,
+            ]);
+            $command = new class ($configuration) extends ConfigCommand {
+                /** @var array<string, string> */
+                public array $observedConfiguration = [];
+
+                protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+                {
+                    $this->observedConfiguration = $this->config->getDatabaseConfig();
+                    return null;
+                }
+            };
+            $command->setName('config');
+            $application = new Application();
+            $application->add($command);
+            $tester = new CommandTester($command);
+            $tester->execute(['action' => 'set', 'key' => 'db.' . $key, 'value' => $value]);
+
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($expected, $command->observedConfiguration[$observedKey] ?? null);
+            $this->assertStringContainsString('Database connection failed', $tester->getDisplay());
+            $this->assertStringNotContainsString('Database connection successful', $tester->getDisplay());
+        } finally {
+            foreach ($previousEnvironment as $name => $previousValue) {
+                $previousValue === false ? putenv($name) : putenv($name . '=' . $previousValue);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string, bool, bool}>
+     */
+    public static function updatedDatabaseConnectionConfigurationProvider(): iterable
+    {
+        yield 'updated host' => ['host', '127.0.0.1:32123', 'host', '127.0.0.1:32123', false, false];
+        yield 'updated login' => ['login', 'fixture-new-user', 'user', 'fixture-new-user', false, false];
+        yield 'updated password' => ['pass', 'fixture-new-password', 'password', 'fixture-new-password', false, false];
+        yield 'updated database' => ['device', 'fixture_new_database', 'database', 'fixture_new_database', false, false];
+        yield 'environment host and port override' => ['host', '127.0.0.1:32123', 'host', '127.0.0.2:32125', true, false];
+        yield 'preserved disabled environment override' => ['host', '127.0.0.1:32123', 'host', '127.0.0.1:32123', true, true];
+    }
+
+    /**
+     * @dataProvider configurationBackupPermissionProvider
+     */
+    public function testConfigBackupNeverBroadensSourcePermissions(string $category, int $mode, int $mask): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        if ($category === 'db') {
+            file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+        }
+        chmod($file, $mode);
+        $before = file_get_contents($file);
+        $previousMask = umask($mask);
+
+        try {
+            $this->tester->execute([
+                'action' => 'set',
+                'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+                'value' => 'Synthetic replacement',
+                '--backup' => true,
+            ]);
+            $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $backups = glob($file . '.backup.*');
+            $this->assertIsArray($backups);
+            $this->assertCount(1, $backups);
+            clearstatcache();
+            $this->assertSame($before, file_get_contents($backups[0]));
+            $this->assertFalse(is_link($backups[0]));
+            $this->assertSame($mode, fileperms($file) & 0777);
+            $backupMode = fileperms($backups[0]) & 0777;
+            $this->assertSame(
+                0,
+                $backupMode & ~$mode,
+                sprintf('Backup mode %04o must not grant access denied by source mode %04o.', $backupMode, $mode)
+            );
+        } finally {
+            umask($previousMask);
+            chmod($file, 0644);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, int, int}>
+     */
+    public static function configurationBackupPermissionProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            foreach ([[0600, 0022], [0640, 0022], [0644, 0022], [0600, 0077]] as [$mode, $mask]) {
+                yield $category . ' mode ' . decoct($mode) . ' umask ' . decoct($mask) => [$category, $mode, $mask];
+            }
+        }
+    }
+
+    /**
+     * @dataProvider configurationBackupCollisionProvider
+     */
+    public function testConfigBackupNeverFollowsOrOverwritesAnExistingDestination(
+        string $category,
+        string $collision
+    ): void {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        if ($category === 'db') {
+            file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+        }
+        $before = file_get_contents($file);
+        $existing = [];
+        $targets = [];
+        $fixtureTime = time();
+        if ($collision !== 'none') {
+            // Cover clock ticks without stubbing ConfigCommand's real backup path selection.
+            for ($offset = -2; $offset <= 60; $offset++) {
+                $stamp = date('YmdHis', $fixtureTime + $offset);
+                $candidate = $file . '.backup.' . $stamp;
+                if ($collision === 'regular') {
+                    file_put_contents($candidate, 'Existing synthetic backup');
+                } else {
+                    $target = $this->tempDir . '/collision-target-' . $stamp;
+                    if ($collision === 'existing-link') {
+                        file_put_contents($target, 'Existing synthetic target');
+                    }
+                    symlink($target, $candidate);
+                    $targets[$candidate] = $target;
+                }
+                $existing[] = $candidate;
+            }
+        }
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+            '--backup' => true,
+        ]);
+        $this->assertLessThanOrEqual($fixtureTime + 60, time(), 'The fixture backup collision window expired.');
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        clearstatcache();
+        foreach ($existing as $candidate) {
+            if ($collision === 'regular') {
+                $this->assertSame('Existing synthetic backup', file_get_contents($candidate));
+                continue;
+            }
+            $this->assertTrue(is_link($candidate));
+            $this->assertSame($targets[$candidate], readlink($candidate));
+            if ($collision === 'existing-link') {
+                $this->assertSame('Existing synthetic target', file_get_contents($targets[$candidate]));
+            } else {
+                $this->assertFileDoesNotExist($targets[$candidate], 'The backup must not follow a dangling symlink.');
+            }
+        }
+        $backups = glob($file . '.backup.*');
+        $this->assertIsArray($backups);
+        $newBackups = array_values(array_diff($backups, $existing));
+        $this->assertCount(1, $newBackups);
+        $this->assertFalse(is_link($newBackups[0]));
+        $this->assertSame($before, file_get_contents($newBackups[0]));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function configurationBackupCollisionProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            foreach (['none', 'regular', 'existing-link', 'dangling-link'] as $collision) {
+                yield $category . ' ' . $collision => [$category, $collision];
+            }
+        }
+    }
+
+    /**
+     * @dataProvider configurationHealthyLinkProvider
+     */
+    public function testConfigBackupPreservesHealthyConfigurationLinks(
+        string $category,
+        bool $relative,
+        string $action
+    ): void {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        if ($category === 'db') {
+            file_put_contents($file, "define('DB_CHARSET', 'initial');\n", FILE_APPEND);
+        }
+        $before = file_get_contents($file);
+        $target = $this->tempDir . '/linked configuration.php';
+        rename($file, $target);
+        $link = $relative ? '../../' . basename($target) : $target;
+        symlink($link, $file);
+        chmod($target, 0640);
+        $previousEditor = getenv('EDITOR');
+
+        try {
+            if ($action === 'edit') {
+                $editor = $this->tempDir . '/fixture-editor';
+                file_put_contents($editor, "#!/bin/sh\nprintf '%s' '<?php if (' > \"\$1\"\nexit 7\n");
+                chmod($editor, 0700);
+                putenv('EDITOR=' . $editor);
+                $this->tester->execute(['action' => 'edit', '--file' => $category]);
+                $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+                $this->assertSame($before, file_get_contents($target));
+                $this->assertStringContainsString('Restored from backup', $this->tester->getDisplay());
+            } else {
+                $this->tester->execute([
+                    'action' => 'set',
+                    'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+                    'value' => 'Synthetic replacement',
+                    '--backup' => true,
+                ]);
+                $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+                $this->assertStringContainsString('Synthetic replacement', file_get_contents($target));
+            }
+            clearstatcache();
+            $this->assertTrue(is_link($file));
+            $this->assertSame($link, readlink($file));
+            $this->assertSame(0640, fileperms($target) & 0777);
+            $backups = glob($file . '.backup.*');
+            $this->assertIsArray($backups);
+            $this->assertCount(1, $backups);
+            $this->assertFalse(is_link($backups[0]));
+            $this->assertSame($before, file_get_contents($backups[0]));
+            $this->assertSame(0, (fileperms($backups[0]) & 0777) & ~0640);
+        } finally {
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+            chmod($target, 0644);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, bool, string}>
+     */
+    public static function configurationHealthyLinkProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            foreach ([false, true] as $relative) {
+                foreach (['set', 'edit'] as $action) {
+                    yield $category . ' ' . ($relative ? 'relative' : 'absolute') . ' ' . $action
+                        => [$category, $relative, $action];
+                }
+            }
+        }
+    }
+
+    public function testConfigBackupDoesNotFallBackToTheSystemTemporaryDirectory(): void
+    {
+        $before = glob(sys_get_temp_dir() . '/setup.php.backup.*');
+        $this->testConfigSetRefusesMutationWhenRequestedBackupFails();
+        $this->assertSame($before, glob(sys_get_temp_dir() . '/setup.php.backup.*'));
+    }
+
+    public function testConfigEditRetainsBackupWhenTheEditorMakesRestorationImpossible(): void
+    {
+        $directory = $this->tempDir . '/admin/include';
+        $file = $directory . '/setup.php';
+        $before = file_get_contents($file);
+        chmod($directory, 0555);
+        clearstatcache(true, $directory);
+        if (is_writable($directory)) {
+            chmod($directory, 0755);
+            $this->markTestSkipped('The current user can write a read-only directory.');
+        }
+        chmod($directory, 0755);
+        $editor = $this->tempDir . '/fixture-editor';
+        file_put_contents(
+            $editor,
+            '#!' . PHP_BINARY . "\n<?php unlink(\$argv[1]); chmod(dirname(\$argv[1]), 0555); exit(7);\n"
+        );
+        chmod($editor, 0700);
+        $previousEditor = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+
+        try {
+            $this->tester->execute(['action' => 'edit', '--file' => 'main']);
+            $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            clearstatcache();
+            $this->assertFileDoesNotExist($file);
+            $this->assertStringContainsString('Unable to restore configuration', $this->tester->getDisplay());
+            $this->assertStringNotContainsString('Restored from backup', $this->tester->getDisplay());
+            $backups = glob($file . '.backup.*');
+            $this->assertIsArray($backups);
+            $this->assertCount(1, $backups);
+            $this->assertSame($before, file_get_contents($backups[0]));
+            $this->assertSame([], glob($file . '*.restore'));
+        } finally {
+            $previousEditor === false ? putenv('EDITOR') : putenv('EDITOR=' . $previousEditor);
+            chmod($directory, 0755);
+        }
+    }
+
+    /**
+     * @dataProvider nonAssignmentConfigurationTextProvider
+     */
+    public function testConfigSetRejectsTextThatIsNotAnAssignment(string $category, string $example): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $initializer = $category === 'db'
+            ? "const DB_CHARSET = 'Synthetic original';\n"
+            : "\$config = ['project_name' => 'Synthetic original'];\n";
+        $before = "<?php\n" . $initializer . $example . "\n";
+        file_put_contents($file, $before);
+        $this->assertSame('Synthetic original', $this->readSyntheticConfigurationValue($file, $category));
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($before, file_get_contents($file));
+        $this->assertSame('Synthetic original', $this->readSyntheticConfigurationValue($file, $category));
+        $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+    }
+
+    /**
+     * @dataProvider nonAssignmentConfigurationTextProvider
+     */
+    public function testConfigSetPreservesExamplesWhenUpdatingRealAssignments(string $category, string $example): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $assignment = $category === 'db'
+            ? "define('DB_CHARSET', 'Synthetic original');\n"
+            : "\$config['project_name'] = 'Synthetic original';\n";
+        // Initialize before comparisons; commented/string examples stay independent of the real assignment.
+        file_put_contents($file, "<?php\n" . $assignment . $example . "\n");
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($example, file_get_contents($file));
+        $this->assertSame('Synthetic replacement', $this->readSyntheticConfigurationValue($file, $category));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function nonAssignmentConfigurationTextProvider(): iterable
+    {
+        foreach (['main', 'db'] as $category) {
+            $statement = $category === 'db'
+                ? "define('DB_CHARSET', 'Synthetic example');"
+                : "\$config['project_name'] = 'Synthetic example';";
+            yield $category . ' line comment' => [$category, '// ' . $statement];
+            yield $category . ' block comment' => [$category, '/* ' . $statement . ' */'];
+            yield $category . ' doc comment' => [$category, '/** ' . $statement . ' */'];
+            yield $category . ' quoted example' => [
+                $category,
+                '$example = "' . str_replace('$', '\\$', $statement) . '";',
+            ];
+            yield $category . ' nowdoc example' => [$category, '$example = <<<' . "'EXAMPLE'\n" . $statement . "\nEXAMPLE;"];
+        }
+        yield 'main equality comparison' => ['main', "\$config['project_name'] == 'Synthetic original';"];
+        yield 'main strict comparison' => ['main', "\$config['project_name'] === 'Synthetic original';"];
+    }
+
+    /**
+     * @dataProvider literalConfigurationValueProvider
+     */
+    public function testConfigSetPreservesExamplesWhenWritingLiteralValues(string $value, mixed $expected): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $example = <<<'PHP'
+$example = <<<'EXAMPLE'
+$config['project_name'] = 'Keep this example';
+EXAMPLE;
+PHP;
+        file_put_contents($file, "<?php\n" . $example . "\n\$config['project_name'] = 'Synthetic original';\n");
+
+        $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => $value]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($example, file_get_contents($file));
+        $this->assertSame($expected, $this->readSyntheticConfigurationValue($file, 'main'));
+    }
+
+    /**
+     * @dataProvider executableConfigurationAssignmentProvider
+     */
+    public function testConfigSetPreservesExistingExecutableAssignmentForms(string $category, string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $sentinel = "\$sentinel = 'Keep unrelated trailing text';\n";
+        file_put_contents($file, "<?php\n" . $body . "\n" . $sentinel);
+        $this->assertSame('Synthetic original', $this->readSyntheticConfigurationValue($file, $category));
+
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertStringContainsString($sentinel, file_get_contents($file));
+        $this->assertSame('Synthetic replacement', $this->readSyntheticConfigurationValue($file, $category));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function executableConfigurationAssignmentProvider(): iterable
+    {
+        yield 'main single assignment' => ['main', "$" . "config['project_name'] = 'Synthetic original';"];
+        yield 'main consecutive assignments' => ['main', <<<'PHP'
+$config['project_name'] = 'Synthetic first';
+$config['project_name'] = 'Synthetic original';
+PHP];
+        foreach (['true', 'false'] as $condition) {
+            yield 'main conditional ' . $condition => ['main', 'if (' . $condition . ') {' . <<<'PHP'
+$config['project_name'] = 'Synthetic original';
+} else {
+$config['project_name'] = 'Synthetic original';
+}
+PHP];
+            yield 'db conditional ' . $condition => ['db', 'if (' . $condition . ') {' . <<<'PHP'
+define('DB_CHARSET', 'Synthetic original');
+} else {
+define('DB_CHARSET', 'Synthetic original');
+}
+PHP];
+        }
+        yield 'main nested same-key assignment' => ['main', <<<'PHP'
+$config['project_name'] = $config['project_name'] = 'Synthetic original';
+PHP];
+        yield 'main called function using global' => ['main', <<<'PHP'
+function syntheticGlobalConfiguration(): void {
+    global $config;
+    $config['project_name'] = 'Synthetic original';
+}
+syntheticGlobalConfiguration();
+PHP];
+        yield 'main called reference closure' => ['main', <<<'PHP'
+$config = [];
+$initialize = static function () use (&$config): void {
+    $config['project_name'] = 'Synthetic original';
+};
+$initialize();
+PHP];
+        yield 'main called function returning configuration' => ['main', <<<'PHP'
+function syntheticReturnedConfiguration(): array {
+    $config['project_name'] = 'Synthetic original';
+    return $config;
+}
+$config = syntheticReturnedConfiguration();
+PHP];
+        yield 'main called function with reference parameter' => ['main', <<<'PHP'
+function syntheticReferenceConfiguration(array &$config): void {
+    $config['project_name'] = 'Synthetic original';
+}
+$config = [];
+syntheticReferenceConfiguration($config);
+PHP];
+        yield 'db single define' => ['db', "define('DB_CHARSET', 'Synthetic original');"];
+        yield 'db repeated guarded defines' => ['db', <<<'PHP'
+if (!defined('DB_CHARSET')) { define('DB_CHARSET', 'Synthetic original'); }
+if (!defined('DB_CHARSET')) { define('DB_CHARSET', 'Synthetic alternate'); }
+PHP];
+        yield 'db called function define' => ['db', <<<'PHP'
+function syntheticDatabaseConfiguration(): void {
+    define('DB_CHARSET', 'Synthetic original');
+}
+syntheticDatabaseConfiguration();
+PHP];
+        yield 'db called closure define' => ['db', <<<'PHP'
+$initialize = static function (): void {
+    define('DB_CHARSET', 'Synthetic original');
+};
+$initialize();
+PHP];
+    }
+
+    /**
+     * @dataProvider malformedConfigurationProvider
+     */
+    public function testConfigSetRejectsMalformedPhpWithoutChangingTheFile(string $category, string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/' . ($category === 'db' ? 'setup_db.php' : 'setup.php');
+        $before = "<?php\n" . $body . "\nif (\n";
+        file_put_contents($file, $before);
+        $this->tester->execute([
+            'action' => 'set',
+            'key' => $category === 'db' ? 'db.charset' : 'main.project_name',
+            'value' => 'Synthetic replacement',
+        ]);
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($before, file_get_contents($file));
+        $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function malformedConfigurationProvider(): iterable
+    {
+        yield 'main' => ['main', "\$config['project_name'] = 'Synthetic original';"];
+        yield 'db' => ['db', "define('DB_CHARSET', 'Synthetic original');"];
+    }
+
+    private function readSyntheticConfigurationValue(string $file, string $category): mixed
+    {
+        $code = <<<'PHP'
+$config = [];
+include $argv[1];
+echo json_encode($argv[2] === 'db' ? constant('DB_CHARSET') : $config['project_name'], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+PHP;
+        $process = new \Symfony\Component\Process\Process([PHP_BINARY, '-r', $code, $file, $category]);
+        $this->assertSame(0, $process->run(), $process->getErrorOutput() . $process->getOutput());
+        $this->assertSame('', $process->getErrorOutput());
+        return json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @dataProvider unsupportedDatabaseDefinitionProvider
+     */
+    public function testConfigSetDatabaseDoesNotExpandUnsupportedDefinitionForms(string $body): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $before = "<?php\n" . $body . "\n";
+        file_put_contents($file, $before);
+        $this->tester->execute(['action' => 'set', 'key' => 'db.charset', 'value' => 'Synthetic replacement']);
+        $this->assertSame(1, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $this->assertSame($before, file_get_contents($file));
+        $this->assertStringNotContainsString('Configuration updated:', $this->tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unsupportedDatabaseDefinitionProvider(): iterable
+    {
+        yield 'double-quoted name' => ['define("DB_CHARSET", \'Synthetic original\');'];
+        yield 'double-quoted value' => ['define(\'DB_CHARSET\', "Synthetic original");'];
+        yield 'environment expression' => ["define('DB_CHARSET', getenv('SYNTHETIC_CHARSET') ?: 'Synthetic original');"];
+        yield 'concatenated expression' => ["define('DB_CHARSET', 'Synthetic ' . 'original');"];
+        yield 'constant declaration' => ["const DB_CHARSET = 'Synthetic original';"];
+        yield 'third argument' => ["define('DB_CHARSET', 'Synthetic original', false);"];
+        yield 'named arguments' => ["define(constant_name: 'DB_CHARSET', value: 'Synthetic original');"];
+        yield 'nowdoc value' => [<<<'PHP'
+define('DB_CHARSET', <<<'VALUE'
+Synthetic original
+VALUE
+);
+PHP];
+    }
+
+    public function testConfigSetDatabaseKeepsGetConsistentWithATrailingComment(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        file_put_contents(
+            $file,
+            "define('DB_CHARSET', 'Synthetic original');\n// define('DB_CHARSET', 'Synthetic example');\n",
+            FILE_APPEND
+        );
+        $this->tester->execute(['action' => 'set', 'key' => 'db.charset', 'value' => 'Synthetic replacement']);
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $get = new CommandTester($this->command);
+        $get->execute(['action' => 'get', 'key' => 'db.charset', '--json' => true]);
+        $this->assertSame(0, $get->getStatusCode(), $get->getDisplay());
+        $this->assertSame(
+            ['db.charset' => 'Synthetic replacement'],
+            json_decode($get->getDisplay(), true, 512, JSON_THROW_ON_ERROR)
+        );
+    }
+
+    public function testConfigSetTestsUpdatedDatabaseConfigurationWhenACommentPrecedesTheDefinition(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $source = file_get_contents($file);
+        $this->assertIsString($source);
+        file_put_contents($file, str_replace(
+            "define('DB_HOST',",
+            "// define('DB_HOST', '127.0.0.2');\ndefine('DB_HOST',",
+            $source
+        ));
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $command = new class ($configuration) extends ConfigCommand {
+            /** @var array<string, string> */
+            public array $observedConfiguration = [];
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                $this->observedConfiguration = $this->config->getDatabaseConfig();
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute(['action' => 'set', 'key' => 'db.host', 'value' => '127.0.0.3']);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame('127.0.0.3', $command->observedConfiguration['host'] ?? null);
+    }
+
+    /**
+     * @dataProvider listedDatabaseDefinitionProvider
+     */
+    public function testConfigDatabaseGetAndListSelectSyntacticDefinitions(string $body, ?string $expected): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        file_put_contents($file, "<?php\n" . $body . "\n");
+        foreach (['get', 'list'] as $action) {
+            $tester = new CommandTester($this->command);
+            $arguments = ['action' => $action, '--json' => true];
+            $arguments += $action === 'get' ? ['key' => 'db.charset'] : ['--file' => 'db'];
+            $tester->execute($arguments);
+            if ($expected === null && $action === 'get') {
+                $this->assertSame(1, $tester->getStatusCode(), $tester->getDisplay());
+            } else {
+                $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+                $values = json_decode($tester->getDisplay(), true, 512, JSON_THROW_ON_ERROR);
+                $this->assertSame($expected, $values['db.charset'] ?? null);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, ?string}>
+     */
+    public static function listedDatabaseDefinitionProvider(): iterable
+    {
+        $actual = "define('DB_CHARSET', 'Synthetic actual');";
+        $fake = "define('DB_CHARSET', 'Synthetic example');";
+        yield 'literal control' => [$actual, 'Synthetic actual'];
+        yield 'line comment' => [$actual . "\n// " . $fake, 'Synthetic actual'];
+        yield 'block comment' => [$actual . "\n/* " . $fake . ' */', 'Synthetic actual'];
+        yield 'documentation comment' => [$actual . "\n/** " . $fake . ' */', 'Synthetic actual'];
+        yield 'quoted example' => [$actual . "\n" . '$example = "' . $fake . '";', 'Synthetic actual'];
+        yield 'nowdoc example' => [$actual . "\n\$example = <<<'EXAMPLE'\n" . $fake . "\nEXAMPLE;", 'Synthetic actual'];
+        yield 'comment inside a real call' => ["define('DB_CHARSET', /* $fake */ 'Synthetic actual');", 'Synthetic actual'];
+        yield 'method call' => [$actual . "\n\$object->" . $fake, 'Synthetic actual'];
+        yield 'static call' => [$actual . "\nFixture::" . $fake, 'Synthetic actual'];
+        yield 'foreign qualified function' => [$actual . "\nFixture\\" . $fake, 'Synthetic actual'];
+        yield 'relative function' => [$actual . "\nnamespace\\" . $fake, 'Synthetic actual'];
+        yield 'fully qualified define' => ['\\' . $actual, 'Synthetic actual'];
+        yield 'simple define in a namespace' => ['namespace Fixture; ' . $actual, 'Synthetic actual'];
+        yield 'fully qualified define in a namespace' => ['namespace Fixture; \\' . $actual, 'Synthetic actual'];
+        yield 'function body retains syntactic selection' => ['function fixture() { ' . $actual . ' }', 'Synthetic actual'];
+        yield 'last literal wins' => [$actual . "\n" . $fake, 'Synthetic example'];
+        yield 'only a comment' => ['// ' . $fake, null];
+        yield 'double quoted key remains unsupported' => ['define("DB_CHARSET", \'Synthetic example\');', null];
+        yield 'double quoted value remains unsupported' => ['define(\'DB_CHARSET\', "Synthetic example");', null];
+        yield 'environment expression remains unsupported' => [
+            "define('DB_CHARSET', getenv('KVS_READER_SYNTHETIC_VALUE') ?: 'Synthetic example');", null,
+        ];
+        yield 'third argument remains unsupported' => ["define('DB_CHARSET', 'Synthetic example', false);", null];
+        yield 'named arguments remain unsupported' => ["define(constant_name: 'DB_CHARSET', value: 'Synthetic example');", null];
+        yield 'concatenation remains unsupported' => ["define('DB_CHARSET', 'Synthetic ' . 'example');", null];
+    }
+
+    public function testConfigDatabaseReaderDecodesLiteralBytes(): void
+    {
+        $expected = "Synthetic apostrophe's \\path; \"quote\"\nline";
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup_db.php',
+            "<?php define('DB_CHARSET', " . var_export($expected, true) . ');'
+        );
+        // Isolate extraction from the separate Console output formatting contract.
+        $reader = new \ReflectionMethod(ConfigCommand::class, 'getDatabaseConfigs');
+        $this->assertSame(['charset' => $expected], $reader->invoke($this->command));
+    }
+
+    public function testConfigSetReloadsEscapedDatabaseValueWithoutExecutingTheFile(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $marker = $this->tempDir . '/must-not-exist';
+        $expected = "Synthetic apostrophe's \\path; \"quote\"";
+        file_put_contents(
+            $file,
+            "<?php define('DB_PASS', 'Synthetic original');\nfile_put_contents("
+                . var_export($marker, true) . ", 'unexpected');"
+        );
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $command = new class ($configuration) extends ConfigCommand {
+            /** @var array<string, string> */
+            public array $observedConfiguration = [];
+
+            protected function getDatabaseConnection(bool $quiet = false): ?\PDO
+            {
+                $this->observedConfiguration = $this->config->getDatabaseConfig();
+                return null;
+            }
+        };
+        $tester = new CommandTester($command);
+        $tester->execute(['action' => 'set', 'key' => 'db.pass', 'value' => $expected]);
+        $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $this->assertSame($expected, $command->observedConfiguration['password'] ?? null);
+        $this->assertFileDoesNotExist($marker);
+    }
+
+    public function testConfigSetPreservesPreviousReferenceAssignmentReplacement(): void
+    {
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $body = <<<'PHP_SOURCE'
+<?php
+$source = 'Synthetic original';
+$config['project_name'] =& $source;
+$source = 'Synthetic source changed';
+$config['source_after'] = $source;
+PHP_SOURCE;
+        file_put_contents($file, $body);
+        $this->tester->execute(['action' => 'set', 'key' => 'main.project_name', 'value' => 'Synthetic replacement']);
+        $this->assertSame(0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+        $actual = $this->loadWrittenMainConfig();
+        $this->assertSame('Synthetic replacement', $actual['project_name']);
+        $this->assertSame('Synthetic source changed', $actual['source_after']);
+    }
+
+    /**
+     * @dataProvider recoverableDatabaseSyntaxErrorProvider
+     */
+    public function testConfigEditCanRepairRecoverableDatabaseSyntaxErrors(string $suffix): void
+    {
+        $file = $this->tempDir . '/admin/include/setup_db.php';
+        $valid = "<?php define('DB_HOST', '127.0.0.1');";
+        file_put_contents($file, $valid . "\n" . $suffix);
+        $configuration = new Configuration(['path' => $this->tempDir, 'disable_db_env_overrides' => true]);
+        $this->assertTrue($configuration->isKvsInstalled());
+        $editor = $this->tempDir . '/repair-fixture';
+        file_put_contents($editor, '#!' . PHP_BINARY . "\n<?php file_put_contents(\$argv[1], " . var_export($valid, true) . ');');
+        chmod($editor, 0755);
+        $previous = getenv('EDITOR');
+        putenv('EDITOR=' . $editor);
+        try {
+            $tester = new CommandTester(new ConfigCommand($configuration));
+            $tester->execute(['action' => 'edit', '--file' => 'db']);
+            $this->assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+            $this->assertSame($valid, file_get_contents($file));
+        } finally {
+            $previous === false ? putenv('EDITOR') : putenv('EDITOR=' . $previous);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function recoverableDatabaseSyntaxErrorProvider(): iterable
+    {
+        yield 'incomplete condition' => ['if ('];
+        yield 'invalid statement' => ['invalid syntax;'];
+    }
+
+    /** @return iterable<string, array{string, bool, string}> */
+    public static function directConfigPayloads(): iterable
+    {
+        foreach (FormatterTest::exportContractPayloads() as $name => [$payload, $format, $decorated]) {
+            if ($format === 'json') {
+                foreach (['get', 'list'] as $action) {
+                    yield $name . ' ' . $action => [$payload, $decorated, $action];
+                }
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('directConfigPayloads')]
+    public function testDirectJsonPreservesConfigurationValue(string $payload, bool $decorated, string $action): void
+    {
+        file_put_contents(
+            $this->tempDir . '/admin/include/setup.php',
+            '<?php $config[\'project_name\'] = ' . var_export($payload, true) . ';'
+        );
+        $arguments = ['action' => $action, '--json' => true];
+        $arguments += $action === 'get' ? ['key' => 'main.project_name'] : ['--file' => 'main'];
+        $this->tester->execute($arguments, ['decorated' => $decorated]);
+        $text = $this->tester->getDisplay();
+        $this->assertSame(0, $this->tester->getStatusCode(), $text);
+        $this->assertJson($text);
+        $this->assertSame($payload, json_decode($text, true)['main.project_name']);
+    }
+
+    /** @return iterable<string, array{string, string, bool, bool, bool}> */
+    public static function jsonEncodingConfigurationCases(): iterable
+    {
+        foreach (['get', 'list'] as $action) {
+            foreach ([false, true] as $valid) {
+                foreach ([false, true] as $decorated) {
+                    yield "$action public " . (int) $valid . ' ' . (int) $decorated
+                        => [$action, 'project_name', $valid, $decorated, false];
+                    foreach ([false, true] as $showProtected) {
+                        yield "$action protected " . (int) $valid . ' ' . (int) $decorated . ' ' . (int) $showProtected
+                            => [$action, 'smtp_password', $valid, $decorated, $showProtected];
+                    }
+                }
+            }
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('jsonEncodingConfigurationCases')]
+    public function testJsonEncodingConfigurationFailsExplicitlyWithoutChangingData(
+        string $action,
+        string $key,
+        bool $valid,
+        bool $decorated,
+        bool $showProtected
+    ): void {
+        $payload = $valid ? 'Synthetic é <info>literal</info>' : "Synthetic private bytes \xff";
+        $file = $this->tempDir . '/admin/include/setup.php';
+        $contents = '<?php $config = [' . var_export($key, true) . ' => ' . var_export($payload, true) . '];';
+        file_put_contents($file, $contents);
+        $arguments = ['action' => $action, '--json' => true, '--show-protected' => $showProtected];
+        $arguments += $action === 'get' ? ['key' => 'main.' . $key] : ['--file' => 'main'];
+        $this->tester->execute($arguments, ['decorated' => $decorated]);
+        $display = $this->tester->getDisplay();
+        $masked = $key === 'smtp_password' && !$showProtected;
+        $this->assertSame($contents, file_get_contents($file));
+        if ($valid || $masked) {
+            $this->assertSame(0, $this->tester->getStatusCode(), $display);
+            $this->assertJson($display);
+            $this->assertSame($masked ? '**********' : $payload, json_decode($display, true)['main.' . $key]);
+        } else {
+            $this->assertSame(1, $this->tester->getStatusCode());
+            $this->assertStringContainsString('Failed to encode configuration as JSON:', $display);
+            $this->assertStringContainsString('Malformed UTF-8', $display);
+        }
+        if (!$valid || $masked) {
+            $this->assertStringNotContainsString('Synthetic private bytes', $display);
+            $this->assertStringNotContainsString("\xff", $display);
+        }
     }
 }

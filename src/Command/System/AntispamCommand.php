@@ -351,7 +351,7 @@ HELP
                     $data['sections'][$name] = $section;
                 }
 
-                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT));
+                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
                 return self::SUCCESS;
             }
 
@@ -467,7 +467,7 @@ HELP
                     'domains' => $domains,
                     'ips' => $ips,
                 ];
-                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT));
+                $this->io()->writeln((string) json_encode($data, JSON_PRETTY_PRINT), OutputInterface::OUTPUT_RAW);
                 return self::SUCCESS;
             }
 
@@ -524,126 +524,127 @@ HELP
         }
 
         try {
-            $auditBefore = $this->loadAntispamAuditState($db);
-            $changes = [];
+            $changes = $this->runInTransaction($db, function () use ($db, $input): array {
+                $auditBefore = $this->loadAntispamAuditState($db);
+                $changes = [];
 
-            // Clear blacklist options
-            if ($this->getBoolOption($input, 'clear-words')) {
-                $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', '');
-                $changes[] = 'Cleared all blacklisted words';
-            }
-
-            if ($this->getBoolOption($input, 'clear-domains')) {
-                $this->updateBlockedDomains($db, []);
-                $changes[] = 'Cleared all blocked domains';
-            }
-
-            if ($this->getBoolOption($input, 'clear-ips')) {
-                $this->updateBlockedIps($db, []);
-                $changes[] = 'Cleared all blocked IPs';
-            }
-
-            // Blacklist words
-            $words = $this->getStringOption($input, 'words');
-            if ($words !== null) {
-                $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', $words);
-                $wordCount = count(array_filter(explode(',', $words), static fn(string $w): bool => trim($w) !== ''));
-                $changes[] = "Blacklisted words: $wordCount word(s)";
-            }
-
-            // Words ignore feedbacks
-            $wordsIgnore = $this->getStringOption($input, 'words-ignore-feedbacks');
-            if ($wordsIgnore !== null) {
-                if (!in_array($wordsIgnore, ['0', '1'], true)) {
-                    $this->io()->error('Invalid value for --words-ignore-feedbacks (use: 0 or 1)');
-                    return self::FAILURE;
+                // Clear blacklist options
+                if ($this->getBoolOption($input, 'clear-words')) {
+                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', '');
+                    $changes[] = 'Cleared all blacklisted words';
                 }
-                $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS_IGNORE_FEEDBACKS', $wordsIgnore);
-                $changes[] = 'Ignore feedbacks for word check: ' . ($wordsIgnore === '1' ? 'Yes' : 'No');
-            }
 
-            // Blacklist action
-            $blAction = $this->getStringOption($input, 'blacklist-action');
-            if ($blAction !== null) {
-                if (!in_array($blAction, ['delete', 'deactivate'], true)) {
-                    $this->io()->error('Invalid value for --blacklist-action (use: delete or deactivate)');
-                    return self::FAILURE;
+                if ($this->getBoolOption($input, 'clear-domains')) {
+                    $this->updateBlockedDomains($db, []);
+                    $changes[] = 'Cleared all blocked domains';
                 }
-                $this->updateOption($db, 'ANTISPAM_BLACKLIST_ACTION', $blAction === 'delete' ? '0' : '1');
-                $changes[] = 'Blacklist action: ' . ucfirst($blAction);
-            }
 
-            // Blocked domains
-            $domains = $this->getStringOption($input, 'domains');
-            if ($domains !== null) {
-                $domainList = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
-                $this->updateBlockedDomains($db, $domainList);
-                $changes[] = 'Blocked domains: ' . count($domainList) . ' domain(s)';
-            }
-
-            // Blocked IPs
-            $ips = $this->getStringOption($input, 'ips');
-            if ($ips !== null) {
-                $ipList = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
-                $this->updateBlockedIps($db, $ipList);
-                $changes[] = 'Blocked IPs: ' . count($ipList) . ' IP(s)';
-            }
-
-            // Duplicates
-            $dupComments = $this->getStringOption($input, 'duplicates-comments');
-            if ($dupComments !== null) {
-                if (!in_array($dupComments, ['0', '1'], true)) {
-                    $this->io()->error('Invalid value for --duplicates-comments (use: 0 or 1)');
-                    return self::FAILURE;
+                if ($this->getBoolOption($input, 'clear-ips')) {
+                    $this->updateBlockedIps($db, []);
+                    $changes[] = 'Cleared all blocked IPs';
                 }
-                $this->updateOption($db, 'ANTISPAM_COMMENTS_DUPLICATES', $dupComments);
-                $changes[] = 'Delete duplicate comments: ' . ($dupComments === '1' ? 'Yes' : 'No');
-            }
 
-            $dupMessages = $this->getStringOption($input, 'duplicates-messages');
-            if ($dupMessages !== null) {
-                if (!in_array($dupMessages, ['0', '1'], true)) {
-                    $this->io()->error('Invalid value for --duplicates-messages (use: 0 or 1)');
-                    return self::FAILURE;
+                // Blacklist words
+                $words = $this->getStringOption($input, 'words');
+                if ($words !== null) {
+                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', $words);
+                    $wordCount = count(array_filter(explode(',', $words), static fn(string $w): bool => trim($w) !== ''));
+                    $changes[] = "Blacklisted words: $wordCount word(s)";
                 }
-                $this->updateOption($db, 'ANTISPAM_MESSAGES_DUPLICATES', $dupMessages);
-                $changes[] = 'Delete duplicate messages: ' . ($dupMessages === '1' ? 'Yes' : 'No');
-            }
 
-            // Section rules - all sections
-            foreach (self::SECTIONS as $section => $prefix) {
-                // History
-                $history = $this->getStringOption($input, "$section-history");
-                if ($history !== null) {
-                    if (!in_array($history, ['all', 'user'], true)) {
-                        $this->io()->error("Invalid value for --$section-history (use: all or user)");
-                        return self::FAILURE;
+                // Words ignore feedbacks
+                $wordsIgnore = $this->getStringOption($input, 'words-ignore-feedbacks');
+                if ($wordsIgnore !== null) {
+                    if (!in_array($wordsIgnore, ['0', '1'], true)) {
+                        throw new \InvalidArgumentException('Invalid value for --words-ignore-feedbacks (use: 0 or 1)');
                     }
-                    $this->updateOption($db, $prefix . '_ANALYZE_HISTORY', $history === 'all' ? '0' : '1');
-                    $changes[] = ucfirst($section) . " analyze history: $history";
+                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS_IGNORE_FEEDBACKS', $wordsIgnore);
+                    $changes[] = 'Ignore feedbacks for word check: ' . ($wordsIgnore === '1' ? 'Yes' : 'No');
                 }
 
-                foreach ($this->getActionsForSection($section) as $actionName => $actionKey) {
-                    $rule = $this->getStringOption($input, "$section-$actionName");
-                    if ($rule !== null) {
-                        if (!$this->validateRule($rule)) {
-                            $this->io()->error("Invalid rule format for --$section-$actionName (use: count/seconds, e.g., 5/60)");
-                            return self::FAILURE;
+                // Blacklist action
+                $blAction = $this->getStringOption($input, 'blacklist-action');
+                if ($blAction !== null) {
+                    if (!in_array($blAction, ['delete', 'deactivate'], true)) {
+                        throw new \InvalidArgumentException('Invalid value for --blacklist-action (use: delete or deactivate)');
+                    }
+                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_ACTION', $blAction === 'delete' ? '0' : '1');
+                    $changes[] = 'Blacklist action: ' . ucfirst($blAction);
+                }
+
+                // Blocked domains
+                $domains = $this->getStringOption($input, 'domains');
+                if ($domains !== null) {
+                    $domainList = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
+                    $this->updateBlockedDomains($db, $domainList);
+                    $changes[] = 'Blocked domains: ' . count($domainList) . ' domain(s)';
+                }
+
+                // Blocked IPs
+                $ips = $this->getStringOption($input, 'ips');
+                if ($ips !== null) {
+                    $ipList = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
+                    $this->updateBlockedIps($db, $ipList);
+                    $changes[] = 'Blocked IPs: ' . count($ipList) . ' IP(s)';
+                }
+
+                // Duplicates
+                $dupComments = $this->getStringOption($input, 'duplicates-comments');
+                if ($dupComments !== null) {
+                    if (!in_array($dupComments, ['0', '1'], true)) {
+                        throw new \InvalidArgumentException('Invalid value for --duplicates-comments (use: 0 or 1)');
+                    }
+                    $this->updateOption($db, 'ANTISPAM_COMMENTS_DUPLICATES', $dupComments);
+                    $changes[] = 'Delete duplicate comments: ' . ($dupComments === '1' ? 'Yes' : 'No');
+                }
+
+                $dupMessages = $this->getStringOption($input, 'duplicates-messages');
+                if ($dupMessages !== null) {
+                    if (!in_array($dupMessages, ['0', '1'], true)) {
+                        throw new \InvalidArgumentException('Invalid value for --duplicates-messages (use: 0 or 1)');
+                    }
+                    $this->updateOption($db, 'ANTISPAM_MESSAGES_DUPLICATES', $dupMessages);
+                    $changes[] = 'Delete duplicate messages: ' . ($dupMessages === '1' ? 'Yes' : 'No');
+                }
+
+                // Section rules - all sections
+                foreach (self::SECTIONS as $section => $prefix) {
+                    // History
+                    $history = $this->getStringOption($input, "$section-history");
+                    if ($history !== null) {
+                        if (!in_array($history, ['all', 'user'], true)) {
+                            throw new \InvalidArgumentException("Invalid value for --$section-history (use: all or user)");
                         }
-                        $this->updateOption($db, $prefix . '_' . $actionKey, $rule);
-                        $changes[] = ucfirst($section) . " $actionName: $rule";
+                        $this->updateOption($db, $prefix . '_ANALYZE_HISTORY', $history === 'all' ? '0' : '1');
+                        $changes[] = ucfirst($section) . " analyze history: $history";
+                    }
+
+                    foreach ($this->getActionsForSection($section) as $actionName => $actionKey) {
+                        $rule = $this->getStringOption($input, "$section-$actionName");
+                        if ($rule !== null) {
+                            if (!$this->validateRule($rule)) {
+                                throw new \InvalidArgumentException(
+                                    "Invalid rule format for --$section-$actionName (use: count/seconds, e.g., 5/60)"
+                                );
+                            }
+                            $this->updateOption($db, $prefix . '_' . $actionKey, $rule);
+                            $changes[] = ucfirst($section) . " $actionName: $rule";
+                        }
                     }
                 }
-            }
+
+                if ($changes !== []) {
+                    $auditAfter = $this->loadAntispamAuditState($db);
+                    $this->writeAdminAuditLog($db, 227, 0, 30, $this->buildAntispamAuditDetails($auditBefore, $auditAfter));
+                }
+                return $changes;
+            });
 
             if ($changes === []) {
                 $this->io()->warning('No settings to update.');
                 $this->io()->text('Use options like --words, --domains, --comments-captcha, etc.');
                 return self::SUCCESS;
             }
-
-            $auditAfter = $this->loadAntispamAuditState($db);
-            $this->writeAdminAuditLog($db, 227, 0, 30, $this->buildAntispamAuditDetails($auditBefore, $auditAfter));
 
             $this->io()->success('Anti-spam settings updated:');
             foreach ($changes as $change) {
@@ -753,31 +754,54 @@ HELP
     }
 
     /**
-     * @param \Closure(): void $operation
+     * @template T
+     * @param \Closure(): T $operation
+     * @return T
      */
-    private function runInTransaction(\PDO $db, \Closure $operation): void
+    private function runInTransaction(\PDO $db, \Closure $operation): mixed
     {
         $startedTransaction = !$db->inTransaction();
         $transactionOpen = false;
 
         if ($startedTransaction) {
+            $this->requireTransactionalBlacklistTables($db);
             $db->beginTransaction();
             $transactionOpen = true;
         }
 
         try {
-            $operation();
+            $result = $operation();
 
             if ($startedTransaction) {
                 $db->commit();
                 $transactionOpen = false;
             }
+            return $result;
         } catch (\Throwable $e) {
             if ($transactionOpen) {
                 $db->rollBack();
             }
 
             throw $e;
+        }
+    }
+
+    private function requireTransactionalBlacklistTables(\PDO $db): void
+    {
+        if ($db->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+            return;
+        }
+        $tables = [$this->table('options'), $this->table('users_blocked_domains'), $this->table('users_blocked_ips')];
+        $stmt = $db->prepare(
+            'SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES'
+            . ' WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN (?, ?, ?)'
+        );
+        $stmt->execute($tables);
+        $engines = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+        foreach ($tables as $table) {
+            if (($engines[$table] ?? null) !== 'InnoDB') {
+                throw new \RuntimeException("Anti-spam updates require an InnoDB table: $table. No changes were made.");
+            }
         }
     }
 
@@ -844,43 +868,46 @@ HELP
         }
 
         try {
-            $changes = [];
+            $changes = $this->runInTransaction($db, function () use ($db, $input): array {
+                $changes = [];
 
-            // Add words
-            $words = $this->getStringOption($input, 'words');
-            if ($words !== null) {
-                $newWords = array_values(array_filter(array_map('trim', explode(',', $words)), static fn(string $w): bool => $w !== ''));
-                if (count($newWords) > 0) {
-                    $existingWords = $this->getExistingWords($db);
-                    $merged = array_unique(array_merge($existingWords, $newWords));
-                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', implode(',', $merged));
-                    $changes[] = 'Added ' . count($newWords) . ' word(s): ' . implode(', ', $newWords);
+                // Add words
+                $words = $this->getStringOption($input, 'words');
+                if ($words !== null) {
+                    $newWords = array_values(array_filter(array_map('trim', explode(',', $words)), static fn(string $w): bool => $w !== ''));
+                    if (count($newWords) > 0) {
+                        $existingWords = $this->getExistingWords($db);
+                        $merged = array_unique(array_merge($existingWords, $newWords));
+                        $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', implode(',', $merged));
+                        $changes[] = 'Added ' . count($newWords) . ' word(s): ' . implode(', ', $newWords);
+                    }
                 }
-            }
 
-            // Add domains
-            $domains = $this->getStringOption($input, 'domains');
-            if ($domains !== null) {
-                $newDomains = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
-                if (count($newDomains) > 0) {
-                    $existingDomains = $this->getExistingDomains($db);
-                    $merged = array_unique(array_merge($existingDomains, $newDomains));
-                    $this->updateBlockedDomains($db, $merged);
-                    $changes[] = 'Added ' . count($newDomains) . ' domain(s): ' . implode(', ', $newDomains);
+                // Add domains
+                $domains = $this->getStringOption($input, 'domains');
+                if ($domains !== null) {
+                    $newDomains = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
+                    if (count($newDomains) > 0) {
+                        $existingDomains = $this->getExistingDomains($db);
+                        $merged = array_unique(array_merge($existingDomains, $newDomains));
+                        $this->updateBlockedDomains($db, $merged);
+                        $changes[] = 'Added ' . count($newDomains) . ' domain(s): ' . implode(', ', $newDomains);
+                    }
                 }
-            }
 
-            // Add IPs
-            $ips = $this->getStringOption($input, 'ips');
-            if ($ips !== null) {
-                $newIps = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
-                if (count($newIps) > 0) {
-                    $existingIps = $this->getExistingIps($db);
-                    $merged = array_unique(array_merge($existingIps, $newIps));
-                    $this->updateBlockedIps($db, $merged);
-                    $changes[] = 'Added ' . count($newIps) . ' IP(s): ' . implode(', ', $newIps);
+                // Add IPs
+                $ips = $this->getStringOption($input, 'ips');
+                if ($ips !== null) {
+                    $newIps = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
+                    if (count($newIps) > 0) {
+                        $existingIps = $this->getExistingIps($db);
+                        $merged = array_unique(array_merge($existingIps, $newIps));
+                        $this->updateBlockedIps($db, $merged);
+                        $changes[] = 'Added ' . count($newIps) . ' IP(s): ' . implode(', ', $newIps);
+                    }
                 }
-            }
+                return $changes;
+            });
 
             if ($changes === []) {
                 $this->io()->warning('Nothing to add. Use --words, --domains, or --ips.');
@@ -911,52 +938,55 @@ HELP
         }
 
         try {
-            $changes = [];
+            $changes = $this->runInTransaction($db, function () use ($db, $input): array {
+                $changes = [];
 
-            // Remove words
-            $words = $this->getStringOption($input, 'words');
-            if ($words !== null) {
-                $toRemove = array_values(array_filter(array_map('trim', explode(',', $words)), static fn(string $w): bool => $w !== ''));
-                if (count($toRemove) > 0) {
-                    $existing = $this->getExistingWords($db);
-                    $remaining = array_values(array_diff($existing, $toRemove));
-                    $removed = array_intersect($existing, $toRemove);
-                    $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', implode(',', $remaining));
-                    if (count($removed) > 0) {
-                        $changes[] = 'Removed ' . count($removed) . ' word(s): ' . implode(', ', $removed);
+                // Remove words
+                $words = $this->getStringOption($input, 'words');
+                if ($words !== null) {
+                    $toRemove = array_values(array_filter(array_map('trim', explode(',', $words)), static fn(string $w): bool => $w !== ''));
+                    if (count($toRemove) > 0) {
+                        $existing = $this->getExistingWords($db);
+                        $remaining = array_values(array_diff($existing, $toRemove));
+                        $removed = array_intersect($existing, $toRemove);
+                        $this->updateOption($db, 'ANTISPAM_BLACKLIST_WORDS', implode(',', $remaining));
+                        if (count($removed) > 0) {
+                            $changes[] = 'Removed ' . count($removed) . ' word(s): ' . implode(', ', $removed);
+                        }
                     }
                 }
-            }
 
-            // Remove domains
-            $domains = $this->getStringOption($input, 'domains');
-            if ($domains !== null) {
-                $toRemove = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
-                if (count($toRemove) > 0) {
-                    $existing = $this->getExistingDomains($db);
-                    $remaining = array_values(array_diff($existing, $toRemove));
-                    $removed = array_intersect($existing, $toRemove);
-                    $this->updateBlockedDomains($db, $remaining);
-                    if (count($removed) > 0) {
-                        $changes[] = 'Removed ' . count($removed) . ' domain(s): ' . implode(', ', $removed);
+                // Remove domains
+                $domains = $this->getStringOption($input, 'domains');
+                if ($domains !== null) {
+                    $toRemove = array_values(array_filter(array_map('trim', explode(',', $domains)), static fn(string $d): bool => $d !== ''));
+                    if (count($toRemove) > 0) {
+                        $existing = $this->getExistingDomains($db);
+                        $remaining = array_values(array_diff($existing, $toRemove));
+                        $removed = array_intersect($existing, $toRemove);
+                        $this->updateBlockedDomains($db, $remaining);
+                        if (count($removed) > 0) {
+                            $changes[] = 'Removed ' . count($removed) . ' domain(s): ' . implode(', ', $removed);
+                        }
                     }
                 }
-            }
 
-            // Remove IPs
-            $ips = $this->getStringOption($input, 'ips');
-            if ($ips !== null) {
-                $toRemove = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
-                if (count($toRemove) > 0) {
-                    $existing = $this->getExistingIps($db);
-                    $remaining = array_values(array_diff($existing, $toRemove));
-                    $removed = array_intersect($existing, $toRemove);
-                    $this->updateBlockedIps($db, $remaining);
-                    if (count($removed) > 0) {
-                        $changes[] = 'Removed ' . count($removed) . ' IP(s): ' . implode(', ', $removed);
+                // Remove IPs
+                $ips = $this->getStringOption($input, 'ips');
+                if ($ips !== null) {
+                    $toRemove = array_values(array_filter(array_map('trim', explode(',', $ips)), static fn(string $ip): bool => $ip !== ''));
+                    if (count($toRemove) > 0) {
+                        $existing = $this->getExistingIps($db);
+                        $remaining = array_values(array_diff($existing, $toRemove));
+                        $removed = array_intersect($existing, $toRemove);
+                        $this->updateBlockedIps($db, $remaining);
+                        if (count($removed) > 0) {
+                            $changes[] = 'Removed ' . count($removed) . ' IP(s): ' . implode(', ', $removed);
+                        }
                     }
                 }
-            }
+                return $changes;
+            });
 
             if ($changes === []) {
                 $this->io()->warning('Nothing removed. Items may not exist in blacklist.');

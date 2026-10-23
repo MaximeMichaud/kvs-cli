@@ -723,10 +723,11 @@ HELP
             $dvdIdStr = is_scalar($dvdIdVal) ? (string) $dvdIdVal : '0';
             $statusId = is_numeric($statusIdVal) ? (int) $statusIdVal : 0;
 
+            $withColor = !$this->shouldUseFormattedRows($input);
             $info = [
                 ['DVD ID', $dvdIdStr],
                 ['Title', $dvdTitle],
-                ['Status', StatusFormatter::dvd($statusId)],
+                ['Status', StatusFormatter::dvd($statusId, $withColor)],
                 ['Videos', number_format($totalVideos)],
                 ['Views', number_format($dvdViewed)],
             ];

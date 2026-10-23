@@ -25,7 +25,7 @@ kvs config list [options]
 **Options:**
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--file=<file>` | Config view: all, db, main, paths |
 | `--show-protected` | Show protected values (passwords) |
 | `--json` | Output as JSON |
@@ -49,8 +49,15 @@ kvs config set <key> <value>
 **Options:**
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--backup` | Create backup before changes |
+
+Main settings must use `$config['key'] = ...` assignments. Database settings must
+use `define('DB_KEY', 'value')` with single-quoted literals. The command updates
+matching PHP instructions, preserving examples in comments and strings as well
+as comparisons. It updates all matching assignments, including conditional
+branches, without evaluating their conditions. If no supported instruction is
+found, it fails without changing the file.
 
 ### edit
 
@@ -63,18 +70,24 @@ kvs config edit [options]
 **Options:**
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `--file=<file>` | Required config file to edit: db, main |
 
 The `paths` view is derived from `setup.php`; use `--file=main` to edit path
 settings.
+
+Editing always creates a backup beside the configuration file. `set --backup`
+does the same. Each backup has a unique filename and preserves the source file's
+permissions. If the editor fails, removes the file, or leaves invalid PHP, the
+command restores the original content. If restoration is impossible, it reports
+failure and retains the backup for manual recovery.
 
 ## Configuration Keys
 
 ### Database Configuration (`db.*`)
 
 | Key | Description |
-|-----|-------------|
+| ----- | ------------- |
 | `db.host` | Database server host |
 | `db.login` | Database username |
 | `db.pass` | Database password (protected) |
@@ -83,7 +96,7 @@ settings.
 ### Main Configuration (`main.*`)
 
 | Key | Description |
-|-----|-------------|
+| ----- | ------------- |
 | `main.project_version` | KVS version |
 | `main.project_url` | Site URL |
 | `main.project_path` | Installation path |
@@ -113,7 +126,7 @@ kvs config list --show-protected
 
 Output:
 
-```
+```text
 KVS Configuration
 =================
 
@@ -157,7 +170,7 @@ kvs config set db.host 192.168.1.100 --backup
 
 Output:
 
-```
+```text
 Backup created: /var/www/kvs/admin/include/setup_db.php.backup.20240115143022
 Configuration updated: db.host = 192.168.1.100
 Testing database connection...
@@ -176,7 +189,7 @@ kvs config edit --file=main
 
 The file opens in `$EDITOR` (or `nano` by default). After saving:
 
-```
+```text
 Configuration file edited successfully.
 Validating PHP syntax... OK
 ```
@@ -222,7 +235,7 @@ kvs config get db.hostt
 
 Output:
 
-```
+```text
 Configuration key not found: db.hostt
 Did you mean one of these?
   - db.host

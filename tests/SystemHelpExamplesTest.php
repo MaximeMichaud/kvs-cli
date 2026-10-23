@@ -208,30 +208,6 @@ class SystemHelpExamplesTest extends TestCase
         $this->assertStringNotContainsString('| [`video`](commands/video.md) | Manage videos (list, show) |', $docsReadme);
     }
 
-    public function testMigrateToDockerDocumentationUsesCompleteNonInteractiveExamples(): void
-    {
-        $doc = file_get_contents(dirname(__DIR__) . '/docs/commands/migrate_to_docker.md');
-        $this->assertIsString($doc);
-
-        $this->assertStringContainsString('--email=admin@example.com', $doc);
-        $this->assertStringContainsString('-e admin@example.com', $doc);
-        $this->assertStringContainsString('kvs migrate:import backup.tar.zst -d newdomain.com -e admin@newdomain.com', $doc);
-        $this->assertStringContainsString('--dry-run', $doc);
-        $this->assertStringNotContainsString('kvs migrate:to-docker --domain=example.com --dry-run', $doc);
-        $this->assertStringNotContainsString('kvs migrate:to-docker --ssl=3', $doc);
-        $this->assertStringNotContainsString('kvs migrate:to-docker --no-content', $doc);
-        $this->assertStringNotContainsString('kvs migrate:import backup.tar.zst -d newdomain.com' . PHP_EOL, $doc);
-    }
-
-    public function testMigratePackageDocumentationUsesActualMetadataSurface(): void
-    {
-        $doc = file_get_contents(dirname(__DIR__) . '/docs/commands/migrate_package.md');
-        $this->assertIsString($doc);
-
-        $this->assertStringContainsString('Package metadata (version, paths, sizes)', $doc);
-        $this->assertStringNotContainsString('Package metadata (version, paths, checksums)', $doc);
-    }
-
     public function testQueueDocumentationSeparatesActiveAndHistoryStatusValues(): void
     {
         $docsRoot = dirname(__DIR__) . '/docs';

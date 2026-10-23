@@ -136,8 +136,20 @@ Set `KVS_CLI_PHAR=/absolute/path/kvs.phar` if the archive is not beside the laun
 For a user-local install, put both files in `~/.local/bin`, naming the launcher
 `kvs` and the archive `kvs.phar`.
 
-To update, repeat the installer command. `self-update` is unavailable through
-this launcher because the host PHAR is the source for the managed container cache.
+To update, use the same command as a native PHAR installation:
+
+```bash
+kvs self-update --dev --yes
+```
+
+The launcher downloads and verifies the update using PHP inside the container,
+then replaces the PHAR on the host. New PHARs bundle the matching Docker launcher,
+which is updated alongside the archive. The host files and their directories must
+be writable; use `sudo` for a root-owned installation. `--check` only checks for
+updates, and a failed or cancelled download leaves the host files unchanged.
+
+Older launchers that refuse `self-update` need a one-time launcher upgrade using
+the host download and install commands above.
 
 ### Method 2: From Source (Development)
 
@@ -293,17 +305,20 @@ kvs completion fish > ~/.config/fish/completions/kvs.fish
 KVS-CLI couldn't detect your installation. Solutions:
 
 1. Navigate to the KVS directory:
+
    ```bash
    cd /path/to/kvs
    kvs system:status
    ```
 
 2. Use the `--path` option:
+
    ```bash
    kvs --path=/path/to/kvs system:status
    ```
 
 3. Set the environment variable:
+
    ```bash
    export KVS_PATH=/path/to/kvs
    ```
