@@ -85,6 +85,11 @@ kvs options set ENABLE_ANTI_HOTLINK 1
 kvs options set ANTISPAM_BLACKLIST_ACTION delete
 ```
 
+Disabling `ENABLE_BACKGROUND_TASKS_PAUSE` also removes the existing pause marker.
+If removal fails, the command reports an error and rolls back the option and any
+mirrored settings. Removing a marker requires a transactional options table,
+such as InnoDB. Nontransactional tables are refused before any change is made.
+
 ## Examples
 
 ### List Options

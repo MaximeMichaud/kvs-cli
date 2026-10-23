@@ -579,7 +579,9 @@ HELP
         string $value
     ): array {
         $tables = $this->getOptionTransactionTables($name, $oldValue, $value);
-        $requiresTransaction = $settingsFiles !== [] || count($tables) > 1;
+        $pauseFile = $this->config->getAdminPath() . '/data/system/background_tasks_pause.dat';
+        $requiresTransaction = $settingsFiles !== [] || count($tables) > 1
+            || ($name === 'ENABLE_BACKGROUND_TASKS_PAUSE' && (int) $value === 0 && is_file($pauseFile));
         if ($requiresTransaction) {
             $this->requireOptionTransaction($db, $tables);
         }
@@ -748,8 +750,8 @@ HELP
 
         if ($name === 'ENABLE_BACKGROUND_TASKS_PAUSE' && (int) $value === 0) {
             $pauseFile = $this->config->getAdminPath() . '/data/system/background_tasks_pause.dat';
-            if (is_file($pauseFile)) {
-                @unlink($pauseFile);
+            if (is_file($pauseFile) && !@unlink($pauseFile)) {
+                throw new \RuntimeException("Cannot remove background task pause marker: $pauseFile");
             }
         }
 

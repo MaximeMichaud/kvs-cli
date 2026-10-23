@@ -431,28 +431,114 @@ class OptionsCommandTest extends TestCase
         $this->assertFalse($this->db->inTransaction());
     }
 
-    public function testSetBackgroundTasksPauseDisabledRemovesPauseFileLikeKvs(): void
+    /** @return array<string, array{string, bool, bool}> */
+    public static function pauseMarkerRemovalStates(): array
     {
+        return [
+            'regular marker' => ['file', true, false],
+            'mirrored option' => ['file', true, true],
+            'symbolic marker' => ['link', true, true],
+            'denied removal without mirror' => ['file', false, false],
+            'denied removal with mirror' => ['file', false, true],
+            'denied symbolic marker removal' => ['link', false, true],
+            'absent marker in read-only directory' => ['absent', false, false],
+            'absent marker with mirrored option' => ['absent', false, true],
+            'directory is not a pause marker' => ['directory', true, false],
+            'dangling link is not a pause marker' => ['dangling', true, false],
+        ];
+    }
+
+    #[DataProvider('pauseMarkerRemovalStates')]
+    public function testSetBackgroundTasksPauseDisabledChecksMarkerRemoval(
+        string $markerKind,
+        bool $writable,
+        bool $mirrored
+    ): void {
         $systemDir = $this->kvsPath . '/admin/data/system';
         self::assertTrue(is_dir($systemDir) || mkdir($systemDir, 0777, true));
         $pauseFile = $systemDir . '/background_tasks_pause.dat';
-        file_put_contents($pauseFile, '1');
+        $targetFile = $this->kvsPath . '/pause-target.dat';
+        $mirrorFile = $systemDir . '/mixed_options.dat';
+        $mirrorContents = serialize([
+            'ENABLE_BACKGROUND_TASKS_PAUSE' => 1,
+            'OTHER_SETTING' => 'preserve',
+        ]) . "\n";
+        file_put_contents($targetFile, 'preserve target');
+        if ($markerKind === 'file') {
+            file_put_contents($pauseFile, '1');
+        } elseif ($markerKind === 'link') {
+            self::assertTrue(symlink($targetFile, $pauseFile));
+        } elseif ($markerKind === 'dangling') {
+            self::assertTrue(symlink($this->kvsPath . '/absent-target.dat', $pauseFile));
+        } elseif ($markerKind === 'directory') {
+            self::assertTrue(mkdir($pauseFile));
+        }
+        if ($mirrored) {
+            file_put_contents($mirrorFile, $mirrorContents);
+        }
         $this->db->exec(
             "INSERT INTO " . TestHelper::table('options') .
             " (variable, value) VALUES ('ENABLE_BACKGROUND_TASKS_PAUSE', '1')"
         );
+        $this->createAdminAuditLogTable();
+        $hasBlockingMarker = is_file($pauseFile);
+        try {
+            chmod($systemDir, $writable ? 0755 : 0555);
+            clearstatcache(true, $systemDir);
+            if (!$writable && is_writable($systemDir)) {
+                self::markTestSkipped('Cannot enforce read-only directory permissions as this user.');
+            }
+            $this->tester->execute([
+                'action' => 'set',
+                'name' => 'ENABLE_BACKGROUND_TASKS_PAUSE',
+                'value' => '0',
+                '--yes' => true,
+                '--force' => true,
+            ]);
 
-        $this->tester->execute([
-            'action' => 'set',
-            'name' => 'ENABLE_BACKGROUND_TASKS_PAUSE',
-            'value' => '0',
-            '--yes' => true,
-            '--force' => true,
-        ]);
-
-        $display = $this->tester->getDisplay();
-        $this->assertSame(0, $this->tester->getStatusCode(), $display);
-        $this->assertFileDoesNotExist($pauseFile);
+            $rejected = !$writable && $hasBlockingMarker;
+            $this->assertSame($rejected ? 1 : 0, $this->tester->getStatusCode(), $this->tester->getDisplay());
+            $this->assertSame(
+                $rejected ? '1' : '0',
+                $this->db->query(
+                    'SELECT value FROM ' . TestHelper::table('options') .
+                    " WHERE variable = 'ENABLE_BACKGROUND_TASKS_PAUSE'"
+                )->fetchColumn()
+            );
+            clearstatcache(true, $pauseFile);
+            $this->assertSame($rejected, is_file($pauseFile));
+            if ($rejected) {
+                $this->assertStringContainsString(
+                    'Cannot remove background task pause marker',
+                    $this->tester->getDisplay()
+                );
+                $this->assertStringNotContainsString('updated successfully', $this->tester->getDisplay());
+                $this->assertSame($markerKind === 'link' ? 'preserve target' : '1', file_get_contents($pauseFile));
+            }
+            if ($markerKind === 'link' || $markerKind === 'dangling') {
+                $this->assertSame($rejected || $markerKind === 'dangling', is_link($pauseFile));
+            } elseif ($markerKind === 'directory') {
+                $this->assertDirectoryExists($pauseFile);
+            }
+            if ($mirrored) {
+                if ($rejected) {
+                    $this->assertSame($mirrorContents, file_get_contents($mirrorFile));
+                } else {
+                    $this->assertSame(
+                        ['ENABLE_BACKGROUND_TASKS_PAUSE' => 0, 'OTHER_SETTING' => 'preserve'],
+                        unserialize((string) file_get_contents($mirrorFile), ['allowed_classes' => false])
+                    );
+                }
+            }
+            $this->assertSame('preserve target', file_get_contents($targetFile));
+            $this->assertFalse($this->db->inTransaction());
+            $this->assertSame(
+                $rejected ? 0 : 1,
+                (int) $this->db->query('SELECT COUNT(*) FROM ' . TestHelper::table('admin_audit_log'))->fetchColumn()
+            );
+        } finally {
+            chmod($systemDir, 0755);
+        }
     }
 
     #[DataProvider('relatedSettingUpdates')]
