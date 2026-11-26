@@ -59,6 +59,7 @@ HELP
             ->addOption('inactive-days', null, InputOption::VALUE_REQUIRED, 'Filter users inactive for N days')
             ->addOption('min-age', null, InputOption::VALUE_REQUIRED, 'Filter accounts older than N days')
             ->addOption('limit', null, InputOption::VALUE_REQUIRED, 'Maximum number of users to process', 1000)
+            ->addOption('report', null, InputOption::VALUE_REQUIRED, 'Save selected users and outcome after confirmation')
             ->addOption('confirm', null, InputOption::VALUE_NONE, 'Actually delete users (default is dry-run)')
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Skip confirmation prompt');
     }
@@ -163,7 +164,9 @@ HELP
         // Load KVS admin context and delete
         $this->io()->text('Loading KVS admin context...');
 
+        $report = null;
         try {
+            $report = $this->openConfirmedReport($input, $users);
             $userIds = [];
             foreach ($users as $user) {
                 if (is_array($user) && isset($user['user_id']) && is_numeric($user['user_id'])) {
@@ -182,19 +185,65 @@ HELP
             $remaining = $this->countRemainingUsers($db, $userIds);
             if ($remaining > 0) {
                 $label = $remaining === 1 ? 'selected user' : 'selected users';
-                $this->io()->error(sprintf('KVS did not delete %d %s.', $remaining, $label));
-                return self::FAILURE;
+                throw new \RuntimeException(sprintf('KVS did not delete %d %s.', $remaining, $label));
             }
 
-            $this->io()->success(sprintf('Successfully deleted %s.', $this->formatUserCount($count)));
+            $result = sprintf('Successfully deleted %s.', $this->formatUserCount($count));
+            if ($report !== null) {
+                if ($report->fwrite($result . PHP_EOL) !== strlen($result . PHP_EOL) || !$report->fflush()) {
+                    throw new \RuntimeException('Deletion completed but the report outcome could not be saved.');
+                }
+            }
+            $this->io()->success($result);
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            $this->io()->error('Failed to delete users: ' . $e->getMessage());
+            if ($report !== null) {
+                $report->fwrite('Error: ' . $e->getMessage() . PHP_EOL);
+            }
+            $this->io()->error($e->getMessage());
             if ($this->io()->isVerbose()) {
                 $this->io()->text($e->getTraceAsString());
             }
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param list<mixed> $users
+     */
+    private function openConfirmedReport(InputInterface $input, array $users): ?\SplFileObject
+    {
+        $path = $input->getOption('report');
+        if (!is_string($path)) {
+            return null;
+        }
+        $previousMask = umask(0077);
+        try {
+            $report = new \SplFileObject($path, 'xb');
+        } finally {
+            umask($previousMask);
+        }
+        $headers = ['User ID', 'Username', 'Email', 'Last login', 'Created', 'Removal reason'];
+        $fields = ['user_id', 'username', 'email', 'last_login_date', 'added_date', 'removal_reason'];
+        if ($report->fputcsv($headers, "\t", '"', '') === false) {
+            throw new \RuntimeException('Could not write the purge report header.');
+        }
+        foreach ($users as $user) {
+            if (!is_array($user)) {
+                throw new \RuntimeException('Invalid user in purge report.');
+            }
+            $row = [];
+            foreach ($fields as $field) {
+                $row[] = $this->scalarToString($user[$field] ?? '');
+            }
+            if ($report->fputcsv($row, "\t", '"', '') === false) {
+                throw new \RuntimeException('Could not write the selected users to the report.');
+            }
+        }
+        if (!$report->fflush()) {
+            throw new \RuntimeException('Could not flush the purge report before deletion.');
+        }
+        return $report;
     }
 
     /**

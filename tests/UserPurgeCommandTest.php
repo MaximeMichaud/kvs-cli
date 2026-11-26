@@ -30,6 +30,44 @@ class UserPurgeCommandTest extends TestCase
         TestHelper::removeDir($this->kvsPath);
     }
 
+    public function testReportIsCreatedOnlyAfterConfirmationForSelectedUsers(): void
+    {
+        $db = $this->createContentDatabase();
+        $db->exec('INSERT INTO ' . TestHelper::table('videos') . ' (user_id) VALUES (3)');
+        $db->exec("UPDATE " . TestHelper::table('users') . " SET removal_reason = 'My reason' WHERE user_id = 4");
+        $tester = new CommandTester($this->createContentCommand($db));
+        $file = $this->kvsPath . '/report.txt';
+        $options = ['--no-content' => true, '--removal-requested' => true, '--report' => $file];
+
+        $tester->execute($options);
+        self::assertFileDoesNotExist($file);
+        $tester->setInputs(['no']);
+        $tester->execute($options + ['--confirm' => true], ['interactive' => true]);
+        self::assertFileDoesNotExist($file);
+
+        $tester->setInputs(['yes']);
+        $tester->execute($options + ['--confirm' => true], ['interactive' => true]);
+        self::assertSame(0, $tester->getStatusCode(), $tester->getDisplay());
+        $report = file_get_contents($file);
+        self::assertStringContainsString('My reason', $report);
+        self::assertStringContainsString('empty-account', $report);
+        self::assertStringNotContainsString('content-owner', $report);
+        self::assertStringContainsString('Successfully deleted 1 user.', $report);
+        self::assertSame(0600, fileperms($file) & 0777);
+    }
+
+    public function testExistingReportStopsDeletion(): void
+    {
+        $command = $this->createContentCommand($this->createContentDatabase());
+        $tester = new CommandTester($command);
+        $file = $this->kvsPath . '/report.txt';
+        file_put_contents($file, 'original');
+        $tester->execute(['--no-content' => true, '--confirm' => true, '--yes' => true, '--report' => $file]);
+        self::assertSame(1, $tester->getStatusCode());
+        self::assertSame(0, $command->cleanupCalls);
+        self::assertSame('original', file_get_contents($file));
+    }
+
     #[DataProvider('contentProvider')]
     public function testNoContentExcludesActualContentDespiteZeroCounters(string $table, int $status, int $privacy = 0): void
     {

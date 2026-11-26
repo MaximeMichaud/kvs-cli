@@ -26,6 +26,7 @@ counters, messages, comments, and subscriptions.
 | `--inactive-days=N` | - | Match users who have not logged in for N days |
 | `--min-age=N` | - | Match accounts older than N days |
 | `--limit=N` | 1000 | Maximum number of users to process |
+| `--report=FILE` | - | Save the selected accounts, removal reasons, and outcome after confirmation |
 | `--confirm` | - | Actually delete matched users |
 | `-y, --yes` | - | Skip confirmation prompt when `--confirm` is used |
 
@@ -64,9 +65,15 @@ kvs user:purge --removal-requested --no-content --inactive-days=30 --min-age=90
 # Delete with confirmation prompt
 kvs user:purge --removal-requested --no-content --inactive-days=30 --confirm
 
+# Save one report after confirming the purge
+kvs user:purge --removal-requested --no-content --inactive-days=30 --min-age=90 \
+  --limit=100000 --report="user-purge-$(date +%F_%H-%M-%S).txt" --confirm
+
 # Delete without confirmation prompt
 kvs user:purge --removal-requested --no-content --confirm --yes
 ```
+
+The report is a tab-separated text file. An empty selection, a dry run, or a declined prompt creates no file. If the report path already exists or cannot be opened, the purge stops before deleting users.
 
 ## Safety Features
 
